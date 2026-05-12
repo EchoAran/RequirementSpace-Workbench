@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
@@ -32,11 +34,19 @@ app = FastAPI(title="RequirementSpace Workbench API", version="0.1.0", lifespan=
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
 
 @app.get("/api/health")
@@ -47,10 +57,30 @@ def health():
 @app.get("/api/workspaces", response_model=list[schemas.WorkspaceListItem])
 def list_workspaces(db: Session = Depends(get_db)):
     items = db.query(models.Workspace).order_by(models.Workspace.updated_at.desc()).all()
-    return [
-        schemas.WorkspaceListItem(id=i.id, name=i.name, idea=i.idea, updatedAt=i.updated_at.isoformat())
-        for i in items
-    ]
+    res = []
+    for i in items:
+        issue_count = db.query(models.Issue).filter(models.Issue.workspace_id == i.id, models.Issue.status == 'open').count()
+        node_count = db.query(models.Node).filter(models.Node.workspace_id == i.id).count()
+        
+        if issue_count > 0:
+            status = "待确认缺口"
+        elif node_count > 0:
+            status = "设计中"
+        else:
+            status = "草稿"
+            
+        res.append(
+            schemas.WorkspaceListItem(
+                id=i.id, 
+                name=i.name, 
+                idea=i.idea, 
+                updatedAt=i.updated_at.isoformat(),
+                status=status,
+                issueCount=issue_count,
+                nodeCount=node_count
+            )
+        )
+    return res
 
 
 @app.post("/api/workspaces/bootstrap")
@@ -209,3 +239,39 @@ def analyze_prompt(req: schemas.PromptAnalyzeRequest):
             "流程：异常/退回/撤销是否需要？",
         ],
     )
+
+
+@app.get("/", include_in_schema=False)
+def serve_root():
+    if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
+        return FileResponse(FRONTEND_DIST / "index.html")
+    return HTMLResponse(
+        "<h3>RequirementSpace Workbench</h3>"
+        "<p>前端未构建或 dist 不存在。请在 frontend 目录运行 npm run dev，然后打开对应的 Local 地址。</p>",
+        status_code=200,
+    )
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str):
+    if full_path.startswith("api") or full_path in {"docs", "redoc", "openapi.json"}:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if not FRONTEND_DIST.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    dist_root = FRONTEND_DIST.resolve()
+    requested = (FRONTEND_DIST / full_path).resolve()
+    if dist_root not in requested.parents and requested != dist_root:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if requested.is_dir():
+        requested = requested / "index.html"
+
+    if requested.exists() and requested.is_file():
+        return FileResponse(requested)
+
+    index = FRONTEND_DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="Not Found")

@@ -82,3 +82,6 @@ class WorkspaceListItem(BaseModel):
     name: str
     idea: str
     updatedAt: str
+    status: str
+    issueCount: int
+    nodeCount: int

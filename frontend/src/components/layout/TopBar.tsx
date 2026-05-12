@@ -4,12 +4,12 @@ import { useWorkspaceStore, selectIssues, selectFlowSteps, selectActors } from '
 
 const getSubtitle = (path: string) => {
   switch (path) {
-    case '/': return '决策控制台';
+    case '/': return '概览';
     case '/what': return '目标、能力、任务、角色收敛';
     case '/flow': return '流程、规则、异常、状态变化';
     case '/scope': return '范围边界与生成条件';
     case '/preview': return '验证与生成前检查';
-    default: return '决策控制台';
+    default: return '概览';
   }
 };
 

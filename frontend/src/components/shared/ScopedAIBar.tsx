@@ -25,11 +25,11 @@ export function ScopedAIBar() {
     scopes.push({ kind: 'workspace', label: '全局 (Workspace)' });
 
     // Current page implies a projection scope
-    if (currentPage === '/') scopes.unshift({ kind: 'projection', projection: 'goal', label: '投影: 概览' });
-    if (currentPage === '/what') scopes.unshift({ kind: 'projection', projection: 'goal', label: '投影: 目标与角色' });
-    if (currentPage === '/flow') scopes.unshift({ kind: 'projection', projection: 'system', label: '投影: 流程与规则' });
-    if (currentPage === '/scope') scopes.unshift({ kind: 'projection', projection: 'data', label: '投影: 范围与边界' });
-    if (currentPage === '/preview') scopes.unshift({ kind: 'projection', projection: 'ui', label: '投影: 方案预览' });
+    if (currentPage === '/') scopes.unshift({ kind: 'projection', projection: 'goal', label: '概览' });
+    if (currentPage === '/what') scopes.unshift({ kind: 'projection', projection: 'goal', label: '要做什么' });
+    if (currentPage === '/flow') scopes.unshift({ kind: 'projection', projection: 'system', label: '怎么运作' });
+    if (currentPage === '/scope') scopes.unshift({ kind: 'projection', projection: 'data', label: '范围与交付' });
+    if (currentPage === '/preview') scopes.unshift({ kind: 'projection', projection: 'ui', label: '方案预览' });
 
     // Object specific scope
     if (selectedObject) {

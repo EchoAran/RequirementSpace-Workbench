@@ -19,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const workspaceApi = {
   health: () => request<{ status: string }>('/api/health'),
-  list: () => request<{ id: string; name: string; idea: string; updatedAt: string }[]>('/api/workspaces'),
+  list: () => request<{ id: string; name: string; idea: string; updatedAt: string; status: string; issueCount: number; nodeCount: number; }[]>('/api/workspaces'),
   getDefault: () => request<RequirementSpaceIR>('/api/workspaces/default'),
   getById: (id: string) => request<RequirementSpaceIR>(`/api/workspaces/${id}`),
   bootstrap: (prompt: string) =>

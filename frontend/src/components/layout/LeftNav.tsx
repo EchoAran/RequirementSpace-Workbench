@@ -37,7 +37,7 @@ export function LeftNav() {
       </button>
 
       <div className={cn("h-16 border-b border-slate-200 flex flex-shrink-0 items-center transition-all", collapsed ? "justify-center px-0" : "px-6 gap-3")}>
-        <div className="w-8 h-8 shrink-0 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">A</div>
+        <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
         {!collapsed && <span className="font-bold text-lg tracking-tight italic text-slate-800">需求空间工作台</span>}
       </div>
       

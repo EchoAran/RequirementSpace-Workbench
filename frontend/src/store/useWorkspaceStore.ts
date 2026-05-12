@@ -23,6 +23,9 @@ export interface WorkspaceListItem {
   name: string;
   idea: string;
   updatedAt: string;
+  status: string;
+  issueCount: number;
+  nodeCount: number;
 }
 
 interface WorkspaceState {

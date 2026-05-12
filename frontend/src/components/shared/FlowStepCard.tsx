@@ -73,7 +73,9 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
                   Slot: {s.title}
                 </span>
-                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">待决策</span>
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">
+                  {(s as any).status === 'filled' ? '已填补' : (s as any).status === 'deferred' ? '已暂缓' : '待决策'}
+                </span>
               </div>
               <div className="text-purple-600/80 pl-2.5">
                 {s.candidatesCount > 0 ? `${s.candidatesCount} 个候选方案` : '生成中...'}

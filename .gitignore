@@ -1,0 +1,44 @@
+# Python virtual environment
+.venv/
+
+# Backend caches and environment
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.venv/
+backend/venv/
+
+# Backend database files
+backend/*.db
+backend/*.sqlite3
+backend/*.sqlite
+
+# IDE/editor files
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+
+# Misc
+*.log
+*.pot
+*.mo
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.sqlite3
+*.sqlite
+*.db
+.env
+.env.*
+coverage/
+htmlcov/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt

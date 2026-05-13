@@ -147,6 +147,24 @@ def patch_issue_status(workspace_id: str, issue_id: str, req: schemas.IssueStatu
     return crud.serialize_workspace(ws)
 
 
+@app.patch("/api/workspaces/{workspace_id}/issues/{issue_id}/details")
+def patch_issue_details(workspace_id: str, issue_id: str, req: schemas.IssueUpdateRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    crud.update_issue(db, ws, issue_id, req.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(ws)
+    return crud.serialize_workspace(ws)
+
+
+@app.patch("/api/workspaces/{workspace_id}/choices/{choice_id}")
+def patch_choice(workspace_id: str, choice_id: str, req: schemas.ChoiceUpdateRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    crud.update_choice(db, ws, choice_id, req.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(ws)
+    return crud.serialize_workspace(ws)
+
+
 @app.post("/api/workspaces/{workspace_id}/issues/{issue_id}/generate-candidate")
 def generate_candidate(workspace_id: str, issue_id: str, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)

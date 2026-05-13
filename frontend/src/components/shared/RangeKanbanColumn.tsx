@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NodeKindToText } from '@/types';
 import { StatusBadge } from './StatusBadge';
 
@@ -20,6 +21,9 @@ interface ColumnProps {
 }
 
 export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
+  const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
   return (
     <div className="bg-slate-100/50 rounded-xl p-3 flex flex-col gap-3 min-h-[400px]">
       <h4 className="font-medium text-slate-700 text-sm flex justify-between items-center px-1">
@@ -36,25 +40,65 @@ export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarge
             <div className="flex justify-between items-start mb-3 gap-2 relative">
               <h5 className={`text-sm font-medium leading-tight pr-6 ${item.scopeStatus === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'}`}>{item.title}</h5>
               <div className="absolute right-0 top-0 opacity-100 flex flex-col gap-1 z-10 group-hover:opacity-100">
-                <div className="relative group/menu">
-                  <button className="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded p-1 transition-colors">
+                <div className="relative">
+                  {openMenuItemId === item.id && (
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuItemId(null);
+                        setMenuPos(null);
+                      }}
+                    ></div>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (openMenuItemId === item.id) {
+                        setOpenMenuItemId(null);
+                        setMenuPos(null);
+                        return;
+                      }
+                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      const menuWidth = 112;
+                      const menuHeight = 160;
+                      const viewportW = globalThis.innerWidth || 1024;
+                      const viewportH = globalThis.innerHeight || 768;
+
+                      const left = Math.min(Math.max(8, rect.right - menuWidth), viewportW - menuWidth - 8);
+                      const preferBottom = rect.bottom + 6;
+                      const preferTop = rect.top - menuHeight - 6;
+                      const top =
+                        preferBottom + menuHeight <= viewportH
+                          ? preferBottom
+                          : preferTop >= 8
+                            ? preferTop
+                            : Math.max(8, Math.min(preferBottom, viewportH - menuHeight - 8));
+
+                      setOpenMenuItemId(item.id);
+                      setMenuPos({ top, left });
+                    }}
+                    className="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded p-1 transition-colors relative z-50"
+                  >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                   </button>
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg w-28 py-1 hidden group-hover/menu:block z-50">
+                  {openMenuItemId === item.id && (
+                  <div className="fixed bg-white border border-slate-200 rounded-lg shadow-lg w-28 py-1 z-50" style={menuPos || undefined}>
                     <div className="px-2 py-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">移动至</div>
                     {!title.includes('本期包含') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '本期包含'); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">本期包含</button>
+                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '本期包含'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">本期包含</button>
                     )}
                     {!title.includes('暂缓处理') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '暂缓处理'); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">暂缓处理</button>
+                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '暂缓处理'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">暂缓处理</button>
                     )}
                     {!title.includes('外部依赖') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '外部依赖'); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">外部依赖</button>
+                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '外部依赖'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">外部依赖</button>
                     )}
                     {!title.includes('已排除') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '已排除'); }} className="w-full text-left px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors">已排除</button>
+                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '已排除'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors">已排除</button>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
             </div>

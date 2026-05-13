@@ -44,6 +44,18 @@ class IssueStatusRequest(BaseModel):
     status: str
 
 
+class IssueUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    severity: str | None = None
+    category: str | None = None
+    relatedNodeIds: list[str] | None = None
+    suggestedProjection: str | None = None
+    suggestedAction: str | None = None
+    status: str | None = None
+    source: dict[str, Any] | None = None
+
+
 class DiagnoseRequest(BaseModel):
     scope: dict[str, Any] | None = None
 
@@ -75,6 +87,12 @@ class AddChoiceRequest(BaseModel):
     proposedNodeIds: list[str] = Field(default_factory=list)
     proposedLinkIds: list[str] = Field(default_factory=list)
     impactPreview: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChoiceUpdateRequest(BaseModel):
+    title: str | None = None
+    rationale: str | None = None
+    status: str | None = None
 
 
 class WorkspaceListItem(BaseModel):

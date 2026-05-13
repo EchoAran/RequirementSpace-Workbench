@@ -12,6 +12,27 @@ export function LeftNav() {
   const ir = useWorkspaceStore(s => s.ir);
   const [collapsed, setCollapsed] = useState(false);
 
+  const calculateCoverage = (nodes: any[]) => {
+    if (nodes.length === 0) return 0;
+    const confirmed = nodes.filter(n => n.status === 'confirmed').length;
+    return Math.floor((confirmed / nodes.length) * 100);
+  };
+
+  const allNodes = ir ? Object.values(ir.nodes || {}) : [];
+  const goals = allNodes.filter((n: any) => n.kind === 'goal');
+  const actors = allNodes.filter((n: any) => n.kind === 'actor');
+  const flowSteps = allNodes.filter((n: any) => n.kind === 'flow_step');
+  const screens = allNodes.filter((n: any) => n.kind === 'screen');
+  const dataObjects = allNodes.filter((n: any) => n.kind === 'business_object');
+
+  const readinessScore = Math.floor(
+    (calculateCoverage(goals) +
+      calculateCoverage(actors) +
+      calculateCoverage(flowSteps) +
+      calculateCoverage(screens) +
+      calculateCoverage(dataObjects)) / 5
+  );
+
   const getCounts = (path: string) => {
     return selectPageHealth({ ir } as any, path);
   };
@@ -31,7 +52,7 @@ export function LeftNav() {
     )}>
       <button 
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-1/2 -translate-y-1/2 bg-white border border-slate-200 rounded-full w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-300 shadow-sm hover:shadow z-20 transition-all"
+        className="absolute -right-3 top-[calc(50%+2rem)] -translate-y-1/2 bg-white border border-slate-200 rounded-full w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-300 shadow-sm hover:shadow z-20 transition-all"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -127,11 +148,11 @@ export function LeftNav() {
       {!collapsed && (
         <div className="p-4 border-t border-slate-200 shrink-0">
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <div className="text-xs text-slate-500 mb-1 italic">当前准备度</div>
+            <div className="text-xs text-slate-500 mb-1 italic">整体成熟度</div>
             <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-              <div className="bg-indigo-500 h-2 rounded-full w-[65%]"></div>
+              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${readinessScore}%` }}></div>
             </div>
-            <div className="text-xs text-right mt-1 font-mono font-bold text-slate-700">65%</div>
+            <div className="text-xs text-right mt-1 font-mono font-bold text-slate-700">{readinessScore}%</div>
           </div>
         </div>
       )}

@@ -79,6 +79,8 @@ interface WorkspaceState {
     suggestedProjection?: string;
     suggestedAction?: string;
   }) => Promise<void>;
+  updateIssueAttributes: (issueId: string, updates: Partial<Issue> & Record<string, any>) => Promise<void>;
+  updateChoiceAttributes: (choiceId: string, updates: Partial<Choice> & Record<string, any>) => Promise<void>;
   addChoiceToGroup: (choiceGroupId: string, payload: { title: string; rationale?: string }) => Promise<void>;
 
   // Legacy actions for compatibility with older UI parts during transition
@@ -324,6 +326,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ir,
         isLoading: false,
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已更新节点状态。',
       }));
     } catch (err) {
       setError(set, err);
@@ -340,6 +343,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ir,
         isLoading: false,
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已更新范围状态。',
       }));
     } catch (err) {
       setError(set, err);
@@ -393,6 +397,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ir,
         isLoading: false,
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已保存修改。',
       }));
     } catch (err) {
       setError(set, err);
@@ -413,6 +418,40 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedObject: ir.issues[resp.issueId],
         lastActionMessage: '已创建待处理项。',
       });
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+    }
+  },
+
+  updateIssueAttributes: async (issueId, updates) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const ir = await workspaceApi.patchIssueDetails(workspaceId, issueId, updates as any);
+      set((state) => ({
+        ir,
+        isLoading: false,
+        selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已更新缺口信息。',
+      }));
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+    }
+  },
+
+  updateChoiceAttributes: async (choiceId, updates) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const ir = await workspaceApi.patchChoice(workspaceId, choiceId, updates as any);
+      set((state) => ({
+        ir,
+        isLoading: false,
+        selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已更新候选方案。',
+      }));
     } catch (err) {
       setError(set, err);
       set({ isLoading: false });
@@ -514,7 +553,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   moveScopeItem: async (itemId, newColumn) => {
     let scopeStatus: ScopeStatus = 'in_scope';
     if (newColumn === '本期暂不处理' || newColumn === '暂缓处理') scopeStatus = 'deferred';
-    else if (newColumn === '外部依赖') scopeStatus = 'dependency';
+    else if (newColumn === '外部依赖') scopeStatus = 'external_dependency';
     else if (newColumn === '已排除' || newColumn === '明确排除') scopeStatus = 'excluded';
     await get().setNodeScope(itemId, scopeStatus);
   },

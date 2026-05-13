@@ -11,7 +11,7 @@ export type NodeStatus =
   | 'deferred' 
   | 'excluded';
 
-export type ScopeStatus = 'in_scope' | 'out_of_scope' | 'deferred' | 'dependency' | 'excluded';
+export type ScopeStatus = 'in_scope' | 'out_of_scope' | 'deferred' | 'external_dependency' | 'excluded';
 
 export type SourceRecord = {
   type: 'user' | 'ai' | 'system';
@@ -32,11 +32,11 @@ export type BaseNode = {
   tags?: string[];
 };
 
-export interface GoalNode extends BaseNode { kind: 'goal'; value?: string; note?: string; }
-export interface CapabilityNode extends BaseNode { kind: 'capability'; priority?: string; parentId?: string; }
-export interface ActorNode extends BaseNode { kind: 'actor'; }
-export interface TaskNode extends BaseNode { kind: 'task'; owner?: string; result?: string; }
-export interface FlowNode extends BaseNode { kind: 'flow'; trigger?: string; }
+export interface GoalNode extends BaseNode { kind: 'goal'; value?: string; note?: string; successCriteria?: string[]; }
+export interface CapabilityNode extends BaseNode { kind: 'capability'; priority?: string; parentId?: string; acceptanceNotes?: string[]; }
+export interface ActorNode extends BaseNode { kind: 'actor'; roleType?: 'primary_user' | 'operator' | 'approver' | 'admin' | 'external'; responsibilities?: string[]; permissions?: string[]; }
+export interface TaskNode extends BaseNode { kind: 'task'; owner?: string; result?: string; actorId?: string; capabilityId?: string; outcome?: string; }
+export interface FlowNode extends BaseNode { kind: 'flow'; trigger?: string; mainObjectId?: string; }
 export interface FlowStepNode extends BaseNode {
   kind: 'flow_step';
   actor?: string;
@@ -44,15 +44,20 @@ export interface FlowStepNode extends BaseNode {
   swimlane?: string;
   input?: string[];
   output?: string[];
+  flowId?: string;
+  actorId?: string;
+  inputObjectIds?: string[];
+  outputObjectIds?: string[];
+  ruleIds?: string[];
 }
-export interface RuleNode extends BaseNode { kind: 'rule'; }
-export interface BusinessObjectNode extends BaseNode { kind: 'business_object'; }
-export interface FieldNode extends BaseNode { kind: 'field'; }
-export interface StateMachineNode extends BaseNode { kind: 'state_machine'; }
-export interface ObjectStateNode extends BaseNode { kind: 'object_state'; }
-export interface StateTransitionNode extends BaseNode { kind: 'state_transition'; }
-export interface ScreenNode extends BaseNode { kind: 'screen'; }
-export interface UIComponentNode extends BaseNode { kind: 'ui_component'; }
+export interface RuleNode extends BaseNode { kind: 'rule'; ruleType?: 'condition' | 'validation' | 'permission' | 'business_policy' | 'calculation'; expression?: string; naturalLanguage?: string; }
+export interface BusinessObjectNode extends BaseNode { kind: 'business_object'; ownerActorId?: string; fieldIds?: string[]; stateMachineId?: string; }
+export interface FieldNode extends BaseNode { kind: 'field'; objectId?: string; fieldType?: 'text' | 'number' | 'date' | 'boolean' | 'enum' | 'file' | 'reference'; required?: boolean; valueSource?: 'user_input' | 'system_generated' | 'external'; }
+export interface StateMachineNode extends BaseNode { kind: 'state_machine'; objectId?: string; stateIds?: string[]; transitionIds?: string[]; }
+export interface ObjectStateNode extends BaseNode { kind: 'object_state'; objectId?: string; }
+export interface StateTransitionNode extends BaseNode { kind: 'state_transition'; fromStateId?: string; toStateId?: string; triggerStepId?: string; ruleIds?: string[]; }
+export interface ScreenNode extends BaseNode { kind: 'screen'; actorIds?: string[]; purpose?: string; route?: string; rootComponentId?: string; }
+export interface UIComponentNode extends BaseNode { kind: 'ui_component'; componentType?: 'form' | 'table' | 'detail' | 'list' | 'button' | 'field' | 'status_badge' | 'dialog' | 'navigation'; childIds?: string[]; dataBindingIds?: string[]; actionBindingIds?: string[]; }
 
 export type RequirementNode =
   | GoalNode | CapabilityNode | ActorNode | TaskNode | FlowNode | FlowStepNode
@@ -155,10 +160,19 @@ export type Assumption = {
   description: string;
 };
 
+export type ProjectMeta = {
+  domain?: string;
+  taskType?: string;
+  templateId?: string;
+  inputPrompt?: string;
+  assumptions: Assumption[];
+};
+
 export type RequirementSpaceIR = {
   id: string;
   name: string;
   idea: string;
+  meta?: ProjectMeta;
   domain: {
     taskType?: string;
     templateId?: string;

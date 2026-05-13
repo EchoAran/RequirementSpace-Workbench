@@ -33,9 +33,21 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     'open': 'bg-rose-50 text-rose-600 border-rose-200 border',
     'resolved': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
     'ignored': 'bg-slate-50 text-slate-600 border-slate-200 border',
+
+    // For Choice status
+    'candidate': 'bg-blue-50 text-blue-700 border-blue-200 border',
+    'selected': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
+    'rejected': 'bg-zinc-100/50 text-zinc-400 border-zinc-200/50 border line-through',
+    'archived': 'bg-slate-50 text-slate-600 border-slate-200 border',
   };
 
-  const displayText = (NodeStatusToText as Record<string, string>)[status] || status;
+  const extraText: Record<string, string> = {
+    candidate: '候选',
+    selected: '已采纳',
+    rejected: '已拒绝',
+    archived: '已归档',
+  };
+  const displayText = (NodeStatusToText as Record<string, string>)[status] || extraText[status] || status;
 
   return (
     <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide', statusStyles[status] || 'bg-slate-50 text-slate-600 border-slate-200 border', className)}>

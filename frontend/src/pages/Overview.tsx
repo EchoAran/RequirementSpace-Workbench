@@ -196,9 +196,9 @@ export function Overview() {
                     <CandidateCard 
                       key={c.id} 
                       candidate={c as any} 
-                      onAccept={() => acceptCandidate(c.id)}
-                      onRewrite={() => {}}
-                      onReject={() => excludeObject(c.id)}
+                      onAccept={(choice) => acceptCandidate(choice.id)}
+                      onRewrite={(choice) => useWorkspaceStore.getState().setSelectedObject(choice)}
+                      onReject={(choice) => excludeObject(choice.id)}
                     />
                   ))}
                   {recentCandidates.length === 0 && (

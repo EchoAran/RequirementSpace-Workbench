@@ -58,6 +58,7 @@ export function HowItWorks() {
   };
 
   const topGap = abnormalGaps.length > 0 ? abnormalGaps[0] : null;
+  const businessObjects = Object.values(ir?.nodes || {}).filter((n: any) => n.kind === 'business_object');
 
   return (
     <div className="flex-1 flex w-full relative">
@@ -92,19 +93,9 @@ export function HowItWorks() {
                        </div>
                     </div>
                   ) : (
-                    <div className="bg-rose-50 border border-rose-200 rounded-lg py-1.5 px-3 flex items-center gap-2 shadow-sm cursor-pointer hover:bg-rose-100 transition-colors" onClick={() => setShowAllGaps(!showAllGaps)}>
-                       <div className="flex items-center justify-center p-0.5 font-bold text-rose-500 text-sm">
-                         ⚠️
-                       </div>
-                       <div>
-                          <div className="flex items-center gap-1.5">
-                             <span className="text-[9px] bg-rose-100 text-rose-700 px-1 rounded font-bold whitespace-nowrap">缺少分支</span>
-                             <span className="text-rose-900 text-xs font-bold leading-none line-clamp-1 max-w-[150px]">审批退回后无下一步动作</span>
-                          </div>
-                       </div>
-                       <div className="ml-1 pl-2 border-l border-rose-200 text-rose-600 text-[10px] font-bold flex items-center leading-none">
-                         {showAllGaps ? '收起' : `全部 (1) →`}
-                       </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 px-3 flex items-center gap-2 shadow-sm">
+                      <div className="flex items-center justify-center p-0.5 font-bold text-emerald-500 text-sm">✓</div>
+                      <div className="text-emerald-900 text-xs font-bold leading-none">暂无流程缺口</div>
                     </div>
                   )}
 
@@ -146,16 +137,7 @@ export function HowItWorks() {
                             ))}
                             
                             {abnormalGaps.length === 0 && (
-                              <div className="bg-white border-l-[3px] border-l-rose-500 border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
-                                <div className="flex gap-2 items-start mb-2">
-                                  <span className="text-[10px] bg-rose-50 border border-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">缺少分支</span>
-                                  <h4 className="text-xs font-bold text-slate-800 line-clamp-2">审批退回后无下一步动作</h4>
-                                </div>
-                                <p className="text-[10px] text-slate-500 line-clamp-3 mb-4 leading-relaxed">当前仅定义了通过路径，退回后员工如何处理未定义。这会导致流程在这里中断，系统无法确定最终的数据状态。</p>
-                                <button className="text-[10px] bg-slate-900 text-white px-3 py-1.5 flex items-center justify-center font-bold rounded-lg w-full hover:bg-slate-800 transition-colors shadow-sm">
-                                  一键生成修复候选
-                                </button>
-                              </div>
+                              <div className="text-xs text-slate-500 italic">暂无异常/规则缺口。</div>
                             )}
                           </div>
                         </div>
@@ -224,56 +206,54 @@ export function HowItWorks() {
               </div>
               
               <div className="space-y-4">
-                <div className="text-sm border border-slate-200 rounded-xl p-5 bg-slate-50 relative shadow-sm max-w-4xl">
-                  <div className="absolute top-0 left-0 w-2 h-full bg-blue-500 rounded-l-xl"></div>
-                  <div className="pl-4">
-                    <p className="font-bold text-slate-700 mb-4 text-base flex items-center gap-2">
-                      请假申请单 
-                      <span className="bg-white border border-slate-200 text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">Data Object</span>
-                    </p>
-                    
-                    <div className="space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="flex items-center text-xs font-mono whitespace-nowrap gap-2">
-                          <span className="bg-white border text-xs border-slate-200 px-3 py-1 rounded-md text-slate-600 shadow-sm w-24 text-center font-bold">Draft</span>
-                          <span className="text-slate-400 font-bold">→</span>
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-md shadow-sm w-24 text-center font-bold">Pending</span>
-                        </div>
-                        <div className="text-xs text-slate-600 flex items-center gap-2">
-                          <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold text-[10px]">触发动作</span> 
-                          <span>填写表单 (员工)</span>
+                {businessObjects.length === 0 && (
+                  <div className="text-sm text-slate-500 italic">暂无业务对象。可在流程步骤中“绑定业务对象”或手动补充。</div>
+                )}
+
+                {businessObjects.map((obj: any) => {
+                  const relatedStepIds = (ir?.links || [])
+                    .filter((l: any) => (l.sourceId === obj.id || l.targetId === obj.id) && (l.type === 'reads' || l.type === 'writes' || l.type === 'changes_state'))
+                    .map((l: any) => (l.sourceId === obj.id ? l.targetId : l.sourceId))
+                    .filter((id: string) => ir?.nodes?.[id]?.kind === 'flow_step');
+                  const relatedSteps = [...new Set(relatedStepIds)].map((id) => ir?.nodes?.[id]).filter(Boolean) as any[];
+
+                  return (
+                    <div
+                      key={obj.id}
+                      onClick={() => setSelectedObject(obj)}
+                      className="border border-slate-200 rounded-xl p-5 bg-slate-50 shadow-sm cursor-pointer hover:border-indigo-300 hover:bg-slate-50/80 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-800 text-base flex items-center gap-2">
+                            <span className="truncate">{obj.title}</span>
+                            <span className="bg-white border border-slate-200 text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded shadow-sm shrink-0">Data Object</span>
+                          </div>
+                          <div className="mt-1 text-xs text-slate-600 line-clamp-2">{obj.description || '暂无描述'}</div>
                         </div>
                       </div>
 
-                      <div className="w-full h-px border-t border-dashed border-slate-200"></div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="flex items-center text-xs font-mono whitespace-nowrap gap-2">
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-md shadow-sm w-24 text-center font-bold">Pending</span>
-                          <span className="text-slate-400 font-bold">→</span>
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-md shadow-sm w-24 text-center font-bold">Approved</span>
-                        </div>
-                        <div className="text-xs text-slate-600 flex items-center gap-2">
-                          <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold text-[10px]">触发动作</span> 
-                          <span>经理审批台 (经理)</span>
-                        </div>
-                      </div>
-                      
-                      <div className="w-full h-px border-t border-dashed border-slate-200"></div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="flex items-center text-xs font-mono whitespace-nowrap gap-2 opacity-80">
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-md shadow-sm w-24 text-center font-bold">Pending</span>
-                          <span className="text-slate-400 font-bold">→</span>
-                          <span className="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1 rounded-md shadow-sm w-24 text-center font-bold">Returned</span>
-                        </div>
-                        <div className="text-xs text-slate-600 flex items-center gap-2">
-                           <span className="text-rose-600 font-bold bg-rose-100 px-2 py-0.5 rounded border border-rose-200 text-[10px]">! 未定义触发条件及后续分支</span>
-                        </div>
+                      <div className="mt-4">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">关联流程步骤</div>
+                        {relatedSteps.length === 0 ? (
+                          <div className="text-xs text-slate-500 italic">暂无 reads/writes/changes_state 链路。</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {relatedSteps.map((s) => (
+                              <button
+                                key={s.id}
+                                onClick={(e) => { e.stopPropagation(); setSelectedObject(s); setHighlightTarget(s.id); }}
+                                className="text-[11px] px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
+                              >
+                                {s.title}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </section>
 

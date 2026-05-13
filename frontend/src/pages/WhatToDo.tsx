@@ -15,7 +15,7 @@ import { TaskNode } from '@/types';
 
 export function WhatToDo() {
   const { 
-    setSelectedObject, highlightTarget, selectedObject, ir, createIssue
+    setSelectedObject, highlightTarget, selectedObject, ir
   } = useWorkspaceStore();
   
   const goals = useWorkspaceStore(selectGoals);
@@ -61,25 +61,6 @@ export function WhatToDo() {
                    </li>
                  </ul>
               </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    if (!mainGoal?.id) return;
-                    createIssue({
-                      title: `补充衡量指标：${mainGoal.title}`,
-                      description: '为该目标补充可量化的衡量指标候选（如时效、准确率、覆盖率）。',
-                      severity: 'low',
-                      category: 'ambiguity',
-                      relatedNodeIds: [mainGoal.id],
-                      suggestedProjection: 'goal',
-                      suggestedAction: '补充衡量指标',
-                    });
-                  }}
-                  className="text-xs text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg font-bold tracking-wide text-center hover:bg-indigo-100 transition-colors"
-                >
-                  生成衡量指标候选
-                </button>
-              </div>
             </section>
 
             {/* Tree and other main sections */}
@@ -102,7 +83,17 @@ export function WhatToDo() {
                           </div>
                           <div>
                             <h4 className="font-bold text-slate-800 text-sm tracking-wide">{actor.title}</h4>
-                            <span className="text-[10px] text-slate-400">{actor.scopeStatus === 'in_scope' ? '支持该角色' : '不涉及此角色'}</span>
+                            <span className="text-[10px] text-slate-400">
+                              {actor.scopeStatus === 'in_scope'
+                                ? '本期覆盖'
+                                : actor.scopeStatus === 'external_dependency'
+                                  ? '外部依赖'
+                                  : actor.scopeStatus === 'deferred'
+                                    ? '暂缓'
+                                    : actor.scopeStatus === 'excluded' || actor.scopeStatus === 'out_of_scope'
+                                      ? '不在范围'
+                                      : '待确认范围'}
+                            </span>
                           </div>
                         </div>
                         <StatusBadge status={actor.status} className="scale-90 origin-right" />
@@ -117,7 +108,7 @@ export function WhatToDo() {
 
               {/* Tree Section */}
               <section>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">核心能力能力树</h3>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">核心能力</h3>
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                   <div className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">{mainGoal?.title || '核心系统'}</div>
                   

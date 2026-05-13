@@ -1,5 +1,4 @@
 import { RangeKanbanColumn } from '@/components/shared/RangeKanbanColumn';
-import { ReadinessChecklist } from '@/components/shared/ReadinessChecklist';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ImpactPreview, ImpactGroup } from '@/components/shared/ImpactPreview';
 import { 
@@ -23,13 +22,8 @@ export function ScopeAndDelivery() {
 
   const inScope = scopeItems.filter(i => i.scopeStatus === 'in_scope');
   const deferred = scopeItems.filter(i => i.scopeStatus === 'deferred');
-  const dependencies = scopeItems.filter(i => i.scopeStatus === 'dependency');
+  const dependencies = scopeItems.filter(i => i.scopeStatus === 'external_dependency');
   const excluded = scopeItems.filter(i => i.scopeStatus === 'excluded');
-
-  const readinessItems = [
-    { title: '核心目标', status: goals.some((g: any) => g.status === 'confirmed') ? 'ready' : 'error' },
-    { title: '角色权限闭环', status: actors.length > 0 ? 'ready' : 'error' }
-  ];
 
   // Calculate dynamic impact preview if an item is selected
   let impactGroups: ImpactGroup[] = [];
@@ -93,7 +87,7 @@ export function ScopeAndDelivery() {
         : columnTitle === '本期暂不处理'
           ? 'deferred'
           : columnTitle === '外部依赖'
-            ? 'dependency'
+            ? 'external_dependency'
             : 'excluded';
 
     const id = `sc_${(globalThis.crypto && 'randomUUID' in globalThis.crypto) ? (globalThis.crypto as any).randomUUID() : String(Date.now())}`;
@@ -177,12 +171,7 @@ export function ScopeAndDelivery() {
           </section>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <section>
-              <h3 className="text-lg font-bold text-slate-900 mb-4">草案生成条件检查</h3>
-              <ReadinessChecklist title="必须修复标红的阻塞项，否则生成的应用结构可能存在严重缺陷。" items={readinessItems.map(item => ({ label: item.title, checked: item.status === 'ready', type: item.status === 'error' ? 'blocking' : item.status === 'warning' ? 'info' : undefined }))} />
-            </section>
-            
-            <section className="flex flex-col">
+            <section className="flex flex-col md:col-span-2">
               <h3 className="text-lg font-bold text-slate-900 mb-4">范围调整影响</h3>
               <div className="flex-1">
                 <ImpactPreview impacts={impactGroups} />

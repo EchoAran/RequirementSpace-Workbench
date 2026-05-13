@@ -16,7 +16,7 @@ const getSubtitle = (path: string) => {
 export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { initialPrompt, exitWorkspace, initializeWorkspace, runDiagnosis, refreshWorkspace, ir, isLoading, error } = useWorkspaceStore();
+  const { initialPrompt, exitWorkspace, initializeWorkspace, runDiagnosis, ir, error } = useWorkspaceStore();
   const gaps = useWorkspaceStore(selectIssues);
   const actors = useWorkspaceStore(selectActors);
   const flowSteps = useWorkspaceStore(selectFlowSteps);
@@ -71,11 +71,6 @@ export function TopBar() {
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                   >全局检查</button>
-                  <div className="h-px bg-slate-100 my-1"></div>
-                  <button 
-                    onClick={() => { setShowMoreMenu(false); setShowRegenerateConfirm(true); }}
-                    className="w-full text-left px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors"
-                  >生成新候选起点</button>
                 </div>
               </>
             )}
@@ -83,15 +78,6 @@ export function TopBar() {
 
           <div className="w-px h-5 bg-slate-200 mx-1"></div>
 
-          {/* Secondary Buttons */}
-          <button
-            onClick={async () => refreshWorkspace()}
-            disabled={isLoading}
-            className="px-4 py-1.5 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? '保存中...' : '保存'}
-          </button>
-          
           {/* Primary Button */}
           {location.pathname === '/preview' ? (
             <button 

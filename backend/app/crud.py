@@ -17,6 +17,11 @@ def now_iso() -> str:
 def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
+def _normalize_scope_status(value: Any) -> Any:
+    if value == "dependency":
+        return "external_dependency"
+    return value
+
 
 def upsert_workspace_from_ir(db: Session, ir: dict[str, Any]) -> models.Workspace:
     workspace_id = ir["id"]
@@ -29,7 +34,7 @@ def upsert_workspace_from_ir(db: Session, ir: dict[str, Any]) -> models.Workspac
         id=workspace_id,
         name=ir.get("name", "未命名项目"),
         idea=ir.get("idea", ""),
-        domain=ir.get("domain", {}),
+        domain=ir.get("meta", ir.get("domain", {})),
         projections=ir.get("projections", {}),
         proposals=ir.get("proposals", {}),
         audit=ir.get("audit", {}),
@@ -58,7 +63,7 @@ def upsert_workspace_from_ir(db: Session, ir: dict[str, Any]) -> models.Workspac
                 description=node.get("description"),
                 status=node.get("status", "needs_confirmation"),
                 confidence=node.get("confidence"),
-                scope_status=node.get("scopeStatus"),
+                scope_status=_normalize_scope_status(node.get("scopeStatus")),
                 source=node.get("source", {"type": "ai"}),
                 slots=node.get("slots"),
                 extra=extra,
@@ -157,7 +162,7 @@ def serialize_workspace(ws: models.Workspace) -> dict[str, Any]:
             "description": n.description,
             "status": n.status,
             "confidence": n.confidence,
-            "scopeStatus": n.scope_status,
+            "scopeStatus": _normalize_scope_status(n.scope_status),
             "source": n.source,
             "slots": n.slots,
         }
@@ -233,11 +238,18 @@ def serialize_workspace(ws: models.Workspace) -> dict[str, Any]:
     audit = dict(ws.audit or {})
     audit["updatedAt"] = now_iso()
 
+    meta = dict(ws.domain or {})
+    if "assumptions" not in meta:
+        meta["assumptions"] = []
+    if "inputPrompt" not in meta:
+        meta["inputPrompt"] = ws.idea
+
     return {
         "id": ws.id,
         "name": ws.name,
         "idea": ws.idea,
         "domain": ws.domain or {"assumptions": []},
+        "meta": meta,
         "nodes": nodes,
         "links": links,
         "slots": slots,
@@ -261,7 +273,7 @@ def update_node(db: Session, ws: models.Workspace, node_id: str, updates: dict[s
     if "status" in updates and updates["status"] is not None:
         node.status = updates["status"]
     if "scopeStatus" in updates and updates["scopeStatus"] is not None:
-        node.scope_status = updates["scopeStatus"]
+        node.scope_status = _normalize_scope_status(updates["scopeStatus"])
     if "confidence" in updates:
         node.confidence = updates["confidence"]
     if "source" in updates and updates["source"] is not None:
@@ -284,6 +296,53 @@ def update_issue_status(db: Session, ws: models.Workspace, issue_id: str, status
     if not issue or issue.workspace_id != ws.id:
         raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
     issue.status = status
+    _touch_workspace(ws)
+
+
+def update_issue(db: Session, ws: models.Workspace, issue_id: str, updates: dict[str, Any]) -> None:
+    issue = db.get(models.Issue, issue_id)
+    if not issue or issue.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
+
+    if "title" in updates and updates["title"] is not None:
+        issue.title = updates["title"]
+    if "description" in updates:
+        issue.description = updates["description"] or ""
+    if "severity" in updates and updates["severity"] is not None:
+        issue.severity = updates["severity"]
+    if "category" in updates and updates["category"] is not None:
+        issue.category = updates["category"]
+    if "relatedNodeIds" in updates and updates["relatedNodeIds"] is not None:
+        issue.related_node_ids = updates["relatedNodeIds"]
+    if "suggestedProjection" in updates and updates["suggestedProjection"] is not None:
+        issue.suggested_projection = updates["suggestedProjection"]
+    if "suggestedAction" in updates and updates["suggestedAction"] is not None:
+        issue.suggested_action = updates["suggestedAction"]
+    if "status" in updates and updates["status"] is not None:
+        issue.status = updates["status"]
+    if "source" in updates and updates["source"] is not None:
+        issue.source = updates["source"]
+
+    _touch_workspace(ws)
+
+
+def update_choice(db: Session, ws: models.Workspace, choice_id: str, updates: dict[str, Any]) -> None:
+    choice = (
+        db.query(models.Choice)
+        .join(models.ChoiceGroup, models.Choice.choice_group_id == models.ChoiceGroup.id)
+        .filter(models.Choice.id == choice_id, models.ChoiceGroup.workspace_id == ws.id)
+        .one_or_none()
+    )
+    if not choice:
+        raise HTTPException(status_code=404, detail=f"Choice `{choice_id}` 不存在")
+
+    if "title" in updates and updates["title"] is not None:
+        choice.title = updates["title"]
+    if "rationale" in updates and updates["rationale"] is not None:
+        choice.rationale = updates["rationale"]
+    if "status" in updates and updates["status"] is not None:
+        choice.status = updates["status"]
+
     _touch_workspace(ws)
 
 

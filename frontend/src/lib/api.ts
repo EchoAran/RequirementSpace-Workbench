@@ -59,6 +59,16 @@ export const workspaceApi = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  patchIssueDetails: (workspaceId: string, issueId: string, updates: Record<string, unknown>) =>
+    request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/issues/${issueId}/details`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+  patchChoice: (workspaceId: string, choiceId: string, updates: Record<string, unknown>) =>
+    request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/choices/${choiceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
   generateCandidateForIssue: (workspaceId: string, issueId: string) =>
     request<{ result: Record<string, string>; workspace: RequirementSpaceIR }>(
       `/api/workspaces/${workspaceId}/issues/${issueId}/generate-candidate`,

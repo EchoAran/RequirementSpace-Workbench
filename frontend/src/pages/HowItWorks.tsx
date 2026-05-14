@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { GapCard } from '@/components/shared/GapCard';
+import { useNavigate } from 'react-router-dom';
+import { buildSystemProjection, projectionPath } from '@/domain/ir/selectors';
 import { 
   useWorkspaceStore, 
   selectFlowSteps, 
@@ -15,50 +17,24 @@ export function HowItWorks() {
     highlightTarget,
     setSelectedObject, setHighlightTarget, generateCandidate, deferObject,
   } = useWorkspaceStore();
+  const navigate = useNavigate();
   
   const ir = useWorkspaceStore(state => state.ir);
   const flowSteps = useWorkspaceStore(selectFlowSteps);
   const gaps = useWorkspaceStore(selectIssues);
   const candidates = useWorkspaceStore(selectCandidates);
   const selectedObject = useWorkspaceStore(selectSelectedObject);
-
-  const swimlanes = ['员工', '直属经理', '系统', 'HR / 外部系统'];
+  const system = buildSystemProjection(ir);
   const [showAllGaps, setShowAllGaps] = useState(false);
   
-  const abnormalGaps = gaps.filter(g => g.category === 'flow_gap' || g.category === 'rule_gap');
-
-  const getStepsBySwimlane = (lane: string) => {
-    return flowSteps.filter(s => s.actor === lane || s.swimlane === lane);
-  };
-
-  const getStepNextSteps = (stepId: string) => {
-    if (!ir) return [];
-    return ir.links.filter(l => l.sourceId === stepId && l.type === 'precedes')
-                   .map(l => ir.nodes[l.targetId]?.title).filter(Boolean) as string[];
-  };
-
-  const getStepExceptionSteps = (stepId: string) => {
-    if (!ir) return [];
-    return ir.links.filter(l => l.sourceId === stepId && l.type === 'branches_to')
-                   .map(l => ir.nodes[l.targetId]?.title).filter(Boolean) as string[];
-  };
-  
-  const getStepSlots = (stepId: string) => {
-    if (!ir || !ir.slots) return [];
-    return Object.values(ir.slots).filter(s => {
-      return s.context?.relatedNodeIds?.includes(stepId);
-    }).map(s => {
-      const groupCount = ir.choiceGroups[s.choiceGroupId]?.choices?.length || 0;
-      return {
-        id: s.id,
-        title: s.name,
-        candidatesCount: groupCount
-      };
-    });
-  };
+  const abnormalGaps = system.abnormalIssues.length ? system.abnormalIssues : gaps.filter(g => g.category === 'flow_gap' || g.category === 'rule_gap');
 
   const topGap = abnormalGaps.length > 0 ? abnormalGaps[0] : null;
-  const businessObjects = Object.values(ir?.nodes || {}).filter((n: any) => n.kind === 'business_object');
+  const businessObjects = system.businessObjects.length ? system.businessObjects : Object.values(ir?.nodes || {}).filter((n: any) => n.kind === 'business_object');
+
+  const jumpToProjection = (projection: any) => {
+    return navigate(projectionPath(projection));
+  };
 
   return (
     <div className="flex-1 flex w-full relative">
@@ -72,7 +48,6 @@ export function HowItWorks() {
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">主线流程与可追踪泳道</h2>
-                  <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Traceable Swimlanes</p>
                 </div>
                 
                 {/* Unclosed path logic */}
@@ -129,6 +104,7 @@ export function HowItWorks() {
                                 onClick={() => {
                                   setSelectedObject(gap as any);
                                   if (gap.relatedNodeIds[0]) setHighlightTarget(gap.relatedNodeIds[0]);
+                                  if ((gap as any).suggestedProjection) jumpToProjection((gap as any).suggestedProjection);
                                   setShowAllGaps(false);
                                 }}
                                 onGenerate={() => { generateCandidate(gap.id); setShowAllGaps(false); }}
@@ -148,16 +124,16 @@ export function HowItWorks() {
               </div>
               
               <div className="flex min-w-[800px] gap-4">
-                {swimlanes.map((lane, laneIdx) => (
+                {system.swimlanes.map((lane, laneIdx) => (
                   <div key={lane} className="flex-1 border bg-slate-50/50 border-slate-100 rounded-xl flex flex-col min-h-[500px]">
                     <div className="p-3 border-b border-slate-100 bg-white rounded-t-xl shrink-0">
                        <h3 className="text-xs font-bold text-center text-slate-600">{lane}</h3>
                     </div>
                     <div className="flex-1 p-3 space-y-4 relative isolate">
-                      {getStepsBySwimlane(lane).map(step => {
-                        const nextSteps = getStepNextSteps(step.id);
-                        const excSteps = getStepExceptionSteps(step.id);
-                        const linkedSlots = getStepSlots(step.id);
+                      {system.getStepsBySwimlane(lane).map(step => {
+                        const nextSteps = system.getNextStepTitles(step.id);
+                        const excSteps = system.getExceptionStepTitles(step.id);
+                        const linkedSlots = system.getStepSlots(step.id);
                         
                         return (
                           <div key={step.id} className="relative z-10 w-full" onClick={() => setSelectedObject(step)}>
@@ -169,7 +145,7 @@ export function HowItWorks() {
                               <FlowStepCard 
                                 name={step.title}
                                 type={step.stepType}
-                                actor={step.actor}
+                                actor={lane}
                                 status={step.status}
                                 inputs={step.input}
                                 outputs={step.output}
@@ -211,11 +187,7 @@ export function HowItWorks() {
                 )}
 
                 {businessObjects.map((obj: any) => {
-                  const relatedStepIds = (ir?.links || [])
-                    .filter((l: any) => (l.sourceId === obj.id || l.targetId === obj.id) && (l.type === 'reads' || l.type === 'writes' || l.type === 'changes_state'))
-                    .map((l: any) => (l.sourceId === obj.id ? l.targetId : l.sourceId))
-                    .filter((id: string) => ir?.nodes?.[id]?.kind === 'flow_step');
-                  const relatedSteps = [...new Set(relatedStepIds)].map((id) => ir?.nodes?.[id]).filter(Boolean) as any[];
+                  const relatedSteps = system.getRelatedStepsForObject(obj.id) as any[];
 
                   return (
                     <div
@@ -236,7 +208,7 @@ export function HowItWorks() {
                       <div className="mt-4">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">关联流程步骤</div>
                         {relatedSteps.length === 0 ? (
-                          <div className="text-xs text-slate-500 italic">暂无 reads/writes/changes_state 链路。</div>
+                          <div className="text-xs text-slate-500 italic">暂无</div>
                         ) : (
                           <div className="flex flex-wrap gap-2">
                             {relatedSteps.map((s) => (

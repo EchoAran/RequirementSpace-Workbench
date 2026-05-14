@@ -15,6 +15,7 @@ import {
   GraphPatch,
 } from '@/types';
 import { workspaceApi } from '@/lib/api';
+import { buildPageHealth } from '@/domain/ir/selectors';
 
 export type WorkspacePage = '/' | '/what' | '/flow' | '/scope' | '/preview' | '/overview';
 
@@ -69,6 +70,8 @@ interface WorkspaceState {
   markNodeStatus: (nodeId: string, status: NodeStatus) => Promise<void>;
   setNodeScope: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
   runDiagnosis: (scope: any) => Promise<void>;
+  rewrite: (scope: any, instruction: string) => Promise<void>;
+  explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
   updateNodeAttributes: (nodeId: string, updates: Partial<BaseNode> & Record<string, any>) => Promise<void>;
   createIssue: (payload: {
     title: string;
@@ -176,6 +179,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedObjectId: null,
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('没有 workspace') || message.includes('404')) {
+        set({
+          currentSystemView: 'onboarding',
+          ir: null,
+          isLoading: false,
+          error: null,
+          lastActionMessage: '当前没有已有项目，请先创建一个新工作区。',
+        });
+        return;
+      }
       setError(set, err);
       set({ isLoading: false });
     }
@@ -277,7 +291,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       });
       return;
     }
-    await get().runDiagnosis({ slotId });
+    set({ isLoading: true, error: null });
+    try {
+      const resp = await workspaceApi.expandSlot(state.ir.id, slotId);
+      const ir = resp.workspace;
+      set({
+        ir,
+        isLoading: false,
+        selectedSlotId: slotId,
+        activeChoiceGroupId: resp.choiceGroupId,
+        selectedObjectId: resp.choiceGroupId,
+        selectedObject: ir.choiceGroups[resp.choiceGroupId],
+        lastActionMessage: '已展开 Slot 并生成候选方案。',
+      });
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+    }
   },
   
   selectChoice: async (choiceId) => {
@@ -366,6 +396,56 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             ? '已完成诊断并新增缺口项。'
             : '已完成诊断，未发现新增缺口。',
       }));
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+    }
+  },
+
+  rewrite: async (scope, instruction) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const resp = await workspaceApi.rewrite(workspaceId, { scope, instruction });
+      const ir = resp.workspace;
+      set((state) => ({
+        ir,
+        isLoading: false,
+        selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        lastActionMessage: '已生成局部改写提案（未自动应用）。',
+      }));
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+    }
+  },
+
+  explainImpact: async (scope, patch, choiceId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      if (!patch && !choiceId) {
+        set({
+          isLoading: false,
+          lastActionMessage: '请选择一个候选方案后再解释影响。',
+        });
+        return;
+      }
+      const resp = await workspaceApi.impactPreview(workspaceId, {
+        patch: patch || null,
+        choiceId: choiceId || null,
+      });
+      const impact = resp.impactPreview;
+      const count =
+        (impact.affectedGoals?.length || 0) +
+        (impact.affectedActors?.length || 0) +
+        (impact.affectedFlows?.length || 0) +
+        (impact.affectedObjects?.length || 0) +
+        (impact.affectedScreens?.length || 0);
+      set({
+        isLoading: false,
+        lastActionMessage: `影响预览：涉及 ${count} 个节点（按投影汇总）。`,
+      });
     } catch (err) {
       setError(set, err);
       set({ isLoading: false });
@@ -467,7 +547,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         rationale: payload.rationale || '',
         proposedNodeIds: [],
         proposedLinkIds: [],
-        impactPreview: {},
+        patch: {},
+        impactPreview: {
+          affectedGoals: [],
+          affectedActors: [],
+          affectedFlows: [],
+          affectedObjects: [],
+          affectedScreens: [],
+        },
       });
       const ir = resp.workspace;
       set({
@@ -527,14 +614,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (state.ir.issues[gapId]) {
       set({ isLoading: true, error: null });
       try {
-        const resp = await workspaceApi.generateCandidateForIssue(state.ir.id, gapId);
+        const resp = await workspaceApi.createSlotForIssue(state.ir.id, gapId);
         const ir = resp.workspace;
+        const slot = ir.slots?.[resp.slotId];
         set({
           ir,
           isLoading: false,
-          selectedObjectId: resp.result.choiceGroupId || resp.result.slotId,
-          selectedObject: ir.choiceGroups[resp.result.choiceGroupId] || ir.slots[resp.result.slotId],
-          lastActionMessage: '已生成候选方案。',
+          selectedSlotId: resp.slotId,
+          activeChoiceGroupId: slot?.choiceGroupId || null,
+          selectedObjectId: resp.slotId,
+          selectedObject: slot || null,
+          lastActionMessage: '已创建修复 Slot，等待展开候选。',
         });
       } catch (err) {
         setError(set, err);
@@ -551,10 +641,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   moveScopeItem: async (itemId, newColumn) => {
+    const ir = get().ir;
+    const node = ir?.nodes?.[itemId];
+    const isExcludedTarget = newColumn === '已排除' || newColumn === '明确排除';
+    if (isExcludedTarget) {
+      await get().markNodeStatus(itemId, 'excluded');
+      return;
+    }
+
+    if (node?.status === 'excluded') {
+      await get().markNodeStatus(itemId, 'needs_confirmation');
+    }
+
     let scopeStatus: ScopeStatus = 'in_scope';
     if (newColumn === '本期暂不处理' || newColumn === '暂缓处理') scopeStatus = 'deferred';
     else if (newColumn === '外部依赖') scopeStatus = 'external_dependency';
-    else if (newColumn === '已排除' || newColumn === '明确排除') scopeStatus = 'excluded';
+    else if (newColumn === '范围外') scopeStatus = 'out_of_scope';
     await get().setNodeScope(itemId, scopeStatus);
   },
 }));
@@ -667,73 +769,5 @@ export interface PageHealth {
 }
 
 export const selectPageHealth = (state: WorkspaceState, path: string): PageHealth => {
-  const ir = state.ir;
-  if (!ir) return { status: '未开始', gapCount: 0, todoCount: 0, hasRisk: false, disabled: false };
-
-  const nodes = Object.values(ir.nodes) || [];
-  const issues = Object.values(ir.issues) || [];
-  
-  const goals = nodes.filter(n => n.kind === 'goal');
-  const capabilities = nodes.filter(n => n.kind === 'capability');
-  const tasks = nodes.filter(n => n.kind === 'task');
-  const actors = nodes.filter(n => n.kind === 'actor');
-  const flowSteps = nodes.filter(n => n.kind === 'flow_step');
-  const scopeItems = nodes.filter(n => n.scopeStatus);
-
-  let items: any[] = [];
-  let relatedGaps: any[] = [];
-  let isPreview = false;
-
-  if (path === '/') {
-    const rawItems = [...goals, ...capabilities, ...tasks, ...actors, ...flowSteps, ...scopeItems];
-    items = Array.from(new Map(rawItems.map(i => [i.id, i])).values());
-    relatedGaps = issues;
-  } else if (path === '/what') {
-    const rawItems = [...goals, ...capabilities, ...tasks, ...actors];
-    items = Array.from(new Map(rawItems.map(i => [i.id, i])).values());
-    relatedGaps = issues.filter(g => g.relatedNodeIds.some(ao => items.some(i => i.id === ao)));
-  } else if (path === '/flow') {
-    items = flowSteps;
-    relatedGaps = issues.filter(g => g.relatedNodeIds.some(ao => items.some(i => i.id === ao)));
-  } else if (path === '/scope') {
-    items = scopeItems;
-    relatedGaps = issues.filter(g => g.relatedNodeIds.some(ao => items.some(i => i.id === ao)));
-  } else if (path === '/preview') {
-    isPreview = true;
-    const rawItems = [...goals, ...capabilities, ...tasks, ...actors, ...flowSteps, ...scopeItems];
-    items = Array.from(new Map(rawItems.map(i => [i.id, i])).values());
-    relatedGaps = issues;
-  }
-
-  const isAvailable = flowSteps.length > 0 && actors.length > 0;
-  
-  if (isPreview && !isAvailable) {
-    return { status: '不可用', gapCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-  }
-
-  const todoCount = items.filter(i => i.status === '待确认' || i.status === 'AI 假设' || i.status === 'needs_confirmation' || i.status === 'ai_assumption').length;
-  const gapCount = relatedGaps.filter(g => g.status === 'open').length;
-  const blockingCount = relatedGaps.filter(g => g.severity === 'high' && g.status === 'open').length;
-  const hasRisk = blockingCount > 0;
-
-  let status: PageHealth['status'] = '未开始';
-  if (items.length > 0) {
-    if (hasRisk) {
-      status = '阻塞';
-    } else if (todoCount > 0 || gapCount > 0) {
-      status = '待决策';
-    } else if (isPreview) {
-      status = '可预览';
-    } else {
-      status = '已收敛';
-    }
-  }
-
-  return { 
-    gapCount, 
-    todoCount, 
-    hasRisk, 
-    status, 
-    disabled: isPreview ? !isAvailable : false 
-  };
+  return buildPageHealth(state.ir, path);
 };

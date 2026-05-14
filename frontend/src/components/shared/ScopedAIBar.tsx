@@ -10,10 +10,11 @@ type AIScope =
   | { kind: 'node'; nodeId: string; label: string }
   | { kind: 'slot'; slotId: string; label: string }
   | { kind: 'issue'; issueId: string; label: string }
-  | { kind: 'choiceGroup'; choiceGroupId: string; label: string };
+  | { kind: 'choiceGroup'; choiceGroupId: string; label: string }
+  | { kind: 'choice'; choiceId: string; label: string };
 
 export function ScopedAIBar() {
-  const { generateCandidate, generateGap, ir, runDiagnosis, openSlot } = useWorkspaceStore();
+  const { generateCandidate, generateGap, ir, openSlot, generateChoices, rewrite, explainImpact } = useWorkspaceStore();
   const selectedObject: any = useWorkspaceStore(selectSelectedObject);
   const currentPage = useWorkspaceStore(selectCurrentPage);
   
@@ -22,7 +23,7 @@ export function ScopedAIBar() {
     const scopes: AIScope[] = [];
 
     // Base scope
-    scopes.push({ kind: 'workspace', label: '全局 (Workspace)' });
+    scopes.push({ kind: 'workspace', label: '全局（工作区）' });
 
     // Current page implies a projection scope
     if (currentPage === '/') scopes.unshift({ kind: 'projection', projection: 'goal', label: '概览' });
@@ -37,15 +38,18 @@ export function ScopedAIBar() {
       const isIssue = selectedObject.severity !== undefined;
       const isChoiceGroup = selectedObject.choices !== undefined;
       const isSlot = selectedObject.arity !== undefined;
+      const isChoice = selectedObject.rationale !== undefined && selectedObject.patch !== undefined;
 
       const title = selectedObject.title || selectedObject.name || selectedObject.id;
 
-      if (isChoiceGroup) {
-        scopes.unshift({ kind: 'choiceGroup', choiceGroupId: selectedObject.id, label: `ChoiceGroup: ${title}` });
+      if (isChoice) {
+        scopes.unshift({ kind: 'choice', choiceId: selectedObject.id, label: `候选方案：${title}` });
+      } else if (isChoiceGroup) {
+        scopes.unshift({ kind: 'choiceGroup', choiceGroupId: selectedObject.id, label: `候选组：${title}` });
       } else if (isSlot) {
-        scopes.unshift({ kind: 'slot', slotId: selectedObject.id, label: `Slot: ${title}` });
+        scopes.unshift({ kind: 'slot', slotId: selectedObject.id, label: `槽位：${title}` });
       } else if (isIssue) {
-        scopes.unshift({ kind: 'issue', issueId: selectedObject.id, label: `Issue: ${title}` });
+        scopes.unshift({ kind: 'issue', issueId: selectedObject.id, label: `缺口：${title}` });
       } else if (isNode) {
         scopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `节点: ${title}` });
       } else {
@@ -74,16 +78,26 @@ export function ScopedAIBar() {
   const handleSubmit = async () => {
     if (!input.trim() && mode !== '生成候选' && mode !== '检查一致性') return;
 
-    if (mode === '展开 Slot' || mode === '生成候选' || mode === '局部改写') {
+    if (mode === '展开 Slot') {
       if (scope.kind === 'slot') {
         openSlot(scope.slotId);
+        await generateChoices(scope.slotId);
+      }
+    } else if (mode === '生成候选') {
+      if (scope.kind === 'issue') {
+        await generateCandidate(scope.issueId);
+      } else if (scope.kind === 'slot') {
+        openSlot(scope.slotId);
+        await generateChoices(scope.slotId);
       } else {
-        await generateCandidate(selectedObject?.id || '');
+        await generateGap(selectedObject?.id || '');
       }
     } else if (mode === '检查一致性') {
       await generateGap(selectedObject?.id || '');
+    } else if (mode === '局部改写') {
+      await rewrite(scope, input);
     } else if (mode === '解释影响') {
-      await runDiagnosis({ action: 'explain_impact', scope, input });
+      await explainImpact(scope, undefined, scope.kind === 'choice' ? scope.choiceId : undefined);
     }
     
     setInput('');

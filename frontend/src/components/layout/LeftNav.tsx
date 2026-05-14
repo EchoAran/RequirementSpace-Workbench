@@ -6,32 +6,13 @@ import {
   useWorkspaceStore, 
   selectPageHealth
 } from '@/store/useWorkspaceStore';
+import { buildReadiness } from '@/domain/ir/selectors';
 
 export function LeftNav() {
   const location = useLocation();
   const ir = useWorkspaceStore(s => s.ir);
   const [collapsed, setCollapsed] = useState(false);
-
-  const calculateCoverage = (nodes: any[]) => {
-    if (nodes.length === 0) return 0;
-    const confirmed = nodes.filter(n => n.status === 'confirmed').length;
-    return Math.floor((confirmed / nodes.length) * 100);
-  };
-
-  const allNodes = ir ? Object.values(ir.nodes || {}) : [];
-  const goals = allNodes.filter((n: any) => n.kind === 'goal');
-  const actors = allNodes.filter((n: any) => n.kind === 'actor');
-  const flowSteps = allNodes.filter((n: any) => n.kind === 'flow_step');
-  const screens = allNodes.filter((n: any) => n.kind === 'screen');
-  const dataObjects = allNodes.filter((n: any) => n.kind === 'business_object');
-
-  const readinessScore = Math.floor(
-    (calculateCoverage(goals) +
-      calculateCoverage(actors) +
-      calculateCoverage(flowSteps) +
-      calculateCoverage(screens) +
-      calculateCoverage(dataObjects)) / 5
-  );
+  const readinessScore = buildReadiness(ir).overallScore;
 
   const getCounts = (path: string) => {
     return selectPageHealth({ ir } as any, path);

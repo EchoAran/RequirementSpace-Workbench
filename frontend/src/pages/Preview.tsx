@@ -4,6 +4,8 @@ import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ComponentTree } from '@/components/shared/ComponentTree';
 import { LayoutDashboard, FileDown, RefreshCw, CheckCircle2, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { buildRolePages, selectPerformerTitle } from '@/domain/ir/selectors';
 import { 
   useWorkspaceStore, 
   selectFlowSteps, 
@@ -19,6 +21,7 @@ export function Preview() {
   const { 
     setSelectedObject, generateCandidate, deferObject, setHighlightTarget
   } = useWorkspaceStore();
+  const navigate = useNavigate();
   
   const flowSteps = useWorkspaceStore(selectFlowSteps);
   const gaps = useWorkspaceStore(selectIssues);
@@ -33,11 +36,27 @@ export function Preview() {
   const [viewMode, setViewMode] = useState<'prototype' | 'tree' | 'playback'>('prototype');
   const [exportState, setExportState] = useState<'idle' | 'exporting' | 'success'>('idle');
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'json' | 'markdown') => {
     setExportState('exporting');
     try {
       if (!ir?.id) return;
-      const data = await workspaceApi.exportWorkspace(ir.id);
+      if (format === 'markdown') {
+        const md = await workspaceApi.exportMarkdown(ir.id);
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${ir.name || ir.id || 'requirement-space'}.md`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setExportState('success');
+        setTimeout(() => setExportState('idle'), 1500);
+        return;
+      }
+
+      const data = await workspaceApi.exportJson(ir.id);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -57,39 +76,8 @@ export function Preview() {
   // Calculate screens dynamically
   const pages = useMemo(() => {
     if (!ir || !activeRole) return [];
-    
-    // find screens assigned to activeRole via reads
-    const screenLinks = links.filter(l => l.targetId === activeRole.id && l.type === 'reads');
-    const screenIds = screenLinks.map(l => l.sourceId);
-    
-    return screenIds.map(id => {
-      const screenNode = ir.nodes[id];
-      if (!screenNode) return null;
-      
-      // ui components displayed on this screen
-      const childLinks = links.filter(l => l.targetId === id && l.type === 'displayed_on');
-      const childIds = childLinks.map(l => l.sourceId);
-      
-      // components acting as actions
-      const actions = childIds.filter(cid => ir.nodes[cid]?.title.includes('Button') || ir.nodes[cid]?.title.includes('Action'));
-      
-      // related steps
-      const relatedStepLinks = childIds.flatMap(cid => links.filter(l => l.sourceId === cid && l.type === 'triggered_by'));
-      const relatedStepIds = [...new Set(relatedStepLinks.map(l => l.targetId))];
-      
-      // related gaps
-      const relatedGapsToScreen = gaps.filter(g => g.relatedNodeIds.includes(id) || childIds.some(cid => g.relatedNodeIds.includes(cid)));
-
-      return {
-        id,
-        name: screenNode.title,
-        desc: screenNode.description || '无描述',
-        actions: actions.map(a => ir.nodes[a]?.title || a),
-        relatedSteps: relatedStepIds.map(s => ir.nodes[s]?.title || s),
-        relatedGaps: relatedGapsToScreen.map(g => g.title)
-      };
-    }).filter(Boolean);
-  }, [activeRole, ir, links, gaps]);
+    return buildRolePages(ir, activeRole.id);
+  }, [activeRole, ir]);
 
   const unresolvedGaps = gaps.filter(g => g.status === 'open');
   const blockingGaps = unresolvedGaps.filter(g => g.severity === 'high');
@@ -103,6 +91,13 @@ export function Preview() {
   const blockingItems = readinessItems.filter(i => i.status === 'error');
   const isReady = blockingItems.length === 0 && blockingGaps.length === 0;
 
+  const jumpToProjection = (projection: any) => {
+    if (projection === 'system') return navigate('/flow');
+    if (projection === 'data') return navigate('/scope');
+    if (projection === 'ui') return navigate('/preview');
+    return navigate('/what');
+  };
+
   return (
     <div className="flex-1 flex w-full relative">
       <div className="flex-1 p-6 pb-24 overflow-y-auto">
@@ -115,21 +110,21 @@ export function Preview() {
             </div>
             <div className="flex items-center gap-3">
               <button 
-                onClick={handleExport}
+                onClick={() => handleExport('json')}
                 disabled={exportState === 'exporting'}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors bg-white flex items-center gap-2"
-                title={unresolvedGaps.length > 0 ? `可导出草案，但仍有 ${unresolvedGaps.length} 个待确认问题` : '导出需求文档'}
+                title={unresolvedGaps.length > 0 ? `可导出 JSON 草案，但仍有 ${unresolvedGaps.length} 个待确认问题` : '导出 JSON 草案'}
               >
-                {exportState === 'idle' && <><FileDown className="w-4 h-4" /> 导出需求</>}
+                {exportState === 'idle' && <><FileDown className="w-4 h-4" /> 导出 JSON 草案</>}
                 {exportState === 'exporting' && <><RefreshCw className="w-4 h-4 animate-spin" /> 正在生成</>}
                 {exportState === 'success' && <><CheckCircle2 className="w-4 h-4 text-emerald-500" /> 已导出</>}
               </button>
               <button
-                disabled={!isReady || exportState === 'exporting'}
-                onClick={handleExport}
-                className={`px-5 py-2.5 rounded-xl font-medium transition-colors ${isReady ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' : 'bg-slate-300 text-white cursor-not-allowed'} disabled:opacity-50`}
+                onClick={() => handleExport('markdown')}
+                disabled={exportState === 'exporting'}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors bg-white"
               >
-                生成应用草案
+                导出 Markdown
               </button>
             </div>
           </section>
@@ -142,7 +137,7 @@ export function Preview() {
                   <div key={step.id} className="min-w-[280px] shrink-0 flex flex-col">
                     <div className="flex items-center gap-2 mb-2 px-1">
                       <div className="w-5 h-5 rounded bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-bold">{idx + 1}</div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">{step.actor}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">{selectPerformerTitle(ir as any, step.id) || '—'}</span>
                     </div>
                     <div 
                       onClick={() => setSelectedObject(step)}
@@ -151,7 +146,7 @@ export function Preview() {
                       <FlowStepCard 
                         name={step.title}
                         type={step.stepType}
-                        actor={step.actor}
+                        actor={selectPerformerTitle(ir as any, step.id) || '—'}
                         status={step.status}
                         inputs={step.input}
                         outputs={step.output}
@@ -268,6 +263,7 @@ export function Preview() {
                     onClick={() => {
                       setSelectedObject(gap as any);
                       if (gap.relatedNodeIds[0]) setHighlightTarget(gap.relatedNodeIds[0]);
+                      if ((gap as any).suggestedProjection) jumpToProjection((gap as any).suggestedProjection);
                     }}
                     onGenerate={() => generateCandidate(gap.id)}
                     onDefer={() => deferObject(gap.id)}

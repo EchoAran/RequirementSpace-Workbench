@@ -1,4 +1,4 @@
-import { RequirementSpaceIR } from '@/types';
+import { ImpactPreview, RequirementSpaceIR } from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -24,18 +24,6 @@ export const workspaceApi = {
   getById: (id: string) => request<RequirementSpaceIR>(`/api/workspaces/${id}`),
   bootstrap: (prompt: string) =>
     request<RequirementSpaceIR>('/api/workspaces/bootstrap', {
-      method: 'POST',
-      body: JSON.stringify({ prompt }),
-    }),
-  analyzePrompt: (prompt: string) =>
-    request<{
-      taskType: string;
-      goals: string[];
-      actors: string[];
-      flows: string[];
-      objects: string[];
-      questions: string[];
-    }>('/api/prompts/analyze', {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     }),
@@ -69,9 +57,9 @@ export const workspaceApi = {
       method: 'PATCH',
       body: JSON.stringify(updates),
     }),
-  generateCandidateForIssue: (workspaceId: string, issueId: string) =>
-    request<{ result: Record<string, string>; workspace: RequirementSpaceIR }>(
-      `/api/workspaces/${workspaceId}/issues/${issueId}/generate-candidate`,
+  createSlotForIssue: (workspaceId: string, issueId: string) =>
+    request<{ slotId: string; workspace: RequirementSpaceIR }>(
+      `/api/workspaces/${workspaceId}/issues/${issueId}/slots`,
       { method: 'POST' }
     ),
   acceptChoice: (workspaceId: string, choiceId: string) =>
@@ -95,6 +83,35 @@ export const workspaceApi = {
       method: 'POST',
       body: JSON.stringify(patch),
     }),
+  expandSlot: (workspaceId: string, slotId: string) =>
+    request<{ choiceGroupId: string; workspace: RequirementSpaceIR }>(
+      `/api/workspaces/${workspaceId}/slots/${slotId}/expand`,
+      { method: 'POST' }
+    ),
+  createSlot: (workspaceId: string, payload: Record<string, unknown>) =>
+    request<{ slotId: string; workspace: RequirementSpaceIR }>(`/api/workspaces/${workspaceId}/slots`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  patchSlot: (workspaceId: string, slotId: string, updates: Record<string, unknown>) =>
+    request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/slots/${slotId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+  rewrite: (workspaceId: string, payload: Record<string, unknown>) =>
+    request<{ result: Record<string, unknown>; workspace: RequirementSpaceIR }>(`/api/workspaces/${workspaceId}/rewrite`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  impactPreview: (workspaceId: string, payload: Record<string, unknown>) =>
+    request<{ impactPreview: ImpactPreview }>(`/api/workspaces/${workspaceId}/impact-preview`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getProjection: (workspaceId: string, projectionKind: string) =>
+    request<{ projectionKind: string; projection: Record<string, unknown> }>(
+      `/api/workspaces/${workspaceId}/projections/${projectionKind}`
+    ),
   createIssue: (workspaceId: string, payload: Record<string, unknown>) =>
     request<{ issueId: string; workspace: RequirementSpaceIR }>(`/api/workspaces/${workspaceId}/issues`, {
       method: 'POST',
@@ -109,4 +126,13 @@ export const workspaceApi = {
       }
     ),
   exportWorkspace: (workspaceId: string) => request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/export`),
+  exportJson: (workspaceId: string) => request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/export/json`),
+  exportMarkdown: async (workspaceId: string) => {
+    const response = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/export/markdown`);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed: ${response.status}`);
+    }
+    return response.text();
+  },
 };

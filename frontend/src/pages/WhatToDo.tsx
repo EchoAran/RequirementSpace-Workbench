@@ -12,6 +12,7 @@ import {
   selectLinks
 } from '@/store/useWorkspaceStore';
 import { TaskNode } from '@/types';
+import { buildTaskFootprint, getTasksForCapability as selectTasksForCapability, selectPerformerTitle } from '@/domain/ir/selectors';
 
 export function WhatToDo() {
   const { 
@@ -37,8 +38,7 @@ export function WhatToDo() {
 
   // Helper to get connected tasks for a capability
   const getTasksForCapability = (capId: string) => {
-    const taskIds = links.filter(l => l.targetId === capId && l.type === 'realizes').map(l => l.sourceId);
-    return tasks.filter(t => taskIds.includes(t.id));
+    return selectTasksForCapability(ir as any, capId) as any;
   };
 
   return (
@@ -90,7 +90,7 @@ export function WhatToDo() {
                                   ? '外部依赖'
                                   : actor.scopeStatus === 'deferred'
                                     ? '暂缓'
-                                    : actor.scopeStatus === 'excluded' || actor.scopeStatus === 'out_of_scope'
+                                    : actor.status === 'excluded' || actor.scopeStatus === 'out_of_scope'
                                       ? '不在范围'
                                       : '待确认范围'}
                             </span>
@@ -194,32 +194,7 @@ export function WhatToDo() {
                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">用例与任务映射</h3>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                    {tasks.map(t => {
-                     const stepIds = links
-                       .filter((l) => l.targetId === t.id && l.type === 'supports')
-                       .map((l) => l.sourceId)
-                       .filter((id) => ir?.nodes?.[id]?.kind === 'flow_step');
-                     const relatedFlowSteps = stepIds.length;
-
-                     const actionComponentIds = links
-                       .filter((l) => stepIds.includes(l.targetId) && l.type === 'triggered_by')
-                       .map((l) => l.sourceId)
-                       .filter((id) => ir?.nodes?.[id]?.kind === 'ui_component');
-
-                     const relatedScreenIds = links
-                       .filter((l) => actionComponentIds.includes(l.sourceId) && l.type === 'displayed_on')
-                       .map((l) => l.targetId)
-                       .filter((id) => ir?.nodes?.[id]?.kind === 'screen');
-                     const relatedScreens = [...new Set(relatedScreenIds)].length;
-
-                     const relatedObjectIds = links
-                       .filter(
-                         (l) =>
-                           (stepIds.includes(l.sourceId) || stepIds.includes(l.targetId)) &&
-                           (l.type === 'reads' || l.type === 'writes' || l.type === 'changes_state')
-                       )
-                       .map((l) => (stepIds.includes(l.sourceId) ? l.targetId : l.sourceId))
-                       .filter((id) => ir?.nodes?.[id]?.kind === 'business_object');
-                     const relatedObjects = [...new Set(relatedObjectIds)].length;
+                     const footprint = buildTaskFootprint(ir as any, t.id);
                      
                      return (
                      <div key={t.id} onClick={() => setSelectedObject(t)} className={`bg-white rounded-xl p-4 cursor-pointer transition-all flex flex-col ${selectedObject?.id === t.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border border-slate-200 hover:border-indigo-300 shadow-sm'} ${highlightTarget === t.id ? 'ring-2 ring-amber-400' : ''}`}>
@@ -230,7 +205,7 @@ export function WhatToDo() {
                        <div className="space-y-1.5 text-xs mb-3 flex-1">
                          <div className="flex gap-2">
                            <span className="text-slate-400 w-12 text-[10px] uppercase font-bold mt-0.5">执行者</span>
-                           <span className="font-bold text-slate-700 bg-slate-100 px-1 rounded text-[11px]">{t.owner || '未指派'}</span>
+                          <span className="font-bold text-slate-700 bg-slate-100 px-1 rounded text-[11px]">{selectPerformerTitle(ir as any, t.id) || '未指派'}</span>
                          </div>
                          <div className="flex gap-2 text-[11px]">
                            <span className="text-slate-400 w-12 text-[10px] uppercase font-bold shrink-0">期望结果</span>
@@ -242,15 +217,15 @@ export function WhatToDo() {
                        <div className="flex flex-col gap-1 border-t border-slate-100 pt-2 mt-auto">
                          <div className="flex items-center gap-1.5 text-[10px]">
                            <span className="w-12 text-slate-400 font-bold">实现链路:</span>
-                           <span className="text-indigo-600 font-medium bg-indigo-50 px-1.5 rounded">{relatedFlowSteps} 个流程步骤</span>
+                           <span className="text-indigo-600 font-medium bg-indigo-50 px-1.5 rounded">{footprint.flowStepCount} 个流程步骤</span>
                          </div>
                          <div className="flex items-center gap-1.5 text-[10px]">
                            <span className="w-12 text-slate-400 font-bold">操作数据:</span>
-                           <span className="text-blue-600 font-medium bg-blue-50 px-1.5 rounded">{relatedObjects} 个对象</span>
+                           <span className="text-blue-600 font-medium bg-blue-50 px-1.5 rounded">{footprint.objectCount} 个对象</span>
                          </div>
                          <div className="flex items-center gap-1.5 text-[10px]">
                            <span className="w-12 text-slate-400 font-bold">入口页面:</span>
-                           <span className="text-emerald-600 font-medium bg-emerald-50 px-1.5 rounded">{relatedScreens} 个页面</span>
+                           <span className="text-emerald-600 font-medium bg-emerald-50 px-1.5 rounded">{footprint.screenCount} 个页面</span>
                          </div>
                        </div>
                      </div>

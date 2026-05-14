@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -34,6 +34,12 @@ class Workspace(Base):
 
 class Node(Base):
     __tablename__ = "nodes"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_nodes_workspace_id_id"),
+        Index("ix_nodes_workspace_kind", "workspace_id", "kind"),
+        Index("ix_nodes_workspace_status", "workspace_id", "status"),
+        Index("ix_nodes_workspace_scope_status", "workspace_id", "scope_status"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -56,6 +62,26 @@ class Node(Base):
 
 class Link(Base):
     __tablename__ = "links"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_links_workspace_id_id"),
+        Index("ix_links_workspace_type", "workspace_id", "type"),
+        Index("ix_links_workspace_source", "workspace_id", "source_id"),
+        Index("ix_links_workspace_target", "workspace_id", "target_id"),
+        ForeignKeyConstraint(
+            ["workspace_id", "source_id"],
+            ["nodes.workspace_id", "nodes.id"],
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "target_id"],
+            ["nodes.workspace_id", "nodes.id"],
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -71,10 +97,31 @@ class Link(Base):
 
 class Slot(Base):
     __tablename__ = "slots"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_slots_workspace_id_id"),
+        Index("ix_slots_workspace_owner", "workspace_id", "owner_node_id"),
+        Index("ix_slots_workspace_projection", "workspace_id", "owner_projection"),
+        Index("ix_slots_workspace_choice_group", "workspace_id", "choice_group_id"),
+        ForeignKeyConstraint(
+            ["workspace_id", "owner_node_id"],
+            ["nodes.workspace_id", "nodes.id"],
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "choice_group_id"],
+            ["choice_groups.workspace_id", "choice_groups.id"],
+            ondelete="SET NULL",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     owner_node_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    owner_projection: Mapped[str | None] = mapped_column(String(32), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     expected_kinds: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -88,6 +135,26 @@ class Slot(Base):
 
 class ChoiceGroup(Base):
     __tablename__ = "choice_groups"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_choice_groups_workspace_id_id"),
+        Index("ix_choice_groups_workspace_slot", "workspace_id", "slot_id"),
+        Index("ix_choice_groups_workspace_selected_choice", "workspace_id", "selected_choice_id"),
+        Index("ix_choice_groups_workspace_status", "workspace_id", "status"),
+        ForeignKeyConstraint(
+            ["workspace_id", "slot_id"],
+            ["slots.workspace_id", "slots.id"],
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "selected_choice_id"],
+            ["choices.workspace_id", "choices.id"],
+            ondelete="SET NULL",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -97,26 +164,55 @@ class ChoiceGroup(Base):
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
 
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="choice_groups")
-    choices: Mapped[list["Choice"]] = relationship("Choice", back_populates="choice_group", cascade="all, delete-orphan")
+    choices: Mapped[list["Choice"]] = relationship(
+        "Choice",
+        back_populates="choice_group",
+        cascade="all, delete-orphan",
+        foreign_keys=lambda: [Choice.workspace_id, Choice.choice_group_id],
+    )
 
 
 class Choice(Base):
     __tablename__ = "choices"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_choices_workspace_id_id"),
+        Index("ix_choices_workspace_choice_group", "workspace_id", "choice_group_id"),
+        Index("ix_choices_workspace_status", "workspace_id", "status"),
+        ForeignKeyConstraint(
+            ["workspace_id", "choice_group_id"],
+            ["choice_groups.workspace_id", "choice_groups.id"],
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    choice_group_id: Mapped[str] = mapped_column(ForeignKey("choice_groups.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    choice_group_id: Mapped[str] = mapped_column(String(128), index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     rationale: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    patch: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     proposed_node_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     proposed_link_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     impact_preview: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="candidate", nullable=False)
 
-    choice_group: Mapped["ChoiceGroup"] = relationship("ChoiceGroup", back_populates="choices")
+    choice_group: Mapped["ChoiceGroup"] = relationship(
+        "ChoiceGroup",
+        back_populates="choices",
+        foreign_keys=[workspace_id, choice_group_id],
+    )
 
 
 class Issue(Base):
     __tablename__ = "issues"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_issues_workspace_id_id"),
+        Index("ix_issues_workspace_status", "workspace_id", "status"),
+        Index("ix_issues_workspace_projection", "workspace_id", "suggested_projection"),
+        Index("ix_issues_workspace_category", "workspace_id", "category"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)

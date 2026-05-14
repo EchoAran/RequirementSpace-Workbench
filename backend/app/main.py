@@ -6,27 +6,30 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
-from .database import Base, SessionLocal, engine, get_db
-from .seed import build_seed_ir
+from .database import Base, engine, get_db
+from .ir.graph_patch import namespace_graph_patch_ids
+from .ir.services import expand_slot as expand_slot_service
+from .ir.services import initialize_workspace_from_idea
+from .ir.exporter import export_markdown
+from .ir.impact import compute_impact_preview
+from .ir.projections import build_projection
+from .ir.rewrite import rewrite_workspace
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    if load_dotenv:
+        load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
-    db = SessionLocal()
-    try:
-        exists = db.query(models.Workspace).first()
-        if not exists:
-            seed = build_seed_ir()
-            crud.upsert_workspace_from_ir(db, seed)
-            db.commit()
-    finally:
-        db.close()
+    Base.metadata.create_all(bind=engine)
     yield
 
 
@@ -85,9 +88,7 @@ def list_workspaces(db: Session = Depends(get_db)):
 
 @app.post("/api/workspaces/bootstrap")
 def bootstrap_workspace(req: schemas.WorkspaceBootstrapRequest, db: Session = Depends(get_db)):
-    ir = build_seed_ir(req.prompt)
-    ir["id"] = f"rs_{uuid.uuid4().hex[:10]}"
-    ir["name"] = "新建需求探索项目"
+    ir = initialize_workspace_from_idea(req.prompt)
     ws = crud.upsert_workspace_from_ir(db, ir)
     db.commit()
     db.refresh(ws)
@@ -98,10 +99,7 @@ def bootstrap_workspace(req: schemas.WorkspaceBootstrapRequest, db: Session = De
 def get_default_workspace(db: Session = Depends(get_db)):
     ws = db.query(models.Workspace).order_by(models.Workspace.updated_at.desc()).first()
     if not ws:
-        seed = build_seed_ir()
-        ws = crud.upsert_workspace_from_ir(db, seed)
-        db.commit()
-        db.refresh(ws)
+        raise HTTPException(status_code=404, detail="当前没有 workspace，请先通过 /workspaces/bootstrap 创建")
     return crud.serialize_workspace(ws)
 
 
@@ -165,13 +163,13 @@ def patch_choice(workspace_id: str, choice_id: str, req: schemas.ChoiceUpdateReq
     return crud.serialize_workspace(ws)
 
 
-@app.post("/api/workspaces/{workspace_id}/issues/{issue_id}/generate-candidate")
-def generate_candidate(workspace_id: str, issue_id: str, db: Session = Depends(get_db)):
+@app.post("/api/workspaces/{workspace_id}/issues/{issue_id}/slots")
+def create_issue_slot(workspace_id: str, issue_id: str, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    result = crud.generate_candidate_for_issue(db, ws, issue_id)
+    slot_id = crud.create_slot_for_issue(db, ws, issue_id)
     db.commit()
     db.refresh(ws)
-    return {"result": result, "workspace": crud.serialize_workspace(ws)}
+    return {"slotId": slot_id, "workspace": crud.serialize_workspace(ws)}
 
 
 @app.post("/api/workspaces/{workspace_id}/choices/{choice_id}/accept")
@@ -193,9 +191,9 @@ def reject_choice(workspace_id: str, choice_id: str, db: Session = Depends(get_d
 
 
 @app.post("/api/workspaces/{workspace_id}/diagnose")
-def diagnose(workspace_id: str, _: schemas.DiagnoseRequest, db: Session = Depends(get_db)):
+def diagnose(workspace_id: str, req: schemas.DiagnoseRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    result = crud.run_diagnosis(db, ws)
+    result = crud.run_diagnosis(db, ws, req.scope)
     db.commit()
     db.refresh(ws)
     return {"result": result, "workspace": crud.serialize_workspace(ws)}
@@ -209,6 +207,72 @@ def apply_patch(workspace_id: str, patch: schemas.GraphPatch, db: Session = Depe
     db.refresh(ws)
     return crud.serialize_workspace(ws)
 
+
+@app.post("/api/workspaces/{workspace_id}/slots")
+def create_slot(workspace_id: str, req: schemas.CreateSlotRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    slot_id = f"slot_{uuid.uuid4().hex[:10]}"
+    payload = req.model_dump()
+    payload["id"] = slot_id
+    crud.apply_graph_patch(db, ws, {"addSlots": [payload]})
+    db.commit()
+    db.refresh(ws)
+    return {"slotId": slot_id, "workspace": crud.serialize_workspace(ws)}
+
+
+@app.patch("/api/workspaces/{workspace_id}/slots/{slot_id}")
+def patch_slot(workspace_id: str, slot_id: str, req: schemas.SlotUpdateRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    patch = {"updateSlots": [{"id": slot_id, **req.model_dump(exclude_unset=True)}]}
+    crud.apply_graph_patch(db, ws, patch)
+    db.commit()
+    db.refresh(ws)
+    return crud.serialize_workspace(ws)
+
+
+@app.post("/api/workspaces/{workspace_id}/slots/{slot_id}/expand")
+def expand_slot(workspace_id: str, slot_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    cg_id = expand_slot_service(db, ws, slot_id)
+    db.commit()
+    db.refresh(ws)
+    return {"choiceGroupId": cg_id, "workspace": crud.serialize_workspace(ws)}
+
+
+@app.post("/api/workspaces/{workspace_id}/rewrite")
+def rewrite(workspace_id: str, req: schemas.RewriteRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    result = rewrite_workspace(db, ws, req.scope, req.instruction)
+    db.commit()
+    db.refresh(ws)
+    return {"result": result, "workspace": crud.serialize_workspace(ws)}
+
+
+@app.post("/api/workspaces/{workspace_id}/impact-preview")
+def impact_preview(workspace_id: str, req: schemas.ImpactPreviewRequest, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    patch = req.patch
+    if not patch and req.choiceId:
+        choice = db.get(models.Choice, req.choiceId)
+        if not choice:
+            raise HTTPException(status_code=404, detail=f"Choice `{req.choiceId}` 不存在")
+        group = db.get(models.ChoiceGroup, choice.choice_group_id)
+        if not group or group.workspace_id != ws.id:
+            raise HTTPException(status_code=404, detail=f"Choice `{req.choiceId}` 不属于当前 workspace")
+        patch = choice.patch or {}
+    if not patch:
+        raise HTTPException(status_code=400, detail="patch 或 choiceId 至少提供一个")
+    patch = namespace_graph_patch_ids(ws.id, patch)
+    preview = compute_impact_preview(db, ws, patch)
+    return {"impactPreview": preview}
+
+
+@app.get("/api/workspaces/{workspace_id}/projections/{projection_kind}")
+def get_projection(workspace_id: str, projection_kind: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    ir = crud.serialize_workspace(ws)
+    projection = build_projection(ir, projection_kind)
+    return {"projectionKind": projection_kind, "projection": projection}
 
 @app.post("/api/workspaces/{workspace_id}/issues")
 def create_issue(workspace_id: str, req: schemas.CreateIssueRequest, db: Session = Depends(get_db)):
@@ -234,30 +298,17 @@ def export_workspace(workspace_id: str, db: Session = Depends(get_db)):
     return crud.serialize_workspace(ws)
 
 
-@app.post("/api/prompts/analyze", response_model=schemas.PromptAnalyzeResponse)
-def analyze_prompt(req: schemas.PromptAnalyzeRequest):
-    prompt = req.prompt.strip()
-    task_type = "需求探索"
-    if "请假" in prompt or "审批" in prompt:
-        task_type = "企业内部审批流管理应用"
-    elif "CRM" in prompt:
-        task_type = "销售流程管理应用"
-    elif "看板" in prompt:
-        task_type = "项目进度与风险管理工具"
+@app.get("/api/workspaces/{workspace_id}/export/json")
+def export_workspace_json(workspace_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    return crud.serialize_workspace(ws)
 
-    return schemas.PromptAnalyzeResponse(
-        taskType=task_type,
-        goals=["明确核心目标与可衡量标准", "尽快形成单版本需求空间并可验证"],
-        actors=["业务发起人", "最终用户", "系统/管理员"],
-        flows=["主流程闭环", "异常分支与回滚", "通知与归档"],
-        objects=["关键业务对象 (Stateful)", "权限与角色模型"],
-        questions=[
-            "目标：你希望用什么指标判断成功？",
-            "范围：哪些能力明确不做或延期？",
-            "流程：异常/退回/撤销是否需要？",
-        ],
-    )
 
+@app.get("/api/workspaces/{workspace_id}/export/markdown")
+def export_workspace_markdown(workspace_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    md = export_markdown(crud.serialize_workspace(ws))
+    return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")
 
 @app.get("/", include_in_schema=False)
 def serve_root():

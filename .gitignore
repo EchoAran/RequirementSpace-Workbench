@@ -15,6 +15,16 @@ backend/*.db
 backend/*.sqlite3
 backend/*.sqlite
 
+# Frontend caches and environment
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/coverage/
+frontend/.DS_Store
+frontend/*.log
+frontend/.env*
+frontend/!.env.example
+
 # IDE/editor files
 *.swp
 *~

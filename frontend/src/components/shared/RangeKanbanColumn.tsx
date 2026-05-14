@@ -38,7 +38,7 @@ export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarge
             className={`group bg-white rounded-lg p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border cursor-pointer transition-all ${selectedTarget === item.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300'} ${highlightTarget === item.id ? 'ring-2 ring-amber-400' : ''}`}
           >
             <div className="flex justify-between items-start mb-3 gap-2 relative">
-              <h5 className={`text-sm font-medium leading-tight pr-6 ${item.scopeStatus === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'}`}>{item.title}</h5>
+              <h5 className={`text-sm font-medium leading-tight pr-6 ${item.status === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'}`}>{item.title}</h5>
               <div className="absolute right-0 top-0 opacity-100 flex flex-col gap-1 z-10 group-hover:opacity-100">
                 <div className="relative">
                   {openMenuItemId === item.id && (
@@ -93,6 +93,9 @@ export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarge
                     )}
                     {!title.includes('外部依赖') && (
                       <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '外部依赖'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">外部依赖</button>
+                    )}
+                    {!title.includes('范围外') && (
+                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '范围外'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">范围外</button>
                     )}
                     {!title.includes('已排除') && (
                       <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '已排除'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors">已排除</button>

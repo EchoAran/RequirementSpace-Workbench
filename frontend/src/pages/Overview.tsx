@@ -2,6 +2,8 @@ import { GapCard } from '@/components/shared/GapCard';
 import { ReadinessChecklist } from '@/components/shared/ReadinessChecklist';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { CandidateCard } from '@/components/shared/CandidateCard';
+import { useNavigate } from 'react-router-dom';
+import { buildOverviewModel, projectionPath } from '@/domain/ir/selectors';
 import { 
   useWorkspaceStore, 
   selectGoals, 
@@ -17,84 +19,40 @@ export function Overview() {
   const { 
     setSelectedObject, acceptCandidate, deferObject, excludeObject, generateCandidate 
   } = useWorkspaceStore();
+  const navigate = useNavigate();
   
   const goals = useWorkspaceStore(selectGoals);
-  const gaps = useWorkspaceStore(selectIssues);
   const candidates = useWorkspaceStore(selectCandidates);
-  const tasks = useWorkspaceStore(selectTasks);
-  const capabilities = useWorkspaceStore(selectCapabilities);
-  const actors = useWorkspaceStore(selectActors);
-  const flowSteps = useWorkspaceStore(selectFlowSteps);
   const ir = useWorkspaceStore(state => state.ir);
 
-  const highRiskGaps = gaps.filter(g => g.severity === 'high' && g.status === 'open');
-  
-  // Calculate Coverage
-  const calculateCoverage = (nodes: any[]) => {
-    if (nodes.length === 0) return 0;
-    const confirmed = nodes.filter(n => n.status === 'confirmed').length;
-    return Math.floor((confirmed / nodes.length) * 100);
+  const overview = buildOverviewModel(ir);
+  const highRiskGaps = overview.highRiskIssues;
+  const decisionQueue = overview.decisionQueue;
+  const recentCandidates = overview.recentCandidates.length ? overview.recentCandidates : candidates.filter(c => c.status === 'candidate').slice(0, 3);
+
+  const readinessItems = overview.readiness.dimensions.map((d) => ({
+    label: `${d.title} ${d.score}%`,
+    checked: d.checked,
+    type: d.checked ? undefined : ('blocking' as 'blocking'),
+  }));
+
+  const jumpToProjection = (projection: any) => {
+    return navigate(projectionPath(projection));
   };
 
-  const goalScore = goals.length > 0 ? calculateCoverage(goals) : 0;
-  const actorScore = actors.length > 0 ? calculateCoverage(actors) : 0;
-  const flowScore = flowSteps.length > 0 ? calculateCoverage(flowSteps) : 0;
-  const screens = ir ? Object.values(ir.nodes).filter(n => n.kind === 'screen') : [];
-  const uiScore = screens.length > 0 ? calculateCoverage(screens) : 0;
-  const dataObjects = ir ? Object.values(ir.nodes).filter(n => n.kind === 'business_object') : [];
-  const dataScore = dataObjects.length > 0 ? calculateCoverage(dataObjects) : 0;
+  const projectionLabel: Record<string, string> = {
+    goal: '目标',
+    role: '角色',
+    system: '流程',
+    data: '数据',
+    ui: '界面',
+  };
 
-  const readinessScore = Math.floor((goalScore + actorScore + flowScore + uiScore + dataScore) / 5);
-
-  const openChoiceGroupsCount = ir?.choiceGroups ? Object.values(ir.choiceGroups).filter(cg => cg.status === 'open').length : 0;
-  const openSlotsCount = openChoiceGroupsCount; // Approximating slot with choice group
-
-  // Build the Decision Queue
-  const decisionQueueItems: any[] = [];
-  
-  if (ir?.choiceGroups) {
-    Object.values(ir.choiceGroups).forEach(cg => {
-      if (cg.status === 'open') {
-        const slotName = ir.slots?.[cg.slotId]?.name || `Slot: ${cg.slotId}`;
-        decisionQueueItems.push({
-          id: cg.id,
-          title: slotName,
-          description: `有 ${cg.choices.length} 个候选方案待确认`,
-          kind: 'slot',
-          status: 'needs_confirmation',
-          original: cg
-        });
-      }
-    });
-  }
-
-  gaps.filter(g => g.status === 'open' && g.severity !== 'high').forEach(gap => {
-     decisionQueueItems.push({
-       id: gap.id,
-       title: gap.title,
-       description: gap.description,
-       kind: 'issue',
-       status: 'needs_confirmation',
-       original: gap
-     });
-  });
-
-  const decisionQueue = decisionQueueItems.slice(0, 5);
-
-  const recentCandidates = candidates.filter(c => c.status === 'candidate').slice(0, 3);
-  
-  const allObjects = [...goals, ...capabilities, ...tasks, ...actors, ...flowSteps, ...candidates];
-  const confirmedCount = allObjects.filter(o => o.status === 'confirmed').length;
-  const aiCount = allObjects.filter(o => o.status === 'ai_assumption').length;
-  const pendingCount = decisionQueueItems.length;
-  
-  const readinessItems = [
-    { title: `目标覆盖度 ${goalScore}%`, status: goalScore > 80 ? 'ready' : 'error' },
-    { title: `角色闭环 ${actorScore}%`, status: actorScore > 80 ? 'ready' : 'error' },
-    { title: `流程闭环 ${flowScore}%`, status: flowScore > 80 ? 'ready' : 'error' },
-    { title: `数据映射 ${dataScore}%`, status: dataScore > 80 ? 'ready' : 'error' },
-    { title: `UI页面交互 ${uiScore}%`, status: uiScore > 80 ? 'ready' : 'error' }
-  ];
+  const queueKindLabel: Record<string, string> = {
+    issue: '缺口',
+    slot: '槽位',
+    choiceGroup: '候选组',
+  };
 
   return (
     <div className="flex-1 flex w-full relative">
@@ -109,7 +67,7 @@ export function Overview() {
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">整体成熟度</p>
                   <p className="text-xl font-bold text-indigo-600 font-mono">
-                    {readinessScore}%
+                    {overview.readiness.overallScore}%
                   </p>
                 </div>
                 <div className="h-10 w-[1px] bg-slate-100"></div>
@@ -119,21 +77,21 @@ export function Overview() {
                     <span className="text-rose-600 text-lg font-bold font-mono">{String(highRiskGaps.length).padStart(2, '0')}</span>
                   </div>
                   <div className="flex flex-col">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 mt-1">待决策Slot</p>
-                    <span className="text-amber-600 text-lg font-bold font-mono">{String(openSlotsCount).padStart(2, '0')}</span>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 mt-1">待决策槽位</p>
+                    <span className="text-amber-600 text-lg font-bold font-mono">{String(overview.openSlotsCount).padStart(2, '0')}</span>
                   </div>
                   <div className="flex flex-col">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 mt-1">开放候选组</p>
-                    <span className="text-blue-600 text-lg font-bold font-mono">{String(openChoiceGroupsCount).padStart(2, '0')}</span>
+                    <span className="text-blue-600 text-lg font-bold font-mono">{String(overview.openChoiceGroupsCount).padStart(2, '0')}</span>
                   </div>
                 </div>
               </div>
               <div className="flex gap-2">
-                <span className="px-2.5 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200">目标 {goalScore}%</span>
-                <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200">角色 {actorScore}%</span>
-                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-200">流程 {flowScore}%</span>
-                <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full border border-indigo-200">数据 {dataScore}%</span>
-                <span className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs font-bold rounded-full border border-purple-200">UI {uiScore}%</span>
+                {overview.readiness.dimensions.map((d) => (
+                  <span key={d.kind} className="px-2.5 py-1 bg-slate-50 text-slate-700 text-xs font-bold rounded-full border border-slate-200">
+                    {(projectionLabel[d.kind] || d.kind) + ' ' + d.score + '%'}
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -146,11 +104,17 @@ export function Overview() {
                 {decisionQueue.map(item => (
                   <div 
                     key={item.id} 
-                    onClick={() => setSelectedObject(item.original || item)}
+                    onClick={() => { 
+                      const obj = item.original || item;
+                      setSelectedObject(obj);
+                      if ((item as any).kind === 'issue' && (obj as any).suggestedProjection) {
+                        jumpToProjection((obj as any).suggestedProjection);
+                      }
+                    }}
                     className="cursor-pointer bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-bold tracking-wider">{(item as any).kind || '待办'}</span>
+                      <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-bold tracking-wider">{queueKindLabel[(item as any).kind] || '待办'}</span>
                       <span className={`px-1.5 py-0.5 text-[10px] font-black rounded bg-amber-50 text-amber-600`}>
                         待决策
                       </span>
@@ -163,7 +127,7 @@ export function Overview() {
 
               <div className="mt-6 pt-4 border-t border-slate-200 border-dashed">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">多维闭环诊断</h3>
-                <ReadinessChecklist title="维度覆盖率" items={readinessItems.map(item => ({ label: item.title, checked: item.status === 'ready', type: item.status === 'error' ? 'blocking' : item.status === 'warning' ? 'info' : undefined }))} />
+                <ReadinessChecklist title="维度覆盖率" items={readinessItems} />
               </div>
             </div>
 
@@ -176,7 +140,7 @@ export function Overview() {
                     <GapCard 
                       key={gap.id} 
                       gap={gap as any} 
-                      onClick={() => setSelectedObject(gap as any)}
+                      onClick={() => { setSelectedObject(gap as any); jumpToProjection((gap as any).suggestedProjection); }}
                       onGenerate={(gap) => generateCandidate(gap.id)}
                       onDefer={(gap) => deferObject(gap.id)}
                     />

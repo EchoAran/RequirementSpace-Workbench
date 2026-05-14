@@ -95,12 +95,16 @@ export function RightObjectPanel() {
       if (kind === 'goal') return { successCriteria: obj.successCriteria || [] };
       if (kind === 'capability') return { priority: obj.priority || '', parentId: obj.parentId || '', acceptanceNotes: obj.acceptanceNotes || [] };
       if (kind === 'actor') return { roleType: obj.roleType || 'primary_user', responsibilities: obj.responsibilities || [], permissions: obj.permissions || [] };
-      if (kind === 'task') return { actorId: obj.actorId || '', capabilityId: obj.capabilityId || '', owner: obj.owner || '', outcome: obj.outcome || '', result: obj.result || '' };
+      if (kind === 'task') {
+        const performer = (ir?.links || []).find((l: any) => l.type === 'performed_by' && l.sourceId === obj.id)?.targetId || '';
+        return { performerActorId: performer, capabilityId: obj.capabilityId || '', outcome: obj.outcome || '', result: obj.result || '' };
+      }
       if (kind === 'flow') return { trigger: obj.trigger || '', mainObjectId: obj.mainObjectId || '' };
       if (kind === 'flow_step') {
+        const performer = (ir?.links || []).find((l: any) => l.type === 'performed_by' && l.sourceId === obj.id)?.targetId || '';
         return {
           flowId: obj.flowId || '',
-          actorId: obj.actorId || '',
+          performerActorId: performer,
           inputObjectIds: obj.inputObjectIds || [],
           outputObjectIds: obj.outputObjectIds || [],
           ruleIds: obj.ruleIds || [],
@@ -139,6 +143,34 @@ export function RightObjectPanel() {
       rationale: obj.rationale || '',
       status: obj.status || 'candidate',
     };
+  };
+
+  const newLinkId = () => {
+    try {
+      return `l_${globalThis.crypto.randomUUID().slice(0, 12)}`;
+    } catch {
+      return `l_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    }
+  };
+
+  const setPerformedBy = async (nodeId: string, actorId: string) => {
+    if (!ir) return;
+    const existing = (ir.links || []).filter((l: any) => l.type === 'performed_by' && l.sourceId === nodeId);
+    const removeLinkIds = existing.map((l: any) => l.id);
+    const addLinks =
+      actorId && actorId !== '—'
+        ? [
+            {
+              id: newLinkId(),
+              sourceId: nodeId,
+              targetId: actorId,
+              type: 'performed_by' as LinkType,
+              status: 'active',
+              source: { type: 'user' },
+            },
+          ]
+        : [];
+    await applyPatch({ removeLinkIds, addLinks } as any);
   };
 
   // Update input values when selection changes
@@ -314,8 +346,8 @@ export function RightObjectPanel() {
           <div className="p-5 border-t border-slate-200 grid grid-cols-1 gap-2 mt-auto shrink-0 bg-slate-50/50">
             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">建议下一步操作</p>
             <button onClick={() => pendingItems[0] && setSelectedObject(pendingItems[0])} className="py-2 bg-slate-900 text-white rounded-lg text-xs font-bold w-full hover:bg-slate-800 transition shadow-sm">选择一个待处理项</button>
-            <button onClick={() => runDiagnosis({ page: location.pathname })} className="py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold w-full hover:bg-slate-50 transition shadow-sm bg-white">检查当前页面</button>
-            <button onClick={() => runDiagnosis({ trigger: 'next_step' })} className="py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold w-full hover:bg-slate-50 transition shadow-sm bg-white">生成下一步建议</button>
+            <button onClick={() => runDiagnosis({ page: location.pathname, targetId: selectedObject?.id || undefined })} className="py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold w-full hover:bg-slate-50 transition shadow-sm bg-white">检查当前页面</button>
+            <button onClick={() => runDiagnosis({ trigger: 'next_step', page: location.pathname, targetId: selectedObject?.id || undefined })} className="py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold w-full hover:bg-slate-50 transition shadow-sm bg-white">生成下一步建议</button>
           </div>
         </div>
       </aside>
@@ -464,7 +496,7 @@ export function RightObjectPanel() {
            <button onClick={() => setNodeScope(selectedObject.id, 'in_scope')} className="col-span-2 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold w-full hover:bg-indigo-700 transition shadow-sm">移入本期</button>
            <button onClick={() => setNodeScope(selectedObject.id, 'deferred')} className="col-span-2 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 transition shadow-sm bg-white">本期暂不处理</button>
            <button onClick={() => setNodeScope(selectedObject.id, 'external_dependency')} className="col-span-1 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 transition shadow-sm bg-white">外部依赖</button>
-           <button onClick={() => setNodeScope(selectedObject.id, 'excluded')} className="col-span-1 py-2 border border-rose-100 text-rose-500 rounded-lg text-xs font-bold hover:bg-rose-50 transition shadow-sm bg-white">排除</button>
+           <button onClick={() => markNodeStatus(selectedObject.id, 'excluded')} className="col-span-1 py-2 border border-rose-100 text-rose-500 rounded-lg text-xs font-bold hover:bg-rose-50 transition shadow-sm bg-white">排除</button>
         </>
       );
     }
@@ -472,7 +504,7 @@ export function RightObjectPanel() {
     if (selectedObject.kind === 'flow_step') {
       return (
         <>
-          <button onClick={() => generateCandidate(selectedObject.id)} className="col-span-2 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold w-full hover:bg-slate-800 transition shadow-sm">展开异常分支</button>
+          <button onClick={() => createIssue({ title: `异常分支：${selectedObject.title}`, description: '为该流程步骤补充异常、回退、失败处理等分支。', severity: 'medium', category: 'exception_gap', relatedNodeIds: [selectedObject.id], suggestedProjection: 'system', suggestedAction: '补充异常分支' })} className="col-span-2 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold w-full hover:bg-slate-800 transition shadow-sm">创建异常分支缺口</button>
           <button onClick={() => setShowFlowStepActions(true)} className="col-span-2 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 transition shadow-sm bg-white">更多动作</button>
 
           {showFlowStepActions && (
@@ -510,12 +542,12 @@ export function RightObjectPanel() {
                 <button
                   onClick={() => {
                     setShowFlowStepActions(false);
-                    createIssue({ title: `生成 UI 入口：${selectedObject.title}`, description: '为该步骤补充界面入口或交互组件。', severity: 'medium', category: 'ui_gap', relatedNodeIds: [selectedObject.id], suggestedProjection: 'ui', suggestedAction: '生成 UI 入口' });
+                    createIssue({ title: `生成界面入口：${selectedObject.title}`, description: '为该步骤补充界面入口或交互组件。', severity: 'medium', category: 'ui_gap', relatedNodeIds: [selectedObject.id], suggestedProjection: 'ui', suggestedAction: '生成界面入口' });
                   }}
                   className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center justify-between text-sm font-bold text-slate-800">
-                    <span>生成 UI 入口</span>
+                    <span>生成界面入口</span>
                     <span className="text-[10px] text-slate-400 font-bold">创建缺口</span>
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">补齐界面入口、组件绑定与跳转</div>
@@ -795,7 +827,7 @@ export function RightObjectPanel() {
                     <option value="rule">规则 rule</option>
                     <option value="flow_step">流程步骤 flow_step</option>
                     <option value="state_transition">状态流转 state_transition</option>
-                    <option value="ui_component">UI 组件 ui_component</option>
+                    <option value="ui_component">界面组件 ui_component</option>
                     <option value="business_object">业务对象 business_object</option>
                   </select>
                 </div>
@@ -929,7 +961,7 @@ export function RightObjectPanel() {
               <div className="space-y-3 text-xs">
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">执行角色</div>
-                  <select value={structuredDraft.actorId || ''} onChange={(e) => { updateStructuredField('actorId', e.target.value); void commitStructuredField('actorId', e.target.value); }} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700">
+                  <select value={structuredDraft.performerActorId || ''} onChange={(e) => { const v = e.target.value; updateStructuredField('performerActorId', v); void setPerformedBy(selectedObject.id, v); }} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700">
                     <option value="">—</option>
                     {nodesByKind('actor').map((n) => (<option key={n.id} value={n.id}>{n.title}</option>))}
                   </select>
@@ -941,15 +973,9 @@ export function RightObjectPanel() {
                     {nodesByKind('capability').map((n) => (<option key={n.id} value={n.id}>{n.title}</option>))}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">负责人</div>
-                    <input value={structuredDraft.owner || ''} onChange={(e) => updateStructuredField('owner', e.target.value)} onBlur={() => void commitStructuredField('owner', structuredDraft.owner || '')} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">预期结果</div>
-                    <input value={structuredDraft.outcome || ''} onChange={(e) => updateStructuredField('outcome', e.target.value)} onBlur={() => void commitStructuredField('outcome', structuredDraft.outcome || '')} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700" />
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase">预期结果</div>
+                  <input value={structuredDraft.outcome || ''} onChange={(e) => updateStructuredField('outcome', e.target.value)} onBlur={() => void commitStructuredField('outcome', structuredDraft.outcome || '')} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700" />
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">补充说明</div>
@@ -1145,7 +1171,7 @@ export function RightObjectPanel() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">执行角色</div>
-                  <select value={structuredDraft.actorId || ''} onChange={(e) => { updateStructuredField('actorId', e.target.value); void commitStructuredField('actorId', e.target.value); }} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700">
+                  <select value={structuredDraft.performerActorId || ''} onChange={(e) => { const v = e.target.value; updateStructuredField('performerActorId', v); void setPerformedBy(selectedObject.id, v); }} className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700">
                     <option value="">—</option>
                     {nodesByKind('actor').map((n) => (<option key={n.id} value={n.id}>{n.title}</option>))}
                   </select>
@@ -1369,7 +1395,7 @@ export function RightObjectPanel() {
                   <option value="role">角色</option>
                   <option value="system">系统</option>
                   <option value="data">数据</option>
-                  <option value="ui">UI</option>
+                  <option value="ui">界面</option>
                 </select>
               </div>
               <div className="space-y-1">

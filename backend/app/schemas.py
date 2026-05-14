@@ -9,19 +9,6 @@ class WorkspaceBootstrapRequest(BaseModel):
     prompt: str = Field(min_length=1)
 
 
-class PromptAnalyzeRequest(BaseModel):
-    prompt: str = Field(min_length=1)
-
-
-class PromptAnalyzeResponse(BaseModel):
-    taskType: str
-    goals: list[str]
-    actors: list[str]
-    flows: list[str]
-    objects: list[str]
-    questions: list[str]
-
-
 class NodeUpdateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
@@ -66,7 +53,11 @@ class GraphPatch(BaseModel):
     removeNodeIds: list[str] | None = None
     addLinks: list[dict[str, Any]] | None = None
     removeLinkIds: list[str] | None = None
+    addSlots: list[dict[str, Any]] | None = None
     updateSlots: list[dict[str, Any]] | None = None
+    removeSlotIds: list[str] | None = None
+    addIssues: list[dict[str, Any]] | None = None
+    updateIssues: list[dict[str, Any]] | None = None
     resolveIssueIds: list[str] | None = None
 
 
@@ -84,6 +75,7 @@ class CreateIssueRequest(BaseModel):
 class AddChoiceRequest(BaseModel):
     title: str = Field(min_length=1)
     rationale: str = ""
+    patch: dict[str, Any] = Field(default_factory=dict)
     proposedNodeIds: list[str] = Field(default_factory=list)
     proposedLinkIds: list[str] = Field(default_factory=list)
     impactPreview: dict[str, Any] = Field(default_factory=dict)
@@ -92,7 +84,40 @@ class AddChoiceRequest(BaseModel):
 class ChoiceUpdateRequest(BaseModel):
     title: str | None = None
     rationale: str | None = None
+    patch: dict[str, Any] | None = None
     status: str | None = None
+
+
+class CreateSlotRequest(BaseModel):
+    ownerNodeId: str = Field(min_length=1)
+    ownerProjection: str = "goal"
+    name: str = Field(min_length=1)
+    description: str = ""
+    expectedKinds: list[str] = Field(default_factory=list)
+    arity: str = "many"
+    status: str = "empty"
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class SlotUpdateRequest(BaseModel):
+    ownerProjection: str | None = None
+    name: str | None = None
+    description: str | None = None
+    expectedKinds: list[str] | None = None
+    arity: str | None = None
+    status: str | None = None
+    choiceGroupId: str | None = None
+    context: dict[str, Any] | None = None
+
+
+class RewriteRequest(BaseModel):
+    scope: dict[str, Any] = Field(default_factory=dict)
+    instruction: str = Field(min_length=1)
+
+
+class ImpactPreviewRequest(BaseModel):
+    patch: dict[str, Any] | None = None
+    choiceId: str | None = None
 
 
 class WorkspaceListItem(BaseModel):

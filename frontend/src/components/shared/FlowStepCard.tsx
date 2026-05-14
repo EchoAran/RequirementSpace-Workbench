@@ -71,7 +71,7 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
               <div className="flex justify-between items-center mb-1">
                 <span className="font-bold text-purple-700 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                  Slot: {s.title}
+                  槽位：{s.title}
                 </span>
                 <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">
                   {(s as any).status === 'filled' ? '已填补' : (s as any).status === 'deferred' ? '已暂缓' : '待决策'}

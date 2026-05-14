@@ -12,13 +12,13 @@ interface ComponentTreeProps {
 export function ComponentTree({ nodes, links, actorId, onSelectNode, selectedNodeId }: ComponentTreeProps) {
   // Find all screens for this actor
   const actorScreens = links
-    .filter(l => l.targetId === actorId && l.type === 'reads' && nodes[l.sourceId]?.kind === 'screen')
+    .filter(l => l.targetId === actorId && l.type === 'accessible_by' && nodes[l.sourceId]?.kind === 'screen')
     .map(l => nodes[l.sourceId]);
 
   const getChildren = (parentId: string) => {
     return links
-      .filter(l => l.targetId === parentId && l.type === 'displayed_on')
-      .map(l => nodes[l.sourceId])
+      .filter(l => l.sourceId === parentId && l.type === 'contains')
+      .map(l => nodes[l.targetId])
       .filter(Boolean);
   };
 
@@ -34,7 +34,7 @@ export function ComponentTree({ nodes, links, actorId, onSelectNode, selectedNod
           style={{ paddingLeft: `${depth * 1.5 + 0.5}rem` }}
         >
           {node.kind === 'screen' ? <LayoutDashboard className="w-4 h-4 shrink-0 text-sky-500" /> : <Component className="w-3.5 h-3.5 shrink-0 text-slate-400" />}
-          <span className="text-sm">{node.title} {node.kind === 'screen' && <span className="text-xs text-slate-400 italic font-normal ml-2">Screen</span>}</span>
+          <span className="text-sm">{node.title} {node.kind === 'screen' && <span className="text-xs text-slate-400 italic font-normal ml-2">页面</span>}</span>
         </div>
         {children.length > 0 && (
           <div className="mt-1 flex flex-col space-y-0.5 border-l border-slate-100 ml-4">
@@ -54,7 +54,7 @@ export function ComponentTree({ nodes, links, actorId, onSelectNode, selectedNod
       ))}
       {actorScreens.length === 0 && (
         <div className="text-center py-8 text-slate-400 text-sm italic">
-          该角色未分配任何页面或 UI 组件
+          该角色未分配任何页面或界面组件
         </div>
       )}
     </div>

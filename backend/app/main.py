@@ -10,12 +10,11 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
-from .database import Base, engine, get_db
-from .ir.graph_patch import namespace_graph_patch_ids
+from .database import get_db, initialize_database
+from .ir.graph_patch import GraphPatchService
 from .ir.services import expand_slot as expand_slot_service
 from .ir.services import initialize_workspace_from_idea
 from .ir.exporter import export_markdown
-from .ir.impact import compute_impact_preview
 from .ir.projections import build_projection
 from .ir.rewrite import rewrite_workspace
 
@@ -29,7 +28,7 @@ async def lifespan(_: FastAPI):
     if load_dotenv:
         load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
-    Base.metadata.create_all(bind=engine)
+    initialize_database()
     yield
 
 
@@ -112,82 +111,82 @@ def get_workspace(workspace_id: str, db: Session = Depends(get_db)):
 @app.patch("/api/workspaces/{workspace_id}/nodes/{node_id}")
 def patch_node(workspace_id: str, node_id: str, req: schemas.NodeUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.update_node(db, ws, node_id, req.model_dump(exclude_unset=True))
+    result = crud.update_node(db, ws, node_id, req.model_dump(exclude_unset=True, mode="json"))
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.patch("/api/workspaces/{workspace_id}/nodes/{node_id}/status")
 def patch_node_status(workspace_id: str, node_id: str, req: schemas.StatusUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.update_node(db, ws, node_id, {"status": req.status})
+    result = crud.update_node(db, ws, node_id, {"status": req.status})
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.patch("/api/workspaces/{workspace_id}/nodes/{node_id}/scope")
 def patch_node_scope(workspace_id: str, node_id: str, req: schemas.ScopeUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.move_scope(db, ws, node_id, req.scopeStatus)
+    result = crud.move_scope(db, ws, node_id, req.scopeStatus)
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.patch("/api/workspaces/{workspace_id}/issues/{issue_id}")
 def patch_issue_status(workspace_id: str, issue_id: str, req: schemas.IssueStatusRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.update_issue_status(db, ws, issue_id, req.status)
+    result = crud.update_issue_status(db, ws, issue_id, req.status)
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.patch("/api/workspaces/{workspace_id}/issues/{issue_id}/details")
 def patch_issue_details(workspace_id: str, issue_id: str, req: schemas.IssueUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.update_issue(db, ws, issue_id, req.model_dump(exclude_unset=True))
+    result = crud.update_issue(db, ws, issue_id, req.model_dump(exclude_unset=True, mode="json"))
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.patch("/api/workspaces/{workspace_id}/choices/{choice_id}")
 def patch_choice(workspace_id: str, choice_id: str, req: schemas.ChoiceUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.update_choice(db, ws, choice_id, req.model_dump(exclude_unset=True))
+    result = crud.update_choice(db, ws, choice_id, req.model_dump(exclude_unset=True))
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.post("/api/workspaces/{workspace_id}/issues/{issue_id}/slots")
 def create_issue_slot(workspace_id: str, issue_id: str, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    slot_id = crud.create_slot_for_issue(db, ws, issue_id)
+    result = crud.create_slot_for_issue(db, ws, issue_id)
     db.commit()
     db.refresh(ws)
-    return {"slotId": slot_id, "workspace": crud.serialize_workspace(ws)}
+    return result
 
 
 @app.post("/api/workspaces/{workspace_id}/choices/{choice_id}/accept")
 def accept_choice(workspace_id: str, choice_id: str, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.accept_choice(db, ws, choice_id)
+    result = crud.accept_choice(db, ws, choice_id)
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.post("/api/workspaces/{workspace_id}/choices/{choice_id}/reject")
 def reject_choice(workspace_id: str, choice_id: str, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.reject_choice(db, ws, choice_id)
+    result = crud.reject_choice(db, ws, choice_id)
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.post("/api/workspaces/{workspace_id}/diagnose")
@@ -196,38 +195,38 @@ def diagnose(workspace_id: str, req: schemas.DiagnoseRequest, db: Session = Depe
     result = crud.run_diagnosis(db, ws, req.scope)
     db.commit()
     db.refresh(ws)
-    return {"result": result, "workspace": crud.serialize_workspace(ws)}
+    return {"result": {k: v for k, v in result.items() if k != "workspace"}, "workspace": result["workspace"]}
 
 
 @app.post("/api/workspaces/{workspace_id}/patch")
 def apply_patch(workspace_id: str, patch: schemas.GraphPatch, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    crud.apply_graph_patch(db, ws, patch.model_dump(exclude_unset=True))
+    result = crud.apply_graph_patch(db, ws, patch.model_dump(exclude_unset=True, mode="json"))
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result
 
 
 @app.post("/api/workspaces/{workspace_id}/slots")
 def create_slot(workspace_id: str, req: schemas.CreateSlotRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
     slot_id = f"slot_{uuid.uuid4().hex[:10]}"
-    payload = req.model_dump()
+    payload = req.model_dump(mode="json")
     payload["id"] = slot_id
-    crud.apply_graph_patch(db, ws, {"addSlots": [payload]})
+    result = crud.apply_graph_patch(db, ws, {"addSlots": [payload]})
     db.commit()
     db.refresh(ws)
-    return {"slotId": slot_id, "workspace": crud.serialize_workspace(ws)}
+    return {"slotId": result["idMap"].get(slot_id, slot_id), **result}
 
 
 @app.patch("/api/workspaces/{workspace_id}/slots/{slot_id}")
 def patch_slot(workspace_id: str, slot_id: str, req: schemas.SlotUpdateRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    patch = {"updateSlots": [{"id": slot_id, **req.model_dump(exclude_unset=True)}]}
-    crud.apply_graph_patch(db, ws, patch)
+    patch = {"updateSlots": [{"id": slot_id, **req.model_dump(exclude_unset=True, mode="json")}]}
+    result = crud.apply_graph_patch(db, ws, patch)
     db.commit()
     db.refresh(ws)
-    return crud.serialize_workspace(ws)
+    return result["workspace"]
 
 
 @app.post("/api/workspaces/{workspace_id}/slots/{slot_id}/expand")
@@ -248,22 +247,57 @@ def rewrite(workspace_id: str, req: schemas.RewriteRequest, db: Session = Depend
     return {"result": result, "workspace": crud.serialize_workspace(ws)}
 
 
+@app.get("/api/workspaces/{workspace_id}/proposals")
+def list_proposals(workspace_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    return crud.list_proposals(db, ws)
+
+
+@app.post("/api/workspaces/{workspace_id}/proposals/{proposal_id}/accept")
+def accept_proposal(workspace_id: str, proposal_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    result = crud.accept_proposal(db, ws, proposal_id)
+    db.commit()
+    db.refresh(ws)
+    return result
+
+
+@app.post("/api/workspaces/{workspace_id}/proposals/{proposal_id}/reject")
+def reject_proposal(workspace_id: str, proposal_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    result = crud.reject_proposal(db, ws, proposal_id)
+    db.commit()
+    db.refresh(ws)
+    return result
+
+
+@app.post("/api/workspaces/{workspace_id}/proposals/{proposal_id}/convert-to-choice")
+def convert_proposal_to_choice(workspace_id: str, proposal_id: str, db: Session = Depends(get_db)):
+    ws = crud.get_workspace_or_404(db, workspace_id)
+    result = crud.convert_proposal_to_choice(db, ws, proposal_id)
+    db.commit()
+    db.refresh(ws)
+    return result
+
+
 @app.post("/api/workspaces/{workspace_id}/impact-preview")
 def impact_preview(workspace_id: str, req: schemas.ImpactPreviewRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
     patch = req.patch
     if not patch and req.choiceId:
-        choice = db.get(models.Choice, req.choiceId)
-        if not choice:
-            raise HTTPException(status_code=404, detail=f"Choice `{req.choiceId}` 不存在")
-        group = db.get(models.ChoiceGroup, choice.choice_group_id)
-        if not group or group.workspace_id != ws.id:
-            raise HTTPException(status_code=404, detail=f"Choice `{req.choiceId}` 不属于当前 workspace")
-        patch = choice.patch or {}
+        ir = crud.serialize_workspace(ws)
+        patch = next(
+            (
+                choice["patch"]
+                for group in ir["choiceGroups"].values()
+                for choice in group["choices"]
+                if choice["id"] == req.choiceId
+            ),
+            None,
+        )
     if not patch:
         raise HTTPException(status_code=400, detail="patch 或 choiceId 至少提供一个")
-    patch = namespace_graph_patch_ids(ws.id, patch)
-    preview = compute_impact_preview(db, ws, patch)
+    preview = GraphPatchService.validate(db, ws, patch).impact_preview
     return {"impactPreview": preview}
 
 
@@ -277,19 +311,19 @@ def get_projection(workspace_id: str, projection_kind: str, db: Session = Depend
 @app.post("/api/workspaces/{workspace_id}/issues")
 def create_issue(workspace_id: str, req: schemas.CreateIssueRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    issue_id = crud.create_issue(db, ws, req.model_dump())
+    result = crud.create_issue(db, ws, req.model_dump(mode="json"))
     db.commit()
     db.refresh(ws)
-    return {"issueId": issue_id, "workspace": crud.serialize_workspace(ws)}
+    return result
 
 
 @app.post("/api/workspaces/{workspace_id}/choice-groups/{choice_group_id}/choices")
 def add_choice(workspace_id: str, choice_group_id: str, req: schemas.AddChoiceRequest, db: Session = Depends(get_db)):
     ws = crud.get_workspace_or_404(db, workspace_id)
-    choice_id = crud.add_choice_to_group(db, ws, choice_group_id, req.model_dump())
+    result = crud.add_choice_to_group(db, ws, choice_group_id, req.model_dump())
     db.commit()
     db.refresh(ws)
-    return {"choiceId": choice_id, "workspace": crud.serialize_workspace(ws)}
+    return result
 
 
 @app.get("/api/workspaces/{workspace_id}/export")

@@ -11,16 +11,18 @@ interface DragItem {
 }
 
 interface ColumnProps {
+  columnKey: string;
   title: string;
   items: DragItem[];
+  moveTargets: Array<{ key: string; label: string; danger?: boolean }>;
   highlightTarget?: string | null;
   selectedTarget?: string | null;
   onItemClick: (item: DragItem) => void;
-  onMoveItem: (itemId: string, targetCol: any) => void;
-  onAddItem?: (column: string) => void;
+  onMoveItem: (itemId: string, targetKey: string) => void;
+  onAddItem?: (columnKey: string) => void;
 }
 
-export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
+export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -85,21 +87,26 @@ export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarge
                   {openMenuItemId === item.id && (
                   <div className="fixed bg-white border border-slate-200 rounded-lg shadow-lg w-28 py-1 z-50" style={menuPos || undefined}>
                     <div className="px-2 py-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">移动至</div>
-                    {!title.includes('本期包含') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '本期包含'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">本期包含</button>
-                    )}
-                    {!title.includes('暂缓处理') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '暂缓处理'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">暂缓处理</button>
-                    )}
-                    {!title.includes('外部依赖') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '外部依赖'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">外部依赖</button>
-                    )}
-                    {!title.includes('范围外') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '范围外'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">范围外</button>
-                    )}
-                    {!title.includes('已排除') && (
-                      <button onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, '已排除'); setOpenMenuItemId(null); setMenuPos(null); }} className="w-full text-left px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors">已排除</button>
-                    )}
+                    {moveTargets
+                      .filter((target) => target.key !== columnKey)
+                      .map((target) => (
+                        <button
+                          key={target.key}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveItem(item.id, target.key);
+                            setOpenMenuItemId(null);
+                            setMenuPos(null);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                            target.danger
+                              ? 'text-rose-600 hover:bg-rose-50'
+                              : 'text-slate-700 hover:bg-slate-50 hover:text-indigo-600'
+                          }`}
+                        >
+                          {target.label}
+                        </button>
+                      ))}
                   </div>
                   )}
                 </div>
@@ -113,7 +120,7 @@ export function RangeKanbanColumn({ title, items, highlightTarget, selectedTarge
         ))}
       </div>
       <button
-        onClick={() => onAddItem?.(title)}
+        onClick={() => onAddItem?.(columnKey)}
         className="mt-auto flex items-center justify-center py-2 text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
       >
         + 添加项

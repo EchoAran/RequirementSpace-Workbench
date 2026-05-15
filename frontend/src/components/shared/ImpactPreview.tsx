@@ -10,7 +10,7 @@ export function ImpactPreview({ impacts }: { impacts: ImpactGroup[] }) {
   if (!impacts || impacts.length === 0) {
     return (
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 h-full flex items-center justify-center">
-        <p className="text-xs text-slate-400 italic">点击范围项查看移动影响预览</p>
+        <p className="text-xs text-slate-400 italic">选择范围动作后查看 GraphPatch 影响预览</p>
       </div>
     );
   }
@@ -27,7 +27,7 @@ export function ImpactPreview({ impacts }: { impacts: ImpactGroup[] }) {
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">移动后影响预览</h4>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">Patch 影响预览</h4>
       <div className="space-y-4">
         {impacts.map((group, idx) => (
           <div key={idx} className="space-y-2">

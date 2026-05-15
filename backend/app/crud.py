@@ -5,13 +5,33 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 from . import models
-from .ir.audit import append_operation
-from .ir.validators import validate_ir
-from .ir.graph_patch import GraphPatchService
 from .ir.diagnostics import run_deterministic_diagnosis
+from .ir.schema import (
+    AuditInfo,
+    ChoiceGroup,
+    ChoiceStatus,
+    GraphPatch,
+    Issue,
+    IssueCategory,
+    IssueStatus,
+    Meta,
+    ProjectionState,
+    Proposal,
+    ProposalStatus,
+    RequirementLink,
+    RequirementNode,
+    RequirementSlot,
+    RequirementSpaceIR,
+    SelectionMode,
+)
+from .ir.validators import validate_graph_patch, validate_ir
+
+NODE_ADAPTER = TypeAdapter(RequirementNode)
+NODE_BASE_FIELDS = {"id", "kind", "title", "description", "status", "confidence", "scopeStatus", "source", "tags"}
 
 
 def now_iso() -> str:
@@ -19,245 +39,7 @@ def now_iso() -> str:
 
 
 def _new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:8]}"
-
-def _normalize_scope_status(value: Any) -> Any:
-    if value == "dependency":
-        return "external_dependency"
-    if value == "excluded":
-        return None
-    return value
-
-
-def _require_field(payload: dict[str, Any], field: str, kind: str, item_id: str) -> Any:
-    value = payload.get(field)
-    if value in (None, ""):
-        raise HTTPException(status_code=500, detail=f"{kind} `{item_id}` 缺少必要字段 `{field}`")
-    return value
-
-
-def _validate_related_node_ids(db: Session, workspace_id: str, related_node_ids: Any) -> list[str]:
-    if related_node_ids is None:
-        return []
-    if not isinstance(related_node_ids, list):
-        raise HTTPException(status_code=400, detail="relatedNodeIds 必须是 string[]")
-    cleaned = [node_id for node_id in related_node_ids if isinstance(node_id, str) and node_id]
-    if len(cleaned) != len(related_node_ids):
-        raise HTTPException(status_code=400, detail="relatedNodeIds 必须是非空 string[]")
-    if not cleaned:
-        return []
-    existing = {
-        r[0]
-        for r in db.query(models.Node.id)
-        .filter(models.Node.workspace_id == workspace_id, models.Node.id.in_(cleaned))
-        .all()
-    }
-    missing = sorted(set(cleaned) - existing)
-    if missing:
-        raise HTTPException(status_code=400, detail=f"relatedNodeIds 中存在无效节点：{missing[:5]}")
-    return cleaned
-
-
-def _page_projection_hints(page: str | None) -> set[str]:
-    if page == "/what":
-        return {"goal", "role"}
-    if page == "/flow":
-        return {"system"}
-    if page == "/scope":
-        return {"data", "system"}
-    if page == "/preview":
-        return {"ui", "system"}
-    return set()
-
-
-def _page_node_ids(ws: models.Workspace, page: str | None) -> set[str]:
-    nodes = list(ws.nodes or [])
-    if page == "/what":
-        kinds = {"goal", "capability", "task", "actor"}
-        return {n.id for n in nodes if n.kind in kinds}
-    if page == "/flow":
-        kinds = {"flow", "flow_step", "rule", "state_transition"}
-        return {n.id for n in nodes if n.kind in kinds}
-    if page == "/scope":
-        return {n.id for n in nodes if n.scope_status or n.status == "excluded"}
-    if page == "/preview":
-        kinds = {"screen", "ui_component", "flow_step", "actor"}
-        return {n.id for n in nodes if n.kind in kinds}
-    return set()
-
-
-def _diagnostic_matches_scope(
-    ws: models.Workspace,
-    diagnostic: Any,
-    scope: dict[str, Any] | None,
-) -> bool:
-    scope = scope or {}
-    target_id = scope.get("targetId") if isinstance(scope.get("targetId"), str) else None
-    page = scope.get("page") if isinstance(scope.get("page"), str) else None
-    trigger = scope.get("trigger") if isinstance(scope.get("trigger"), str) else None
-
-    related_ids = set(diagnostic.related_node_ids or [])
-    page_ids = _page_node_ids(ws, page)
-    projection_hints = _page_projection_hints(page)
-
-    if trigger == "scope_recommendation":
-        scoped_ids = _page_node_ids(ws, "/scope")
-        return diagnostic.category == "scope_risk" or bool(related_ids & scoped_ids)
-
-    if target_id:
-        if target_id in related_ids:
-            return True
-        return False
-
-    if page:
-        if not page_ids and not projection_hints:
-            return True
-        if related_ids and related_ids & page_ids:
-            return True
-        if projection_hints and diagnostic.suggested_projection in projection_hints:
-            return True
-        return False
-
-    if trigger == "next_step":
-        return diagnostic.severity == "high" or diagnostic.category in {"missing", "flow_gap", "scope_risk"}
-
-    return True
-
-
-def upsert_workspace_from_ir(db: Session, ir: dict[str, Any]) -> models.Workspace:
-    workspace_id = ir["id"]
-    existing = db.get(models.Workspace, workspace_id)
-    if existing:
-        db.delete(existing)
-        db.flush()
-
-    ws = models.Workspace(
-        id=workspace_id,
-        name=ir.get("name", "未命名项目"),
-        idea=ir.get("idea", ""),
-        domain=ir.get("meta", ir.get("domain", {})),
-        projections=ir.get("projections", {}),
-        proposals=ir.get("proposals", {}),
-        audit=ir.get("audit", {}),
-    )
-    db.add(ws)
-
-    for node_id, node in (ir.get("nodes") or {}).items():
-        base_keys = {
-            "id",
-            "kind",
-            "title",
-            "description",
-            "status",
-            "confidence",
-            "scopeStatus",
-            "source",
-            "slots",
-        }
-        extra = {k: v for k, v in node.items() if k not in base_keys}
-        scope_status = _normalize_scope_status(node.get("scopeStatus"))
-        status = node.get("status", "needs_confirmation")
-        if node.get("scopeStatus") == "excluded":
-            status = "excluded"
-            scope_status = None
-        db.add(
-            models.Node(
-                id=node_id,
-                workspace_id=workspace_id,
-                kind=node.get("kind", "capability"),
-                title=node.get("title", node_id),
-                description=node.get("description"),
-                status=status,
-                confidence=node.get("confidence"),
-                scope_status=scope_status,
-                source=node.get("source", {"type": "ai"}),
-                slots=node.get("slots"),
-                extra=extra,
-            )
-        )
-
-    for link in ir.get("links") or []:
-        db.add(
-            models.Link(
-                id=link["id"],
-                workspace_id=workspace_id,
-                source_id=link["sourceId"],
-                target_id=link["targetId"],
-                type=link["type"],
-                label=link.get("label"),
-                status=link.get("status", "active"),
-                source=link.get("source", {"type": "ai"}),
-            )
-        )
-
-    for slot_id, slot in (ir.get("slots") or {}).items():
-        owner_projection = slot.get("ownerProjection")
-        if not owner_projection:
-            hints = (slot.get("context") or {}).get("projectionHints") or []
-            owner_projection = hints[0] if hints else "goal"
-        owner_node_id = _require_field(slot, "ownerNodeId", "Slot", slot_id)
-        slot_name = _require_field(slot, "name", "Slot", slot_id)
-        db.add(
-            models.Slot(
-                id=slot_id,
-                workspace_id=workspace_id,
-                owner_node_id=owner_node_id,
-                owner_projection=owner_projection,
-                name=slot_name,
-                description=slot.get("description"),
-                expected_kinds=slot.get("expectedKinds", []),
-                arity=slot.get("arity", "many"),
-                status=slot.get("status", "empty"),
-                choice_group_id=slot.get("choiceGroupId"),
-                context=slot.get("context", {}),
-            )
-        )
-
-    for cg_id, cg in (ir.get("choiceGroups") or {}).items():
-        group = models.ChoiceGroup(
-            id=cg_id,
-            workspace_id=workspace_id,
-            slot_id=_require_field(cg, "slotId", "ChoiceGroup", cg_id),
-            selected_choice_id=cg.get("selectedChoiceId"),
-            selection_mode=cg.get("selectionMode", "single"),
-            status=cg.get("status", "open"),
-        )
-        db.add(group)
-        for choice in cg.get("choices", []):
-            db.add(
-                models.Choice(
-                    id=_require_field(choice, "id", "Choice", cg_id),
-                    workspace_id=workspace_id,
-                    choice_group_id=cg_id,
-                    title=_require_field(choice, "title", "Choice", choice.get("id", cg_id)),
-                    rationale=choice.get("rationale", ""),
-                    patch=choice.get("patch", {}) or {},
-                    proposed_node_ids=choice.get("proposedNodeIds", []),
-                    proposed_link_ids=choice.get("proposedLinkIds", []),
-                    impact_preview=choice.get("impactPreview", {}),
-                    status=choice.get("status", "candidate"),
-                )
-            )
-
-    for issue_id, issue in (ir.get("issues") or {}).items():
-        db.add(
-            models.Issue(
-                id=issue_id,
-                workspace_id=workspace_id,
-                title=_require_field(issue, "title", "Issue", issue_id),
-                description=issue.get("description", ""),
-                severity=issue.get("severity", "medium"),
-                category=issue.get("category", "missing"),
-                related_node_ids=issue.get("relatedNodeIds", []),
-                suggested_projection=issue.get("suggestedProjection", "goal"),
-                suggested_action=issue.get("suggestedAction", ""),
-                status=issue.get("status", "open"),
-                source=issue.get("source", {"type": "ai"}),
-            )
-        )
-
-    db.flush()
-    return ws
+    return f"{prefix}_{uuid.uuid4().hex[:10]}"
 
 
 def get_workspace_or_404(db: Session, workspace_id: str) -> models.Workspace:
@@ -267,523 +49,655 @@ def get_workspace_or_404(db: Session, workspace_id: str) -> models.Workspace:
     return ws
 
 
+def upsert_workspace_from_ir(db: Session, ir_payload: dict[str, Any] | RequirementSpaceIR) -> models.Workspace:
+    ir = validate_ir(ir_payload, status_code=400)
+    ws = db.get(models.Workspace, ir.id)
+    if not ws:
+        ws = models.Workspace(id=ir.id, name=ir.name, idea=ir.idea)
+        db.add(ws)
+        db.flush()
+    replace_workspace_from_ir(db, ws, ir)
+    return ws
+
+
+def replace_workspace_from_ir(
+    db: Session, ws: models.Workspace, ir_payload: dict[str, Any] | RequirementSpaceIR
+) -> models.Workspace:
+    ir = validate_ir(ir_payload, status_code=400)
+
+    ws.name = ir.name
+    ws.idea = ir.idea
+    ws.meta = ir.meta.model_dump(mode="json")
+    ws.projections = ir.projections.model_dump(mode="json")
+    ws.audit = ir.audit.model_dump(mode="json")
+    ws.updated_at = datetime.utcnow()
+
+    db.query(models.Proposal).filter(models.Proposal.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.Link).filter(models.Link.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.Choice).filter(models.Choice.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.ChoiceGroup).filter(models.ChoiceGroup.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.Slot).filter(models.Slot.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.Issue).filter(models.Issue.workspace_id == ws.id).delete(synchronize_session=False)
+    db.query(models.Node).filter(models.Node.workspace_id == ws.id).delete(synchronize_session=False)
+
+    db.add_all([_node_row_from_model(ws.id, node) for node in ir.nodes.values()])
+    db.add_all([_link_row_from_model(ws.id, link) for link in ir.links])
+    db.add_all([_slot_row_from_model(ws.id, slot) for slot in ir.slots.values()])
+
+    group_rows: list[models.ChoiceGroup] = []
+    choice_rows: list[models.Choice] = []
+    for group in ir.choiceGroups.values():
+        group_rows.append(_choice_group_row_from_model(ws.id, group))
+        choice_rows.extend(_choice_rows_from_group(ws.id, group))
+    db.add_all(group_rows)
+    db.add_all(choice_rows)
+    db.add_all([_issue_row_from_model(ws.id, issue) for issue in ir.issues.values()])
+    db.add_all([_proposal_row_from_model(ws.id, proposal) for proposal in ir.proposals.values()])
+    db.flush()
+    return ws
+
+
 def serialize_workspace(ws: models.Workspace) -> dict[str, Any]:
-    nodes: dict[str, Any] = {}
-    for n in ws.nodes:
-        status = n.status
-        scope_status = _normalize_scope_status(n.scope_status)
-        if n.scope_status == "excluded":
-            status = "excluded"
-            scope_status = None
-        payload = {
-            "id": n.id,
-            "kind": n.kind,
-            "title": n.title,
-            "description": n.description,
-            "status": status,
-            "confidence": n.confidence,
-            "scopeStatus": scope_status,
-            "source": n.source,
-            "slots": n.slots,
-        }
-        payload.update(n.extra or {})
-        nodes[n.id] = payload
-
-    links = [
-        {
-            "id": l.id,
-            "sourceId": l.source_id,
-            "targetId": l.target_id,
-            "type": l.type,
-            "label": l.label,
-            "status": l.status,
-            "source": l.source,
-        }
-        for l in ws.links
-    ]
-
-    slots = {
-        s.id: {
-            "id": s.id,
-            "ownerNodeId": s.owner_node_id,
-            "ownerProjection": s.owner_projection
-            or ((s.context or {}).get("projectionHints") or ["goal"])[0],
-            "name": s.name,
-            "description": s.description,
-            "expectedKinds": s.expected_kinds,
-            "arity": s.arity,
-            "status": s.status,
-            "choiceGroupId": s.choice_group_id,
-            "context": s.context,
-        }
-        for s in ws.slots
-    }
-
-    choice_groups = {}
-    for cg in ws.choice_groups:
-        choice_groups[cg.id] = {
-            "id": cg.id,
-            "slotId": cg.slot_id,
-            "selectedChoiceId": cg.selected_choice_id,
-            "selectionMode": cg.selection_mode,
-            "status": cg.status,
-            "choices": [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "rationale": c.rationale,
-                    "patch": c.patch or {},
-                    "proposedNodeIds": c.proposed_node_ids,
-                    "proposedLinkIds": c.proposed_link_ids,
-                    "impactPreview": {
-                        "affectedGoals": (c.impact_preview or {}).get("affectedGoals") or [],
-                        "affectedActors": (c.impact_preview or {}).get("affectedActors") or [],
-                        "affectedFlows": (c.impact_preview or {}).get("affectedFlows") or [],
-                        "affectedObjects": (c.impact_preview or {}).get("affectedObjects") or [],
-                        "affectedScreens": (c.impact_preview or {}).get("affectedScreens") or [],
-                        "newIssues": (c.impact_preview or {}).get("newIssues"),
-                        "resolvedIssues": (c.impact_preview or {}).get("resolvedIssues"),
-                    },
-                    "status": c.status,
-                }
-                for c in cg.choices
-            ],
-        }
-
-    issues = {
-        i.id: {
-            "id": i.id,
-            "title": i.title,
-            "description": i.description,
-            "severity": i.severity,
-            "category": i.category,
-            "relatedNodeIds": i.related_node_ids,
-            "suggestedProjection": i.suggested_projection,
-            "suggestedAction": i.suggested_action,
-            "status": i.status,
-            "source": i.source,
-        }
-        for i in ws.issues
-    }
-
-    audit = dict(ws.audit or {})
-    audit["updatedAt"] = now_iso()
-
-    meta = dict(ws.domain or {})
-    if "assumptions" not in meta:
-        meta["assumptions"] = []
-    if "inputPrompt" not in meta:
-        meta["inputPrompt"] = ws.idea
-
-    payload = {
-        "id": ws.id,
-        "name": ws.name,
-        "idea": ws.idea,
-        "meta": meta,
-        "nodes": nodes,
-        "links": links,
-        "slots": slots,
-        "choiceGroups": choice_groups,
-        "proposals": ws.proposals or {},
-        "issues": issues,
-        "projections": ws.projections or {},
-        "audit": audit,
-    }
-    validate_ir(payload)
-    return payload
-
-
-def update_node(db: Session, ws: models.Workspace, node_id: str, updates: dict[str, Any]) -> None:
-    node = db.get(models.Node, node_id)
-    if not node or node.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"Node `{node_id}` 不存在")
-
-    if "title" in updates and updates["title"] is not None:
-        node.title = updates["title"]
-    if "description" in updates:
-        node.description = updates["description"]
-    if "status" in updates and updates["status"] is not None:
-        node.status = updates["status"]
-    if "scopeStatus" in updates and updates["scopeStatus"] is not None:
-        if updates["scopeStatus"] == "excluded":
-            node.status = "excluded"
-            node.scope_status = None
-        else:
-            node.scope_status = _normalize_scope_status(updates["scopeStatus"])
-    if "confidence" in updates:
-        node.confidence = updates["confidence"]
-    if "source" in updates and updates["source"] is not None:
-        node.source = updates["source"]
-    if "extra" in updates and updates["extra"] is not None:
-        merged = dict(node.extra or {})
-        merged.update(updates["extra"])
-        node.extra = merged
-
-    node.updated_at = datetime.utcnow()
-    _touch_workspace(ws)
-
-
-def move_scope(db: Session, ws: models.Workspace, node_id: str, scope_status: str) -> None:
-    if scope_status == "excluded":
-        raise HTTPException(status_code=400, detail="excluded 不属于 scopeStatus，请使用 status=excluded")
-    update_node(db, ws, node_id, {"scopeStatus": scope_status})
-
-
-def update_issue_status(db: Session, ws: models.Workspace, issue_id: str, status: str) -> None:
-    issue = db.get(models.Issue, issue_id)
-    if not issue or issue.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
-    issue.status = status
-    _touch_workspace(ws)
-
-
-def update_issue(db: Session, ws: models.Workspace, issue_id: str, updates: dict[str, Any]) -> None:
-    issue = db.get(models.Issue, issue_id)
-    if not issue or issue.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
-
-    if "title" in updates and updates["title"] is not None:
-        issue.title = updates["title"]
-    if "description" in updates:
-        issue.description = updates["description"] or ""
-    if "severity" in updates and updates["severity"] is not None:
-        issue.severity = updates["severity"]
-    if "category" in updates and updates["category"] is not None:
-        issue.category = updates["category"]
-    if "relatedNodeIds" in updates and updates["relatedNodeIds"] is not None:
-        issue.related_node_ids = _validate_related_node_ids(db, ws.id, updates["relatedNodeIds"])
-    if "suggestedProjection" in updates and updates["suggestedProjection"] is not None:
-        issue.suggested_projection = updates["suggestedProjection"]
-    if "suggestedAction" in updates and updates["suggestedAction"] is not None:
-        issue.suggested_action = updates["suggestedAction"]
-    if "status" in updates and updates["status"] is not None:
-        issue.status = updates["status"]
-    if "source" in updates and updates["source"] is not None:
-        issue.source = updates["source"]
-
-    _touch_workspace(ws)
-
-
-def update_choice(db: Session, ws: models.Workspace, choice_id: str, updates: dict[str, Any]) -> None:
-    choice = (
-        db.query(models.Choice)
-        .join(models.ChoiceGroup, models.Choice.choice_group_id == models.ChoiceGroup.id)
-        .filter(models.Choice.id == choice_id, models.ChoiceGroup.workspace_id == ws.id)
-        .one_or_none()
-    )
-    if not choice:
-        raise HTTPException(status_code=404, detail=f"Choice `{choice_id}` 不存在")
-
-    if "title" in updates and updates["title"] is not None:
-        choice.title = updates["title"]
-    if "rationale" in updates and updates["rationale"] is not None:
-        choice.rationale = updates["rationale"]
-    if "patch" in updates and updates["patch"] is not None:
-        choice.patch = updates["patch"]
-    if "status" in updates and updates["status"] is not None:
-        choice.status = updates["status"]
-
-    _touch_workspace(ws)
-
-
-def generate_candidate_for_issue(db: Session, ws: models.Workspace, issue_id: str) -> dict[str, str]:
-    issue = db.get(models.Issue, issue_id)
-    if not issue or issue.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
-
-    owner_node_id = issue.related_node_ids[0] if issue.related_node_ids else next(iter({n.id for n in ws.nodes}), None)
-    if not owner_node_id:
-        raise HTTPException(status_code=400, detail="当前工作台没有可关联节点")
-
-    slot_id = _new_id("slot")
-    choice_group_id = _new_id("cg")
-    choice_id = _new_id("cand")
-
-    db.add(
-        models.Slot(
-            id=slot_id,
-            workspace_id=ws.id,
-            owner_node_id=owner_node_id,
-            owner_projection="system",
-            name=f"{issue.title} - 修复方案",
-            description=issue.description,
-            expected_kinds=["flow_step", "rule", "ui_component"],
-            arity="many",
-            status="candidate_ready",
-            choice_group_id=choice_group_id,
-            context={"projectionHints": ["system", "ui"], "relatedNodeIds": issue.related_node_ids},
-        )
-    )
-
-    db.add(
-        models.ChoiceGroup(
-            id=choice_group_id,
-            workspace_id=ws.id,
-            slot_id=slot_id,
-            selected_choice_id=None,
-            selection_mode="single",
-            status="open",
-        )
-    )
-
-    db.add(
-        models.Choice(
-            id=choice_id,
-            workspace_id=ws.id,
-            choice_group_id=choice_group_id,
-            title=f"修复 {issue.title} 的候选方案",
-            rationale=f"为问题 `{issue.title}` 自动补充一条可执行路径。",
-            patch={},
-            proposed_node_ids=[],
-            proposed_link_ids=[],
-            impact_preview={
-                "affectedGoals": [],
-                "affectedActors": [],
-                "affectedFlows": issue.related_node_ids,
-                "affectedObjects": [],
-                "affectedScreens": [],
-                "resolvedIssues": [issue.id],
-            },
-            status="candidate",
-        )
-    )
-    _touch_workspace(ws)
-    return {"slotId": slot_id, "choiceGroupId": choice_group_id, "choiceId": choice_id}
-
-
-def accept_choice(db: Session, ws: models.Workspace, choice_id: str) -> None:
-    choice = db.get(models.Choice, choice_id)
-    if not choice:
-        raise HTTPException(status_code=404, detail=f"Choice `{choice_id}` 不存在")
-
-    group = db.get(models.ChoiceGroup, choice.choice_group_id)
-    if not group or group.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"ChoiceGroup `{choice.choice_group_id}` 不存在")
-
-    patch = choice.patch or {}
-    GraphPatchService.apply(db, ws, patch)
-
-    group.selected_choice_id = choice.id
-    group.status = "selected"
-    choice.status = "selected"
-
-    for c in group.choices:
-        if c.id != choice.id and c.status == "candidate":
-            c.status = "rejected"
-
-    resolved = set((choice.impact_preview or {}).get("resolvedIssues") or [])
-    resolved.update(patch.get("resolveIssueIds") or [])
-    if resolved:
-        issues = (
-            db.query(models.Issue)
-            .filter(models.Issue.workspace_id == ws.id, models.Issue.id.in_(list(resolved)))
-            .all()
-        )
-        for issue in issues:
-            issue.status = "resolved"
-
-    slot = db.get(models.Slot, group.slot_id)
-    if slot:
-        slot.status = "filled"
-
-    _append_operation(
-        ws,
-        kind="accept_choice",
-        payload={
-            "choiceId": choice.id,
-            "choiceGroupId": group.id,
-            "slotId": group.slot_id,
+    payload = RequirementSpaceIR(
+        id=ws.id,
+        name=ws.name,
+        idea=ws.idea,
+        meta=Meta.model_validate(ws.meta or {}),
+        nodes={node.id: _node_model_from_row(node) for node in sorted(ws.nodes, key=lambda item: item.row_id)},
+        links=[_link_model_from_row(link) for link in sorted(ws.links, key=lambda item: item.row_id)],
+        slots={slot.id: _slot_model_from_row(slot) for slot in sorted(ws.slots, key=lambda item: item.row_id)},
+        choiceGroups={
+            group.id: _choice_group_model_from_row(group)
+            for group in sorted(ws.choice_groups, key=lambda item: item.row_id)
         },
+        proposals={
+            proposal.id: _proposal_model_from_row(proposal)
+            for proposal in sorted(ws.proposals, key=lambda item: item.row_id)
+        },
+        issues={issue.id: _issue_model_from_row(issue) for issue in sorted(ws.issues, key=lambda item: item.row_id)},
+        projections=ProjectionState.model_validate(ws.projections or {}),
+        audit=AuditInfo.model_validate(ws.audit or {}),
     )
-    _touch_workspace(ws)
+    return validate_ir(payload, status_code=500).model_dump(mode="json")
 
 
-def reject_choice(db: Session, ws: models.Workspace, choice_id: str) -> None:
-    choice = db.get(models.Choice, choice_id)
-    if not choice:
-        raise HTTPException(status_code=404, detail=f"Choice `{choice_id}` 不存在")
-    group = db.get(models.ChoiceGroup, choice.choice_group_id)
-    if not group or group.workspace_id != ws.id:
-        raise HTTPException(status_code=404, detail=f"ChoiceGroup `{choice.choice_group_id}` 不存在")
-    choice.status = "rejected"
-    _touch_workspace(ws)
+def update_node(db: Session, ws: models.Workspace, node_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    return apply_graph_patch(db, ws, {"updateNodes": [{"id": node_id, **updates}]})
+
+
+def move_scope(db: Session, ws: models.Workspace, node_id: str, scope_status: str) -> dict[str, Any]:
+    return update_node(db, ws, node_id, {"scopeStatus": scope_status})
+
+
+def update_issue_status(db: Session, ws: models.Workspace, issue_id: str, status: str) -> dict[str, Any]:
+    return apply_graph_patch(db, ws, {"updateIssues": [{"id": issue_id, "status": status}]})
+
+
+def update_issue(db: Session, ws: models.Workspace, issue_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    return apply_graph_patch(db, ws, {"updateIssues": [{"id": issue_id, **updates}]})
+
+
+def update_choice(db: Session, ws: models.Workspace, choice_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+    group = _find_choice_group_by_choice_id(ir, choice_id)
+    return apply_graph_patch(db, ws, {"updateChoiceGroups": [{"id": group.id, "choices": [{"id": choice_id, **updates}]}]})
+
+
+def apply_graph_patch(db: Session, ws: models.Workspace, patch_payload: dict[str, Any] | GraphPatch) -> dict[str, Any]:
+    from .ir.graph_patch import GraphPatchService
+
+    result = GraphPatchService.apply(db, ws, patch_payload)
+    return {
+        "workspace": result.workspace.model_dump(mode="json"),
+        "idMap": result.id_map,
+        "impactPreview": result.impact_preview,
+    }
 
 
 def run_diagnosis(db: Session, ws: models.Workspace, scope: dict[str, Any] | None = None) -> dict[str, Any]:
-    existing = (
-        db.query(models.Issue)
-        .filter(models.Issue.workspace_id == ws.id, models.Issue.status == "open")
-        .all()
-    )
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
     existing_keys = {
         (
-            i.title.strip(),
-            tuple(sorted(i.related_node_ids or [])),
-            i.category,
-            i.severity,
+            issue.category.value,
+            tuple(sorted(issue.relatedNodeIds)),
+            issue.suggestedProjection.value,
+            issue.title.strip(),
         )
-        for i in existing
+        for issue in ir.issues.values()
+        if issue.status == IssueStatus.OPEN
     }
 
-    created: list[str] = []
-    for di in run_deterministic_diagnosis(ws):
-        if not _diagnostic_matches_scope(ws, di, scope):
+    add_issues: list[dict[str, Any]] = []
+    raw_issue_ids: list[str] = []
+    for diagnostic in run_deterministic_diagnosis(ir):
+        if not _diagnostic_matches_scope(ir, diagnostic.related_node_ids, scope):
             continue
-        key = (di.title.strip(), tuple(sorted(di.related_node_ids or [])), di.category, di.severity)
+        key = (
+            diagnostic.category.value,
+            tuple(sorted(diagnostic.related_node_ids)),
+            diagnostic.suggested_projection.value,
+            diagnostic.title.strip(),
+        )
         if key in existing_keys:
             continue
-        issue_id = _new_id("gap")
-        payload = di.as_payload()
-        db.add(
-            models.Issue(
-                id=issue_id,
-                workspace_id=ws.id,
-                title=payload["title"],
-                description=payload.get("description", ""),
-                severity=payload.get("severity", "medium"),
-                category=payload.get("category", "missing"),
-                related_node_ids=payload.get("relatedNodeIds", []),
-                suggested_projection=payload.get("suggestedProjection", "goal"),
-                suggested_action=payload.get("suggestedAction", ""),
-                status=payload.get("status", "open"),
-                source=payload.get("source", {"type": "system"}),
-            )
-        )
-        created.append(issue_id)
+        raw_issue_id = _new_id("gap")
+        raw_issue_ids.append(raw_issue_id)
+        add_issues.append({"id": raw_issue_id, **diagnostic.as_payload()})
         existing_keys.add(key)
 
-    if created:
-        _append_operation(ws, kind="diagnose", payload={"createdIssueIds": created})
-    _touch_workspace(ws)
-    return {"createdIssueIds": created}
+    if not add_issues:
+        return {"createdIssueIds": [], "workspace": ir.model_dump(mode="json"), "idMap": {}}
+
+    result = apply_graph_patch(db, ws, {"addIssues": add_issues})
+    return {
+        "createdIssueIds": [result["idMap"].get(raw_id, raw_id) for raw_id in raw_issue_ids],
+        "workspace": result["workspace"],
+        "idMap": result["idMap"],
+    }
 
 
-def apply_graph_patch(db: Session, ws: models.Workspace, patch: dict[str, Any]) -> None:
-    GraphPatchService.apply(db, ws, patch)
+def create_issue(db: Session, ws: models.Workspace, payload: dict[str, Any]) -> dict[str, Any]:
+    raw_issue_id = str(payload.get("id") or _new_id("issue"))
+    result = apply_graph_patch(db, ws, {"addIssues": [{"id": raw_issue_id, **payload}]})
+    return {
+        "issueId": result["idMap"].get(raw_issue_id, raw_issue_id),
+        "workspace": result["workspace"],
+        "idMap": result["idMap"],
+    }
 
 
-def create_issue(db: Session, ws: models.Workspace, payload: dict[str, Any]) -> str:
-    issue_id = payload.get("id") or _new_id("issue")
-    exists = db.get(models.Issue, issue_id)
-    if exists:
-        raise HTTPException(status_code=409, detail=f"Issue `{issue_id}` 已存在")
-    related_node_ids = _validate_related_node_ids(db, ws.id, payload.get("relatedNodeIds"))
-
-    issue = models.Issue(
-        id=issue_id,
-        workspace_id=ws.id,
-        title=payload["title"],
-        description=payload.get("description", ""),
-        severity=payload.get("severity", "medium"),
-        category=payload.get("category", "missing"),
-        related_node_ids=related_node_ids,
-        suggested_projection=payload.get("suggestedProjection", "goal"),
-        suggested_action=payload.get("suggestedAction", ""),
-        status=payload.get("status", "open"),
-        source=payload.get("source", {"type": "system"}),
-    )
-    db.add(issue)
-    _touch_workspace(ws)
-    return issue_id
-
-
-def create_slot_for_issue(db: Session, ws: models.Workspace, issue_id: str) -> str:
-    issue = db.get(models.Issue, issue_id)
-    if not issue or issue.workspace_id != ws.id:
+def create_slot_for_issue(db: Session, ws: models.Workspace, issue_id: str) -> dict[str, Any]:
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+    issue = ir.issues.get(issue_id)
+    if not issue:
         raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
 
     hint = f"issue:{issue.id}"
-    existing = (
-        db.query(models.Slot)
-        .filter(models.Slot.workspace_id == ws.id)
-        .all()
-    )
-    for s in existing:
-        prompts = (s.context or {}).get("promptHints") or []
-        if hint in prompts:
-            return s.id
+    for slot in ir.slots.values():
+        if hint in slot.context.promptHints:
+            return {"slotId": slot.id, "workspace": ir.model_dump(mode="json"), "idMap": {}}
 
-    owner_node_id = issue.related_node_ids[0] if issue.related_node_ids else next(iter({n.id for n in ws.nodes}), None)
+    owner_node_id = issue.relatedNodeIds[0] if issue.relatedNodeIds else next(iter(ir.nodes.keys()), None)
     if not owner_node_id:
         raise HTTPException(status_code=400, detail="当前工作台没有可关联节点")
 
-    owner_projection = issue.suggested_projection or "goal"
-
-    expected: list[str]
-    if issue.category in {"flow_gap", "rule_gap"}:
-        expected = ["flow_step", "rule", "state_transition"]
-    elif issue.category == "data_gap":
-        expected = ["business_object", "field", "state_machine", "state_transition"]
-    elif issue.category == "ui_gap":
-        expected = ["screen", "ui_component"]
-    else:
-        expected = ["task", "flow_step", "rule", "ui_component"]
-
-    slot_id = _new_id("slot")
-    db.add(
-        models.Slot(
-            id=slot_id,
-            workspace_id=ws.id,
-            owner_node_id=owner_node_id,
-            owner_projection=owner_projection,
-            name=f"{issue.title} - 待补充",
-            description=issue.description,
-            expected_kinds=expected,
-            arity="many",
-            status="empty",
-            choice_group_id=None,
-            context={
-                "projectionHints": [owner_projection],
-                "relatedNodeIds": issue.related_node_ids,
-                "promptHints": [hint],
-            },
-        )
+    raw_slot_id = _new_id("slot")
+    result = apply_graph_patch(
+        db,
+        ws,
+        {
+            "addSlots": [
+                {
+                    "id": raw_slot_id,
+                    "ownerNodeId": owner_node_id,
+                    "ownerProjection": issue.suggestedProjection,
+                    "name": f"{issue.title} - 待补充",
+                    "description": issue.description,
+                    "expectedKinds": _expected_kinds_for_issue(issue.category),
+                    "arity": "many",
+                    "status": "empty",
+                    "context": {
+                        "projectionHints": [issue.suggestedProjection],
+                        "relatedNodeIds": issue.relatedNodeIds,
+                        "promptHints": [hint],
+                    },
+                }
+            ]
+        },
     )
-    _append_operation(ws, kind="create_slot_for_issue", payload={"issueId": issue.id, "slotId": slot_id})
-    _touch_workspace(ws)
-    return slot_id
+    return {
+        "slotId": result["idMap"].get(raw_slot_id, raw_slot_id),
+        "workspace": result["workspace"],
+        "idMap": result["idMap"],
+    }
 
 
-def add_choice_to_group(db: Session, ws: models.Workspace, choice_group_id: str, payload: dict[str, Any]) -> str:
-    group = db.get(models.ChoiceGroup, choice_group_id)
-    if not group or group.workspace_id != ws.id:
+def add_choice_to_group(db: Session, ws: models.Workspace, choice_group_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+    if choice_group_id not in ir.choiceGroups:
         raise HTTPException(status_code=404, detail=f"ChoiceGroup `{choice_group_id}` 不存在")
 
-    choice_id = payload.get("id") or _new_id("cand")
-    exists = db.get(models.Choice, choice_id)
-    if exists:
-        raise HTTPException(status_code=409, detail=f"Choice `{choice_id}` 已存在")
-
-    choice = models.Choice(
-        id=choice_id,
-        workspace_id=ws.id,
-        choice_group_id=choice_group_id,
-        title=payload["title"],
-        rationale=payload.get("rationale", ""),
-        patch=payload.get("patch") or {},
-        proposed_node_ids=payload.get("proposedNodeIds", []),
-        proposed_link_ids=payload.get("proposedLinkIds", []),
-        impact_preview=payload.get("impactPreview", {}),
-        status=payload.get("status", "candidate"),
-    )
-    db.add(choice)
-    _touch_workspace(ws)
-    return choice_id
-
-
-def _touch_workspace(ws: models.Workspace) -> None:
-    ws.updated_at = datetime.utcnow()
-    audit = dict(ws.audit or {})
-    audit["updatedAt"] = now_iso()
-    ws.audit = audit
-
-
-def _append_operation(ws: models.Workspace, kind: str, payload: dict[str, Any]) -> None:
-    append_operation(
+    raw_choice_id = str(payload.get("id") or _new_id("cand"))
+    result = apply_graph_patch(
+        db,
         ws,
-        actionType=kind,
-        targetIds=[],
-        actor={"type": "system"},
-        summary=kind,
-        details=payload,
+        {
+            "updateChoiceGroups": [
+                {
+                    "id": choice_group_id,
+                    "choices": [
+                        {
+                            "id": raw_choice_id,
+                            "title": payload["title"],
+                            "rationale": payload.get("rationale"),
+                            "patch": payload.get("patch"),
+                            "impactPreview": payload.get("impactPreview"),
+                            "status": payload.get("status"),
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    return {
+        "choiceId": result["idMap"].get(raw_choice_id, raw_choice_id),
+        "workspace": result["workspace"],
+        "idMap": result["idMap"],
+    }
+
+
+def accept_choice(db: Session, ws: models.Workspace, choice_id: str) -> dict[str, Any]:
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+    group = _find_choice_group_by_choice_id(ir, choice_id)
+    choice = next(item for item in group.choices if item.id == choice_id)
+    slot = ir.slots[group.slotId]
+
+    group_choice_updates = []
+    for item in group.choices:
+        if item.id == choice_id:
+            next_status = ChoiceStatus.SELECTED
+        elif item.status == ChoiceStatus.CANDIDATE:
+            next_status = ChoiceStatus.REJECTED
+        else:
+            next_status = item.status
+        group_choice_updates.append({"id": item.id, "status": next_status.value})
+
+    base_patch = choice.patch.model_dump(mode="json")
+    meta_patch = {
+        "updateChoiceGroups": [
+            {
+                "id": group.id,
+                "selectedChoiceIds": [choice.id],
+                "status": "selected",
+                "choices": group_choice_updates,
+            }
+        ],
+        "updateSlots": [{"id": slot.id, "status": "filled"}],
+        "resolveIssueIds": sorted(set(base_patch.get("resolveIssueIds") or []) | set(choice.impactPreview.resolvedIssues or [])),
+    }
+    return apply_graph_patch(db, ws, merge_graph_patches(base_patch, meta_patch))
+
+
+def reject_choice(db: Session, ws: models.Workspace, choice_id: str) -> dict[str, Any]:
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+    group = _find_choice_group_by_choice_id(ir, choice_id)
+    remaining = [item for item in group.choices if item.id != choice_id and item.status == ChoiceStatus.CANDIDATE]
+    update_group: dict[str, Any] = {
+        "id": group.id,
+        "choices": [{"id": choice_id, "status": ChoiceStatus.REJECTED.value}],
+    }
+    if not remaining:
+        update_group["status"] = "dismissed"
+    return apply_graph_patch(db, ws, {"updateChoiceGroups": [update_group]})
+
+
+def list_proposals(db: Session, ws: models.Workspace) -> list[dict[str, Any]]:
+    rows = (
+        db.query(models.Proposal)
+        .filter(models.Proposal.workspace_id == ws.id)
+        .order_by(models.Proposal.created_at.desc())
+        .all()
+    )
+    return [_proposal_model_from_row(row).model_dump(mode="json") for row in rows]
+
+
+def get_proposal_or_404(db: Session, workspace_id: str, proposal_id: str) -> models.Proposal:
+    proposal = (
+        db.query(models.Proposal)
+        .filter(models.Proposal.workspace_id == workspace_id, models.Proposal.id == proposal_id)
+        .first()
+    )
+    if not proposal:
+        raise HTTPException(status_code=404, detail=f"Proposal `{proposal_id}` 不存在")
+    return proposal
+
+
+def accept_proposal(db: Session, ws: models.Workspace, proposal_id: str) -> dict[str, Any]:
+    proposal = get_proposal_or_404(db, ws.id, proposal_id)
+    if proposal.status == ProposalStatus.REJECTED.value:
+        raise HTTPException(status_code=400, detail="已拒绝的 Proposal 不能直接采纳")
+
+    apply_graph_patch(db, ws, proposal.patch or {})
+    proposal = get_proposal_or_404(db, ws.id, proposal_id)
+    proposal.status = ProposalStatus.ACCEPTED.value
+    ws.updated_at = datetime.utcnow()
+    db.flush()
+    db.refresh(ws)
+    return {"proposalId": proposal_id, "workspace": serialize_workspace(ws)}
+
+
+def reject_proposal(db: Session, ws: models.Workspace, proposal_id: str) -> dict[str, Any]:
+    proposal = get_proposal_or_404(db, ws.id, proposal_id)
+    proposal.status = ProposalStatus.REJECTED.value
+    ws.updated_at = datetime.utcnow()
+    db.flush()
+    db.refresh(ws)
+    return {"proposalId": proposal_id, "workspace": serialize_workspace(ws)}
+
+
+def convert_proposal_to_choice(db: Session, ws: models.Workspace, proposal_id: str) -> dict[str, Any]:
+    proposal_row = get_proposal_or_404(db, ws.id, proposal_id)
+    proposal = _proposal_model_from_row(proposal_row)
+    ir = validate_ir(serialize_workspace(ws), status_code=500)
+
+    slot_id = _resolve_slot_id_for_proposal(ir, proposal)
+    if not slot_id:
+        raise HTTPException(status_code=400, detail="当前 Proposal 无法定位到目标 Slot，不能转换为 Choice")
+    if slot_id not in ir.slots:
+        raise HTTPException(status_code=404, detail=f"Proposal 目标 Slot `{slot_id}` 不存在")
+
+    group = _find_choice_group_by_slot_id(ir, slot_id)
+    patch_payload: dict[str, Any] = {"updateSlots": [{"id": slot_id, "status": "candidate_ready"}]}
+    raw_choice_id = _new_id("choice")
+
+    choice_payload = {
+        "id": raw_choice_id,
+        "title": proposal.title,
+        "rationale": proposal.summary,
+        "patch": proposal.patch.model_dump(mode="json"),
+        "impactPreview": proposal.impactPreview.model_dump(mode="json"),
+        "status": "candidate",
+    }
+
+    if group is None:
+        raw_group_id = _new_id("cg")
+        patch_payload["addChoiceGroups"] = [
+            {
+                "id": raw_group_id,
+                "slotId": slot_id,
+                "selectionMode": SelectionMode.SINGLE.value,
+                "status": "open",
+                "selectedChoiceIds": [],
+                "choices": [choice_payload],
+            }
+        ]
+    else:
+        patch_payload["updateChoiceGroups"] = [{"id": group.id, "status": "open", "choices": [choice_payload]}]
+
+    result = apply_graph_patch(db, ws, patch_payload)
+    proposal_row = get_proposal_or_404(db, ws.id, proposal_id)
+    proposal_row.status = ProposalStatus.ARCHIVED.value
+    ws.updated_at = datetime.utcnow()
+    db.flush()
+    db.refresh(ws)
+    payload = {"proposalId": proposal_id, "choiceId": result["idMap"].get(raw_choice_id, raw_choice_id), "workspace": serialize_workspace(ws)}
+    if "addChoiceGroups" in patch_payload:
+        raw_group_id = patch_payload["addChoiceGroups"][0]["id"]
+        payload["choiceGroupId"] = result["idMap"].get(raw_group_id, raw_group_id)
+    else:
+        payload["choiceGroupId"] = group.id
+    return payload
+
+
+def merge_graph_patches(*patches: dict[str, Any]) -> dict[str, Any]:
+    merged = GraphPatch().model_dump(mode="json")
+    for patch_payload in patches:
+        patch = validate_graph_patch(patch_payload, status_code=400).model_dump(mode="json")
+        for key, value in patch.items():
+            if isinstance(value, list):
+                merged[key].extend(value)
+    return merged
+
+
+def _expected_kinds_for_issue(category: IssueCategory) -> list[str]:
+    if category in {IssueCategory.FLOW_GAP, IssueCategory.RULE_GAP}:
+        return ["flow_step", "rule", "state_transition"]
+    if category == IssueCategory.DATA_GAP:
+        return ["business_object", "field", "state_machine", "state_transition"]
+    if category == IssueCategory.UI_GAP:
+        return ["screen", "ui_component"]
+    return ["task", "flow_step", "rule", "ui_component"]
+
+
+def _find_choice_group_by_choice_id(ir: RequirementSpaceIR, choice_id: str) -> ChoiceGroup:
+    for group in ir.choiceGroups.values():
+        if any(choice.id == choice_id for choice in group.choices):
+            return group
+    raise HTTPException(status_code=404, detail=f"Choice `{choice_id}` 不存在")
+
+
+def _find_choice_group_by_slot_id(ir: RequirementSpaceIR, slot_id: str) -> ChoiceGroup | None:
+    for group in ir.choiceGroups.values():
+        if group.slotId == slot_id:
+            return group
+    return None
+
+
+def _resolve_slot_id_for_proposal(ir: RequirementSpaceIR, proposal: Proposal) -> str | None:
+    scope = proposal.scope or {}
+    slot_id = scope.get("slotId")
+    if isinstance(slot_id, str) and slot_id:
+        return slot_id
+    choice_group_id = scope.get("choiceGroupId")
+    if isinstance(choice_group_id, str) and choice_group_id and choice_group_id in ir.choiceGroups:
+        return ir.choiceGroups[choice_group_id].slotId
+    return None
+
+
+def _diagnostic_matches_scope(ir: RequirementSpaceIR, related_node_ids: list[str], scope: dict[str, Any] | None) -> bool:
+    if not scope:
+        return True
+
+    node_id = scope.get("nodeId")
+    if node_id and node_id not in related_node_ids:
+        return False
+
+    projection = scope.get("projection")
+    if not projection or not related_node_ids:
+        return True
+
+    allowed_kinds = {
+        "goal": {"goal", "capability", "task"},
+        "role": {"actor", "task"},
+        "system": {"flow", "flow_step", "rule", "state_transition"},
+        "data": {"business_object", "field", "state_machine", "object_state", "state_transition"},
+        "ui": {"screen", "ui_component"},
+    }.get(str(projection), set())
+    return any(node_id in ir.nodes and ir.nodes[node_id].kind.value in allowed_kinds for node_id in related_node_ids)
+
+
+def _node_row_from_model(workspace_id: str, node: RequirementNode) -> models.Node:
+    dumped = node.model_dump(mode="json")
+    return models.Node(
+        workspace_id=workspace_id,
+        id=node.id,
+        kind=node.kind.value,
+        title=node.title,
+        description=node.description,
+        status=node.status.value,
+        confidence=node.confidence,
+        scope_status=node.scopeStatus.value if node.scopeStatus else None,
+        source=node.source.model_dump(mode="json"),
+        attributes={key: value for key, value in dumped.items() if key not in NODE_BASE_FIELDS},
+    )
+
+
+def _link_row_from_model(workspace_id: str, link: RequirementLink) -> models.Link:
+    return models.Link(
+        workspace_id=workspace_id,
+        id=link.id,
+        source_id=link.sourceId,
+        target_id=link.targetId,
+        type=link.type.value,
+        label=link.label,
+        status=link.status.value,
+        source=link.source.model_dump(mode="json"),
+    )
+
+
+def _slot_row_from_model(workspace_id: str, slot: RequirementSlot) -> models.Slot:
+    return models.Slot(
+        workspace_id=workspace_id,
+        id=slot.id,
+        owner_node_id=slot.ownerNodeId,
+        owner_projection=slot.ownerProjection.value,
+        name=slot.name,
+        description=slot.description,
+        expected_kinds=[kind.value for kind in slot.expectedKinds],
+        arity=slot.arity.value,
+        status=slot.status.value,
+        context=slot.context.model_dump(mode="json"),
+    )
+
+
+def _choice_group_row_from_model(workspace_id: str, group: ChoiceGroup) -> models.ChoiceGroup:
+    return models.ChoiceGroup(
+        workspace_id=workspace_id,
+        id=group.id,
+        slot_id=group.slotId,
+        selected_choice_ids=group.selectedChoiceIds,
+        selection_mode=group.selectionMode.value,
+        status=group.status.value,
+    )
+
+
+def _choice_rows_from_group(workspace_id: str, group: ChoiceGroup) -> list[models.Choice]:
+    return [
+        models.Choice(
+            workspace_id=workspace_id,
+            id=choice.id,
+            choice_group_id=group.id,
+            title=choice.title,
+            rationale=choice.rationale,
+            patch=choice.patch.model_dump(mode="json"),
+            impact_preview=choice.impactPreview.model_dump(mode="json"),
+            status=choice.status.value,
+        )
+        for choice in group.choices
+    ]
+
+
+def _issue_row_from_model(workspace_id: str, issue: Issue) -> models.Issue:
+    return models.Issue(
+        workspace_id=workspace_id,
+        id=issue.id,
+        title=issue.title,
+        description=issue.description,
+        severity=issue.severity.value,
+        category=issue.category.value,
+        related_node_ids=issue.relatedNodeIds,
+        suggested_projection=issue.suggestedProjection.value,
+        suggested_action=issue.suggestedAction,
+        status=issue.status.value,
+        source=issue.source.model_dump(mode="json"),
+    )
+
+
+def _proposal_row_from_model(workspace_id: str, proposal: Proposal) -> models.Proposal:
+    created_at = datetime.fromisoformat(proposal.createdAt.replace("Z", "+00:00"))
+    return models.Proposal(
+        workspace_id=workspace_id,
+        id=proposal.id,
+        title=proposal.title,
+        summary=proposal.summary,
+        scope=proposal.scope,
+        patch=proposal.patch.model_dump(mode="json"),
+        impact_preview=proposal.impactPreview.model_dump(mode="json"),
+        status=proposal.status.value,
+        created_at=created_at,
+        source=proposal.source.model_dump(mode="json"),
+    )
+
+
+def _node_model_from_row(row: models.Node) -> RequirementNode:
+    return NODE_ADAPTER.validate_python(
+        {
+            "id": row.id,
+            "kind": row.kind,
+            "title": row.title,
+            "description": row.description or "",
+            "status": row.status,
+            "confidence": row.confidence,
+            "scopeStatus": row.scope_status,
+            "source": row.source or {"type": "system"},
+            **(row.attributes or {}),
+        }
+    )
+
+
+def _link_model_from_row(row: models.Link) -> RequirementLink:
+    return RequirementLink.model_validate(
+        {
+            "id": row.id,
+            "sourceId": row.source_id,
+            "targetId": row.target_id,
+            "type": row.type,
+            "label": row.label,
+            "status": row.status,
+            "source": row.source or {"type": "system"},
+        }
+    )
+
+
+def _slot_model_from_row(row: models.Slot) -> RequirementSlot:
+    return RequirementSlot.model_validate(
+        {
+            "id": row.id,
+            "ownerNodeId": row.owner_node_id,
+            "ownerProjection": row.owner_projection,
+            "name": row.name,
+            "description": row.description or "",
+            "expectedKinds": row.expected_kinds or [],
+            "arity": row.arity,
+            "status": row.status,
+            "context": row.context or {},
+        }
+    )
+
+
+def _choice_group_model_from_row(row: models.ChoiceGroup) -> ChoiceGroup:
+    return ChoiceGroup.model_validate(
+        {
+            "id": row.id,
+            "slotId": row.slot_id,
+            "choices": [
+                {
+                    "id": choice.id,
+                    "choiceGroupId": row.id,
+                    "title": choice.title,
+                    "rationale": choice.rationale or "",
+                    "patch": choice.patch or {},
+                    "impactPreview": choice.impact_preview or {},
+                    "status": choice.status,
+                }
+                for choice in sorted(row.choices, key=lambda item: item.row_id)
+            ],
+            "selectedChoiceIds": row.selected_choice_ids or [],
+            "selectionMode": row.selection_mode,
+            "status": row.status,
+        }
+    )
+
+
+def _issue_model_from_row(row: models.Issue) -> Issue:
+    return Issue.model_validate(
+        {
+            "id": row.id,
+            "title": row.title,
+            "description": row.description or "",
+            "severity": row.severity,
+            "category": row.category,
+            "relatedNodeIds": row.related_node_ids or [],
+            "suggestedProjection": row.suggested_projection,
+            "suggestedAction": row.suggested_action or "",
+            "status": row.status,
+            "source": row.source or {"type": "system"},
+        }
+    )
+
+
+def _proposal_model_from_row(row: models.Proposal) -> Proposal:
+    return Proposal.model_validate(
+        {
+            "id": row.id,
+            "workspaceId": row.workspace_id,
+            "title": row.title,
+            "summary": row.summary or "",
+            "scope": row.scope or {},
+            "patch": row.patch or {},
+            "impactPreview": row.impact_preview or {},
+            "status": row.status,
+            "createdAt": row.created_at.isoformat(),
+            "source": row.source or {"type": "system"},
+        }
     )

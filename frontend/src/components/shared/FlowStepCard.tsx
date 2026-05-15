@@ -12,15 +12,17 @@ export interface FlowStepCardProps {
   rules?: string[];
   stateChanges?: string[];
   relatedPages?: string[];
+  relatedIssueCount?: number;
+  relatedChoiceCount?: number;
   nextSteps?: string[];
   exceptionSteps?: string[];
-  slots?: { id: string; title: string; candidatesCount: number }[];
+  slots?: { id: string; title: string; choiceCount: number; status?: string }[];
   onClick?: () => void;
   onSlotClick?: (slotId: string) => void;
   active?: boolean;
 }
 
-export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules, relatedPages, nextSteps, exceptionSteps, slots, onClick, onSlotClick, active }: FlowStepCardProps) {
+export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules, stateChanges, relatedPages, relatedIssueCount, relatedChoiceCount, nextSteps, exceptionSteps, slots, onClick, onSlotClick, active }: FlowStepCardProps) {
   return (
     <div 
       onClick={onClick}
@@ -55,7 +57,13 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
         {rules && rules.length > 0 && (
           <div className="flex gap-2 items-start">
             <span className="text-amber-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">触发规则</span>
-            <span className="text-amber-800 bg-amber-50 rounded px-1 -mx-1">{rules[0]}</span>
+            <span className="text-amber-800 bg-amber-50 rounded px-1 -mx-1">{rules.join(", ")}</span>
+          </div>
+        )}
+        {stateChanges && stateChanges.length > 0 && (
+          <div className="flex gap-2 items-start">
+            <span className="text-indigo-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">状态</span>
+            <span className="text-indigo-800 bg-indigo-50 rounded px-1 -mx-1">{stateChanges.join(", ")}</span>
           </div>
         )}
       </div>
@@ -78,12 +86,27 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
                 </span>
               </div>
               <div className="text-purple-600/80 pl-2.5">
-                {s.candidatesCount > 0 ? `${s.candidatesCount} 个候选方案` : '生成中...'}
+                {s.choiceCount > 0 ? `${s.choiceCount} 个 Choice` : (s as any).status === 'empty' ? '点击展开 Slot' : '生成中...'}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {(relatedIssueCount || relatedChoiceCount) ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(relatedIssueCount || 0) > 0 && (
+            <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">
+              {relatedIssueCount} 个关联 Issue
+            </span>
+          )}
+          {(relatedChoiceCount || 0) > 0 && (
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+              {relatedChoiceCount} 个关联 Choice
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {relatedPages && relatedPages.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-100">

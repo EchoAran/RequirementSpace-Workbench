@@ -1,36 +1,44 @@
 import { useState } from 'react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
-import { GapCard } from '@/components/shared/GapCard';
+import { IssueCard } from '@/components/shared/IssueCard';
 import { useNavigate } from 'react-router-dom';
-import { buildSystemProjection, projectionPath } from '@/domain/ir/selectors';
+import { buildStepDetail, buildSystemProjection, projectionPath } from '@/domain/ir/selectors';
 import { 
   useWorkspaceStore, 
-  selectFlowSteps, 
   selectIssues, 
-  selectCandidates, 
   selectSelectedObject 
 } from '@/store/useWorkspaceStore';
 
 export function HowItWorks() {
   const { 
     highlightTarget,
-    setSelectedObject, setHighlightTarget, generateCandidate, deferObject,
+    setSelectedObject,
+    setHighlightTarget,
+    createSlotFromIssue,
+    expandSlot,
+    updateIssueAttributes,
+    openSlot,
   } = useWorkspaceStore();
   const navigate = useNavigate();
   
   const ir = useWorkspaceStore(state => state.ir);
-  const flowSteps = useWorkspaceStore(selectFlowSteps);
-  const gaps = useWorkspaceStore(selectIssues);
-  const candidates = useWorkspaceStore(selectCandidates);
+  const issues = useWorkspaceStore(selectIssues);
   const selectedObject = useWorkspaceStore(selectSelectedObject);
   const system = buildSystemProjection(ir);
-  const [showAllGaps, setShowAllGaps] = useState(false);
+  const [showAllIssues, setShowAllIssues] = useState(false);
   
-  const abnormalGaps = system.abnormalIssues.length ? system.abnormalIssues : gaps.filter(g => g.category === 'flow_gap' || g.category === 'rule_gap');
+  const abnormalIssues = system.abnormalIssues.length ? system.abnormalIssues : issues.filter(g => g.category === 'flow_gap' || g.category === 'rule_gap');
 
-  const topGap = abnormalGaps.length > 0 ? abnormalGaps[0] : null;
+  const topIssue = abnormalIssues.length > 0 ? abnormalIssues[0] : null;
   const businessObjects = system.businessObjects.length ? system.businessObjects : Object.values(ir?.nodes || {}).filter((n: any) => n.kind === 'business_object');
+
+  const openIssueFlow = async (issueId: string) => {
+    const slotId = await createSlotFromIssue(issueId);
+    if (slotId) {
+      await expandSlot(slotId);
+    }
+  };
 
   const jumpToProjection = (projection: any) => {
     return navigate(projectionPath(projection));
@@ -52,44 +60,44 @@ export function HowItWorks() {
                 
                 {/* Unclosed path logic */}
                 <div className="flex items-center relative">
-                  {topGap ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg py-1.5 px-3 flex items-center gap-2 shadow-sm cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => setShowAllGaps(!showAllGaps)}>
-                       <div className="flex items-center justify-center p-0.5 font-bold text-amber-500 text-sm">
-                         ⚠️
+                  {topIssue ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg py-1.5 px-3 flex items-center gap-2 shadow-sm cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => setShowAllIssues(!showAllIssues)}>
+                       <div className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">
+                         !
                        </div>
                        <div>
                           <div className="flex items-center gap-1.5">
-                             <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold whitespace-nowrap">{topGap.title}</span>
-                             <span className="text-amber-900 text-xs font-bold leading-none line-clamp-1 max-w-[150px]">{topGap.description}</span>
+                             <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold whitespace-nowrap">{topIssue.title}</span>
+                             <span className="text-amber-900 text-xs font-bold leading-none line-clamp-1 max-w-[150px]">{topIssue.description}</span>
                           </div>
                        </div>
                        <div className="ml-1 pl-2 border-l border-amber-200 text-amber-600 text-[10px] font-bold flex items-center leading-none">
-                         {showAllGaps ? '收起' : `全部 (${abnormalGaps.length}) →`}
+                         {showAllIssues ? '收起' : `全部 (${abnormalIssues.length}) →`}
                        </div>
                     </div>
                   ) : (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 px-3 flex items-center gap-2 shadow-sm">
-                      <div className="flex items-center justify-center p-0.5 font-bold text-emerald-500 text-sm">✓</div>
-                      <div className="text-emerald-900 text-xs font-bold leading-none">暂无流程缺口</div>
+                      <div className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">OK</div>
+                      <div className="text-emerald-900 text-xs font-bold leading-none">暂无流程 Issue</div>
                     </div>
                   )}
 
                   {/* Dropdown Menu */}
-                  {showAllGaps && (
+                  {showAllIssues && (
                     <>
-                      <div className="fixed inset-0 z-30" onClick={() => setShowAllGaps(false)}></div>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowAllIssues(false)}></div>
                       <div className="absolute top-[110%] right-0 mt-1 w-[800px] max-w-[calc(100vw-200px)] bg-white rounded-xl shadow-xl border border-slate-200 z-40 flex flex-col overflow-hidden max-h-[60vh] animate-in slide-in-from-top-2 duration-200 pointer-events-auto">
                         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
                           <div>
                             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-600 shadow-sm text-xs">⚠️</span>
-                              未闭环路径诊断细节 
+                              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-600 shadow-sm text-xs">!</span>
+                              未闭环路径诊断细节
                               <span className="text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded-full text-slate-600 shadow-sm">
-                                {abnormalGaps.length > 0 ? abnormalGaps.length : 1} 项
+                                {abnormalIssues.length > 0 ? abnormalIssues.length : 1} 项
                               </span>
                             </h3>
                           </div>
-                          <button onClick={() => setShowAllGaps(false)} className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all">
+                          <button onClick={() => setShowAllIssues(false)} className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all">
                             <span className="sr-only">Close</span>
                             <span className="text-sm font-bold">&times;</span>
                           </button>
@@ -97,23 +105,23 @@ export function HowItWorks() {
                         
                         <div className="p-4 overflow-y-auto bg-slate-50/30 flex-1">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {abnormalGaps.map(gap => (
-                              <GapCard 
-                                key={gap.id}
-                                gap={gap as any}
+                            {abnormalIssues.map(issue => (
+                              <IssueCard
+                                key={issue.id}
+                                issue={issue as any}
                                 onClick={() => {
-                                  setSelectedObject(gap as any);
-                                  if (gap.relatedNodeIds[0]) setHighlightTarget(gap.relatedNodeIds[0]);
-                                  if ((gap as any).suggestedProjection) jumpToProjection((gap as any).suggestedProjection);
-                                  setShowAllGaps(false);
+                                  setSelectedObject(issue as any);
+                                  if (issue.relatedNodeIds[0]) setHighlightTarget(issue.relatedNodeIds[0]);
+                                  if ((issue as any).suggestedProjection) jumpToProjection((issue as any).suggestedProjection);
+                                  setShowAllIssues(false);
                                 }}
-                                onGenerate={() => { generateCandidate(gap.id); setShowAllGaps(false); }}
-                                onDefer={() => { deferObject(gap.id); setShowAllGaps(false); }}
+                                onCreateSlot={() => { void openIssueFlow(issue.id); setShowAllIssues(false); }}
+                                onIgnore={() => { void updateIssueAttributes(issue.id, { status: 'ignored' }); setShowAllIssues(false); }}
                               />
                             ))}
                             
-                            {abnormalGaps.length === 0 && (
-                              <div className="text-xs text-slate-500 italic">暂无异常/规则缺口。</div>
+                            {abnormalIssues.length === 0 && (
+                              <div className="text-xs text-slate-500 italic">暂无异常/规则 Issue。</div>
                             )}
                           </div>
                         </div>
@@ -134,6 +142,7 @@ export function HowItWorks() {
                         const nextSteps = system.getNextStepTitles(step.id);
                         const excSteps = system.getExceptionStepTitles(step.id);
                         const linkedSlots = system.getStepSlots(step.id);
+                        const stepDetail = buildStepDetail(ir, step.id);
                         
                         return (
                           <div key={step.id} className="relative z-10 w-full" onClick={() => setSelectedObject(step)}>
@@ -147,18 +156,20 @@ export function HowItWorks() {
                                 type={step.stepType}
                                 actor={lane}
                                 status={step.status}
-                                inputs={step.input}
-                                outputs={step.output}
+                                inputs={stepDetail.inputs}
+                                outputs={stepDetail.outputs}
+                                rules={stepDetail.rules}
+                                stateChanges={stepDetail.stateChanges}
+                                relatedPages={stepDetail.relatedPages}
+                                relatedIssueCount={stepDetail.relatedIssueIds.length}
+                                relatedChoiceCount={stepDetail.relatedChoiceIds.length}
                                 nextSteps={nextSteps.length > 0 ? nextSteps : undefined}
                                 exceptionSteps={excSteps.length > 0 ? excSteps : undefined}
                                 slots={linkedSlots}
                                 active={false}
                                 onClick={() => setSelectedObject(step)}
                                 onSlotClick={(slotId) => {
-                                  if (ir?.slots[slotId] && ir.slots[slotId].choiceGroupId) {
-                                    const cg = ir.choiceGroups[ir.slots[slotId].choiceGroupId];
-                                    if (cg) setSelectedObject(cg);
-                                  }
+                                  openSlot(slotId);
                                 }}
                               />
                             </div>
@@ -188,6 +199,9 @@ export function HowItWorks() {
 
                 {businessObjects.map((obj: any) => {
                   const relatedSteps = system.getRelatedStepsForObject(obj.id) as any[];
+                  const stateChanges = relatedSteps
+                    .flatMap((step: any) => buildStepDetail(ir, step.id).stateChanges)
+                    .filter((value, index, array) => array.indexOf(value) === index);
 
                   return (
                     <div
@@ -219,6 +233,24 @@ export function HowItWorks() {
                               >
                                 {s.title}
                               </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">状态变化</div>
+                        {stateChanges.length === 0 ? (
+                          <div className="text-xs text-slate-500 italic">暂无显式状态迁移</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {stateChanges.map((item) => (
+                              <span
+                                key={item}
+                                className="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700"
+                              >
+                                {item}
+                              </span>
                             ))}
                           </div>
                         )}

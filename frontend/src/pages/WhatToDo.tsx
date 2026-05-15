@@ -5,29 +5,30 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { 
   useWorkspaceStore, 
   selectGoals, 
-  selectCapabilities, 
   selectTasks, 
   selectActors, 
-  selectIssues,
-  selectLinks
 } from '@/store/useWorkspaceStore';
-import { TaskNode } from '@/types';
-import { buildTaskFootprint, getTasksForCapability as selectTasksForCapability, selectPerformerTitle } from '@/domain/ir/selectors';
+import {
+  buildGoalBranchItems,
+  buildTaskFootprint,
+  getChildCapabilities,
+  getRootCapabilities,
+  getTasksForCapability as selectTasksForCapability,
+  selectPerformerTitle,
+} from '@/domain/ir/selectors';
 
 export function WhatToDo() {
   const { 
-    setSelectedObject, highlightTarget, selectedObject, ir
+    setSelectedObject, highlightTarget, selectedObject, ir, createSlotFromIssue, expandSlot, openSlot
   } = useWorkspaceStore();
   
   const goals = useWorkspaceStore(selectGoals);
-  const capabilities = useWorkspaceStore(selectCapabilities);
   const tasks = useWorkspaceStore(selectTasks);
   const actors = useWorkspaceStore(selectActors);
-  const gaps = useWorkspaceStore(selectIssues);
-  const links = useWorkspaceStore(selectLinks);
 
   const mainGoal = goals[0];
-  const rootCapabilities = capabilities.filter(c => !c.parentId);
+  const rootCapabilities = getRootCapabilities(ir as any) as any[];
+  const branchItems = buildGoalBranchItems(ir);
   
   const [expandedCaps, setExpandedCaps] = useState<Record<string, boolean>>({});
 
@@ -39,6 +40,11 @@ export function WhatToDo() {
   // Helper to get connected tasks for a capability
   const getTasksForCapability = (capId: string) => {
     return selectTasksForCapability(ir as any, capId) as any;
+  };
+
+  const handleIssueBranch = async (issueId: string) => {
+    const slotId = await createSlotFromIssue(issueId);
+    if (slotId) await expandSlot(slotId);
   };
 
   return (
@@ -114,7 +120,7 @@ export function WhatToDo() {
                   
                   <div className="space-y-4 pl-4 border-l-2 border-indigo-100 ml-2">
                     {rootCapabilities.map(cap => {
-                      const children = capabilities.filter(c => c.parentId === cap.id);
+                      const children = getChildCapabilities(ir as any, cap.id) as any[];
                       const capTasks = getTasksForCapability(cap.id);
                       return (
                         <div key={cap.id} className="relative">
@@ -209,7 +215,7 @@ export function WhatToDo() {
                          </div>
                          <div className="flex gap-2 text-[11px]">
                            <span className="text-slate-400 w-12 text-[10px] uppercase font-bold shrink-0">期望结果</span>
-                           <span className="text-slate-600 line-clamp-2">{t.result}</span>
+                          <span className="text-slate-600 line-clamp-2">{t.outcome || '待补充'}</span>
                          </div>
                        </div>
                        
@@ -231,6 +237,105 @@ export function WhatToDo() {
                      </div>
                    )})}
                  </div>
+              </section>
+
+              <section>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">关键业务分岔</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {branchItems.length === 0 && (
+                    <div className="bg-white rounded-2xl p-6 border border-dashed border-slate-200 text-xs text-slate-400 italic">
+                      当前没有需要在“要做什么”阶段处理的关键分岔。
+                    </div>
+                  )}
+                  {branchItems.map((item) => {
+                    if (item.kind === 'issue') {
+                      return (
+                        <div key={item.issue.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Issue</span>
+                            <span className="text-[10px] text-slate-400">{item.projection}</span>
+                          </div>
+                          <h4 className="mt-2 text-sm font-bold text-slate-800">{item.issue.title}</h4>
+                          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.issue.description}</p>
+                          <div className="mt-4 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleIssueBranch(item.issue.id)}
+                              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
+                            >
+                              创建 Slot
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedObject(item.issue)}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                              查看
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (item.kind === 'slot') {
+                      return (
+                        <div key={item.slot.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Slot</span>
+                            <span className="text-[10px] text-slate-400">{item.slot.status}</span>
+                          </div>
+                          <h4 className="mt-2 text-sm font-bold text-slate-800">{item.slot.name}</h4>
+                          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.slot.description || '待系统展开为可选方案'}</p>
+                          <div className="mt-4 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void expandSlot(item.slot.id)}
+                              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
+                            >
+                              展开 Slot
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openSlot(item.slot.id)}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                              查看
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={item.choiceGroup.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500">ChoiceGroup</span>
+                          <span className="text-[10px] text-slate-400">{item.choiceGroup.choices.length} 个 Choice</span>
+                        </div>
+                        <h4 className="mt-2 text-sm font-bold text-slate-800">
+                          {ir?.slots[item.choiceGroup.slotId]?.name || item.choiceGroup.id}
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-500 line-clamp-2">确认该分岔后，会同步更新目标、任务与后续流程细节。</p>
+                        <div className="mt-4 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedObject(item.choiceGroup)}
+                            className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
+                          >
+                            打开 ChoiceGroup
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openSlot(item.choiceGroup.slotId)}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                          >
+                            查看 Slot
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             </div>
 

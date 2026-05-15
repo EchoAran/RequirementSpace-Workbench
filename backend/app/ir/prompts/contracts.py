@@ -1,38 +1,36 @@
 from __future__ import annotations
 
-from typing import Any
+from pydantic import Field
 
-from pydantic import BaseModel, Field
+from ..schema import ChoiceGroup, Proposal, RequirementLink, RequirementNode, RequirementSlot, RequirementSpaceIR, StrictModel
 
 
-class InitializeWorkspaceInput(BaseModel):
+class InitializeWorkspaceInput(StrictModel):
     idea: str = Field(min_length=1)
-    schemaVersion: str = "0.2"
-    templateHints: list[str] = Field(default_factory=list)
 
 
-class InitializeWorkspaceOutput(BaseModel):
-    ir: dict[str, Any]
+class InitializeWorkspaceOutput(StrictModel):
+    ir: RequirementSpaceIR
 
 
-class ExpandSlotInput(BaseModel):
-    slot: dict[str, Any]
-    ownerNode: dict[str, Any]
-    relatedNodes: list[dict[str, Any]] = Field(default_factory=list)
-    relatedLinks: list[dict[str, Any]] = Field(default_factory=list)
+class ExpandSlotInput(StrictModel):
+    slot: RequirementSlot
+    ownerNode: RequirementNode
+    relatedNodes: list[RequirementNode] = Field(default_factory=list)
+    relatedLinks: list[RequirementLink] = Field(default_factory=list)
     projectionContext: str = "system"
 
 
-class ExpandSlotOutput(BaseModel):
-    choiceGroup: dict[str, Any]
+class ExpandSlotOutput(StrictModel):
+    choiceGroup: ChoiceGroup
 
 
-class RewriteInput(BaseModel):
+class RewriteInput(StrictModel):
     workspaceId: str
-    scope: dict[str, Any] = Field(default_factory=dict)
+    scope: dict[str, object] = Field(default_factory=dict)
     instruction: str = Field(min_length=1)
-    irSlice: dict[str, Any] = Field(default_factory=dict)
+    irSlice: dict[str, object] = Field(default_factory=dict)
 
 
-class RewriteOutput(BaseModel):
-    proposal: dict[str, Any]
+class RewriteOutput(StrictModel):
+    proposal: Proposal

@@ -27,7 +27,7 @@ export function Home() {
   };
 
   const renderStatusSticker = (p: any) => {
-    if (p.status === '待确认缺口') {
+    if (p.status === '待确认 Issue') {
       return (
         <span className="px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-xl border border-amber-200/60 uppercase tracking-widest flex items-center gap-1 shadow-sm">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -89,7 +89,7 @@ export function Home() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">可执行的产品定义</span>
           </h1>
           <p className="text-slate-500 text-lg sm:text-xl leading-relaxed max-w-3xl font-medium">
-            通过自然语言自动化分析需求、生成工作流、识别系统缺口并产出界面原型。
+            通过自然语言自动化分析需求、生成工作流、识别系统 Issue 并产出界面原型。
           </p>
         </div>
 

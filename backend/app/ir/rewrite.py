@@ -8,12 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .. import crud, models
-from .audit import append_operation
 from .graph_patch import GraphPatchService
-from .graph_patch import namespace_graph_patch_ids
-from .impact import compute_impact_preview
 from .llm import LLMProvider, load_llm_config
 from .prompts import RewriteInput, RewriteOutput, build_rewrite_messages
+from .validators import validate_proposal
 
 
 def _now_iso() -> str:
@@ -22,6 +20,15 @@ def _now_iso() -> str:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
+
+
+def _validate_rewrite_output(raw: dict[str, Any], *, workspace_id: str):
+    try:
+        output = RewriteOutput.model_validate(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"RewriteOutput schema 校验失败：{exc}") from exc
+    proposal = validate_proposal(output.proposal, status_code=502, expected_workspace_id=workspace_id)
+    return output, proposal
 
 
 def _build_ir_slice(ir: dict[str, Any], scope: dict[str, Any]) -> dict[str, Any]:
@@ -128,46 +135,52 @@ def rewrite_workspace(db: Session, ws: models.Workspace, scope: dict[str, Any], 
 
     try:
         raw = provider.complete_json(system=system, user=user)
-        out = RewriteOutput.model_validate(raw)
-        proposal = out.proposal
+        _out, proposal = _validate_rewrite_output(raw, workspace_id=ws.id)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"RewritePrompt 失败：{e}") from e
 
-    if not isinstance(proposal, dict):
-        raise HTTPException(status_code=502, detail="proposal 输出不合法")
-
-    patch = proposal.get("patch")
+    proposal_payload = proposal.model_dump(mode="json")
+    patch = proposal_payload.get("patch")
     if not isinstance(patch, dict):
         raise HTTPException(status_code=502, detail="proposal.patch 输出不合法")
-    patch = namespace_graph_patch_ids(ws.id, patch)
-    proposal["patch"] = patch
 
     try:
-        GraphPatchService.validate(db, ws, patch)
+        validation = GraphPatchService.validate(db, ws, patch)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"proposal.patch 校验失败：{e}") from e
 
-    impact = compute_impact_preview(db, ws, patch)
-    proposal.setdefault("impactPreview", impact)
+    proposal_payload["patch"] = validation.materialized_patch.model_dump(mode="json")
+    proposal_payload.setdefault("impactPreview", validation.impact_preview)
 
-    proposal_id = str(proposal.get("id") or _new_id("prop"))
-    proposal["id"] = proposal_id
-    proposal.setdefault("createdAt", _now_iso())
-    proposal.setdefault("scope", scope)
+    proposal_id = str(proposal_payload.get("id") or _new_id("prop"))
+    proposal_payload["id"] = proposal_id
+    proposal_payload["workspaceId"] = ws.id
+    proposal_payload.setdefault("createdAt", _now_iso())
+    proposal_payload.setdefault("scope", scope)
+    proposal_payload["status"] = "candidate"
+    proposal_payload.setdefault("source", {"type": "ai", "text": instruction})
 
-    proposals = dict(ws.proposals or {})
-    proposals[proposal_id] = proposal
-    ws.proposals = proposals
-
-    append_operation(
-        ws,
-        actionType="rewrite",
-        targetIds=[],
-        actor={"type": "ai"},
-        summary="局部改写生成提案",
-        details={"proposalId": proposal_id},
+    proposal_row = (
+        db.query(models.Proposal)
+        .filter(models.Proposal.workspace_id == ws.id, models.Proposal.id == proposal_id)
+        .first()
     )
+    if proposal_row is None:
+        proposal_row = models.Proposal(workspace_id=ws.id, id=proposal_id)
+        db.add(proposal_row)
+    proposal_row.title = proposal_payload["title"]
+    proposal_row.summary = proposal_payload.get("summary") or ""
+    proposal_row.scope = proposal_payload.get("scope") or {}
+    proposal_row.patch = proposal_payload["patch"]
+    proposal_row.impact_preview = proposal_payload.get("impactPreview") or {}
+    proposal_row.status = proposal_payload["status"]
+    proposal_row.created_at = datetime.fromisoformat(proposal_payload["createdAt"].replace("Z", "+00:00"))
+    proposal_row.source = proposal_payload["source"]
+    ws.updated_at = datetime.utcnow()
+    db.flush()
 
-    return {"proposalId": proposal_id, "proposal": proposal}
+    return {"proposalId": proposal_id, "proposal": proposal_payload}

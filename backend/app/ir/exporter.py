@@ -94,8 +94,8 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
             ]
             if performer_ids:
                 lines.append(f"  - 执行者：{', '.join(_title(nodes, pid) for pid in performer_ids)}")
-            if t.get("result"):
-                lines.append(f"  - 结果：{t.get('result')}")
+            if t.get("outcome"):
+                lines.append(f"  - 结果：{t.get('outcome')}")
     else:
         lines.append("- （未定义）")
     lines.append("")
@@ -179,6 +179,7 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
 
     business_objects = _by_kind(nodes, "business_object")
     fields = _by_kind(nodes, "field")
+    contains = _group_links(links, "contains")
     lines.append("## 业务对象与状态")
     if business_objects:
         for obj in business_objects:
@@ -187,7 +188,12 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
             if obj.get("description"):
                 lines.append(f"  - 说明：{obj.get('description')}")
             if oid:
-                obj_fields = [f for f in fields if f.get("objectId") == oid]
+                obj_field_ids = [
+                    l.get("targetId")
+                    for l in contains
+                    if l.get("sourceId") == oid and l.get("targetId") and nodes.get(l.get("targetId"), {}).get("kind") == "field"
+                ]
+                obj_fields = [fields_by_id for fields_by_id in fields if fields_by_id.get("id") in obj_field_ids]
                 if obj_fields:
                     lines.append("  - 字段：")
                     for f in obj_fields[:20]:
@@ -198,10 +204,8 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
 
     screens = _by_kind(nodes, "screen")
     ui_components = _by_kind(nodes, "ui_component")
-    displayed_on = _group_links(links, "displayed_on")
     reads = _group_links(links, "reads")
     accessible_by = _group_links(links, "accessible_by")
-    contains = _group_links(links, "contains")
 
     lines.append("## 页面与交互组件")
     if screens:
@@ -213,15 +217,13 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
             if sid:
                 actor_ids = [
                     l.get("targetId")
-                    for l in (accessible_by + reads)
+                    for l in accessible_by
                     if l.get("sourceId") == sid and l.get("targetId")
                 ]
                 if actor_ids:
                     lines.append(f"  - 可访问角色：{', '.join(_title(nodes, aid) for aid in actor_ids)}")
 
-                comp_ids = [l.get("sourceId") for l in displayed_on if l.get("targetId") == sid and l.get("sourceId")]
-                if not comp_ids:
-                    comp_ids = [l.get("targetId") for l in contains if l.get("sourceId") == sid and l.get("targetId")]
+                comp_ids = [l.get("targetId") for l in contains if l.get("sourceId") == sid and l.get("targetId")]
                 if comp_ids:
                     lines.append("  - 组件：")
                     for cid in comp_ids[:30]:
@@ -268,7 +270,7 @@ def export_markdown(ir_payload: dict[str, Any]) -> str:
         lines.append("- （无）")
     lines.append("")
 
-    lines.append("## 已采纳候选记录")
+    lines.append("## 已采纳 Choice 记录")
     selected_choices: list[dict[str, Any]] = []
     for cg in choice_groups.values():
         for c in cg.get("choices") or []:

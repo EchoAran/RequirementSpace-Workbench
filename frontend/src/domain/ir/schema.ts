@@ -29,34 +29,31 @@ export type ScopeStatus =
   | 'external_dependency';
 
 export type SourceRecord = {
-  type: 'user' | 'ai' | 'system';
-  text?: string;
-  refId?: string;
+  type: 'user' | 'ai' | 'system' | 'template' | 'imported';
+  text?: string | null;
+  refId?: string | null;
+  confidence?: number | null;
 };
 
 export type BaseNode = {
   id: string;
   kind: NodeKind;
   title: string;
-  description?: string;
+  description: string;
   status: NodeStatus;
-  confidence?: number;
-  scopeStatus?: ScopeStatus;
+  confidence?: number | null;
+  scopeStatus: ScopeStatus | null;
   source: SourceRecord;
-  slots?: string[];
-  tags?: string[];
+  tags: string[];
 };
 
 export interface GoalNode extends BaseNode {
   kind: 'goal';
-  value?: string;
-  note?: string;
   successCriteria?: string[];
 }
 export interface CapabilityNode extends BaseNode {
   kind: 'capability';
-  priority?: string;
-  parentId?: string;
+  priority?: 'high' | 'medium' | 'low';
   acceptanceNotes?: string[];
 }
 export interface ActorNode extends BaseNode {
@@ -67,69 +64,51 @@ export interface ActorNode extends BaseNode {
 }
 export interface TaskNode extends BaseNode {
   kind: 'task';
-  result?: string;
-  actorId?: string;
-  capabilityId?: string;
-  outcome?: string;
+  outcome?: string | null;
 }
 export interface FlowNode extends BaseNode {
   kind: 'flow';
-  trigger?: string;
-  mainObjectId?: string;
+  trigger?: string | null;
 }
 export interface FlowStepNode extends BaseNode {
   kind: 'flow_step';
-  actorId?: string;
-  stepType?: string;
-  input?: string[];
-  output?: string[];
-  flowId?: string;
-  inputObjectIds?: string[];
-  outputObjectIds?: string[];
-  ruleIds?: string[];
+  stepType?:
+    | 'user_action'
+    | 'system_action'
+    | 'decision'
+    | 'notification'
+    | 'state_transition'
+    | 'external_call'
+    | 'manual_operation';
 }
 export interface RuleNode extends BaseNode {
   kind: 'rule';
-  ruleType?: 'condition' | 'validation' | 'permission' | 'business_policy' | 'calculation';
-  expression?: string;
-  naturalLanguage?: string;
+  ruleType?: 'condition' | 'validation' | 'permission' | 'business_policy' | 'calculation' | null;
+  expression?: string | null;
+  naturalLanguage?: string | null;
 }
 export interface BusinessObjectNode extends BaseNode {
   kind: 'business_object';
-  ownerActorId?: string;
-  fieldIds?: string[];
-  stateMachineId?: string;
 }
 export interface FieldNode extends BaseNode {
   kind: 'field';
-  objectId?: string;
-  fieldType?: 'text' | 'number' | 'date' | 'boolean' | 'enum' | 'file' | 'reference';
-  required?: boolean;
-  valueSource?: 'user_input' | 'system_generated' | 'external';
+  fieldType?: 'text' | 'number' | 'date' | 'boolean' | 'enum' | 'file' | 'reference' | null;
+  required?: boolean | null;
+  valueSource?: 'user_input' | 'system_generated' | 'external' | null;
 }
 export interface StateMachineNode extends BaseNode {
   kind: 'state_machine';
-  objectId?: string;
-  stateIds?: string[];
-  transitionIds?: string[];
 }
 export interface ObjectStateNode extends BaseNode {
   kind: 'object_state';
-  objectId?: string;
 }
 export interface StateTransitionNode extends BaseNode {
   kind: 'state_transition';
-  fromStateId?: string;
-  toStateId?: string;
-  triggerStepId?: string;
-  ruleIds?: string[];
 }
 export interface ScreenNode extends BaseNode {
   kind: 'screen';
-  actorIds?: string[];
-  purpose?: string;
-  route?: string;
-  rootComponentId?: string;
+  purpose?: string | null;
+  route?: string | null;
 }
 export interface UIComponentNode extends BaseNode {
   kind: 'ui_component';
@@ -142,10 +121,8 @@ export interface UIComponentNode extends BaseNode {
     | 'field'
     | 'status_badge'
     | 'dialog'
-    | 'navigation';
-  childIds?: string[];
-  dataBindingIds?: string[];
-  actionBindingIds?: string[];
+    | 'navigation'
+    | null;
 }
 
 export type RequirementNode =
@@ -176,19 +153,19 @@ export type LinkType =
   | 'writes'
   | 'changes_state'
   | 'depends_on'
+  | 'diagnoses'
   | 'contains'
   | 'accessible_by'
   | 'binds_field'
   | 'invokes_step'
-  | 'displayed_on'
-  | 'triggered_by';
+  ;
 
 export type RequirementLink = {
   id: string;
   sourceId: string;
   targetId: string;
   type: LinkType;
-  label?: string;
+  label?: string | null;
   status: 'active' | 'suspected' | 'invalid';
   source: SourceRecord;
 };
@@ -206,11 +183,10 @@ export type RequirementSlot = {
   expectedKinds: NodeKind[];
   arity: 'one' | 'many';
   status: SlotStatus;
-  choiceGroupId?: string;
   context: {
     projectionHints: ProjectionKind[];
     relatedNodeIds: string[];
-    promptHints?: string[];
+    promptHints: string[];
   };
 };
 
@@ -223,6 +199,8 @@ export type ImpactPreview = {
   newIssues?: string[];
   resolvedIssues?: string[];
 };
+
+export type ChoiceGroupStatus = 'open' | 'selected' | 'dismissed';
 
 export type IssueCategory =
   | 'missing'
@@ -252,6 +230,7 @@ export type GraphPatch = {
   updateNodes?: ({ id: string } & Partial<RequirementNode>)[];
   removeNodeIds?: string[];
   addLinks?: RequirementLink[];
+  updateLinks?: ({ id: string } & Partial<RequirementLink>)[];
   removeLinkIds?: string[];
   addSlots?: RequirementSlot[];
   updateSlots?: ({ id: string } & Partial<RequirementSlot>)[];
@@ -259,44 +238,48 @@ export type GraphPatch = {
   addIssues?: Issue[];
   updateIssues?: ({ id: string } & Partial<Issue>)[];
   resolveIssueIds?: string[];
+  addChoiceGroups?: ChoiceGroup[];
+  updateChoiceGroups?: ({ id: string } & Partial<ChoiceGroup>)[];
 };
 
 export type Choice = {
   id: string;
+  choiceGroupId: string;
   title: string;
   rationale: string;
   patch: GraphPatch;
   impactPreview: ImpactPreview;
   status: 'candidate' | 'selected' | 'rejected' | 'archived';
-  proposedNodeIds?: string[];
-  proposedLinkIds?: string[];
 };
 
 export type ChoiceGroup = {
   id: string;
   slotId: string;
   choices: Choice[];
-  selectedChoiceId?: string;
+  selectedChoiceIds: string[];
   selectionMode: 'single' | 'multiple';
-  status: 'open' | 'selected' | 'dismissed';
+  status: ChoiceGroupStatus;
 };
 
 export type Proposal = {
   id: string;
-  title?: string;
-  summary?: string;
-  patch?: GraphPatch;
-  impactPreview?: ImpactPreview;
-  createdAt?: string;
-  scope?: Record<string, unknown>;
+  workspaceId: string;
+  title: string;
+  summary: string;
+  scope: Record<string, unknown>;
+  patch: GraphPatch;
+  impactPreview: ImpactPreview;
+  status: 'draft' | 'candidate' | 'accepted' | 'rejected' | 'archived';
+  createdAt: string;
+  source: SourceRecord;
 };
 
 export type ProjectionState = {
-  goal: { rootGoalIds: string[]; expandedNodeIds: string[]; layout?: unknown };
-  role: { actorIds: string[]; visibleColumns: string[]; layout?: unknown };
-  system: { flowIds: string[]; swimlaneBy: 'actor' | 'system'; highlightedNodeIds: string[]; layout?: unknown };
-  data: { objectIds: string[]; showStates: boolean; showFields: boolean; layout?: unknown };
-  ui: { roleViewIds: string[]; activeActorId?: string; activeScreenId?: string; layout?: unknown };
+  goal: { expandedNodeIds: string[]; filters: Record<string, string | number | boolean | null>; layout: Record<string, string | number | boolean | null> };
+  role: { activeActorId: string | null; filters: Record<string, string | number | boolean | null>; layout: Record<string, string | number | boolean | null> };
+  system: { swimlaneBy: 'actor' | 'system'; highlightedNodeIds: string[]; filters: Record<string, string | number | boolean | null>; layout: Record<string, string | number | boolean | null> };
+  data: { showStates: boolean; showFields: boolean; filters: Record<string, string | number | boolean | null>; layout: Record<string, string | number | boolean | null> };
+  ui: { activeActorId: string | null; activeScreenId: string | null; filters: Record<string, string | number | boolean | null>; layout: Record<string, string | number | boolean | null> };
 };
 
 export type Assumption = {
@@ -305,10 +288,10 @@ export type Assumption = {
 };
 
 export type ProjectMeta = {
-  domain?: string;
-  taskType?: string;
-  templateId?: string;
-  inputPrompt?: string;
+  domain?: string | null;
+  taskType?: string | null;
+  templateId?: string | null;
+  inputPrompt?: string | null;
   assumptions: Assumption[];
 };
 
@@ -316,6 +299,22 @@ export type AuditInfo = {
   createdAt: string;
   updatedAt: string;
   sourceSummary: SourceRecord[];
+  operationLog: OperationRecord[];
+};
+
+export type OperationActor = {
+  type: SourceRecord['type'];
+  refId?: string | null;
+};
+
+export type OperationRecord = {
+  id: string;
+  actionType: string;
+  targetIds: string[];
+  actor: OperationActor;
+  summary: string;
+  details: Record<string, unknown>;
+  timestamp: string;
 };
 
 export type RequirementSpaceIR = {
@@ -340,6 +339,13 @@ export const NodeStatusToText: Record<NodeStatus, string> = {
   conflict: '有冲突',
   deferred: '暂缓',
   excluded: '已排除',
+};
+
+export const ScopeStatusToText: Record<ScopeStatus, string> = {
+  in_scope: '范围内',
+  out_of_scope: '范围外',
+  deferred: '延期处理',
+  external_dependency: '外部依赖',
 };
 
 export const NodeKindToText: Record<string, string> = {

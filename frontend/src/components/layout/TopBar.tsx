@@ -17,7 +17,7 @@ export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { initialPrompt, exitWorkspace, initializeWorkspace, runDiagnosis, ir, error } = useWorkspaceStore();
-  const gaps = useWorkspaceStore(selectIssues);
+  const issues = useWorkspaceStore(selectIssues);
   const actors = useWorkspaceStore(selectActors);
   const flowSteps = useWorkspaceStore(selectFlowSteps);
   const [showPrompt, setShowPrompt] = useState(false);
@@ -25,12 +25,12 @@ export function TopBar() {
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
 
   // We consider open high severity issues as blocking
-  const blockingItems = gaps.filter(i => i.status === 'open' && i.severity === 'high');
-  const unresolvedGaps = gaps.filter(g => g.status === 'open');
+  const blockingItems = issues.filter(i => i.status === 'open' && i.severity === 'high');
+  const unresolvedIssues = issues.filter(g => g.status === 'open');
   // Additionally, ensure minimal readiness: at least one actor and one flow step
   const minReady = actors.length > 0 && flowSteps.length > 0;
   
-  const isReady = minReady && blockingItems.length === 0 && unresolvedGaps.length === 0;
+  const isReady = minReady && blockingItems.length === 0 && unresolvedIssues.length === 0;
 
   return (
     <>
@@ -133,9 +133,9 @@ export function TopBar() {
             <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">生成新候选起点</h3>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">生成新的工作区起点</h3>
             <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-              重新生成起点会覆盖当前的 AI 假设、候选以及部分已编辑的内容。是否继续？
+              这会基于当前原始诉求重新初始化一个新的工作区，并切换到新结果；不会原地覆盖当前工作区。是否继续？
             </p>
             <div className="flex justify-end gap-3">
               <button 
@@ -148,7 +148,7 @@ export function TopBar() {
                   initializeWorkspace(initialPrompt);
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors shadow-sm shadow-rose-200"
-              >确认重新生成</button>
+              >确认生成新工作区</button>
             </div>
           </div>
         </div>

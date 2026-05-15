@@ -1,64 +1,49 @@
 from __future__ import annotations
 
-from typing import Any
-
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
-from .. import models
+from .schema import GraphPatch, NodeKind, RequirementSpaceIR
 
 
-def compute_impact_preview(db: Session, ws: models.Workspace, patch: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(patch, dict):
-        raise HTTPException(status_code=400, detail="patch 必须是对象")
-
+def compute_impact_preview(ir: RequirementSpaceIR, patch: GraphPatch) -> dict[str, object]:
     touched: set[str] = set()
-    for n in (patch.get("addNodes") or []):
-        if isinstance(n, dict) and isinstance(n.get("id"), str):
-            touched.add(n["id"])
-    for n in (patch.get("updateNodes") or []):
-        if isinstance(n, dict) and isinstance(n.get("id"), str):
-            touched.add(n["id"])
-    for nid in (patch.get("removeNodeIds") or []):
-        if isinstance(nid, str):
-            touched.add(nid)
-    for l in (patch.get("addLinks") or []):
-        if isinstance(l, dict):
-            if isinstance(l.get("sourceId"), str):
-                touched.add(l["sourceId"])
-            if isinstance(l.get("targetId"), str):
-                touched.add(l["targetId"])
+    kind_by_id = {node.id: node.kind for node in ir.nodes.values()}
 
-    node_rows = (
-        db.query(models.Node.id, models.Node.kind)
-        .filter(models.Node.workspace_id == ws.id)
-        .all()
-    )
-    kind_by_id = {r[0]: r[1] for r in node_rows}
-    for n in (patch.get("addNodes") or []):
-        if isinstance(n, dict) and isinstance(n.get("id"), str) and isinstance(n.get("kind"), str):
-            kind_by_id[n["id"]] = n["kind"]
-
-    affected_goals = sorted([nid for nid in touched if kind_by_id.get(nid) == "goal"])
-    affected_actors = sorted([nid for nid in touched if kind_by_id.get(nid) == "actor"])
-    affected_flows = sorted([nid for nid in touched if kind_by_id.get(nid) in {"flow", "flow_step"}])
-    affected_objects = sorted([nid for nid in touched if kind_by_id.get(nid) == "business_object"])
-    affected_screens = sorted([nid for nid in touched if kind_by_id.get(nid) == "screen"])
-
-    new_issues = []
-    for i in (patch.get("addIssues") or patch.get("createIssues") or []):
-        if isinstance(i, dict) and isinstance(i.get("id"), str):
-            new_issues.append(i["id"])
-
-    resolved_issues = patch.get("resolveIssueIds") or []
+    for node in patch.addNodes:
+        touched.add(node.id)
+        kind_by_id[node.id] = node.kind
+    for node in patch.updateNodes:
+        touched.add(node.id)
+    for node_id in patch.removeNodeIds:
+        touched.add(node_id)
+    for link in patch.addLinks:
+        touched.add(link.sourceId)
+        touched.add(link.targetId)
+    for link in patch.updateLinks:
+        if "sourceId" in link.model_fields_set and link.sourceId:
+            touched.add(link.sourceId)
+        if "targetId" in link.model_fields_set and link.targetId:
+            touched.add(link.targetId)
+    for slot in patch.addSlots:
+        touched.add(slot.ownerNodeId)
+    for slot in patch.updateSlots:
+        touched.add(slot.id)
+        if "ownerNodeId" in slot.model_fields_set and slot.ownerNodeId:
+            touched.add(slot.ownerNodeId)
+    for group in patch.addChoiceGroups:
+        touched.add(group.slotId)
+    for issue in patch.addIssues:
+        touched.update(issue.relatedNodeIds)
+    for issue in patch.updateIssues:
+        if "relatedNodeIds" in issue.model_fields_set and issue.relatedNodeIds:
+            touched.update(issue.relatedNodeIds)
 
     return {
-        "affectedGoals": affected_goals,
-        "affectedActors": affected_actors,
-        "affectedFlows": affected_flows,
-        "affectedObjects": affected_objects,
-        "affectedScreens": affected_screens,
-        "newIssues": new_issues or None,
-        "resolvedIssues": resolved_issues or None,
+        "affectedGoals": sorted(node_id for node_id in touched if kind_by_id.get(node_id) == NodeKind.GOAL),
+        "affectedActors": sorted(node_id for node_id in touched if kind_by_id.get(node_id) == NodeKind.ACTOR),
+        "affectedFlows": sorted(
+            node_id for node_id in touched if kind_by_id.get(node_id) in {NodeKind.FLOW, NodeKind.FLOW_STEP}
+        ),
+        "affectedObjects": sorted(node_id for node_id in touched if kind_by_id.get(node_id) == NodeKind.BUSINESS_OBJECT),
+        "affectedScreens": sorted(node_id for node_id in touched if kind_by_id.get(node_id) == NodeKind.SCREEN),
+        "newIssues": sorted(issue.id for issue in patch.addIssues) or None,
+        "resolvedIssues": sorted(patch.resolveIssueIds) or None,
     }
-

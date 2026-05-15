@@ -1,689 +1,458 @@
 from __future__ import annotations
 
-import copy
-import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from pydantic import TypeAdapter
 
-from .. import models
-from .audit import append_operation
-from .link_rules import LINK_RULES, is_link_allowed
+from .impact import compute_impact_preview
+from .schema import (
+    Choice,
+    ChoiceGroup,
+    ChoicePatch,
+    GraphPatch,
+    Issue,
+    IssueStatus,
+    OperationRecord,
+    RequirementLink,
+    RequirementNode,
+    RequirementSlot,
+    RequirementSpaceIR,
+)
+from .validators import validate_graph_patch, validate_ir
+
+NODE_ADAPTER = TypeAdapter(RequirementNode)
+
+
+@dataclass
+class GraphPatchApplyResult:
+    patch: GraphPatch
+    materialized_patch: GraphPatch
+    workspace: RequirementSpaceIR
+    id_map: dict[str, str]
+    impact_preview: dict[str, object]
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:8]}"
-
-
-def _normalize_scope_status(value: Any) -> Any:
-    if value == "dependency":
-        return "external_dependency"
-    if value == "excluded":
-        return None
-    return value
-
-
-def _as_list(value: Any, field_name: str) -> list[Any]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise HTTPException(status_code=400, detail=f"GraphPatch.{field_name} 必须是数组")
-    return value
-
-
-def _as_str_set(value: Any, field_name: str) -> set[str]:
-    items = _as_list(value, field_name)
-    out: set[str] = set()
-    for i in items:
-        if not isinstance(i, str) or not i:
-            raise HTTPException(status_code=400, detail=f"GraphPatch.{field_name} 必须是 string[]")
-        out.add(i)
-    return out
-
-
-def _namespace_id(namespace: str, raw_id: str) -> str:
-    if raw_id.startswith(f"{namespace}__"):
-        return raw_id
-    return f"{namespace}__{raw_id}"
-
-
-def _remap_node_ids(values: Any, node_id_map: dict[str, str]) -> Any:
-    if not isinstance(values, list):
-        return values
-    return [node_id_map.get(v, v) if isinstance(v, str) else v for v in values]
-
-
-def namespace_graph_patch_ids(workspace_id: str, patch: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(patch, dict):
-        return patch
-
-    normalized = copy.deepcopy(patch)
-    add_nodes = _as_list(normalized.get("addNodes"), "addNodes")
-    add_links = _as_list(normalized.get("addLinks"), "addLinks")
-    add_slots = _as_list(normalized.get("addSlots"), "addSlots")
-    add_issues = _as_list(normalized.get("addIssues") or normalized.get("createIssues"), "addIssues")
-
-    node_id_map = {
-        item["id"]: _namespace_id(workspace_id, item["id"])
-        for item in add_nodes
-        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
-    }
-    link_id_map = {
-        item["id"]: _namespace_id(workspace_id, item["id"])
-        for item in add_links
-        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
-    }
-    slot_id_map = {
-        item["id"]: _namespace_id(workspace_id, item["id"])
-        for item in add_slots
-        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
-    }
-    issue_id_map = {
-        item["id"]: _namespace_id(workspace_id, item["id"])
-        for item in add_issues
-        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
-    }
-
-    for node in add_nodes:
-        if not isinstance(node, dict):
-            continue
-        node_id = node.get("id")
-        if isinstance(node_id, str):
-            node["id"] = node_id_map.get(node_id, node_id)
-        if "slots" in node:
-            node["slots"] = [
-                slot_id_map.get(slot_id, slot_id) if isinstance(slot_id, str) else slot_id
-                for slot_id in (node.get("slots") or [])
-            ]
-
-    for link in add_links:
-        if not isinstance(link, dict):
-            continue
-        link_id = link.get("id")
-        source_id = link.get("sourceId")
-        target_id = link.get("targetId")
-        if isinstance(link_id, str):
-            link["id"] = link_id_map.get(link_id, link_id)
-        if isinstance(source_id, str):
-            link["sourceId"] = node_id_map.get(source_id, source_id)
-        if isinstance(target_id, str):
-            link["targetId"] = node_id_map.get(target_id, target_id)
-
-    for slot in add_slots:
-        if not isinstance(slot, dict):
-            continue
-        slot_id = slot.get("id")
-        owner_node_id = slot.get("ownerNodeId")
-        choice_group_id = slot.get("choiceGroupId")
-        if isinstance(slot_id, str):
-            slot["id"] = slot_id_map.get(slot_id, slot_id)
-        if isinstance(owner_node_id, str):
-            slot["ownerNodeId"] = node_id_map.get(owner_node_id, owner_node_id)
-        if isinstance(choice_group_id, str):
-            slot["choiceGroupId"] = _namespace_id(workspace_id, choice_group_id)
-        context = slot.get("context")
-        if isinstance(context, dict) and isinstance(context.get("relatedNodeIds"), list):
-            context = dict(context)
-            context["relatedNodeIds"] = _remap_node_ids(context["relatedNodeIds"], node_id_map)
-            slot["context"] = context
-
-    for update_slot in _as_list(normalized.get("updateSlots"), "updateSlots"):
-        if not isinstance(update_slot, dict):
-            continue
-        owner_node_id = update_slot.get("ownerNodeId")
-        if isinstance(owner_node_id, str):
-            update_slot["ownerNodeId"] = node_id_map.get(owner_node_id, owner_node_id)
-        context = update_slot.get("context")
-        if isinstance(context, dict) and isinstance(context.get("relatedNodeIds"), list):
-            context = dict(context)
-            context["relatedNodeIds"] = _remap_node_ids(context["relatedNodeIds"], node_id_map)
-            update_slot["context"] = context
-
-    for issue in add_issues:
-        if not isinstance(issue, dict):
-            continue
-        issue_id = issue.get("id")
-        if isinstance(issue_id, str):
-            issue["id"] = issue_id_map.get(issue_id, issue_id)
-        if isinstance(issue.get("relatedNodeIds"), list):
-            issue["relatedNodeIds"] = _remap_node_ids(issue["relatedNodeIds"], node_id_map)
-
-    for update_issue in _as_list(normalized.get("updateIssues"), "updateIssues"):
-        if not isinstance(update_issue, dict):
-            continue
-        if isinstance(update_issue.get("relatedNodeIds"), list):
-            update_issue["relatedNodeIds"] = _remap_node_ids(update_issue["relatedNodeIds"], node_id_map)
-
-    if isinstance(normalized.get("resolveIssueIds"), list):
-        normalized["resolveIssueIds"] = [
-            issue_id_map.get(issue_id, issue_id) if isinstance(issue_id, str) else issue_id
-            for issue_id in normalized["resolveIssueIds"]
-        ]
-
-    return normalized
-
-
-def _validate_workspace_consistency(db: Session, workspace_id: str) -> None:
-    node_ids = {
-        r[0]
-        for r in db.query(models.Node.id).filter(models.Node.workspace_id == workspace_id).all()
-    }
-
-    broken: list[str] = []
-    for link in db.query(models.Link).filter(models.Link.workspace_id == workspace_id).all():
-        if link.source_id not in node_ids:
-            broken.append(f"Link `{link.id}` source `{link.source_id}` 不存在")
-        if link.target_id not in node_ids:
-            broken.append(f"Link `{link.id}` target `{link.target_id}` 不存在")
-
-    for slot in db.query(models.Slot).filter(models.Slot.workspace_id == workspace_id).all():
-        if slot.owner_node_id not in node_ids:
-            broken.append(f"Slot `{slot.id}` ownerNodeId `{slot.owner_node_id}` 不存在")
-
-    if broken:
-        raise HTTPException(status_code=500, detail="IR 校验失败：" + "；".join(broken[:8]))
-
-
 class GraphPatchService:
-    @staticmethod
-    def validate(db: Session, ws: models.Workspace, patch: dict[str, Any]) -> None:
-        if not isinstance(patch, dict):
-            raise HTTPException(status_code=400, detail="GraphPatch 必须是对象")
+    @classmethod
+    def validate(cls, db, ws, patch_payload: dict[str, Any] | GraphPatch) -> GraphPatchApplyResult:
+        return cls._prepare(db, ws, patch_payload, include_audit=False)
 
-        patch = namespace_graph_patch_ids(ws.id, patch)
+    @classmethod
+    def apply(cls, db, ws, patch_payload: dict[str, Any] | GraphPatch) -> GraphPatchApplyResult:
+        from .. import crud
 
-        add_nodes = _as_list(patch.get("addNodes"), "addNodes")
-        update_nodes = _as_list(patch.get("updateNodes"), "updateNodes")
-        add_links = _as_list(patch.get("addLinks"), "addLinks")
-        add_slots = _as_list(patch.get("addSlots"), "addSlots")
+        result = cls._prepare(db, ws, patch_payload, include_audit=True)
+        crud.replace_workspace_from_ir(db, ws, result.workspace)
+        return result
 
-        remove_node_ids = _as_str_set(patch.get("removeNodeIds"), "removeNodeIds")
-        remove_link_ids = _as_str_set(patch.get("removeLinkIds"), "removeLinkIds")
-        _ = _as_str_set(patch.get("removeSlotIds"), "removeSlotIds")
-        _ = _as_str_set(patch.get("resolveIssueIds"), "resolveIssueIds")
+    @classmethod
+    def _prepare(
+        cls,
+        db,
+        ws,
+        patch_payload: dict[str, Any] | GraphPatch,
+        *,
+        include_audit: bool,
+    ) -> GraphPatchApplyResult:
+        from .. import crud
 
-        add_node_ids: set[str] = set()
-        for node in add_nodes:
-            if not isinstance(node, dict):
-                raise HTTPException(status_code=400, detail="addNodes 中每项必须是对象")
-            node_id = node.get("id")
-            if not isinstance(node_id, str) or not node_id:
-                raise HTTPException(status_code=400, detail="addNodes 中的节点必须包含 id")
-            add_node_ids.add(node_id)
-
-        if add_node_ids & remove_node_ids:
-            raise HTTPException(status_code=400, detail="GraphPatch 同时 add 与 remove 同一节点")
-
-        existing_nodes = (
-            db.query(models.Node.id, models.Node.kind)
-            .filter(models.Node.workspace_id == ws.id)
-            .all()
+        current_ir = validate_ir(crud.serialize_workspace(ws), status_code=500)
+        patch = validate_graph_patch(patch_payload, status_code=400)
+        materialized_patch, id_map = cls._materialize_ids(current_ir, patch)
+        next_ir = cls._apply_patch(current_ir, materialized_patch)
+        impact_preview = compute_impact_preview(current_ir, materialized_patch)
+        if include_audit:
+            next_ir = cls._append_audit(next_ir, materialized_patch, id_map, impact_preview)
+        validated_next_ir = validate_ir(next_ir, status_code=400)
+        return GraphPatchApplyResult(
+            patch=patch,
+            materialized_patch=materialized_patch,
+            workspace=validated_next_ir,
+            id_map=id_map,
+            impact_preview=impact_preview,
         )
-        existing_node_ids = {r[0] for r in existing_nodes}
-        kind_by_id: dict[str, str] = {r[0]: r[1] for r in existing_nodes}
-        for node in add_nodes:
-            if isinstance(node, dict) and isinstance(node.get("id"), str) and isinstance(node.get("kind"), str):
-                kind_by_id[node["id"]] = node["kind"]
 
-        allowed_node_ids = existing_node_ids | add_node_ids
+    @classmethod
+    def _materialize_ids(cls, ir: RequirementSpaceIR, patch: GraphPatch) -> tuple[GraphPatch, dict[str, str]]:
+        materialized = patch.model_copy(deep=True)
+        id_map: dict[str, str] = {}
 
-        for update in update_nodes:
-            if not isinstance(update, dict):
-                raise HTTPException(status_code=400, detail="updateNodes 中每项必须是对象")
-            node_id = update.get("id")
-            if not isinstance(node_id, str) or not node_id:
-                raise HTTPException(status_code=400, detail="updateNodes 中的节点必须包含 id")
-            if node_id not in existing_node_ids:
-                raise HTTPException(status_code=404, detail=f"Node `{node_id}` 不存在")
+        node_ids = set(ir.nodes.keys())
+        link_ids = {link.id for link in ir.links}
+        slot_ids = set(ir.slots.keys())
+        choice_group_ids = set(ir.choiceGroups.keys())
+        choice_ids = {choice.id for group in ir.choiceGroups.values() for choice in group.choices}
+        issue_ids = set(ir.issues.keys())
 
-        for link in add_links:
-            if not isinstance(link, dict):
-                raise HTTPException(status_code=400, detail="addLinks 中每项必须是对象")
-            link_id = link.get("id")
-            if not isinstance(link_id, str) or not link_id:
-                raise HTTPException(status_code=400, detail="addLinks 中的链接必须包含 id")
-            if db.get(models.Link, link_id):
-                raise HTTPException(status_code=409, detail=f"Link `{link_id}` 已存在")
-
-            source_id = link.get("sourceId")
-            target_id = link.get("targetId")
-            if not isinstance(source_id, str) or not source_id:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` sourceId 缺失")
-            if not isinstance(target_id, str) or not target_id:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` targetId 缺失")
-            if source_id not in allowed_node_ids:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` sourceId `{source_id}` 不存在")
-            if target_id not in allowed_node_ids:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` targetId `{target_id}` 不存在")
-
-            link_type = link.get("type")
-            if not isinstance(link_type, str) or not link_type:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` type 缺失")
-            if link_type not in LINK_RULES:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` type `{link_type}` 不在允许集合")
-
-            source_kind = kind_by_id.get(source_id)
-            target_kind = kind_by_id.get(target_id)
-            if not source_kind or not target_kind:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` 无法推断节点类型")
-            if not is_link_allowed(link_type, source_kind, target_kind):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Link `{link_id}` 不合法：{link_type} 不允许 {source_kind} -> {target_kind}",
-                )
-
-        for raw_slot in add_slots:
-            if not isinstance(raw_slot, dict):
-                raise HTTPException(status_code=400, detail="addSlots 中每项必须是对象")
-            slot_id = raw_slot.get("id")
-            if not isinstance(slot_id, str) or not slot_id:
-                raise HTTPException(status_code=400, detail="addSlots 中的 slot 必须包含 id")
-            if db.get(models.Slot, slot_id):
-                raise HTTPException(status_code=409, detail=f"Slot `{slot_id}` 已存在")
-            owner_node_id = raw_slot.get("ownerNodeId")
-            if not isinstance(owner_node_id, str) or not owner_node_id:
-                raise HTTPException(status_code=400, detail=f"Slot `{slot_id}` ownerNodeId 缺失")
-            if owner_node_id not in allowed_node_ids:
-                raise HTTPException(status_code=400, detail=f"Slot `{slot_id}` ownerNodeId `{owner_node_id}` 不存在")
-
-        if remove_link_ids:
-            existing_links = {
-                r[0]
-                for r in db.query(models.Link.id)
-                .filter(models.Link.workspace_id == ws.id, models.Link.id.in_(list(remove_link_ids)))
-                .all()
-            }
-            missing = sorted(remove_link_ids - existing_links)
-            if missing:
-                raise HTTPException(status_code=404, detail=f"removeLinkIds 中存在不存在的链接：{missing[:5]}")
-
-    @staticmethod
-    def apply(db: Session, ws: models.Workspace, patch: dict[str, Any]) -> None:
-        if not isinstance(patch, dict):
-            raise HTTPException(status_code=400, detail="GraphPatch 必须是对象")
-
-        patch = namespace_graph_patch_ids(ws.id, patch)
-
-        add_nodes = _as_list(patch.get("addNodes"), "addNodes")
-        update_nodes = _as_list(patch.get("updateNodes"), "updateNodes")
-        add_links = _as_list(patch.get("addLinks"), "addLinks")
-        add_slots = _as_list(patch.get("addSlots"), "addSlots")
-        update_slots = _as_list(patch.get("updateSlots"), "updateSlots")
-        add_issues = _as_list(patch.get("addIssues") or patch.get("createIssues"), "addIssues")
-        update_issues = _as_list(patch.get("updateIssues"), "updateIssues")
-
-        remove_node_ids = _as_str_set(patch.get("removeNodeIds"), "removeNodeIds")
-        remove_link_ids = _as_str_set(patch.get("removeLinkIds"), "removeLinkIds")
-        remove_slot_ids = _as_str_set(patch.get("removeSlotIds"), "removeSlotIds")
-        resolve_issue_ids = _as_str_set(patch.get("resolveIssueIds"), "resolveIssueIds")
-
-        add_node_ids: set[str] = set()
-        for node in add_nodes:
-            if not isinstance(node, dict):
-                raise HTTPException(status_code=400, detail="addNodes 中每项必须是对象")
-            node_id = node.get("id")
-            if not isinstance(node_id, str) or not node_id:
-                raise HTTPException(status_code=400, detail="addNodes 中的节点必须包含 id")
-            add_node_ids.add(node_id)
-
-        if add_node_ids & remove_node_ids:
-            raise HTTPException(status_code=400, detail="GraphPatch 同时 add 与 remove 同一节点")
-
-        if remove_link_ids:
-            db.query(models.Link).filter(
-                models.Link.workspace_id == ws.id, models.Link.id.in_(list(remove_link_ids))
-            ).delete(synchronize_session=False)
-
-        removed_slot_ids: set[str] = set()
-        removed_choice_group_ids: set[str] = set()
-
-        if remove_slot_ids:
-            groups_to_remove = (
-                db.query(models.ChoiceGroup.id)
-                .filter(models.ChoiceGroup.workspace_id == ws.id, models.ChoiceGroup.slot_id.in_(list(remove_slot_ids)))
-                .all()
-            )
-            removed_choice_group_ids |= {r[0] for r in groups_to_remove}
-            if removed_choice_group_ids:
-                db.query(models.ChoiceGroup).filter(
-                    models.ChoiceGroup.workspace_id == ws.id, models.ChoiceGroup.id.in_(list(removed_choice_group_ids))
-                ).delete(synchronize_session=False)
-
-            db.query(models.Slot).filter(
-                models.Slot.workspace_id == ws.id, models.Slot.id.in_(list(remove_slot_ids))
-            ).delete(synchronize_session=False)
-            removed_slot_ids |= set(remove_slot_ids)
-
-        if remove_node_ids:
-            db.query(models.Link).filter(
-                models.Link.workspace_id == ws.id,
-                (models.Link.source_id.in_(list(remove_node_ids)) | models.Link.target_id.in_(list(remove_node_ids))),
-            ).delete(synchronize_session=False)
-
-            slots_to_remove = (
-                db.query(models.Slot.id)
-                .filter(models.Slot.workspace_id == ws.id, models.Slot.owner_node_id.in_(list(remove_node_ids)))
-                .all()
-            )
-            removed_slot_ids = {r[0] for r in slots_to_remove}
-            if removed_slot_ids:
-                groups_to_remove = (
-                    db.query(models.ChoiceGroup.id)
-                    .filter(models.ChoiceGroup.workspace_id == ws.id, models.ChoiceGroup.slot_id.in_(list(removed_slot_ids)))
-                    .all()
-                )
-                removed_choice_group_ids = {r[0] for r in groups_to_remove}
-
-                db.query(models.ChoiceGroup).filter(
-                    models.ChoiceGroup.workspace_id == ws.id, models.ChoiceGroup.id.in_(list(removed_choice_group_ids))
-                ).delete(synchronize_session=False)
-
-                db.query(models.Slot).filter(
-                    models.Slot.workspace_id == ws.id, models.Slot.id.in_(list(removed_slot_ids))
-                ).delete(synchronize_session=False)
-
-            nodes = (
-                db.query(models.Node)
-                .filter(models.Node.workspace_id == ws.id, models.Node.id.in_(list(remove_node_ids)))
-                .all()
-            )
-            for n in nodes:
-                db.delete(n)
-
-            issues = db.query(models.Issue).filter(models.Issue.workspace_id == ws.id).all()
-            for issue in issues:
-                if not issue.related_node_ids:
+        for node in materialized.addNodes:
+            actual = cls._allocate_id(node.id, node_ids)
+            id_map[node.id] = actual
+            node.id = actual
+        for link in materialized.addLinks:
+            actual = cls._allocate_id(link.id, link_ids)
+            id_map[link.id] = actual
+            link.id = actual
+        for slot in materialized.addSlots:
+            actual = cls._allocate_id(slot.id, slot_ids)
+            id_map[slot.id] = actual
+            slot.id = actual
+        for group in materialized.addChoiceGroups:
+            actual_group_id = cls._allocate_id(group.id, choice_group_ids)
+            id_map[group.id] = actual_group_id
+            group.id = actual_group_id
+            for choice in group.choices:
+                actual_choice_id = cls._allocate_id(choice.id, choice_ids)
+                id_map[choice.id] = actual_choice_id
+                choice.id = actual_choice_id
+        for group in materialized.updateChoiceGroups:
+            if not group.choices:
+                continue
+            for choice in group.choices:
+                if choice.id in choice_ids:
                     continue
-                new_related = [rid for rid in issue.related_node_ids if rid not in remove_node_ids]
-                if new_related != issue.related_node_ids:
-                    issue.related_node_ids = new_related
+                actual_choice_id = cls._allocate_id(choice.id, choice_ids)
+                id_map[choice.id] = actual_choice_id
+                choice.id = actual_choice_id
+        for issue in materialized.addIssues:
+            actual = cls._allocate_id(issue.id, issue_ids)
+            id_map[issue.id] = actual
+            issue.id = actual
 
-        for node in add_nodes:
-            node_id = node.get("id")
-            exists = db.get(models.Node, node_id)
-            if exists:
-                raise HTTPException(status_code=409, detail=f"Node `{node_id}` 已存在")
+        cls._remap_patch_references(materialized, id_map)
+        return materialized, id_map
 
-            base_keys = {"id", "kind", "title", "description", "status", "confidence", "scopeStatus", "source", "slots"}
-            extra = {k: v for k, v in node.items() if k not in base_keys}
-            scope_status = _normalize_scope_status(node.get("scopeStatus"))
-            status = node.get("status") or "needs_confirmation"
-            if node.get("scopeStatus") == "excluded":
-                status = "excluded"
-                scope_status = None
-            db.add(
-                models.Node(
-                    id=node_id,
-                    workspace_id=ws.id,
-                    kind=node.get("kind", "capability"),
-                    title=node.get("title") or node_id,
-                    description=node.get("description"),
-                    status=status,
-                    confidence=node.get("confidence"),
-                    scope_status=scope_status,
-                    source=node.get("source") or {"type": "user"},
-                    slots=node.get("slots"),
-                    extra=extra,
-                )
-            )
+    @classmethod
+    def _allocate_id(cls, raw_id: str, existing_ids: set[str]) -> str:
+        candidate = raw_id
+        suffix = 2
+        while candidate in existing_ids:
+            candidate = f"{raw_id}_{suffix}"
+            suffix += 1
+        existing_ids.add(candidate)
+        return candidate
 
-        for update in update_nodes:
-            if not isinstance(update, dict):
-                raise HTTPException(status_code=400, detail="updateNodes 中每项必须是对象")
-            node_id = update.get("id")
-            if not isinstance(node_id, str) or not node_id:
-                raise HTTPException(status_code=400, detail="updateNodes 中的节点必须包含 id")
+    @classmethod
+    def _remap_patch_references(cls, patch: GraphPatch, id_map: dict[str, str]) -> None:
+        def remap(value: str | None) -> str | None:
+            if value is None:
+                return None
+            return id_map.get(value, value)
 
-            node = db.get(models.Node, node_id)
-            if not node or node.workspace_id != ws.id:
-                raise HTTPException(status_code=404, detail=f"Node `{node_id}` 不存在")
+        for link in patch.addLinks:
+            link.sourceId = remap(link.sourceId) or link.sourceId
+            link.targetId = remap(link.targetId) or link.targetId
+        for link in patch.updateLinks:
+            if "sourceId" in link.model_fields_set:
+                link.sourceId = remap(link.sourceId)
+            if "targetId" in link.model_fields_set:
+                link.targetId = remap(link.targetId)
 
-            if "title" in update and update["title"] is not None:
-                node.title = update["title"]
-            if "description" in update:
-                node.description = update["description"]
-            if "status" in update and update["status"] is not None:
-                node.status = update["status"]
-            if "scopeStatus" in update and update["scopeStatus"] is not None:
-                if update["scopeStatus"] == "excluded":
-                    node.status = "excluded"
-                    node.scope_status = None
-                else:
-                    node.scope_status = _normalize_scope_status(update["scopeStatus"])
-            if "confidence" in update:
-                node.confidence = update["confidence"]
-            if "source" in update and update["source"] is not None:
-                node.source = update["source"]
+        for slot in patch.addSlots:
+            slot.ownerNodeId = remap(slot.ownerNodeId) or slot.ownerNodeId
+            slot.context.relatedNodeIds = [remap(node_id) or node_id for node_id in slot.context.relatedNodeIds]
+        for slot in patch.updateSlots:
+            if "ownerNodeId" in slot.model_fields_set:
+                slot.ownerNodeId = remap(slot.ownerNodeId)
+            if "context" in slot.model_fields_set and slot.context is not None:
+                slot.context.relatedNodeIds = [remap(node_id) or node_id for node_id in slot.context.relatedNodeIds]
 
-            extra_update = {k: v for k, v in update.items() if k not in {"id", "kind", "title", "description", "status", "scopeStatus", "confidence", "source"}}
-            if extra_update:
-                merged = dict(node.extra or {})
-                merged.update(extra_update)
-                node.extra = merged
+        for group in patch.addChoiceGroups:
+            group.slotId = remap(group.slotId) or group.slotId
+            group.selectedChoiceIds = [remap(choice_id) or choice_id for choice_id in group.selectedChoiceIds]
+            for choice in group.choices:
+                choice.choiceGroupId = group.id
+        for group in patch.updateChoiceGroups:
+            if "slotId" in group.model_fields_set:
+                group.slotId = remap(group.slotId)
+            if "selectedChoiceIds" in group.model_fields_set and group.selectedChoiceIds is not None:
+                group.selectedChoiceIds = [remap(choice_id) or choice_id for choice_id in group.selectedChoiceIds]
 
-            node.updated_at = datetime.utcnow()
+        for issue in patch.addIssues:
+            issue.relatedNodeIds = [remap(node_id) or node_id for node_id in issue.relatedNodeIds]
+        for issue in patch.updateIssues:
+            if "relatedNodeIds" in issue.model_fields_set and issue.relatedNodeIds is not None:
+                issue.relatedNodeIds = [remap(node_id) or node_id for node_id in issue.relatedNodeIds]
 
-        existing_nodes = (
-            db.query(models.Node.id, models.Node.kind)
-            .filter(models.Node.workspace_id == ws.id)
-            .all()
-        )
-        existing_node_ids = {r[0] for r in existing_nodes}
-        kind_by_id: dict[str, str] = {r[0]: r[1] for r in existing_nodes}
-        for node in add_nodes:
-            if isinstance(node, dict) and isinstance(node.get("id"), str) and isinstance(node.get("kind"), str):
-                kind_by_id[node["id"]] = node["kind"]
+        patch.removeNodeIds = [remap(node_id) or node_id for node_id in patch.removeNodeIds]
+        patch.removeLinkIds = [remap(link_id) or link_id for link_id in patch.removeLinkIds]
+        patch.removeSlotIds = [remap(slot_id) or slot_id for slot_id in patch.removeSlotIds]
+        patch.resolveIssueIds = [remap(issue_id) or issue_id for issue_id in patch.resolveIssueIds]
 
-        allowed_link_node_ids = existing_node_ids | add_node_ids
+    @classmethod
+    def _apply_patch(cls, current_ir: RequirementSpaceIR, patch: GraphPatch) -> RequirementSpaceIR:
+        next_ir = RequirementSpaceIR.model_validate(current_ir.model_dump(mode="json"))
 
-        for link in add_links:
-            if not isinstance(link, dict):
-                raise HTTPException(status_code=400, detail="addLinks 中每项必须是对象")
-            link_id = link.get("id")
-            if not isinstance(link_id, str) or not link_id:
-                raise HTTPException(status_code=400, detail="addLinks 中的链接必须包含 id")
-            exists = db.get(models.Link, link_id)
-            if exists:
-                raise HTTPException(status_code=409, detail=f"Link `{link_id}` 已存在")
+        if set(patch.removeNodeIds) & {node.id for node in patch.addNodes}:
+            raise HTTPException(status_code=400, detail="GraphPatch 不能同时 add 与 remove 同一节点")
 
-            source_id = link.get("sourceId")
-            target_id = link.get("targetId")
-            if not isinstance(source_id, str) or not source_id:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` sourceId 缺失")
-            if not isinstance(target_id, str) or not target_id:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` targetId 缺失")
-            if source_id not in allowed_link_node_ids:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` sourceId `{source_id}` 不存在")
-            if target_id not in allowed_link_node_ids:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` targetId `{target_id}` 不存在")
+        cls._remove_links(next_ir, set(patch.removeLinkIds))
+        cls._remove_slots(next_ir, set(patch.removeSlotIds))
+        cls._remove_nodes(next_ir, set(patch.removeNodeIds))
 
-            link_type = link.get("type")
-            if not isinstance(link_type, str) or not link_type:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` type 缺失")
-            if link_type not in LINK_RULES:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` type `{link_type}` 不在允许集合")
+        for node in patch.addNodes:
+            if node.id in next_ir.nodes:
+                raise HTTPException(status_code=409, detail=f"Node `{node.id}` 已存在")
+            next_ir.nodes[node.id] = node
 
-            source_kind = kind_by_id.get(source_id)
-            target_kind = kind_by_id.get(target_id)
-            if not source_kind or not target_kind:
-                raise HTTPException(status_code=400, detail=f"Link `{link_id}` 无法推断节点类型")
-            if not is_link_allowed(link_type, source_kind, target_kind):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Link `{link_id}` 不合法：{link_type} 不允许 {source_kind} -> {target_kind}",
-                )
+        for update in patch.updateNodes:
+            if update.id not in next_ir.nodes:
+                raise HTTPException(status_code=404, detail=f"Node `{update.id}` 不存在")
+            next_ir.nodes[update.id] = cls._merge_node(next_ir.nodes[update.id], update)
 
-            db.add(
-                models.Link(
-                    id=link_id,
-                    workspace_id=ws.id,
-                    source_id=source_id,
-                    target_id=target_id,
-                    type=link_type,
-                    label=link.get("label"),
-                    status=link.get("status", "active"),
-                    source=link.get("source", {"type": "ai"}),
-                )
-            )
+        link_index = {link.id: link for link in next_ir.links}
+        for link in patch.addLinks:
+            if link.id in link_index:
+                raise HTTPException(status_code=409, detail=f"Link `{link.id}` 已存在")
+            next_ir.links.append(link)
+            link_index[link.id] = link
+        for update in patch.updateLinks:
+            existing = link_index.get(update.id)
+            if not existing:
+                raise HTTPException(status_code=404, detail=f"Link `{update.id}` 不存在")
+            merged = cls._merge_link(existing, update)
+            link_index[update.id] = merged
+        next_ir.links = list(link_index.values())
 
-        for slot_update in update_slots:
-            if not isinstance(slot_update, dict):
-                raise HTTPException(status_code=400, detail="updateSlots 中每项必须是对象")
-            slot_id = slot_update.get("id")
-            if not isinstance(slot_id, str) or not slot_id:
-                raise HTTPException(status_code=400, detail="updateSlots 中的 slot 必须包含 id")
-            slot = db.get(models.Slot, slot_id)
-            if not slot or slot.workspace_id != ws.id:
-                raise HTTPException(status_code=404, detail=f"Slot `{slot_id}` 不存在")
+        for slot in patch.addSlots:
+            if slot.id in next_ir.slots:
+                raise HTTPException(status_code=409, detail=f"Slot `{slot.id}` 已存在")
+            next_ir.slots[slot.id] = slot
+        for update in patch.updateSlots:
+            if update.id not in next_ir.slots:
+                raise HTTPException(status_code=404, detail=f"Slot `{update.id}` 不存在")
+            next_ir.slots[update.id] = cls._merge_slot(next_ir.slots[update.id], update)
 
-            if "ownerProjection" in slot_update and slot_update["ownerProjection"] is not None:
-                slot.owner_projection = slot_update["ownerProjection"]
-            if "name" in slot_update and slot_update["name"] is not None:
-                slot.name = slot_update["name"]
-            if "description" in slot_update:
-                slot.description = slot_update["description"]
-            if "expectedKinds" in slot_update and slot_update["expectedKinds"] is not None:
-                slot.expected_kinds = slot_update["expectedKinds"]
-            if "arity" in slot_update and slot_update["arity"] is not None:
-                slot.arity = slot_update["arity"]
-            if "status" in slot_update and slot_update["status"] is not None:
-                slot.status = slot_update["status"]
-            if "choiceGroupId" in slot_update:
-                slot.choice_group_id = slot_update["choiceGroupId"]
-            if "context" in slot_update and slot_update["context"] is not None:
-                slot.context = slot_update["context"]
+        for group in patch.addChoiceGroups:
+            if group.id in next_ir.choiceGroups:
+                raise HTTPException(status_code=409, detail=f"ChoiceGroup `{group.id}` 已存在")
+            for choice in group.choices:
+                choice.choiceGroupId = group.id
+            next_ir.choiceGroups[group.id] = group
 
-        existing_node_ids = {
-            r[0] for r in db.query(models.Node.id).filter(models.Node.workspace_id == ws.id).all()
-        }
-        allowed_slot_owner_ids = existing_node_ids | add_node_ids
+        for update in patch.updateChoiceGroups:
+            existing = next_ir.choiceGroups.get(update.id)
+            if not existing:
+                raise HTTPException(status_code=404, detail=f"ChoiceGroup `{update.id}` 不存在")
+            next_ir.choiceGroups[update.id] = cls._merge_choice_group(existing, update)
 
-        for raw_slot in add_slots:
-            if not isinstance(raw_slot, dict):
-                raise HTTPException(status_code=400, detail="addSlots 中每项必须是对象")
-            slot_id = raw_slot.get("id")
-            if not isinstance(slot_id, str) or not slot_id:
-                raise HTTPException(status_code=400, detail="addSlots 中的 slot 必须包含 id")
-            exists = db.get(models.Slot, slot_id)
-            if exists:
-                raise HTTPException(status_code=409, detail=f"Slot `{slot_id}` 已存在")
-
-            owner_node_id = raw_slot.get("ownerNodeId")
-            if not isinstance(owner_node_id, str) or not owner_node_id:
-                raise HTTPException(status_code=400, detail=f"Slot `{slot_id}` ownerNodeId 缺失")
-            if owner_node_id not in allowed_slot_owner_ids:
-                raise HTTPException(status_code=400, detail=f"Slot `{slot_id}` ownerNodeId `{owner_node_id}` 不存在")
-
-            owner_projection = raw_slot.get("ownerProjection")
-            if not owner_projection:
-                hints = (raw_slot.get("context") or {}).get("projectionHints") or []
-                owner_projection = hints[0] if hints else "goal"
-
-            db.add(
-                models.Slot(
-                    id=slot_id,
-                    workspace_id=ws.id,
-                    owner_node_id=owner_node_id,
-                    owner_projection=owner_projection,
-                    name=raw_slot.get("name") or slot_id,
-                    description=raw_slot.get("description"),
-                    expected_kinds=raw_slot.get("expectedKinds") or [],
-                    arity=raw_slot.get("arity") or "many",
-                    status=raw_slot.get("status") or "empty",
-                    choice_group_id=raw_slot.get("choiceGroupId"),
-                    context=raw_slot.get("context") or {},
-                )
-            )
-
-        if resolve_issue_ids:
-            issues = (
-                db.query(models.Issue)
-                .filter(models.Issue.workspace_id == ws.id, models.Issue.id.in_(list(resolve_issue_ids)))
-                .all()
-            )
-            for issue in issues:
-                issue.status = "resolved"
-
-        for raw in add_issues:
-            if not isinstance(raw, dict):
-                raise HTTPException(status_code=400, detail="addIssues 中每项必须是对象")
-            issue_id = raw.get("id") or _new_id("issue")
-            exists = db.get(models.Issue, issue_id)
-            if exists:
-                raise HTTPException(status_code=409, detail=f"Issue `{issue_id}` 已存在")
-            db.add(
-                models.Issue(
-                    id=issue_id,
-                    workspace_id=ws.id,
-                    title=raw.get("title") or issue_id,
-                    description=raw.get("description") or "",
-                    severity=raw.get("severity") or "medium",
-                    category=raw.get("category") or "missing",
-                    related_node_ids=raw.get("relatedNodeIds") or [],
-                    suggested_projection=raw.get("suggestedProjection") or "goal",
-                    suggested_action=raw.get("suggestedAction") or "",
-                    status=raw.get("status") or "open",
-                    source=raw.get("source") or {"type": "system"},
-                )
-            )
-
-        for raw in update_issues:
-            if not isinstance(raw, dict):
-                raise HTTPException(status_code=400, detail="updateIssues 中每项必须是对象")
-            issue_id = raw.get("id")
-            if not isinstance(issue_id, str) or not issue_id:
-                raise HTTPException(status_code=400, detail="updateIssues 中的 issue 必须包含 id")
-            issue = db.get(models.Issue, issue_id)
-            if not issue or issue.workspace_id != ws.id:
+        for issue in patch.addIssues:
+            if issue.id in next_ir.issues:
+                raise HTTPException(status_code=409, detail=f"Issue `{issue.id}` 已存在")
+            next_ir.issues[issue.id] = issue
+        for update in patch.updateIssues:
+            if update.id not in next_ir.issues:
+                raise HTTPException(status_code=404, detail=f"Issue `{update.id}` 不存在")
+            next_ir.issues[update.id] = cls._merge_issue(next_ir.issues[update.id], update)
+        for issue_id in patch.resolveIssueIds:
+            if issue_id not in next_ir.issues:
                 raise HTTPException(status_code=404, detail=f"Issue `{issue_id}` 不存在")
+            next_ir.issues[issue_id].status = IssueStatus.RESOLVED
 
-            if "title" in raw and raw["title"] is not None:
-                issue.title = raw["title"]
-            if "description" in raw:
-                issue.description = raw["description"] or ""
-            if "severity" in raw and raw["severity"] is not None:
-                issue.severity = raw["severity"]
-            if "category" in raw and raw["category"] is not None:
-                issue.category = raw["category"]
-            if "relatedNodeIds" in raw and raw["relatedNodeIds"] is not None:
-                issue.related_node_ids = raw["relatedNodeIds"]
-            if "suggestedProjection" in raw and raw["suggestedProjection"] is not None:
-                issue.suggested_projection = raw["suggestedProjection"]
-            if "suggestedAction" in raw and raw["suggestedAction"] is not None:
-                issue.suggested_action = raw["suggestedAction"]
-            if "status" in raw and raw["status"] is not None:
-                issue.status = raw["status"]
-            if "source" in raw and raw["source"] is not None:
-                issue.source = raw["source"]
+        return next_ir
 
-        db.flush()
-        _validate_workspace_consistency(db, ws.id)
-        append_operation(
-            ws,
-            actionType="apply_patch",
-            targetIds=sorted(add_node_ids | remove_node_ids | remove_link_ids),
-            actor={"type": "system"},
-            summary="应用 GraphPatch",
-            details={
-                "addNodeIds": sorted(add_node_ids),
-                "updateNodeCount": len(update_nodes),
-                "removeNodeIds": sorted(remove_node_ids),
-                "addLinkCount": len(add_links),
-                "removeLinkIds": sorted(remove_link_ids),
-                "addSlotCount": len(add_slots),
-                "removeSlotIds": sorted(remove_slot_ids),
-                "updateSlotCount": len(update_slots),
-                "resolveIssueIds": sorted(resolve_issue_ids),
-                "addIssueCount": len(add_issues),
-                "updateIssueCount": len(update_issues),
-                "cascadeRemovedSlotIds": sorted(removed_slot_ids),
-                "cascadeRemovedChoiceGroupIds": sorted(removed_choice_group_ids),
-            },
+    @classmethod
+    def _remove_nodes(cls, ir: RequirementSpaceIR, node_ids: set[str]) -> None:
+        if not node_ids:
+            return
+
+        cls._remove_links(ir, {link.id for link in ir.links if link.sourceId in node_ids or link.targetId in node_ids})
+        cls._remove_slots(ir, {slot.id for slot in ir.slots.values() if slot.ownerNodeId in node_ids})
+
+        for node_id in node_ids:
+            ir.nodes.pop(node_id, None)
+
+        for slot in ir.slots.values():
+            slot.context.relatedNodeIds = [item for item in slot.context.relatedNodeIds if item not in node_ids]
+        for issue in ir.issues.values():
+            issue.relatedNodeIds = [item for item in issue.relatedNodeIds if item not in node_ids]
+        ir.projections.goal.expandedNodeIds = [item for item in ir.projections.goal.expandedNodeIds if item not in node_ids]
+        if ir.projections.role.activeActorId in node_ids:
+            ir.projections.role.activeActorId = None
+        ir.projections.system.highlightedNodeIds = [item for item in ir.projections.system.highlightedNodeIds if item not in node_ids]
+        if ir.projections.ui.activeActorId in node_ids:
+            ir.projections.ui.activeActorId = None
+        if ir.projections.ui.activeScreenId in node_ids:
+            ir.projections.ui.activeScreenId = None
+
+    @classmethod
+    def _remove_links(cls, ir: RequirementSpaceIR, link_ids: set[str]) -> None:
+        if not link_ids:
+            return
+        ir.links = [link for link in ir.links if link.id not in link_ids]
+
+    @classmethod
+    def _remove_slots(cls, ir: RequirementSpaceIR, slot_ids: set[str]) -> None:
+        if not slot_ids:
+            return
+
+        group_ids = {group.id for group in ir.choiceGroups.values() if group.slotId in slot_ids}
+        for group_id in group_ids:
+            ir.choiceGroups.pop(group_id, None)
+
+        for slot_id in slot_ids:
+            ir.slots.pop(slot_id, None)
+
+    @classmethod
+    def _merge_node(cls, existing: RequirementNode, update) -> RequirementNode:
+        payload = existing.model_dump(mode="json")
+        for field_name in update.model_fields_set:
+            if field_name == "id":
+                continue
+            payload[field_name] = getattr(update, field_name)
+        return NODE_ADAPTER.validate_python(payload)
+
+    @classmethod
+    def _merge_link(cls, existing: RequirementLink, update) -> RequirementLink:
+        payload = existing.model_dump(mode="json")
+        for field_name in update.model_fields_set:
+            if field_name == "id":
+                continue
+            payload[field_name] = getattr(update, field_name)
+        return RequirementLink.model_validate(payload)
+
+    @classmethod
+    def _merge_slot(cls, existing: RequirementSlot, update) -> RequirementSlot:
+        payload = existing.model_dump(mode="json")
+        for field_name in update.model_fields_set:
+            if field_name == "id":
+                continue
+            value = getattr(update, field_name)
+            if field_name == "context" and value is not None:
+                payload[field_name] = value.model_dump(mode="json")
+            else:
+                payload[field_name] = value
+        return RequirementSlot.model_validate(payload)
+
+    @classmethod
+    def _merge_choice_group(cls, existing: ChoiceGroup, update) -> ChoiceGroup:
+        payload = existing.model_dump(mode="json")
+        for field_name in update.model_fields_set:
+            if field_name in {"id", "choices"}:
+                continue
+            payload[field_name] = getattr(update, field_name)
+
+        choice_map = {choice["id"]: choice for choice in payload["choices"]}
+        if "choices" in update.model_fields_set and update.choices is not None:
+            for choice_update in update.choices:
+                if choice_update.id in choice_map:
+                    choice_map[choice_update.id] = cls._merge_choice(choice_map[choice_update.id], choice_update)
+                else:
+                    choice_map[choice_update.id] = cls._new_choice(payload["id"], choice_update)
+        payload["choices"] = list(choice_map.values())
+        return ChoiceGroup.model_validate(payload)
+
+    @classmethod
+    def _merge_choice(cls, existing_payload: dict[str, Any], update: ChoicePatch) -> dict[str, Any]:
+        payload = dict(existing_payload)
+        for field_name in update.model_fields_set:
+            if field_name == "id":
+                continue
+            value = getattr(update, field_name)
+            if field_name == "patch":
+                payload[field_name] = value.model_dump(mode="json") if value is not None else GraphPatch().model_dump(mode="json")
+            elif field_name == "impactPreview":
+                payload[field_name] = value.model_dump(mode="json") if value is not None else {
+                    "affectedGoals": [],
+                    "affectedActors": [],
+                    "affectedFlows": [],
+                    "affectedObjects": [],
+                    "affectedScreens": [],
+                }
+            else:
+                payload[field_name] = value
+        return Choice.model_validate(payload).model_dump(mode="json")
+
+    @classmethod
+    def _new_choice(cls, choice_group_id: str, update: ChoicePatch) -> dict[str, Any]:
+        if "title" not in update.model_fields_set or not update.title:
+            raise HTTPException(status_code=400, detail=f"新增 Choice `{update.id}` 必须提供 title")
+        return Choice.model_validate(
+            {
+                "id": update.id,
+                "choiceGroupId": choice_group_id,
+                "title": update.title,
+                "rationale": update.rationale or "",
+                "patch": update.patch.model_dump(mode="json") if update.patch else GraphPatch().model_dump(mode="json"),
+                "impactPreview": (
+                    update.impactPreview.model_dump(mode="json")
+                    if update.impactPreview
+                    else {
+                        "affectedGoals": [],
+                        "affectedActors": [],
+                        "affectedFlows": [],
+                        "affectedObjects": [],
+                        "affectedScreens": [],
+                    }
+                ),
+                "status": update.status.value if update.status else "candidate",
+            }
+        ).model_dump(mode="json")
+
+    @classmethod
+    def _merge_issue(cls, existing: Issue, update) -> Issue:
+        payload = existing.model_dump(mode="json")
+        for field_name in update.model_fields_set:
+            if field_name == "id":
+                continue
+            value = getattr(update, field_name)
+            if field_name == "source" and value is not None:
+                payload[field_name] = value.model_dump(mode="json")
+            else:
+                payload[field_name] = value
+        return Issue.model_validate(payload)
+
+    @classmethod
+    def _append_audit(
+        cls,
+        ir: RequirementSpaceIR,
+        patch: GraphPatch,
+        id_map: dict[str, str],
+        impact_preview: dict[str, object],
+    ) -> RequirementSpaceIR:
+        next_ir = RequirementSpaceIR.model_validate(ir.model_dump(mode="json"))
+        next_ir.audit.updatedAt = _now_iso()
+        historical_target_ids = sorted(
+            set(patch.removeNodeIds)
+            | set(patch.removeLinkIds)
+            | set(patch.removeSlotIds)
         )
-
+        next_ir.audit.operationLog.append(
+            OperationRecord.model_validate(
+                {
+                "id": f"op_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+                "timestamp": _now_iso(),
+                "actionType": "apply_graph_patch",
+                "targetIds": sorted(
+                    {node.id for node in patch.addNodes}
+                    | {node.id for node in patch.updateNodes}
+                    | set(patch.removeNodeIds)
+                    | {link.id for link in patch.addLinks}
+                    | {link.id for link in patch.updateLinks}
+                    | set(patch.removeLinkIds)
+                    | {slot.id for slot in patch.addSlots}
+                    | {slot.id for slot in patch.updateSlots}
+                    | set(patch.removeSlotIds)
+                    | {group.id for group in patch.addChoiceGroups}
+                    | {group.id for group in patch.updateChoiceGroups}
+                    | {issue.id for issue in patch.addIssues}
+                    | {issue.id for issue in patch.updateIssues}
+                    | set(patch.resolveIssueIds)
+                ),
+                "actor": {"type": "system"},
+                "summary": "应用 GraphPatch",
+                "details": {
+                    "idMap": id_map,
+                    "impactPreview": impact_preview,
+                    "historicalTargetIds": historical_target_ids,
+                },
+                }
+            )
+        )
+        return next_ir

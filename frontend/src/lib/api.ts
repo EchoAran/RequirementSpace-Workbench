@@ -1,6 +1,12 @@
-import { ImpactPreview, RequirementSpaceIR } from '@/types';
+import { ImpactPreview, Proposal, RequirementSpaceIR } from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+export type GraphPatchResponse = {
+  workspace: RequirementSpaceIR;
+  idMap: Record<string, string>;
+  impactPreview?: ImpactPreview;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -79,7 +85,7 @@ export const workspaceApi = {
       }
     ),
   applyPatch: (workspaceId: string, patch: Record<string, unknown>) =>
-    request<RequirementSpaceIR>(`/api/workspaces/${workspaceId}/patch`, {
+    request<GraphPatchResponse>(`/api/workspaces/${workspaceId}/patch`, {
       method: 'POST',
       body: JSON.stringify(patch),
     }),
@@ -103,6 +109,23 @@ export const workspaceApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  listProposals: (workspaceId: string) =>
+    request<Proposal[]>(`/api/workspaces/${workspaceId}/proposals`),
+  acceptProposal: (workspaceId: string, proposalId: string) =>
+    request<{ proposalId: string; workspace: RequirementSpaceIR }>(
+      `/api/workspaces/${workspaceId}/proposals/${proposalId}/accept`,
+      { method: 'POST' }
+    ),
+  rejectProposal: (workspaceId: string, proposalId: string) =>
+    request<{ proposalId: string; workspace: RequirementSpaceIR }>(
+      `/api/workspaces/${workspaceId}/proposals/${proposalId}/reject`,
+      { method: 'POST' }
+    ),
+  convertProposalToChoice: (workspaceId: string, proposalId: string) =>
+    request<{ proposalId: string; choiceId: string; choiceGroupId: string; workspace: RequirementSpaceIR }>(
+      `/api/workspaces/${workspaceId}/proposals/${proposalId}/convert-to-choice`,
+      { method: 'POST' }
+    ),
   impactPreview: (workspaceId: string, payload: Record<string, unknown>) =>
     request<{ impactPreview: ImpactPreview }>(`/api/workspaces/${workspaceId}/impact-preview`, {
       method: 'POST',

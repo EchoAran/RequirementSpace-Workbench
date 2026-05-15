@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useWorkspaceStore, selectSelectedObject, selectCurrentPage } from '@/store/useWorkspaceStore';
-import { ProjectionKind } from '@/types';
-
-const Modes = ['展开 Slot', '生成候选', '检查一致性', '局部改写', '解释影响'];
+import { useEffect, useMemo, useState } from 'react';
+import { ProjectionKind, Proposal } from '@/types';
+import { selectCurrentPage, selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 
 type AIScope =
   | { kind: 'workspace'; label: string }
@@ -10,138 +8,190 @@ type AIScope =
   | { kind: 'node'; nodeId: string; label: string }
   | { kind: 'slot'; slotId: string; label: string }
   | { kind: 'issue'; issueId: string; label: string }
-  | { kind: 'choiceGroup'; choiceGroupId: string; label: string }
-  | { kind: 'choice'; choiceId: string; label: string };
+  | { kind: 'choice'; choiceId: string; label: string }
+  | { kind: 'proposal'; proposalId: string; label: string; proposal: Proposal };
+
+type AIIntent = 'diagnose' | 'create_slot' | 'expand_slot' | 'rewrite' | 'explain_impact';
+
+const INTENT_LABELS: Record<AIIntent, string> = {
+  diagnose: '诊断',
+  create_slot: '创建 Slot',
+  expand_slot: '展开 Slot',
+  rewrite: '改写',
+  explain_impact: '解释影响',
+};
+
+const pageToProjection = (page: string): ProjectionKind => {
+  if (page === '/flow') return 'system';
+  if (page === '/scope') return 'data';
+  if (page === '/preview') return 'ui';
+  if (page === '/' || page === '/what') return 'goal';
+  return 'goal';
+};
 
 export function ScopedAIBar() {
-  const { generateCandidate, generateGap, ir, openSlot, generateChoices, rewrite, explainImpact } = useWorkspaceStore();
+  const {
+    ir,
+    isLoading,
+    lastActionMessage,
+    runDiagnosis,
+    createSlotFromIssue,
+    expandSlot,
+    rewrite,
+    explainImpact,
+  } = useWorkspaceStore();
   const selectedObject: any = useWorkspaceStore(selectSelectedObject);
   const currentPage = useWorkspaceStore(selectCurrentPage);
-  
-  // Build scopes array based on context
-  const getScopes = (): AIScope[] => {
-    const scopes: AIScope[] = [];
 
-    // Base scope
-    scopes.push({ kind: 'workspace', label: '全局（工作区）' });
+  const scopes = useMemo(() => {
+    const nextScopes: AIScope[] = [
+      { kind: 'projection', projection: pageToProjection(currentPage), label: '当前投影' },
+      { kind: 'workspace', label: '整个工作区' },
+    ];
 
-    // Current page implies a projection scope
-    if (currentPage === '/') scopes.unshift({ kind: 'projection', projection: 'goal', label: '概览' });
-    if (currentPage === '/what') scopes.unshift({ kind: 'projection', projection: 'goal', label: '要做什么' });
-    if (currentPage === '/flow') scopes.unshift({ kind: 'projection', projection: 'system', label: '怎么运作' });
-    if (currentPage === '/scope') scopes.unshift({ kind: 'projection', projection: 'data', label: '范围与交付' });
-    if (currentPage === '/preview') scopes.unshift({ kind: 'projection', projection: 'ui', label: '方案预览' });
+    if (!selectedObject) return nextScopes;
+    const title = selectedObject.title || selectedObject.name || selectedObject.id;
 
-    // Object specific scope
-    if (selectedObject) {
-      const isNode = ir?.nodes?.[selectedObject.id];
-      const isIssue = selectedObject.severity !== undefined;
-      const isChoiceGroup = selectedObject.choices !== undefined;
-      const isSlot = selectedObject.arity !== undefined;
-      const isChoice = selectedObject.rationale !== undefined && selectedObject.patch !== undefined;
-
-      const title = selectedObject.title || selectedObject.name || selectedObject.id;
-
-      if (isChoice) {
-        scopes.unshift({ kind: 'choice', choiceId: selectedObject.id, label: `候选方案：${title}` });
-      } else if (isChoiceGroup) {
-        scopes.unshift({ kind: 'choiceGroup', choiceGroupId: selectedObject.id, label: `候选组：${title}` });
-      } else if (isSlot) {
-        scopes.unshift({ kind: 'slot', slotId: selectedObject.id, label: `槽位：${title}` });
-      } else if (isIssue) {
-        scopes.unshift({ kind: 'issue', issueId: selectedObject.id, label: `缺口：${title}` });
-      } else if (isNode) {
-        scopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `节点: ${title}` });
-      } else {
-         scopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `对象: ${title}` });
-      }
+    if (ir?.issues?.[selectedObject.id]) {
+      nextScopes.unshift({ kind: 'issue', issueId: selectedObject.id, label: `Issue: ${title}` });
+    } else if (ir?.slots?.[selectedObject.id]) {
+      nextScopes.unshift({ kind: 'slot', slotId: selectedObject.id, label: `Slot: ${title}` });
+    } else if (ir?.proposals?.[selectedObject.id]) {
+      nextScopes.unshift({
+        kind: 'proposal',
+        proposalId: selectedObject.id,
+        label: `Proposal: ${title}`,
+        proposal: ir.proposals[selectedObject.id],
+      });
+    } else if (selectedObject.patch && selectedObject.rationale) {
+      nextScopes.unshift({ kind: 'choice', choiceId: selectedObject.id, label: `Choice: ${title}` });
+    } else if (ir?.nodes?.[selectedObject.id]) {
+      nextScopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `节点: ${title}` });
     }
-    
-    return scopes;
-  };
 
-  const currentScopes = getScopes();
+    return nextScopes;
+  }, [currentPage, ir, selectedObject]);
+
   const [selectedScopeIndex, setSelectedScopeIndex] = useState(0);
-  const scope = currentScopes[selectedScopeIndex] || currentScopes[0];
-  const [mode, setMode] = useState(Modes[0]);
-  const [input, setInput] = useState('');
+  const [intent, setIntent] = useState<AIIntent>('diagnose');
+  const [instruction, setInstruction] = useState('');
 
-  // Auto-update scope when selection changes
   useEffect(() => {
     setSelectedScopeIndex(0);
+    setIntent('diagnose');
   }, [selectedObject, currentPage]);
 
-  const placeholderText = scope.kind === 'workspace' 
-    ? `输入对当前应用全局的调整...`
-    : `针对 ${scope.label} 操作...`;
+  const scope = scopes[selectedScopeIndex] || scopes[0];
+
+  const availableIntents = useMemo(() => {
+    const intents: AIIntent[] = ['diagnose', 'create_slot', 'expand_slot', 'rewrite', 'explain_impact'];
+    return intents.filter((item) => {
+      if (item === 'create_slot') return scope.kind === 'issue';
+      if (item === 'expand_slot') return scope.kind === 'slot';
+      if (item === 'explain_impact') {
+        return scope.kind === 'choice' || scope.kind === 'proposal';
+      }
+      return true;
+    });
+  }, [scope.kind]);
+
+  useEffect(() => {
+    if (!availableIntents.includes(intent)) {
+      setIntent(availableIntents[0] || 'diagnose');
+    }
+  }, [availableIntents, intent]);
+
+  const placeholder =
+    intent === 'rewrite'
+      ? scope.kind === 'workspace'
+        ? '输入改写指令，例如：补全目标与验收标准'
+        : `输入针对 ${scope.label} 的改写指令`
+      : '当前动作无需额外输入';
 
   const handleSubmit = async () => {
-    if (!input.trim() && mode !== '生成候选' && mode !== '检查一致性') return;
+    if (intent === 'rewrite' && !instruction.trim()) return;
 
-    if (mode === '展开 Slot') {
-      if (scope.kind === 'slot') {
-        openSlot(scope.slotId);
-        await generateChoices(scope.slotId);
+    if (intent === 'diagnose') {
+      await runDiagnosis(scope.kind === 'workspace' ? { trigger: 'manual' } : scope);
+    } else if (intent === 'create_slot' && scope.kind === 'issue') {
+      const slotId = await createSlotFromIssue(scope.issueId);
+      if (slotId) {
+        await expandSlot(slotId);
       }
-    } else if (mode === '生成候选') {
-      if (scope.kind === 'issue') {
-        await generateCandidate(scope.issueId);
-      } else if (scope.kind === 'slot') {
-        openSlot(scope.slotId);
-        await generateChoices(scope.slotId);
-      } else {
-        await generateGap(selectedObject?.id || '');
+    } else if (intent === 'expand_slot' && scope.kind === 'slot') {
+      await expandSlot(scope.slotId);
+    } else if (intent === 'rewrite') {
+      await rewrite(scope, instruction);
+    } else if (intent === 'explain_impact') {
+      if (scope.kind === 'choice') {
+        await explainImpact(scope, undefined, scope.choiceId);
+      } else if (scope.kind === 'proposal') {
+        await explainImpact(scope, scope.proposal.patch);
       }
-    } else if (mode === '检查一致性') {
-      await generateGap(selectedObject?.id || '');
-    } else if (mode === '局部改写') {
-      await rewrite(scope, input);
-    } else if (mode === '解释影响') {
-      await explainImpact(scope, undefined, scope.kind === 'choice' ? scope.choiceId : undefined);
     }
-    
-    setInput('');
+
+    setInstruction('');
   };
 
   return (
-    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-300 ${selectedObject ? 'w-[min(620px,calc(100vw-2rem))]' : 'w-[min(760px,calc(100vw-2rem))]'}`}>
-      <div className="bg-slate-900 rounded-2xl p-2 shadow-2xl flex items-center gap-2 border border-slate-700">
-        
-        {/* Scope Selector */}
-        <select 
-          value={selectedScopeIndex} 
-          onChange={e => setSelectedScopeIndex(Number(e.target.value))}
-          className="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-2 rounded-xl border-none ring-0 focus:ring-1 focus:ring-indigo-500 outline-none cursor-pointer max-w-[150px] truncate"
-        >
-          {currentScopes.map((s, idx) => <option key={idx} value={idx}>{s.label}</option>)}
-        </select>
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[min(860px,calc(100vw-2rem))]">
+      <div className="bg-slate-900 rounded-2xl p-3 shadow-2xl border border-slate-700 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={selectedScopeIndex}
+            onChange={(e) => setSelectedScopeIndex(Number(e.target.value))}
+            className="bg-slate-800 text-slate-200 text-xs font-bold px-3 py-2 rounded-xl outline-none cursor-pointer"
+          >
+            {scopes.map((item, index) => (
+              <option key={`${item.kind}-${index}`} value={index}>
+                {item.label}
+              </option>
+            ))}
+          </select>
 
-        {/* Input */}
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={placeholderText}
-          className="flex-1 bg-transparent border-none text-white text-sm focus:ring-0 focus:outline-none px-2 placeholder:text-slate-500"
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-        />
+          {availableIntents.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setIntent(item)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                intent === item
+                  ? 'bg-indigo-600 text-white border border-indigo-500'
+                  : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              {INTENT_LABELS[item]}
+            </button>
+          ))}
+        </div>
 
-        {/* Mode Selector */}
-        <select 
-          value={mode} 
-          onChange={e => setMode(e.target.value)}
-          className="bg-slate-800 text-slate-400 text-xs px-2 py-2 rounded-xl border-none outline-none cursor-pointer"
-        >
-          {Modes.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            disabled={intent !== 'rewrite'}
+            placeholder={placeholder}
+            className="flex-1 bg-slate-800 text-white text-sm rounded-xl px-4 py-2.5 placeholder:text-slate-500 outline-none disabled:opacity-60"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void handleSubmit();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={isLoading || (intent === 'rewrite' && !instruction.trim())}
+            className="px-5 py-2.5 bg-indigo-600 border border-indigo-500 text-white font-bold rounded-xl text-sm hover:bg-indigo-500 transition-colors disabled:opacity-60"
+          >
+            {isLoading ? '执行中...' : '执行'}
+          </button>
+        </div>
 
-        {/* Submit */}
-        <button 
-          onClick={handleSubmit} 
-          className="px-6 py-2 bg-indigo-600 border border-indigo-500 text-white font-bold rounded-xl text-sm hover:bg-indigo-500 hover:border-indigo-400 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)]"
-        >
-          发起提案
-        </button>
+        <div className="text-xs text-slate-400 min-h-[18px]">
+          {lastActionMessage || `当前将对 ${scope.label} 执行 ${INTENT_LABELS[intent]}`}
+        </div>
       </div>
     </div>
   );

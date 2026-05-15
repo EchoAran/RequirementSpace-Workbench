@@ -5,6 +5,8 @@ import {
   BaseNode,
   Issue,
   Choice,
+  ChoiceGroup,
+  Proposal,
   GoalNode,
   CapabilityNode,
   TaskNode,
@@ -64,11 +66,12 @@ interface WorkspaceState {
   
   applyPatch: (patch: GraphPatch) => Promise<void>;
   openSlot: (slotId: string) => void;
-  generateChoices: (slotId: string) => Promise<void>;
-  selectChoice: (choiceId: string) => Promise<void>;
+  expandSlot: (slotId: string) => Promise<void>;
+  acceptChoice: (choiceId: string) => Promise<void>;
   rejectChoice: (choiceId: string) => Promise<void>;
-  markNodeStatus: (nodeId: string, status: NodeStatus) => Promise<void>;
-  setNodeScope: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
+  createSlotFromIssue: (issueId: string) => Promise<string | null>;
+  setNodeStatus: (nodeId: string, status: NodeStatus) => Promise<void>;
+  setScopeStatus: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
   runDiagnosis: (scope: any) => Promise<void>;
   rewrite: (scope: any, instruction: string) => Promise<void>;
   explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
@@ -85,26 +88,38 @@ interface WorkspaceState {
   updateIssueAttributes: (issueId: string, updates: Partial<Issue> & Record<string, any>) => Promise<void>;
   updateChoiceAttributes: (choiceId: string, updates: Partial<Choice> & Record<string, any>) => Promise<void>;
   addChoiceToGroup: (choiceGroupId: string, payload: { title: string; rationale?: string }) => Promise<void>;
-
-  // Legacy actions for compatibility with older UI parts during transition
-  acceptCandidate: (candidateId: string) => Promise<void>;
-  generateGap: (targetId?: string) => Promise<void>;
-  deferObject: (objId: string) => Promise<void>;
-  excludeObject: (objId: string) => Promise<void>;
-  generateCandidate: (gapId: string) => Promise<void>;
-  moveScopeItem: (itemId: string, newColumn: string) => Promise<void>;
+  acceptProposal: (proposalId: string) => Promise<void>;
+  rejectProposal: (proposalId: string) => Promise<void>;
+  convertProposalToChoice: (proposalId: string) => Promise<void>;
 }
 
 const findSelectedObjectInIr = (ir: RequirementSpaceIR | null, selectedId: string | null) => {
   if (!ir || !selectedId) return null;
   if (ir.nodes[selectedId]) return ir.nodes[selectedId];
   if (ir.issues[selectedId]) return ir.issues[selectedId];
+  if (ir.slots[selectedId]) return ir.slots[selectedId];
+  if (ir.choiceGroups[selectedId]) return ir.choiceGroups[selectedId];
+  if (ir.proposals[selectedId]) return ir.proposals[selectedId];
   for (const group of Object.values(ir.choiceGroups || {})) {
     if (!group?.choices) continue;
     const choice = group.choices.find((c) => c.id === selectedId);
     if (choice) return choice;
   }
   return null;
+};
+
+const findChoiceGroupBySlotId = (ir: RequirementSpaceIR | null, slotId: string | null): ChoiceGroup | null => {
+  if (!ir || !slotId) return null;
+  return Object.values(ir.choiceGroups || {}).find((group) => group.slotId === slotId) || null;
+};
+
+const findChoiceGroupByChoiceId = (ir: RequirementSpaceIR | null, choiceId: string | null): ChoiceGroup | null => {
+  if (!ir || !choiceId) return null;
+  return (
+    Object.values(ir.choiceGroups || {}).find((group) =>
+      (group.choices || []).some((choice) => choice.id === choiceId)
+    ) || null
+  );
 };
 
 const withWorkspaceId = (state: WorkspaceState): string => {
@@ -255,7 +270,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const workspaceId = withWorkspaceId(get());
-      const ir = await workspaceApi.applyPatch(workspaceId, patch as any);
+      const resp = await workspaceApi.applyPatch(workspaceId, patch as any);
+      const ir = resp.workspace;
       set((state) => ({
         ir,
         isLoading: false,
@@ -271,23 +287,54 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   openSlot: (slotId) => {
     const state = get();
     const slot = state.ir?.slots?.[slotId];
-    const choiceGroupId = slot?.choiceGroupId || null;
+    const choiceGroup = findChoiceGroupBySlotId(state.ir, slotId);
+    const choiceGroupId = choiceGroup?.id || null;
     set({
       selectedSlotId: slotId,
       activeChoiceGroupId: choiceGroupId,
-      selectedObject: choiceGroupId && state.ir ? state.ir.choiceGroups[choiceGroupId] : slot || null,
+      selectedObject: choiceGroup || slot || null,
       selectedObjectId: choiceGroupId || slotId,
     });
+    if (!choiceGroup && slot?.status === 'empty') {
+      void get().expandSlot(slotId);
+    }
   },
-  
-  generateChoices: async (slotId) => {
+
+  createSlotFromIssue: async (issueId) => {
+    const state = get();
+    if (!state.ir?.id) return null;
+    set({ isLoading: true, error: null });
+    try {
+      const resp = await workspaceApi.createSlotForIssue(state.ir.id, issueId);
+      const ir = resp.workspace;
+      set({
+        ir,
+        isLoading: false,
+        selectedSlotId: resp.slotId,
+        activeChoiceGroupId: null,
+        selectedObjectId: resp.slotId,
+        selectedObject: ir.slots[resp.slotId] || null,
+        lastActionMessage: '已从 Issue 创建 Slot。',
+      });
+      return resp.slotId;
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
+      return null;
+    }
+  },
+
+  expandSlot: async (slotId) => {
     const state = get();
     if (!state.ir?.id) return;
-    const slot = state.ir.slots[slotId];
-    if (slot?.choiceGroupId) {
+    const existingGroup = findChoiceGroupBySlotId(state.ir, slotId);
+    if (existingGroup) {
       set({
-        selectedObjectId: slot.choiceGroupId,
-        selectedObject: state.ir.choiceGroups[slot.choiceGroupId],
+        selectedSlotId: slotId,
+        activeChoiceGroupId: existingGroup.id,
+        selectedObjectId: existingGroup.id,
+        selectedObject: existingGroup,
+        lastActionMessage: '已打开现有 ChoiceGroup。',
       });
       return;
     }
@@ -302,15 +349,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         activeChoiceGroupId: resp.choiceGroupId,
         selectedObjectId: resp.choiceGroupId,
         selectedObject: ir.choiceGroups[resp.choiceGroupId],
-        lastActionMessage: '已展开 Slot 并生成候选方案。',
+        lastActionMessage: '已展开 Slot 并生成 ChoiceGroup。',
       });
     } catch (err) {
       setError(set, err);
       set({ isLoading: false });
     }
   },
-  
-  selectChoice: async (choiceId) => {
+
+  acceptChoice: async (choiceId) => {
     set({ isLoading: true, error: null });
     try {
       const workspaceId = withWorkspaceId(get());
@@ -321,7 +368,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         isLoading: false,
         selectedObjectId: selected?.id || null,
         selectedObject: selected,
-        lastActionMessage: '候选方案已采纳并应用。',
+        lastActionMessage: 'Choice 已采纳并应用。',
       });
     } catch (err) {
       setError(set, err);
@@ -339,15 +386,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         isLoading: false,
         selectedObjectId: null,
         selectedObject: null,
-        lastActionMessage: '候选方案已拒绝。',
+        lastActionMessage: 'Choice 已拒绝。',
       });
     } catch (err) {
       setError(set, err);
       set({ isLoading: false });
     }
   },
-  
-  markNodeStatus: async (nodeId, status) => {
+
+  setNodeStatus: async (nodeId, status) => {
     set({ isLoading: true, error: null });
     try {
       const workspaceId = withWorkspaceId(get());
@@ -363,8 +410,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ isLoading: false });
     }
   },
-  
-  setNodeScope: async (nodeId, scopeStatus) => {
+
+  setScopeStatus: async (nodeId, scopeStatus) => {
     set({ isLoading: true, error: null });
     try {
       const workspaceId = withWorkspaceId(get());
@@ -393,8 +440,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
         lastActionMessage:
           (resp.result?.createdIssueIds as string[] | undefined)?.length
-            ? '已完成诊断并新增缺口项。'
-            : '已完成诊断，未发现新增缺口。',
+            ? '已完成诊断并新增 Issue。'
+            : '已完成诊断，未发现新增 Issue。',
       }));
     } catch (err) {
       setError(set, err);
@@ -408,10 +455,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const workspaceId = withWorkspaceId(get());
       const resp = await workspaceApi.rewrite(workspaceId, { scope, instruction });
       const ir = resp.workspace;
+      const proposalId = (resp.result?.proposalId as string | undefined) || null;
       set((state) => ({
         ir,
         isLoading: false,
-        selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
+        selectedObjectId: proposalId || state.selectedObjectId,
+        selectedObject: findSelectedObjectInIr(ir, proposalId || state.selectedObjectId),
         lastActionMessage: '已生成局部改写提案（未自动应用）。',
       }));
     } catch (err) {
@@ -427,7 +476,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       if (!patch && !choiceId) {
         set({
           isLoading: false,
-          lastActionMessage: '请选择一个候选方案后再解释影响。',
+          lastActionMessage: '请选择 Choice 或 Proposal 后再解释影响。',
         });
         return;
       }
@@ -456,23 +505,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const workspaceId = withWorkspaceId(get());
-      const knownKeys = ['title', 'description', 'status', 'scopeStatus', 'confidence', 'source'];
-      const body: Record<string, any> = {};
-      const extra: Record<string, any> = {};
-
-      Object.entries(updates || {}).forEach(([key, value]) => {
-        if (knownKeys.includes(key)) {
-          body[key] = value;
-        } else {
-          extra[key] = value;
-        }
-      });
-
-      if (Object.keys(extra).length > 0) {
-        body.extra = extra;
-      }
-
-      const ir = await workspaceApi.patchNode(workspaceId, nodeId, body);
+      const resp = await workspaceApi.applyPatch(workspaceId, {
+        updateNodes: [{ id: nodeId, ...updates }],
+      } as any);
+      const ir = resp.workspace;
       set((state) => ({
         ir,
         isLoading: false,
@@ -513,7 +549,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ir,
         isLoading: false,
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
-        lastActionMessage: '已更新缺口信息。',
+        lastActionMessage: '已更新 Issue。',
       }));
     } catch (err) {
       setError(set, err);
@@ -530,7 +566,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ir,
         isLoading: false,
         selectedObject: findSelectedObjectInIr(ir, state.selectedObjectId),
-        lastActionMessage: '已更新候选方案。',
+        lastActionMessage: '已更新 Choice。',
       }));
     } catch (err) {
       setError(set, err);
@@ -545,8 +581,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const resp = await workspaceApi.addChoiceToGroup(workspaceId, choiceGroupId, {
         title: payload.title,
         rationale: payload.rationale || '',
-        proposedNodeIds: [],
-        proposedLinkIds: [],
         patch: {},
         impactPreview: {
           affectedGoals: [],
@@ -562,7 +596,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         isLoading: false,
         selectedObjectId: choiceGroupId,
         selectedObject: ir.choiceGroups[choiceGroupId],
-        lastActionMessage: '已补充新候选方案。',
+        lastActionMessage: '已补充 Choice。',
       });
     } catch (err) {
       setError(set, err);
@@ -570,95 +604,65 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  // Legacy mappings
-  acceptCandidate: async (candidateId) => {
-    await get().selectChoice(candidateId);
-  },
-
-  deferObject: async (objId) => {
-    const state = get();
-    const issue = state.ir?.issues?.[objId];
-    if (issue) {
-      try {
-        const workspaceId = withWorkspaceId(state);
-        const ir = await workspaceApi.patchIssueStatus(workspaceId, objId, 'ignored');
-        set({
-          ir,
-          selectedObject: null,
-          selectedObjectId: null,
-          lastActionMessage: '缺口已暂缓。',
-        });
-      } catch (err) {
-        setError(set, err);
-      }
-      return;
+  acceptProposal: async (proposalId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const resp = await workspaceApi.acceptProposal(workspaceId, proposalId);
+      const ir = resp.workspace;
+      set({
+        ir,
+        isLoading: false,
+        selectedObjectId: null,
+        selectedObject: null,
+        lastActionMessage: '提案已采纳并应用到 IR。',
+      });
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
     }
-    await get().markNodeStatus(objId, 'deferred');
   },
 
-  excludeObject: async (objId) => {
-    const state = get();
-    const choice = Object.values(state.ir?.choiceGroups || {})
-      .flatMap((group) => group.choices || [])
-      .find((c) => c.id === objId);
-    if (choice) {
-      await get().rejectChoice(objId);
-      return;
+  rejectProposal: async (proposalId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const resp = await workspaceApi.rejectProposal(workspaceId, proposalId);
+      const ir = resp.workspace;
+      set({
+        ir,
+        isLoading: false,
+        selectedObjectId: proposalId,
+        selectedObject: ir.proposals[proposalId] || null,
+        lastActionMessage: '提案已拒绝。',
+      });
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
     }
-    await get().markNodeStatus(objId, 'excluded');
   },
 
-  generateCandidate: async (gapId) => {
-    const state = get();
-    if (!state.ir?.id) return;
-    if (state.ir.issues[gapId]) {
-      set({ isLoading: true, error: null });
-      try {
-        const resp = await workspaceApi.createSlotForIssue(state.ir.id, gapId);
-        const ir = resp.workspace;
-        const slot = ir.slots?.[resp.slotId];
-        set({
-          ir,
-          isLoading: false,
-          selectedSlotId: resp.slotId,
-          activeChoiceGroupId: slot?.choiceGroupId || null,
-          selectedObjectId: resp.slotId,
-          selectedObject: slot || null,
-          lastActionMessage: '已创建修复 Slot，等待展开候选。',
-        });
-      } catch (err) {
-        setError(set, err);
-        set({ isLoading: false });
-      }
-      return;
+  convertProposalToChoice: async (proposalId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const workspaceId = withWorkspaceId(get());
+      const resp = await workspaceApi.convertProposalToChoice(workspaceId, proposalId);
+      const ir = resp.workspace;
+      set({
+        ir,
+        isLoading: false,
+        selectedSlotId: ir.choiceGroups[resp.choiceGroupId]?.slotId || null,
+        activeChoiceGroupId: resp.choiceGroupId,
+        selectedObjectId: resp.choiceGroupId,
+        selectedObject: ir.choiceGroups[resp.choiceGroupId] || null,
+        lastActionMessage: '提案已转为 Choice。',
+      });
+    } catch (err) {
+      setError(set, err);
+      set({ isLoading: false });
     }
-
-    await get().runDiagnosis({ targetId: gapId });
   },
 
-  generateGap: async () => {
-    await get().runDiagnosis({ trigger: 'manual' });
-  },
-
-  moveScopeItem: async (itemId, newColumn) => {
-    const ir = get().ir;
-    const node = ir?.nodes?.[itemId];
-    const isExcludedTarget = newColumn === '已排除' || newColumn === '明确排除';
-    if (isExcludedTarget) {
-      await get().markNodeStatus(itemId, 'excluded');
-      return;
-    }
-
-    if (node?.status === 'excluded') {
-      await get().markNodeStatus(itemId, 'needs_confirmation');
-    }
-
-    let scopeStatus: ScopeStatus = 'in_scope';
-    if (newColumn === '本期暂不处理' || newColumn === '暂缓处理') scopeStatus = 'deferred';
-    else if (newColumn === '外部依赖') scopeStatus = 'external_dependency';
-    else if (newColumn === '范围外') scopeStatus = 'out_of_scope';
-    await get().setNodeScope(itemId, scopeStatus);
-  },
 }));
 
 const selectNodesByKindCache = new WeakMap<any, Record<string, any[]>>();
@@ -681,19 +685,24 @@ const getIssues = (issues: any) => {
   return issuesCache.get(issues || {})!;
 };
 
-const candidatesCache = new WeakMap<any, Choice[]>();
-const getCandidates = (choiceGroups: any) => {
+const choicesCache = new WeakMap<any, Choice[]>();
+const getChoices = (choiceGroups: any) => {
   const safeChoiceGroups = choiceGroups || {};
-  if (!candidatesCache.has(safeChoiceGroups)) {
+  if (!choicesCache.has(safeChoiceGroups)) {
     let choices: Choice[] = [];
     Object.values(safeChoiceGroups).forEach((cg: any) => {
       if (cg && cg.choices) {
         choices = [...choices, ...cg.choices];
       }
     });
-    candidatesCache.set(safeChoiceGroups, choices);
+    choicesCache.set(safeChoiceGroups, choices);
   }
-  return candidatesCache.get(safeChoiceGroups)!;
+  return choicesCache.get(safeChoiceGroups)!;
+};
+
+export const selectProposals = (state: WorkspaceState) => {
+  if (!state.ir) return emptyArray;
+  return Object.values(state.ir.proposals || {}) as Proposal[];
 };
 
 const scopeItemsCache = new WeakMap<any, RequirementNode[]>();
@@ -738,9 +747,9 @@ export const selectIssues = (state: WorkspaceState) => {
   return getIssues(state.ir.issues);
 };
 
-export const selectCandidates = (state: WorkspaceState) => {
+export const selectChoices = (state: WorkspaceState) => {
   if (!state.ir) return emptyArray;
-  return getCandidates(state.ir.choiceGroups);
+  return getChoices(state.ir.choiceGroups);
 };
 
 export const selectScopeItems = (state: WorkspaceState) => {
@@ -762,7 +771,7 @@ export const selectCurrentPage = (state: WorkspaceState) => state.activePage;
 
 export interface PageHealth {
   status: '阻塞' | '待决策' | '可预览' | '已收敛' | '不可用' | '未开始';
-  gapCount: number;
+  issueCount: number;
   todoCount: number;
   hasRisk: boolean;
   disabled: boolean;

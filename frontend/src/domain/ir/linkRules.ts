@@ -3,7 +3,6 @@ import type { LinkType, NodeKind } from '@/types';
 export const LINK_RULES: Record<LinkType, Array<[NodeKind, NodeKind]>> = {
   realizes: [
     ['capability', 'goal'],
-    ['task', 'capability'],
     ['flow', 'task'],
   ],
   supports: [
@@ -24,23 +23,21 @@ export const LINK_RULES: Record<LinkType, Array<[NodeKind, NodeKind]>> = {
   reads: [
     ['flow_step', 'business_object'],
     ['screen', 'business_object'],
-    ['screen', 'actor'],
   ],
   writes: [
     ['flow_step', 'business_object'],
     ['screen', 'business_object'],
   ],
   changes_state: [
-    ['flow_step', 'business_object'],
-    ['state_transition', 'object_state'],
+    ['flow_step', 'state_transition'],
   ],
   depends_on: [
     ['capability', 'capability'],
     ['task', 'task'],
     ['task', 'capability'],
     ['flow_step', 'flow_step'],
-    ['ui_component', 'flow_step'],
   ],
+  diagnoses: [],
   contains: [
     ['goal', 'capability'],
     ['capability', 'capability'],
@@ -54,8 +51,6 @@ export const LINK_RULES: Record<LinkType, Array<[NodeKind, NodeKind]>> = {
   accessible_by: [['screen', 'actor']],
   binds_field: [['ui_component', 'field']],
   invokes_step: [['ui_component', 'flow_step']],
-  displayed_on: [['ui_component', 'screen']],
-  triggered_by: [['ui_component', 'flow_step']],
 };
 
 export const isLinkAllowed = (type: LinkType, sourceKind: NodeKind, targetKind: NodeKind) =>

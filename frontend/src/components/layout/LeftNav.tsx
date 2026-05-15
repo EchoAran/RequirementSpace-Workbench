@@ -47,13 +47,13 @@ export function LeftNav() {
         {NavItems.map((item) => {
           const isActive = location.pathname === item.path;
           const Icon = item.icon;
-          const { gapCount, todoCount, hasRisk, status, disabled } = getCounts(item.path);
+          const { issueCount, todoCount, hasRisk, status, disabled } = getCounts(item.path);
           
           const InnerContent = collapsed ? (
              <div className="flex justify-center items-center w-full relative" title={item.label}>
                 <Icon className="h-5 w-5 shrink-0" />
                 {hasRisk && <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse border border-white"></div>}
-                {!hasRisk && (gapCount > 0 || todoCount > 0) && <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></div>}
+                {!hasRisk && (issueCount > 0 || todoCount > 0) && <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></div>}
              </div>
           ) : (
             <div className="flex flex-col gap-1.5 w-full overflow-hidden">
@@ -82,14 +82,14 @@ export function LeftNav() {
               <div className="pl-6 min-h-[14px] flex items-center">
                 {disabled && item.path === '/preview' ? (
                   <span className="text-[10px] text-slate-500 leading-tight">需要先生成流程和角色后可查看</span>
-                ) : (gapCount > 0 || todoCount > 0) ? (
+                ) : (issueCount > 0 || todoCount > 0) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
                     {item.path === '/preview' ? (
                       `${todoCount} 个待处理`
                     ) : (
                       <>
-                        {gapCount > 0 && `${gapCount} 缺口`}
-                        {gapCount > 0 && todoCount > 0 && ' / '}
+                        {issueCount > 0 && `${issueCount} Issue`}
+                        {issueCount > 0 && todoCount > 0 && ' / '}
                         {todoCount > 0 && `${todoCount} 待确认`}
                       </>
                     )}

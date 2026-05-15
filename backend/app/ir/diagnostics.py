@@ -3,356 +3,437 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .. import models
+from .schema import (
+    FlowStepType,
+    IssueCategory,
+    NodeKind,
+    ProjectionKind,
+    RequirementLink,
+    RequirementNode,
+    RequirementSpaceIR,
+    ScopeStatus,
+    Severity,
+    UIComponentType,
+)
 
 
 @dataclass(frozen=True)
 class DiagnosticIssue:
     title: str
     description: str
-    severity: str
-    category: str
+    severity: Severity
+    category: IssueCategory
     related_node_ids: list[str]
-    suggested_projection: str
+    suggested_projection: ProjectionKind
     suggested_action: str
 
     def as_payload(self) -> dict[str, Any]:
         return {
             "title": self.title,
             "description": self.description,
-            "severity": self.severity,
-            "category": self.category,
+            "severity": self.severity.value,
+            "category": self.category.value,
             "relatedNodeIds": self.related_node_ids,
-            "suggestedProjection": self.suggested_projection,
+            "suggestedProjection": self.suggested_projection.value,
             "suggestedAction": self.suggested_action,
             "status": "open",
             "source": {"type": "system"},
         }
 
 
-def _by_kind(nodes: list[models.Node]) -> dict[str, list[models.Node]]:
-    res: dict[str, list[models.Node]] = {}
-    for n in nodes:
-        res.setdefault(n.kind, []).append(n)
-    return res
-
-
-def _link_index(links: list[models.Link]) -> tuple[dict[str, list[models.Link]], dict[str, list[models.Link]]]:
-    incoming: dict[str, list[models.Link]] = {}
-    outgoing: dict[str, list[models.Link]] = {}
-    for l in links:
-        outgoing.setdefault(l.source_id, []).append(l)
-        incoming.setdefault(l.target_id, []).append(l)
-    return incoming, outgoing
-
-
-def run_deterministic_diagnosis(ws: models.Workspace) -> list[DiagnosticIssue]:
-    nodes = list(ws.nodes or [])
-    links = list(ws.links or [])
+def run_deterministic_diagnosis(ir: RequirementSpaceIR) -> list[DiagnosticIssue]:
+    nodes = list(ir.nodes.values())
+    links = list(ir.links)
     by_kind = _by_kind(nodes)
     incoming, outgoing = _link_index(links)
-    node_by_id = {n.id: n for n in nodes}
 
     issues: list[DiagnosticIssue] = []
 
-    actors = by_kind.get("actor", [])
+    actors = by_kind.get(NodeKind.ACTOR, [])
+    goals = by_kind.get(NodeKind.GOAL, [])
+    capabilities = by_kind.get(NodeKind.CAPABILITY, [])
+    tasks = by_kind.get(NodeKind.TASK, [])
+    flow_steps = by_kind.get(NodeKind.FLOW_STEP, [])
+    business_objects = by_kind.get(NodeKind.BUSINESS_OBJECT, [])
+    fields = by_kind.get(NodeKind.FIELD, [])
+    state_machines = by_kind.get(NodeKind.STATE_MACHINE, [])
+    state_transitions = by_kind.get(NodeKind.STATE_TRANSITION, [])
+    screens = by_kind.get(NodeKind.SCREEN, [])
+    ui_components = by_kind.get(NodeKind.UI_COMPONENT, [])
+
+    actor_ids = {node.id for node in actors}
+    capability_ids = {node.id for node in capabilities}
+    task_ids = {node.id for node in tasks}
+    step_ids = {node.id for node in flow_steps}
+    field_ids = {node.id for node in fields}
+    state_machine_ids = {node.id for node in state_machines}
+    transition_ids = {node.id for node in state_transitions}
+
     if not actors:
         issues.append(
             DiagnosticIssue(
                 title="缺少参与角色",
                 description="当前需求空间没有角色节点，无法形成责任闭环。",
-                severity="high",
-                category="missing",
+                severity=Severity.HIGH,
+                category=IssueCategory.MISSING,
                 related_node_ids=[],
-                suggested_projection="role",
+                suggested_projection=ProjectionKind.ROLE,
                 suggested_action="请补充至少一个业务角色。",
             )
         )
 
-    capabilities = by_kind.get("capability", [])
-    tasks = by_kind.get("task", [])
-    task_ids = {t.id for t in tasks}
+    for goal in goals:
+        realized_capabilities = [
+            link.sourceId
+            for link in incoming.get(goal.id, [])
+            if link.type.value == "realizes" and link.sourceId in capability_ids
+        ]
+        if not realized_capabilities:
+            issues.append(
+                DiagnosticIssue(
+                    title="目标缺少能力承接",
+                    description=f"目标 `{goal.title}` 当前没有任何 Capability 承接，无法继续细化实现路径。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.MISSING,
+                    related_node_ids=[goal.id],
+                    suggested_projection=ProjectionKind.GOAL,
+                    suggested_action="为该目标补充至少一个 Capability，并用 realizes 连接到 Goal。",
+                )
+            )
 
-    for cap in capabilities:
+    for capability in capabilities:
         supported_tasks = [
-            l.source_id
-            for l in incoming.get(cap.id, [])
-            if l.type == "supports" and l.source_id in task_ids
+            link.sourceId
+            for link in incoming.get(capability.id, [])
+            if link.type.value == "supports" and link.sourceId in task_ids
         ]
         if not supported_tasks:
             issues.append(
                 DiagnosticIssue(
                     title="能力缺少任务支撑",
-                    description=f"能力 `{cap.title}` 当前没有任何任务（Task）支撑，无法落到可执行层。",
-                    severity="high",
-                    category="missing",
-                    related_node_ids=[cap.id],
-                    suggested_projection="goal",
+                    description=f"能力 `{capability.title}` 当前没有任何任务支撑，无法落到可执行层。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.MISSING,
+                    related_node_ids=[capability.id],
+                    suggested_projection=ProjectionKind.GOAL,
                     suggested_action="为该能力补充 1-3 个关键任务，并用 supports 链接到能力。",
                 )
             )
 
-    actor_ids = {a.id for a in actors}
     for task in tasks:
-        performed_by = [
-            l.target_id
-            for l in outgoing.get(task.id, [])
-            if l.type == "performed_by" and l.target_id in actor_ids
-        ]
-        if not performed_by:
+        if not _has_actor_binding(task.id, outgoing, actor_ids):
             issues.append(
                 DiagnosticIssue(
                     title="任务缺少责任角色",
                     description=f"任务 `{task.title}` 没有关联责任角色，无法形成责任闭环。",
-                    severity="high",
-                    category="missing",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.MISSING,
                     related_node_ids=[task.id],
-                    suggested_projection="role",
+                    suggested_projection=ProjectionKind.ROLE,
                     suggested_action="为该任务关联一个或多个角色（performed_by）。",
                 )
             )
-
-    flow_steps = by_kind.get("flow_step", [])
-    step_ids = {s.id for s in flow_steps}
+        supporting_steps = [
+            link.sourceId
+            for link in incoming.get(task.id, [])
+            if link.type.value == "supports" and link.sourceId in step_ids
+        ]
+        if not supporting_steps:
+            issues.append(
+                DiagnosticIssue(
+                    title="任务缺少流程步骤支撑",
+                    description=f"任务 `{task.title}` 没有关联任何 FlowStep，无法进入系统流程验证。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.FLOW_GAP,
+                    related_node_ids=[task.id],
+                    suggested_projection=ProjectionKind.SYSTEM,
+                    suggested_action="为该任务补充至少一个 FlowStep，并用 supports 连接到 Task。",
+                )
+            )
 
     if not flow_steps:
         issues.append(
             DiagnosticIssue(
                 title="缺少流程步骤",
-                description="当前需求空间没有流程步骤，无法执行预览验证。",
-                severity="high",
-                category="flow_gap",
+                description="当前需求空间没有流程步骤，无法执行流程验证。",
+                severity=Severity.HIGH,
+                category=IssueCategory.FLOW_GAP,
                 related_node_ids=[],
-                suggested_projection="system",
+                suggested_projection=ProjectionKind.SYSTEM,
                 suggested_action="请补充主流程步骤。",
             )
         )
     else:
-        in_degree = {sid: 0 for sid in step_ids}
-        out_degree = {sid: 0 for sid in step_ids}
-        out_branches = {sid: 0 for sid in step_ids}
-
-        for l in links:
-            if l.type == "precedes" and l.source_id in step_ids and l.target_id in step_ids:
-                out_degree[l.source_id] += 1
-                in_degree[l.target_id] += 1
-            if l.type == "branches_to" and l.source_id in step_ids and l.target_id in step_ids:
-                out_branches[l.source_id] += 1
-
-        start_candidates = [sid for sid, deg in in_degree.items() if deg == 0]
-        if not start_candidates:
-            issues.append(
-                DiagnosticIssue(
-                    title="流程缺少开始节点",
-                    description="所有流程步骤都存在前置步骤，导致无法确定主流程开始点。",
-                    severity="high",
-                    category="flow_gap",
-                    related_node_ids=list(step_ids)[:6],
-                    suggested_projection="system",
-                    suggested_action="补充一个没有前置的开始步骤，或修正 precedes 链接方向。",
-                )
+        global_start_candidates = [
+            step_id
+            for step_id in step_ids
+            if not any(
+                link.type.value == "precedes" and link.sourceId in step_ids
+                for link in incoming.get(step_id, [])
             )
-
-        end_candidates = [
-            sid for sid in step_ids if out_degree.get(sid, 0) == 0 and out_branches.get(sid, 0) == 0
         ]
-        if not end_candidates:
+        global_end_candidates = [
+            step_id
+            for step_id in step_ids
+            if not any(
+                link.type.value in {"precedes", "branches_to"} and link.targetId in step_ids
+                for link in outgoing.get(step_id, [])
+            )
+        ]
+        if not global_start_candidates:
             issues.append(
                 DiagnosticIssue(
-                    title="流程缺少结束节点",
-                    description="所有流程步骤都有后续步骤或分支，导致无法确定主流程结束点。",
-                    severity="high",
-                    category="flow_gap",
-                    related_node_ids=list(step_ids)[:6],
-                    suggested_projection="system",
-                    suggested_action="补充一个终止步骤（无后续 precedes / branches_to）。",
+                    title="系统步骤图缺少开始节点",
+                    description="当前 FlowStep 网络中所有步骤都有前置 precedes，无法识别系统入口步骤。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.FLOW_GAP,
+                    related_node_ids=sorted(step_ids)[:6],
+                    suggested_projection=ProjectionKind.SYSTEM,
+                    suggested_action="补充一个没有前置 precedes 的开始步骤，或修正步骤连接方向。",
                 )
             )
-
+        if not global_end_candidates:
+            issues.append(
+                DiagnosticIssue(
+                    title="系统步骤图缺少结束节点",
+                    description="当前 FlowStep 网络中所有步骤都有后续 precedes 或 branches_to，无法识别系统收敛点。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.FLOW_GAP,
+                    related_node_ids=sorted(step_ids)[:6],
+                    suggested_projection=ProjectionKind.SYSTEM,
+                    suggested_action="补充一个没有后续 precedes / branches_to 的结束步骤。",
+                )
+            )
         for step in flow_steps:
-            performed_by = [
-                l.target_id
-                for l in outgoing.get(step.id, [])
-                if l.type == "performed_by" and l.target_id in actor_ids
-            ]
-            if not performed_by:
+            if not _has_actor_binding(step.id, outgoing, actor_ids):
                 issues.append(
                     DiagnosticIssue(
                         title="流程步骤缺少执行者",
                         description=f"流程步骤 `{step.title}` 缺少 performed_by 执行者，无法归入泳道。",
-                        severity="high",
-                        category="flow_gap",
+                        severity=Severity.HIGH,
+                        category=IssueCategory.FLOW_GAP,
                         related_node_ids=[step.id],
-                        suggested_projection="system",
+                        suggested_projection=ProjectionKind.SYSTEM,
                         suggested_action="为该步骤关联执行者角色（performed_by）。",
                     )
                 )
 
-            step_type = str((step.extra or {}).get("stepType") or "")
-            if ("判断" in step_type or "decision" in step_type.lower()) and out_branches.get(step.id, 0) == 0:
+            step_type = getattr(step, "stepType", None)
+            step_branch_count = sum(
+                1
+                for link in outgoing.get(step.id, [])
+                if link.type.value == "branches_to" and link.targetId in step_ids
+            )
+            if step_type == FlowStepType.DECISION and step_branch_count == 0:
                 issues.append(
                     DiagnosticIssue(
                         title="判断步骤缺少分支",
                         description=f"判断步骤 `{step.title}` 没有任何 branches_to 分支，异常路径不可见。",
-                        severity="high",
-                        category="flow_gap",
+                        severity=Severity.HIGH,
+                        category=IssueCategory.FLOW_GAP,
                         related_node_ids=[step.id],
-                        suggested_projection="system",
+                        suggested_projection=ProjectionKind.SYSTEM,
                         suggested_action="为该判断步骤补充分支（branches_to）并说明条件。",
                     )
                 )
 
-    in_scope_caps = [
-        c for c in capabilities if _safe_scope_status(c) == "in_scope"
-    ]
-    for cap in in_scope_caps:
-        cap_task_ids = [
-            l.source_id
-            for l in incoming.get(cap.id, [])
-            if l.type == "supports" and l.source_id in task_ids
-        ]
-        if not cap_task_ids:
+    for capability in capabilities:
+        if capability.scopeStatus != ScopeStatus.IN_SCOPE:
             continue
-        supported_by_flow = False
-        for tid in cap_task_ids:
-            for l in incoming.get(tid, []):
-                if l.type == "supports" and l.source_id in step_ids:
-                    supported_by_flow = True
-                    break
-            if supported_by_flow:
-                break
-        if not supported_by_flow:
+        task_ids_for_capability = [
+            link.sourceId
+            for link in incoming.get(capability.id, [])
+            if link.type.value == "supports" and link.sourceId in task_ids
+        ]
+        if task_ids_for_capability and not any(
+            link.type.value == "supports" and link.sourceId in step_ids
+            for task_id in task_ids_for_capability
+            for link in incoming.get(task_id, [])
+        ):
             issues.append(
                 DiagnosticIssue(
                     title="本期能力缺少流程支撑",
-                    description=f"能力 `{cap.title}` 标记为本期范围（in_scope），但没有任何流程步骤支撑其任务，可能无法落地交付。",
-                    severity="high",
-                    category="scope_risk",
-                    related_node_ids=[cap.id],
-                    suggested_projection="system",
+                    description=f"能力 `{capability.title}` 标记为本期范围，但没有流程步骤支撑其任务，可能无法落地交付。",
+                    severity=Severity.HIGH,
+                    category=IssueCategory.SCOPE_RISK,
+                    related_node_ids=[capability.id],
+                    suggested_projection=ProjectionKind.SYSTEM,
                     suggested_action="为关联任务补充流程步骤，并用 supports 链接到任务。",
                 )
             )
 
-    business_objects = by_kind.get("business_object", [])
-    fields = by_kind.get("field", [])
-    state_machines = by_kind.get("state_machine", [])
-    object_states = by_kind.get("object_state", [])
-    state_transitions = by_kind.get("state_transition", [])
-
-    for obj in business_objects:
-        has_field = any((f.extra or {}).get("objectId") == obj.id for f in fields)
-        if not has_field:
+    for business_object in business_objects:
+        contains_field = any(
+            link.type.value == "contains" and link.sourceId == business_object.id and link.targetId in field_ids
+            for link in outgoing.get(business_object.id, [])
+        )
+        if not contains_field:
             issues.append(
                 DiagnosticIssue(
                     title="业务对象缺少字段定义",
-                    description=f"业务对象 `{obj.title}` 当前没有字段（Field）定义，无法表达数据结构与校验。",
-                    severity="medium",
-                    category="data_gap",
-                    related_node_ids=[obj.id],
-                    suggested_projection="data",
-                    suggested_action="为该对象补充关键字段，并将 Field.objectId 指向该对象。",
+                    description=f"业务对象 `{business_object.title}` 当前没有字段定义，无法表达数据结构与校验。",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.DATA_GAP,
+                    related_node_ids=[business_object.id],
+                    suggested_projection=ProjectionKind.DATA,
+                    suggested_action="为该对象补充关键字段，并用 contains 链接到 Field。",
                 )
             )
 
-        has_state = any((sm.extra or {}).get("objectId") == obj.id for sm in state_machines) or any(
-            (s.extra or {}).get("objectId") == obj.id for s in object_states
+        contains_state_machine = any(
+            link.type.value == "contains" and link.sourceId == business_object.id and link.targetId in state_machine_ids
+            for link in outgoing.get(business_object.id, [])
         )
-        if not has_state:
+        if not contains_state_machine:
             issues.append(
                 DiagnosticIssue(
                     title="业务对象缺少状态模型",
-                    description=f"业务对象 `{obj.title}` 当前没有状态（State）/状态机定义，流程无法表达状态迁移。",
-                    severity="medium",
-                    category="data_gap",
-                    related_node_ids=[obj.id],
-                    suggested_projection="data",
-                    suggested_action="为该对象补充状态机与状态列表，并定义关键状态迁移。",
+                    description=f"业务对象 `{business_object.title}` 当前没有状态机定义，流程无法表达状态迁移。",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.DATA_GAP,
+                    related_node_ids=[business_object.id],
+                    suggested_projection=ProjectionKind.DATA,
+                    suggested_action="为该对象补充状态机，并用 contains 链接状态与迁移。",
                 )
             )
 
-    transition_ids = {t.id for t in state_transitions}
-    for tr in state_transitions:
-        trigger_step_id = (tr.extra or {}).get("triggerStepId")
-        has_changes_state = any(
-            l.type == "changes_state" and l.source_id in step_ids and l.target_id == tr.id for l in incoming.get(tr.id, [])
+    for transition in state_transitions:
+        has_trigger_step = any(
+            link.type.value == "changes_state" and link.sourceId in step_ids and link.targetId == transition.id
+            for link in incoming.get(transition.id, [])
         )
-        if (trigger_step_id and trigger_step_id not in step_ids) or (not trigger_step_id and not has_changes_state):
+        if not has_trigger_step:
             issues.append(
                 DiagnosticIssue(
                     title="状态迁移缺少触发流程",
-                    description=f"状态迁移 `{tr.title}` 没有关联触发步骤（FlowStep），状态变化原因不可追溯。",
-                    severity="medium",
-                    category="data_gap",
-                    related_node_ids=[tr.id],
-                    suggested_projection="system",
-                    suggested_action="用 changes_state 链接流程步骤到该状态迁移，或补充 triggerStepId。",
+                    description=f"状态迁移 `{transition.title}` 没有关联触发步骤，状态变化原因不可追溯。",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.DATA_GAP,
+                    related_node_ids=[transition.id],
+                    suggested_projection=ProjectionKind.SYSTEM,
+                    suggested_action="用 changes_state 将 FlowStep 链接到该状态迁移。",
                 )
             )
 
-    screens = by_kind.get("screen", [])
     for screen in screens:
-        linked = [
-            l.target_id
-            for l in outgoing.get(screen.id, [])
-            if l.type in {"accessible_by", "reads"} and l.target_id in actor_ids
-        ]
-        if not linked:
+        has_actor = any(
+            link.type.value == "accessible_by" and link.targetId in actor_ids
+            for link in outgoing.get(screen.id, [])
+        )
+        if not has_actor:
             issues.append(
                 DiagnosticIssue(
                     title="页面缺少可访问角色",
                     description=f"页面 `{screen.title}` 没有关联可访问角色，无法形成角色视角原型。",
-                    severity="medium",
-                    category="ui_gap",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.UI_GAP,
                     related_node_ids=[screen.id],
-                    suggested_projection="ui",
-                    suggested_action="用 accessible_by（或 reads 兼容）将页面关联到至少一个角色。",
+                    suggested_projection=ProjectionKind.UI,
+                    suggested_action="用 accessible_by 将页面关联到至少一个角色。",
                 )
             )
 
-    ui_components = by_kind.get("ui_component", [])
-    for comp in ui_components:
-        comp_type = str((comp.extra or {}).get("componentType") or "")
-        is_action_like = "button" in comp_type.lower() or "button" in comp.title.lower() or "action" in comp.title.lower()
+    for component in ui_components:
+        component_type = getattr(component, "componentType", None)
+        is_action_like = (
+            component_type == UIComponentType.BUTTON
+            or "button" in component.title.lower()
+            or "action" in component.title.lower()
+        )
         if not is_action_like:
             continue
-        has_binding = any(
-            l.type in {"invokes_step", "triggered_by"} and l.source_id == comp.id and l.target_id in step_ids
-            for l in outgoing.get(comp.id, [])
+        has_step_binding = any(
+            link.type.value == "invokes_step" and link.targetId in step_ids
+            for link in outgoing.get(component.id, [])
         )
-        if not has_binding:
+        if not has_step_binding:
             issues.append(
                 DiagnosticIssue(
                     title="UI 操作缺少流程绑定",
-                    description=f"交互组件 `{comp.title}` 看起来是可执行动作，但没有绑定任何流程步骤（FlowStep）。",
-                    severity="medium",
-                    category="ui_gap",
-                    related_node_ids=[comp.id],
-                    suggested_projection="ui",
-                    suggested_action="用 invokes_step（或 triggered_by 兼容）将该组件绑定到对应流程步骤。",
+                    description=f"交互组件 `{component.title}` 看起来是可执行动作，但没有绑定任何流程步骤。",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.UI_GAP,
+                    related_node_ids=[component.id],
+                    suggested_projection=ProjectionKind.UI,
+                    suggested_action="用 invokes_step 将该组件绑定到对应流程步骤。",
                 )
             )
 
-    for f in fields:
-        if not (f.extra or {}).get("objectId"):
+    contained_fields = {
+        link.targetId
+        for link in links
+        if link.type.value == "contains" and ir.nodes.get(link.sourceId, None) and link.targetId in field_ids
+    }
+    bound_fields = {
+        link.targetId
+        for link in links
+        if link.type.value == "binds_field" and link.targetId in field_ids
+    }
+    for field in fields:
+        if field.id not in contained_fields:
             issues.append(
                 DiagnosticIssue(
                     title="字段缺少业务对象归属",
-                    description=f"字段 `{f.title}` 没有 objectId 归属，无法映射到业务对象。",
-                    severity="low",
-                    category="data_gap",
-                    related_node_ids=[f.id],
-                    suggested_projection="data",
-                    suggested_action="为字段补充 objectId，指向所属业务对象。",
+                    description=f"字段 `{field.title}` 没有归属业务对象，无法映射到数据结构。",
+                    severity=Severity.LOW,
+                    category=IssueCategory.DATA_GAP,
+                    related_node_ids=[field.id],
+                    suggested_projection=ProjectionKind.DATA,
+                    suggested_action="用 contains 将字段关联到所属业务对象。",
+                )
+            )
+        if field.id not in bound_fields:
+            issues.append(
+                DiagnosticIssue(
+                    title="字段缺少界面绑定",
+                    description=f"字段 `{field.title}` 还没有任何 UIComponent 通过 binds_field 绑定，界面输入或展示路径不明确。",
+                    severity=Severity.LOW,
+                    category=IssueCategory.UI_GAP,
+                    related_node_ids=[field.id],
+                    suggested_projection=ProjectionKind.UI,
+                    suggested_action="补充承载该字段的 UIComponent，并用 binds_field 建立绑定关系。",
+                )
+            )
+
+    for state_machine in state_machines:
+        contains_transition = any(
+            link.type.value == "contains" and link.sourceId == state_machine.id and link.targetId in transition_ids
+            for link in outgoing.get(state_machine.id, [])
+        )
+        if not contains_transition:
+            issues.append(
+                DiagnosticIssue(
+                    title="状态机缺少迁移定义",
+                    description=f"状态机 `{state_machine.title}` 没有状态迁移定义，生命周期不完整。",
+                    severity=Severity.MEDIUM,
+                    category=IssueCategory.DATA_GAP,
+                    related_node_ids=[state_machine.id],
+                    suggested_projection=ProjectionKind.DATA,
+                    suggested_action="为状态机补充至少一个状态迁移，并用 contains 关联。",
                 )
             )
 
     return issues
 
 
-def _safe_scope_status(node: models.Node) -> str | None:
-    if node.scope_status:
-        return node.scope_status
-    raw = (node.extra or {}).get("scopeStatus")
-    return raw
+def _by_kind(nodes: list[RequirementNode]) -> dict[NodeKind, list[RequirementNode]]:
+    result: dict[NodeKind, list[RequirementNode]] = {}
+    for node in nodes:
+        result.setdefault(node.kind, []).append(node)
+    return result
 
+
+def _link_index(links: list[RequirementLink]) -> tuple[dict[str, list[RequirementLink]], dict[str, list[RequirementLink]]]:
+    incoming: dict[str, list[RequirementLink]] = {}
+    outgoing: dict[str, list[RequirementLink]] = {}
+    for link in links:
+        outgoing.setdefault(link.sourceId, []).append(link)
+        incoming.setdefault(link.targetId, []).append(link)
+    return incoming, outgoing
+
+
+def _has_actor_binding(node_id: str, outgoing: dict[str, list[RequirementLink]], actor_ids: set[str]) -> bool:
+    return any(
+        link.type.value == "performed_by" and link.targetId in actor_ids
+        for link in outgoing.get(node_id, [])
+    )

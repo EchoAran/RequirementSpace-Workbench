@@ -1,33 +1,35 @@
 import { useState, useMemo } from 'react';
-import { GapCard } from '@/components/shared/GapCard';
+import { IssueCard } from '@/components/shared/IssueCard';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ComponentTree } from '@/components/shared/ComponentTree';
 import { LayoutDashboard, FileDown, RefreshCw, CheckCircle2, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { buildRolePages, selectPerformerTitle } from '@/domain/ir/selectors';
+import { buildPlaybackForActor, buildPreviewCheckpoints, buildRolePages, buildStepDetail, projectionPath, selectAllProposals, selectAllSlots, selectPerformerTitle } from '@/domain/ir/selectors';
 import { 
   useWorkspaceStore, 
   selectFlowSteps, 
   selectIssues, 
   selectActors, 
   selectSelectedObject,
-  selectGoals,
   selectLinks
 } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
 
 export function Preview() {
   const { 
-    setSelectedObject, generateCandidate, deferObject, setHighlightTarget
+    setSelectedObject,
+    createSlotFromIssue,
+    expandSlot,
+    updateIssueAttributes,
+    setHighlightTarget
   } = useWorkspaceStore();
   const navigate = useNavigate();
   
   const flowSteps = useWorkspaceStore(selectFlowSteps);
-  const gaps = useWorkspaceStore(selectIssues);
+  const issues = useWorkspaceStore(selectIssues);
   const actors = useWorkspaceStore(selectActors);
   const selectedObject = useWorkspaceStore(selectSelectedObject);
-  const goals = useWorkspaceStore(selectGoals);
   const links = useWorkspaceStore(selectLinks);
   const ir = useWorkspaceStore(s => s.ir);
 
@@ -78,24 +80,43 @@ export function Preview() {
     if (!ir || !activeRole) return [];
     return buildRolePages(ir, activeRole.id);
   }, [activeRole, ir]);
+  const checkpoints = useMemo(() => buildPreviewCheckpoints(ir), [ir]);
+  const playback = useMemo(() => buildPlaybackForActor(ir, activeRole?.id || null), [activeRole, ir]);
 
-  const unresolvedGaps = gaps.filter(g => g.status === 'open');
-  const blockingGaps = unresolvedGaps.filter(g => g.severity === 'high');
+  const unresolvedIssues = issues.filter(g => g.status === 'open');
+  const blockingIssues = unresolvedIssues.filter(g => g.severity === 'high');
+  const pendingSlots = useMemo(() => selectAllSlots(ir).filter((slot) => slot.status === 'empty' || slot.status === 'candidate_ready'), [ir]);
+  const pendingProposals = useMemo(() => selectAllProposals(ir).filter((proposal) => proposal.status === 'candidate' || proposal.status === 'draft'), [ir]);
 
-  const readinessItems = [
-    { title: '核心目标', status: goals.some((g: any) => g.status === 'confirmed') ? 'ready' : 'error' },
-    { title: '角色权限闭环', status: actors.length > 0 ? 'ready' : 'error' },
-    { title: '流程无致命断层', status: gaps.some(g => g.category === 'flow_gap' && g.status === 'open' && g.severity === 'high') ? 'error' : 'ready' }
-  ];
+  const openIssueFlow = async (issueId: string) => {
+    const slotId = await createSlotFromIssue(issueId);
+    if (slotId) {
+      await expandSlot(slotId);
+    }
+  };
 
-  const blockingItems = readinessItems.filter(i => i.status === 'error');
-  const isReady = blockingItems.length === 0 && blockingGaps.length === 0;
+  const exportAuditLog = async () => {
+    if (!ir) return;
+    setExportState('exporting');
+    try {
+      const blob = new Blob([JSON.stringify(ir.audit, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${ir.name || ir.id || 'requirement-space'}-audit.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExportState('success');
+      setTimeout(() => setExportState('idle'), 1500);
+    } catch {
+      setExportState('idle');
+    }
+  };
 
   const jumpToProjection = (projection: any) => {
-    if (projection === 'system') return navigate('/flow');
-    if (projection === 'data') return navigate('/scope');
-    if (projection === 'ui') return navigate('/preview');
-    return navigate('/what');
+    return navigate(projectionPath(projection));
   };
 
   return (
@@ -106,14 +127,14 @@ export function Preview() {
           <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 mb-2">生成方案就绪确认</h2>
-              <p className="text-sm text-slate-600">在正式触发代码生成前，核对整体流程、各视角原型及待确认缺口。</p>
+              <p className="text-sm text-slate-600">在正式触发代码生成前，核对整体流程、各视角原型及待确认 Issue。</p>
             </div>
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => handleExport('json')}
                 disabled={exportState === 'exporting'}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors bg-white flex items-center gap-2"
-                title={unresolvedGaps.length > 0 ? `可导出 JSON 草案，但仍有 ${unresolvedGaps.length} 个待确认问题` : '导出 JSON 草案'}
+                title={unresolvedIssues.length > 0 ? `可导出 JSON 草案，但仍有 ${unresolvedIssues.length} 个待确认问题` : '导出 JSON 草案'}
               >
                 {exportState === 'idle' && <><FileDown className="w-4 h-4" /> 导出 JSON 草案</>}
                 {exportState === 'exporting' && <><RefreshCw className="w-4 h-4 animate-spin" /> 正在生成</>}
@@ -126,10 +147,46 @@ export function Preview() {
               >
                 导出 Markdown
               </button>
+              <button
+                onClick={() => void exportAuditLog()}
+                disabled={exportState === 'exporting'}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors bg-white"
+              >
+                导出 Audit
+              </button>
             </div>
           </section>
 
           <div className="flex flex-col gap-8">
+            <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-bold text-slate-900 mb-4">进入实现前 Checkpoints</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {checkpoints.map((checkpoint) => (
+                  <div key={checkpoint.id} className={`rounded-xl border p-4 ${checkpoint.passed ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-bold text-slate-900">{checkpoint.title}</div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${checkpoint.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {checkpoint.passed ? '通过' : '待补齐'}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {checkpoint.checks.map((check) => (
+                        <button
+                          key={check.label}
+                          type="button"
+                          onClick={() => jumpToProjection(checkpoint.projection)}
+                          className="w-full text-left rounded-lg bg-white/80 border border-white px-3 py-2 text-xs text-slate-700 hover:border-slate-300 transition-colors"
+                        >
+                          <span className={`mr-2 inline-block w-2 h-2 rounded-full ${check.passed ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                          {check.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <h3 className="font-bold text-slate-900 mb-4">系统流程连贯性概览</h3>
               <div className="flex overflow-x-auto pb-4 gap-4">
@@ -139,6 +196,9 @@ export function Preview() {
                       <div className="w-5 h-5 rounded bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-bold">{idx + 1}</div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase">{selectPerformerTitle(ir as any, step.id) || '—'}</span>
                     </div>
+                    {(() => {
+                      const stepDetail = buildStepDetail(ir, step.id);
+                      return (
                     <div 
                       onClick={() => setSelectedObject(step)}
                       className={`cursor-pointer rounded-xl transition-all border ${selectedObject?.id === step.id ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-transparent'}`}
@@ -148,12 +208,19 @@ export function Preview() {
                         type={step.stepType}
                         actor={selectPerformerTitle(ir as any, step.id) || '—'}
                         status={step.status}
-                        inputs={step.input}
-                        outputs={step.output}
+                        inputs={stepDetail.inputs}
+                        outputs={stepDetail.outputs}
+                        rules={stepDetail.rules}
+                        stateChanges={stepDetail.stateChanges}
+                        relatedPages={stepDetail.relatedPages}
+                        relatedIssueCount={stepDetail.relatedIssueIds.length}
+                        relatedChoiceCount={stepDetail.relatedChoiceIds.length}
                         active={selectedObject?.id === step.id} 
                         onClick={() => setSelectedObject(step)} 
                       />
                     </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -215,10 +282,10 @@ export function Preview() {
                             {p?.relatedSteps && p.relatedSteps.length > 0 && (
                                <div className="text-[11px] text-slate-600 line-clamp-1"><span className="text-slate-400 font-medium mr-1.5 border border-slate-200 bg-white rounded px-1 shadow-sm">流程</span>{p.relatedSteps.join(', ')}</div>
                             )}
-                            {p?.relatedGaps && p.relatedGaps.length > 0 && (
-                               <div className="text-[11px] text-rose-600 line-clamp-1"><span className="text-rose-400 font-medium mr-1.5 border border-rose-100 bg-rose-50 rounded px-1 shadow-sm">缺口</span>{p.relatedGaps.join(', ')}</div>
+                            {p?.relatedIssues && p.relatedIssues.length > 0 && (
+                               <div className="text-[11px] text-rose-600 line-clamp-1"><span className="text-rose-400 font-medium mr-1.5 border border-rose-100 bg-rose-50 rounded px-1 shadow-sm">Issue</span>{p.relatedIssues.join(', ')}</div>
                             )}
-                            {(!p?.relatedSteps || p.relatedSteps.length === 0) && (!p?.relatedGaps || p.relatedGaps.length === 0) && <span className="text-[11px] text-slate-400 italic">暂无关联项</span>}
+                            {(!p?.relatedSteps || p.relatedSteps.length === 0) && (!p?.relatedIssues || p.relatedIssues.length === 0) && <span className="text-[11px] text-slate-400 italic">暂无关联项</span>}
                           </div>
                         </div>
                       </div>
@@ -240,33 +307,80 @@ export function Preview() {
                 )}
 
                 {viewMode === 'playback' && (
-                  <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl animate-in fade-in text-slate-500">
-                    <Play className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="font-medium">连贯性回放开发中</p>
-                    <p className="text-xs mt-1 opacity-70">将根据 FlowStep 自动串联界面流转</p>
+                  <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                    {playback.length === 0 && (
+                      <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl text-slate-500">
+                        <Play className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="font-medium">当前角色暂无可回放界面流</p>
+                        <p className="text-xs mt-1 opacity-70">将根据组件触发的 `invokes_step` 关系自动串联</p>
+                      </div>
+                    )}
+                    {playback.map((item, index) => (
+                      <div key={item.screenId} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">{index + 1}. {item.screenTitle}</div>
+                            <div className="text-xs text-slate-500 mt-1">基于 `ui_component` 到 `flow_step` 的 `invokes_step` 关系推导的页面回放</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedObject(ir?.nodes[item.screenId] || null)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          >
+                            查看页面
+                          </button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.stepTitles.length === 0 && <span className="text-xs text-slate-400 italic">未绑定流程步骤</span>}
+                          {item.stepTitles.map((title) => (
+                            <span key={title} className="rounded-full bg-white border border-slate-200 px-3 py-1 text-xs text-slate-700">
+                              {title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             </section>
 
             <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-bold text-slate-900 mb-4">进入实现前剩余对象</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Open Issues</div>
+                  <div className="mt-2 text-2xl font-bold text-rose-600">{unresolvedIssues.length}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Slots</div>
+                  <div className="mt-2 text-2xl font-bold text-amber-600">{pendingSlots.length}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Proposals</div>
+                  <div className="mt-2 text-2xl font-bold text-violet-600">{pendingProposals.length}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                遗留缺口项
-                {unresolvedGaps.length > 0 && <span className={`text-xs px-2 py-0.5 rounded-full ${blockingGaps.length > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{unresolvedGaps.length}</span>}
+                遗留 Issue
+                {unresolvedIssues.length > 0 && <span className={`text-xs px-2 py-0.5 rounded-full ${blockingIssues.length > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{unresolvedIssues.length}</span>}
               </h3>
-              {unresolvedGaps.length === 0 && <p className="text-xs text-slate-500 italic">所有缺口均已处理或暂缓。</p>}
+              {unresolvedIssues.length === 0 && <p className="text-xs text-slate-500 italic">所有 Issue 均已处理或忽略。</p>}
               <div className="space-y-3">
-                {unresolvedGaps.map(gap => (
-                  <GapCard 
-                    key={gap.id}
-                    gap={gap as any}
+                {unresolvedIssues.map(issue => (
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue as any}
                     onClick={() => {
-                      setSelectedObject(gap as any);
-                      if (gap.relatedNodeIds[0]) setHighlightTarget(gap.relatedNodeIds[0]);
-                      if ((gap as any).suggestedProjection) jumpToProjection((gap as any).suggestedProjection);
+                      setSelectedObject(issue as any);
+                      if (issue.relatedNodeIds[0]) setHighlightTarget(issue.relatedNodeIds[0]);
+                      if ((issue as any).suggestedProjection) jumpToProjection((issue as any).suggestedProjection);
                     }}
-                    onGenerate={() => generateCandidate(gap.id)}
-                    onDefer={() => deferObject(gap.id)}
+                    onCreateSlot={() => void openIssueFlow(issue.id)}
+                    onIgnore={() => void updateIssueAttributes(issue.id, { status: 'ignored' })}
                   />
                 ))}
               </div>

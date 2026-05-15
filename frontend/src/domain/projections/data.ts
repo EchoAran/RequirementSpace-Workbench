@@ -1,2 +1,1 @@
-export { buildScopeImpact, groupScopeItems } from '@/domain/ir/selectors';
-
+export { formatImpactPreview, groupScopeItems } from '@/domain/ir/selectors';

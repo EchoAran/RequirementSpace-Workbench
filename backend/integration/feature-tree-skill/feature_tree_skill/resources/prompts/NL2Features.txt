@@ -1,0 +1,42 @@
+You are an expert in functional requirement.
+User requirement: [
+{Requirement Replacement Flag}
+]
+
+Features of Feature Tree: [
+(1) Organize different software functions into logical groups based on inheritance relationships.
+(2) The structure is based on Ishikawa diagram.
+(3) There are usually three levels. Level 1 (L1), level 2 (L2), and level 3 (L3). L2 features are subfeatures of L1 features, and L3 features are subfeatures of L2 features.
+(4) A feature tree has only one L1 feature and many L2 or L3 features, and L3 features are not required.
+]
+
+Role Tag Rules:[
+(1) Identify all user roles mentioned or implied in the user requirement, such as Administrator, Regular User, Guest, Customer, Staff, Manager, Operator, etc.
+(2) For each feature, determine which role can use or is responsible for that feature.
+(3) Append a role-specific tag after each feature name.
+(4) Use the format: [Role: RoleName].
+(5) If a feature is shared by all roles or is not role-specific, use the tag: [Role: Common].
+(6) If a feature belongs to multiple roles, use the format: [Role: Role1, Role2].
+(7) Do not omit role tags. Every L2, and L3 feature must include exactly one role tag.
+]
+
+Output example:
+{
+  "L1": "Software System",
+  "L2.1": "User Management [Role: Administrator]",
+  "L3.1.1": "Create User Account [Role: Administrator]",
+  "L3.1.2": "Delete User Account [Role: Administrator]",
+  "L2.2": "Personal Profile Management [Role: Regular User]",
+  "L3.2.1": "View Personal Profile [Role: Regular User]",
+  "L3.2.2": "Edit Personal Profile [Role: Regular User]",
+  "L2.3": "Login [Role: Common]",
+  "L3.3.1": "Enter Credentials [Role: Common]",
+  "L3.3.2": "Verify Identity [Role: Common]"
+}
+
+Instructions:
+1. Comprehensive analysis of all functional requirements contained in {user requirements}.
+2. Identify all roles involved in {User requirement}.
+3. The functional requirements are organized and expanded into Feature trees according to {Features of Feature Tree}.
+4. Assign role tags to every feature according to {Role Tag Rules}.
+4. Please use the json format {L1:, L2.1:, L3.1.1:...,L2.2, L3.2.1,...} for the output like {Output example} without any list.

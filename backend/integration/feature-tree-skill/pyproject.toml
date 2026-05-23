@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "feature-tree-skill"
+version = "0.1.0"
+description = "Generate feature tree JSON from natural language requirements."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Your Name"}
+]
+keywords = ["feature-tree", "requirements", "openai", "cli"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "openai>=1.56.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/HarrisClover/feature-tree-skill"
+Repository = "https://github.com/HarrisClover/feature-tree-skill"
+Issues = "https://github.com/HarrisClover/feature-tree-skill/issues"
+
+[project.scripts]
+feature-tree-skill = "feature_tree_skill.cli:main"
+ft-skill = "feature_tree_skill.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["feature_tree_skill*"]
+
+[tool.setuptools.package-data]
+feature_tree_skill = ["resources/config/*.json", "resources/prompts/*.txt"]

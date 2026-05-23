@@ -1,0 +1,34 @@
+Demographics:[{Demographic Distribution Flag}]
+
+You are an experienced User Research Lead tasked with planning post-launch customer-satisfaction testing for the product: [{Requirement Replacement Flag}].
+
+Objective:
+Identify {User_num Replacement Flag} representative personas who should be recruited for the satisfaction study once the product is on the market.
+
+For each persona, provide:
+1.  Age (or age range)
+2.  Gender
+3.  Occupation / Role relevant to the product
+4.  Marital status
+5.  Annual income range (local currency)
+6.  Education level
+
+Guidelines:
+- Think like a professional researcher: ensure diversity across {Demographics} and usage contexts so findings will generalize to the broader customer base.
+- Prioritize personas most likely to influence adoption, retention, or word-of-mouth after launch.
+
+Constraints:
+Return the result in valid JSON exactly like this form:
+{
+  "User1": {
+    "Age": "age",
+    "Gender": "gender",
+    "Occupation": "occupation",
+    "Marital Status": "marital status",
+    "Annual Income Range": "income range",
+    "Education Level": "education level",
+  },
+  "User2": {
+    ...
+  }
+}

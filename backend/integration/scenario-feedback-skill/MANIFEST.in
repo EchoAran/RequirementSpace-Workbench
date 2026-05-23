@@ -1,0 +1,1 @@
+recursive-include scenario_feedback_skill/resources *.json *.txt

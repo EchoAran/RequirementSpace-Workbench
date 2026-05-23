@@ -1,0 +1,125 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.api.schemas import DraftRegenerateRequest
+from backend.api.schemas.acceptance_criteria_generation_schema import (
+    AcceptanceCriteriaGenerationConfirmResponse,
+    AcceptanceCriteriaGenerationDraftCreateRequest,
+    AcceptanceCriteriaGenerationDraftDiscardResponse,
+    AcceptanceCriteriaGenerationDraftResponse,
+)
+from backend.api.services.service_registry import (
+    acceptance_criteria_generation_service,
+)
+from backend.database.database import get_session
+
+
+router = APIRouter(
+    prefix="/api/acceptance_criteria_generation_drafts",
+    tags=["acceptance_criteria_generation"],
+)
+
+ACCEPTANCE_CRITERIA_GENERATION_ERRORS = {
+    "project_not_found",
+    "empty_scenarios",
+    "scenario_not_found",
+    "duplicate_scenario_id",
+    "invalid_scenario_reference",
+    "invalid_scenario_actor_reference",
+    "invalid_scenario_feature_reference",
+    "empty_acceptance_criteria",
+    "invalid_acceptance_criteria_payload",
+    "acceptance_criteria_already_exist",
+}
+
+
+@router.post(
+    "",
+    response_model=AcceptanceCriteriaGenerationDraftResponse,
+)
+async def create_acceptance_criteria_generation_draft(
+    request: AcceptanceCriteriaGenerationDraftCreateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await acceptance_criteria_generation_service.create_draft(
+            project_id=request.project_id,
+            scenario_ids=request.scenario_ids,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.post(
+    "/{draft_id}/regenerate",
+    response_model=AcceptanceCriteriaGenerationDraftResponse,
+)
+async def regenerate_acceptance_criteria_generation_draft(
+    draft_id: str,
+    request: DraftRegenerateRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    user_feedback = request.user_feedback if request else None
+    try:
+        return await acceptance_criteria_generation_service.regenerate_draft(
+            draft_id=draft_id,
+            session=session,
+            user_feedback=user_feedback,
+        )
+    except ValueError as error:
+        if str(error) == "draft_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail="draft_not_found",
+            )
+        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.post(
+    "/{draft_id}/confirm",
+    response_model=AcceptanceCriteriaGenerationConfirmResponse,
+)
+async def confirm_acceptance_criteria_generation_draft(
+    draft_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await acceptance_criteria_generation_service.confirm_draft(
+            draft_id=draft_id,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) == "draft_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail="draft_not_found",
+            )
+        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.delete(
+    "/{draft_id}",
+    response_model=AcceptanceCriteriaGenerationDraftDiscardResponse,
+)
+async def discard_acceptance_criteria_generation_draft(
+    draft_id: str,
+):
+    return await acceptance_criteria_generation_service.discard_draft(
+        draft_id=draft_id,
+    )

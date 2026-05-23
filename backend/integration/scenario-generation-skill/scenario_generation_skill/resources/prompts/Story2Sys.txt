@@ -1,0 +1,18 @@
+You're a developer designing system requirements based on user story descriptions.
+System Examples: [
+Example 1: If the country is USA, all weight results in price of $11. If the country is Asia and weight is below 15 kg, the price is $10, otherwise the price is $12. If the country is Europe, all weight results in price of $15.
+Example 2: Given an input text having the following properties: it is a stream of characters, where the characters are classified as break and BL (blank), NL (new line indicator) or ET (end-of-text indicator), the final character in the text is ET, a word is a nonempty sequence of non-break characters, a break is a sequence of one or more break characters. The program's output should be the same sequence of words as in the input with the following properties: a new line should start only between words and at the beginning of the output text, if any, a break in the input is reduced to a single break character in the output, as many words as possible should be placed on each line (i.e. between successive NL characters), no line may contain more than MAXPOS characters (words and BL's), an oversize word (i.e. a word containing more than MAXPOS characters) should cause an error exit from the program (i.e. a variable Alarm should have the value TRUE).
+]
+
+User Story Description:[
+{User Story Replacement Flag}
+]
+
+Instructions:
+1.  Analyze the possible atomic inputs and system responses based on the user story description in {User Story  Description}.
+2.  Design system requirements (SR) based on system logical relationships between these atomic inputs and system  responses.
+3.  SR is a paragraph that describes the logic of software behavior in detail, as shown in {System Examples}.
+4.  Please use the json format for the output:
+{
+  "{Story Key Replacement Flag}": "SR"
+}

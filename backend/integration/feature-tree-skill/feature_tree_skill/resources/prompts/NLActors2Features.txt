@@ -1,0 +1,61 @@
+You are an expert in functional requirement.
+User requirement: [
+{Requirement Replacement Flag}
+]
+
+Actor names: [
+{Actors Replacement Flag}
+]
+
+Features of Feature Tree: [
+(1) Organize different software functions into logical groups based on inheritance relationships.
+(2) The structure is based on Ishikawa diagram.
+(3) There are usually three levels. Level 1 (L1), level 2 (L2), and level 3 (L3). L2 features are subfeatures of L1 features, and L3 features are subfeatures of L2 features.
+(4) A feature tree has only one L1 feature and many L2 or L3 features, and L3 features are not required.
+]
+
+Role Tag Rules:[
+(1) Actor names are provided as comma-separated role names.
+(2) Use Actor names as the only source of specific role labels.
+(3) Only one provided Actor name or Common may appear inside a [Role: ...] tag.
+(4) Do not invent, rename, translate, summarize, or infer any additional role names.
+(5) First generate a complete feature tree from the User requirement. Then assign role tags.
+(6) Do not remove, merge, or skip functional requirements only because they do not clearly match an Actor name.
+(7) For each L2 and L3 feature, determine whether one single Actor name can use or is responsible for that feature.
+(8) Append a role-specific tag after each L2 and L3 feature name. Use the format: [Role: ActorName].
+(9) Each L2 and L3 feature may correspond to at most one role. Do not output multiple role names in one tag.
+(10) If a feature is applicable to all roles, shared by multiple roles, not role-specific, use the tag: [Role: Common].
+(11) Do not force every feature to match a provided Actor name.
+]
+
+Output example:
+{
+  "L1": "Local Music Player",
+  "L2.1": "Local Music Library [Role: Common]",
+  "L3.1.1": "Scan Local Audio Files [Role: Local Content Importer]",
+  "L3.1.2": "Import Music Folders [Role: Local Content Importer]",
+  "L3.1.3": "Display Song Metadata [Role: Common]",
+  "L2.2": "Audio Playback [Role: Common]",
+  "L3.2.1": "Play Lossless Audio [Role: Regular Listener User]",
+  "L3.2.2": "Pause And Resume Playback [Role: Common]",
+  "L3.2.3": "Switch Previous Or Next Track [Role: Common]",
+  "L2.3": "Playlist Management [Role: Regular Listener User]",
+  "L3.3.1": "Create Custom Playlists [Role: Regular Listener User]",
+  "L3.3.2": "Add Songs To Playlist [Role: Regular Listener User]",
+  "L3.3.3": "Reorder Playlist Tracks [Role: Regular Listener User]",
+  "L2.4": "Lyrics Support [Role: Common]",
+  "L3.4.1": "Match Local Lyric Files [Role: Common]",
+  "L3.4.2": "Display Synchronized Lyrics [Role: Common]",
+  "L2.5": "Advanced Playback Settings [Role: Advanced Settings User]",
+  "L3.5.1": "Adjust Equalizer Presets [Role: Advanced Settings User]",
+  "L3.5.2": "Configure Global Shortcuts [Role: Advanced Settings User]",
+  "L3.5.3": "Set Sleep Timer [Role: Advanced Settings User]"
+}
+
+Instructions:
+1. Comprehensive analysis of all functional requirements contained in {User requirement}.
+2. Read all roles from {Actor names}. Use the provided comma-separated Actor names for specific Role labels, and use Common when no single Actor name applies.
+3. Feature completeness is more important than role coverage. Include all important functional requirements even if many of them receive [Role: Common].
+4. The functional requirements are organized and expanded into Feature trees according to {Features of Feature Tree}.
+5. Assign role tags to every L2 and L3 feature according to {Role Tag Rules}.
+6. Please use the json format {L1:, L2.1:, L3.1.1:...,L2.2, L3.2.1,...} for the output like {Output example} without any list.

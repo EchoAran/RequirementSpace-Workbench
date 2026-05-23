@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kano-skill"
+version = "0.1.0"
+description = "Run a fixed-demographic Kano analysis from an initial requirement and feature tree."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Your Name"}
+]
+keywords = ["requirements", "kano", "mvp", "openai", "cli"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "openai>=1.56.0"
+]
+
+[project.scripts]
+kano-skill = "kano_skill.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kano_skill*"]
+
+[tool.setuptools.package-data]
+kano_skill = ["resources/config/*.json", "resources/prompts/*.txt"]

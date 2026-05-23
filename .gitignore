@@ -1,54 +1,60 @@
-# Python virtual environment
+# Python environment
 .venv/
-
-# Backend caches and environment
-backend/__pycache__/
-backend/*.py[cod]
-backend/*$py.class
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.venv/
-backend/venv/
-
-# Backend database files
-backend/*.db
-backend/*.sqlite3
-backend/*.sqlite
-
-# Frontend caches and environment
-frontend/node_modules/
-frontend/build/
-frontend/dist/
-frontend/coverage/
-frontend/.DS_Store
-frontend/*.log
-frontend/.env*
-frontend/!.env.example
-
-# IDE/editor files
-*.swp
-*~
-.DS_Store
-Thumbs.db
-.vscode/
 .idea/
+venv/
+ENV/
+env/
+*.env
+*.venv
+node_modules/
 
-
-# Misc
-*.log
-*.pot
-*.mo
+# Python cache files
 __pycache__/
 *.py[cod]
-*.so
-*.dylib
-*.sqlite3
-*.sqlite
-*.db
-.env
-.env.*
-coverage/
-htmlcov/
-.python-version
+*$py.class
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+
+# Backup and temporary folders
+backup/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and runtime files
+*.log
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# MyPy
+.mypy_cache/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# 数据库文件
+requirement_space.db
+
+# 备注与实施计划，我自己看的
+note.md
+*.implementation_plan/

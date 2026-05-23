@@ -1,0 +1,6 @@
+{
+  "model": "gpt-4o-mini-2024-07-18",
+  "prompt_path": "",
+  "temperature": 0.5,
+  "proxy": "http://127.0.0.1:7890"
+}

@@ -1,0 +1,1 @@
+Please add a negative scenario for invalid input and make the success scenario verify that the confirmation message is displayed.

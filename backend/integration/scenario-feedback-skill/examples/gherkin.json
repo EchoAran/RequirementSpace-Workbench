@@ -1,0 +1,20 @@
+{
+  "Feature": "Submit Customer Feedback",
+  "Narrative": {
+    "As": "a customer",
+    "I want": "to submit feedback",
+    "So that": "the business can improve service quality"
+  },
+  "Background": {
+    "Given": "the customer is on the feedback form",
+    "And": "the feedback service is available"
+  },
+  "Scenarios": [
+    {
+      "Scenario": "Scenario 1: Submit valid feedback",
+      "Given": "the customer enters valid feedback",
+      "When": "the customer submits the form",
+      "Then": "the feedback is saved"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+User Reasons: [{Reasons Replacement Flag}]
+
+Task: 
+Please refer to the reason sentences in {User Reasons}, and each sentence represents the opinion of one individual. In summary, this is how the majority of people think. If there are differing opinions, then the minority's viewpoints can be summarized as well. Or it can be summarized as one group of people thinking this way, while another group thinks that way.
+
+Output:
+Return ONLY a JSON object with sequential keys and string values—no extra text, no comments:
+{
+    "Viewpoint":"A summary sentences"
+}

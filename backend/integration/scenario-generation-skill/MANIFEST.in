@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include scenario_generation_skill/resources *.json *.txt
+recursive-include examples *.txt

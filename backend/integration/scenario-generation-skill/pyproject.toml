@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scenario-generation-skill"
+version = "0.1.0"
+description = "Generate user stories, system requirements, and Gherkin scenarios from natural language requirements and a single feature."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Your Name"}
+]
+keywords = ["requirements", "user-story", "gherkin", "openai", "cli"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "openai>=1.56.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/HarrisClover/scenario-generation-skill"
+Repository = "https://github.com/HarrisClover/scenario-generation-skill"
+Issues = "https://github.com/HarrisClover/scenario-generation-skill/issues"
+
+[project.scripts]
+scenario-generation-skill = "scenario_generation_skill.cli:main"
+sg-skill = "scenario_generation_skill.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["scenario_generation_skill*"]
+
+[tool.setuptools.package-data]
+scenario_generation_skill = ["resources/config/*.json", "resources/prompts/*.txt"]

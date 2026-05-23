@@ -1,0 +1,5 @@
+from backend.core.perceptrons.slot_fillers.prompts.acceptance_criteria_fill_agent import acceptance_criteria_fill_prompt
+from backend.core.perceptrons.slot_fillers.prompts.actors_fill_agent import actors_fill_prompt
+from backend.core.perceptrons.slot_fillers.prompts.features_fill_agent import features_fill_prompt
+from backend.core.perceptrons.slot_fillers.prompts.flows_fill_agent import business_objects_actors_label_prompt, flows_fill_prompt
+from backend.core.perceptrons.slot_fillers.prompts.scenarios_fill_agent import scenarios_fill_prompt

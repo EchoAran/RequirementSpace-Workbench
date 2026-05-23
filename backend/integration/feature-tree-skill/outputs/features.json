@@ -1,0 +1,23 @@
+{
+  "L1": "Time Travel Adventure Software",
+  "L2.1": "Interactive Storytelling [Role: Common]",
+  "L3.1.1": "Choose Time Period [Role: Regular User]",
+  "L3.1.2": "Engage with Historical Characters [Role: Regular User]",
+  "L3.1.3": "Make Decisions that Affect the Story [Role: Regular User]",
+  "L2.2": "Educational Games [Role: Common]",
+  "L3.2.1": "Quizzes on Historical Facts [Role: Regular User]",
+  "L3.2.2": "Puzzles Related to Historical Events [Role: Regular User]",
+  "L3.2.3": "Interactive Challenges [Role: Regular User]",
+  "L2.3": "User Progress Tracking [Role: Common]",
+  "L3.3.1": "Save Game Progress [Role: Regular User]",
+  "L3.3.2": "View Achievements [Role: Regular User]",
+  "L3.3.3": "Monitor Learning Outcomes [Role: Regular User]",
+  "L2.4": "Content Management [Role: Administrator]",
+  "L3.4.1": "Add New Time Periods [Role: Administrator]",
+  "L3.4.2": "Update Historical Content [Role: Administrator]",
+  "L3.4.3": "Manage User Feedback [Role: Administrator]",
+  "L2.5": "User Interface Customization [Role: Common]",
+  "L3.5.1": "Select Themes [Role: Regular User]",
+  "L3.5.2": "Adjust Text Size [Role: Regular User]",
+  "L3.5.3": "Customize Audio Settings [Role: Regular User]"
+}

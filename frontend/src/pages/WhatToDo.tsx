@@ -5,30 +5,23 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { 
   useWorkspaceStore, 
   selectGoals, 
-  selectTasks, 
   selectActors, 
 } from '@/store/useWorkspaceStore';
 import {
-  buildGoalBranchItems,
-  buildTaskFootprint,
   getChildCapabilities,
   getRootCapabilities,
-  getTasksForCapability as selectTasksForCapability,
-  selectPerformerTitle,
-} from '@/domain/ir/selectors';
+} from '@/core/selectors';
 
 export function WhatToDo() {
   const { 
-    setSelectedObject, highlightTarget, selectedObject, ir, createSlotFromIssue, expandSlot, openSlot
+    setSelectedObject, highlightTarget, selectedObject, ir
   } = useWorkspaceStore();
   
   const goals = useWorkspaceStore(selectGoals);
-  const tasks = useWorkspaceStore(selectTasks);
   const actors = useWorkspaceStore(selectActors);
 
   const mainGoal = goals[0];
   const rootCapabilities = getRootCapabilities(ir as any) as any[];
-  const branchItems = buildGoalBranchItems(ir);
   
   const [expandedCaps, setExpandedCaps] = useState<Record<string, boolean>>({});
 
@@ -37,15 +30,16 @@ export function WhatToDo() {
     setExpandedCaps(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Helper to get connected tasks for a capability
-  const getTasksForCapability = (capId: string) => {
-    return selectTasksForCapability(ir as any, capId) as any;
+  const getActorName = (actorId: number) => {
+    const actor = (ir?.actors || []).find(a => a.actorId === actorId);
+    return actor ? actor.actorName : '系统';
   };
 
-  const handleIssueBranch = async (issueId: string) => {
-    const slotId = await createSlotFromIssue(issueId);
-    if (slotId) await expandSlot(slotId);
-  };
+  const allFeatures = ir?.features || [];
+  const allScenarios = allFeatures.flatMap(f => (f.scenarios || []).map(s => ({
+    ...s,
+    featureName: f.featureName,
+  })));
 
   return (
     <div className="flex-1 flex w-full relative">
@@ -114,79 +108,104 @@ export function WhatToDo() {
 
               {/* Tree Section */}
               <section>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">核心能力</h3>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">核心能力特征树</h3>
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                  <div className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">{mainGoal?.title || '核心系统'}</div>
                   
+                  {/* Layer 1: System Root Header */}
+                  <div className="bg-gradient-to-r from-indigo-50/80 to-sky-50/80 backdrop-blur-sm text-slate-800 rounded-2xl p-5 mb-6 flex justify-between items-center shadow-sm border border-indigo-100">
+                    <div>
+                      <h4 className="font-extrabold text-base text-slate-900 tracking-wide flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                        系统建模根节点: {ir?.projectName || '核心系统'}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1.5 max-w-xl font-medium">{ir?.projectDescription || '主系统业务空间与架构模型总揽。'}</p>
+                    </div>
+                    <span className="text-[10px] bg-white text-indigo-600 border border-indigo-150 px-2.5 py-1 rounded-lg font-bold shrink-0 shadow-sm">
+                      ROOT SYSTEM
+                    </span>
+                  </div>
+
                   <div className="space-y-4 pl-4 border-l-2 border-indigo-100 ml-2">
                     {rootCapabilities.map(cap => {
                       const children = getChildCapabilities(ir as any, cap.id) as any[];
-                      const capTasks = getTasksForCapability(cap.id);
                       return (
                         <div key={cap.id} className="relative">
-                          <div className="absolute w-4 h-px bg-indigo-100 -left-4 top-4"></div>
+                          <div className="absolute w-4 h-px bg-indigo-100 -left-4 top-5"></div>
                           
+                          {/* Layer 2: Functional Module (Branch Node) */}
                           <div 
                             onClick={() => setSelectedObject(cap)}
-                            className={`rounded-xl p-4 cursor-pointer transition-colors mb-2 ${selectedObject?.id === cap.id ? 'bg-indigo-50 border-2 border-indigo-500' : 'bg-slate-50 border border-slate-200 hover:border-indigo-300'}`}
+                            className={`rounded-xl p-4 cursor-pointer transition-colors mb-2 bg-slate-50 border ${selectedObject?.id === cap.id ? 'bg-indigo-50 border-2 border-indigo-500 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}
                           >
-                            <div className="flex items-center justify-between mb-3 border-b border-slate-200/60 pb-2">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 mb-2">
                               <div className="flex items-center gap-2">
                                 {children.length > 0 && (
                                   <button onClick={(e) => toggleCap(e, cap.id)} className="p-0.5 hover:bg-slate-200 rounded text-slate-500 transition-colors">
                                     {expandedCaps[cap.id] !== false ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                   </button>
                                 )}
-                                <span className="text-[10px] bg-slate-200 text-slate-600 font-bold px-1.5 rounded">{cap.priority || 'P1'}</span>
-                                <h4 className="font-bold text-slate-800 text-sm">{cap.title}</h4>
+                                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                  功能模块: {cap.title}
+                                </h4>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cap.scopeStatus === 'in_scope' ? 'bg-emerald-100 text-emerald-700' : cap.scopeStatus === 'out_of_scope' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>
-                                  {cap.scopeStatus === 'in_scope' ? '本期包含' : cap.scopeStatus === 'out_of_scope' ? '已排除' : cap.scopeStatus === 'deferred' ? '暂缓' : '待确认范围'}
-                                </span>
-                                <StatusBadge status={cap.status} />
-                              </div>
+                              <StatusBadge status={cap.status} />
                             </div>
                             
-                            <div className="space-y-1.5 text-[11px] text-slate-600 mb-3 ml-7">
-                              <div className="flex"><span className="text-slate-400 w-16 shrink-0">服务目标</span><span className="font-medium text-slate-700">{cap.description?.split('。')[0] || '提升效率'}</span></div>
-                              <div className="flex"><span className="text-slate-400 w-16 shrink-0">成功标准</span><span>{cap.description?.split('。')[1] || '无明确指标'}</span></div>
-                            </div>
+                            <p className="text-xs text-slate-500 ml-6 leading-relaxed mb-2">
+                              {cap.description || '暂无该模块的功能说明'}
+                            </p>
                             
-                            <div className="flex flex-wrap gap-2 text-[10px] font-medium border-t border-slate-100 pt-2 ml-7">
-                              {capTasks.length > 0 && <span className="bg-indigo-100/50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100">{capTasks.length} 个关键任务</span>}
-                              <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">{Math.max(1, capTasks.length)} 涉及角色</span>
-                              <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100">{capTasks.length * 2} 关联页面</span>
-                              <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-100">{Math.max(1, capTasks.length)} 数据对象</span>
-                              <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-100">0 开放Slot</span>
+                            <div className="flex flex-wrap gap-2 text-[10px] font-medium ml-6">
+                              <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                                包含 {children.length} 个具体子功能点
+                              </span>
                             </div>
                           </div>
                           
+                          {/* Layer 3: Leaf Nodes (Specific Features) */}
                           {(children.length > 0 && expandedCaps[cap.id] !== false) && (
                             <div className="pl-6 space-y-2 mt-2 relative">
                               <div className="absolute w-px h-full bg-slate-100 left-3 top-0"></div>
-                              {children.map(child => (
-                                <div 
-                                  key={child.id} 
-                                  onClick={() => setSelectedObject(child)}
-                                  className={`relative flex flex-col justify-center rounded-lg py-2.5 px-3 cursor-pointer group transition-colors ${selectedObject?.id === child.id ? 'bg-indigo-50 border-2 border-indigo-500 z-10' : 'bg-white border border-slate-100 hover:border-indigo-200'}`}
-                                >
-                                  <div className="absolute w-3 h-px bg-slate-100 -left-3 top-4"></div>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1 rounded">{child.priority || 'P1'}</span>
-                                      <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{child.title}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${child.scopeStatus === 'in_scope' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                        {child.scopeStatus === 'in_scope' ? '本期包含' : '待定'}
-                                      </span>
+                              {children.map(child => {
+                                const featObj = (ir?.features || []).find(f => f.featureId.toString() === child.id || f.featureId === child.featureId);
+                                const capScenarios = featObj?.scenarios || [];
+                                const capActors = featObj?.actorIds || [];
+                                const capAcCount = capScenarios.reduce((acc: number, s: any) => acc + (s.acceptanceCriteria?.length || 0), 0);
+
+                                return (
+                                  <div 
+                                    key={child.id} 
+                                    onClick={(e) => { e.stopPropagation(); setSelectedObject(child); }}
+                                    className={`relative flex flex-col justify-center rounded-xl p-4 cursor-pointer group transition-all mb-2 border ${selectedObject?.id === child.id ? 'bg-indigo-50 border-2 border-indigo-500 z-10 shadow-sm' : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}
+                                  >
+                                    <div className="absolute w-3 h-px bg-slate-100 -left-3 top-6"></div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h5 className="text-xs font-bold text-slate-800 group-hover:text-indigo-700 transition-colors flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                        具体功能点: {child.title}
+                                      </h5>
                                       <StatusBadge status={child.status} className="scale-75 origin-right" />
                                     </div>
+                                    <div className="text-[11px] text-slate-500 line-clamp-2 ml-4 leading-relaxed mb-3">
+                                      {child.description || '暂无功能点描述'}
+                                    </div>
+
+                                    {/* Leaf capability rich metadata badges */}
+                                    <div className="flex flex-wrap gap-1.5 text-[9px] font-bold ml-4">
+                                      <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md shadow-sm">
+                                        {capScenarios.length} 个成功场景
+                                      </span>
+                                      <span className="bg-purple-50 border border-purple-100 text-purple-700 px-2 py-0.5 rounded-md shadow-sm">
+                                        {capAcCount} 个验收标准
+                                      </span>
+                                      <span className="bg-blue-50 border border-blue-100 text-blue-700 px-2 py-0.5 rounded-md shadow-sm">
+                                        {Math.max(1, capActors.length)} 涉及角色
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="text-[10px] text-slate-500 line-clamp-1 ml-7">{child.description}</div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -196,149 +215,95 @@ export function WhatToDo() {
                 </div>
               </section>
 
+              {/* Scenarios & Acceptance Criteria Section with Intelligent Linkage Filter */}
               <section>
-                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">用例与任务映射</h3>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   {tasks.map(t => {
-                     const footprint = buildTaskFootprint(ir as any, t.id);
-                     
-                     return (
-                     <div key={t.id} onClick={() => setSelectedObject(t)} className={`bg-white rounded-xl p-4 cursor-pointer transition-all flex flex-col ${selectedObject?.id === t.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border border-slate-200 hover:border-indigo-300 shadow-sm'} ${highlightTarget === t.id ? 'ring-2 ring-amber-400' : ''}`}>
-                       <div className="flex justify-between items-start mb-2">
-                         <h4 className="font-bold text-slate-800 text-sm tracking-wide">{t.title}</h4>
-                         <StatusBadge status={t.status} className="scale-90 origin-right" />
-                       </div>
-                       <div className="space-y-1.5 text-xs mb-3 flex-1">
-                         <div className="flex gap-2">
-                           <span className="text-slate-400 w-12 text-[10px] uppercase font-bold mt-0.5">执行者</span>
-                          <span className="font-bold text-slate-700 bg-slate-100 px-1 rounded text-[11px]">{selectPerformerTitle(ir as any, t.id) || '未指派'}</span>
-                         </div>
-                         <div className="flex gap-2 text-[11px]">
-                           <span className="text-slate-400 w-12 text-[10px] uppercase font-bold shrink-0">期望结果</span>
-                          <span className="text-slate-600 line-clamp-2">{t.outcome || '待补充'}</span>
-                         </div>
-                       </div>
-                       
-                       {/* Contextual footprint of the task */}
-                       <div className="flex flex-col gap-1 border-t border-slate-100 pt-2 mt-auto">
-                         <div className="flex items-center gap-1.5 text-[10px]">
-                           <span className="w-12 text-slate-400 font-bold">实现链路:</span>
-                           <span className="text-indigo-600 font-medium bg-indigo-50 px-1.5 rounded">{footprint.flowStepCount} 个流程步骤</span>
-                         </div>
-                         <div className="flex items-center gap-1.5 text-[10px]">
-                           <span className="w-12 text-slate-400 font-bold">操作数据:</span>
-                           <span className="text-blue-600 font-medium bg-blue-50 px-1.5 rounded">{footprint.objectCount} 个对象</span>
-                         </div>
-                         <div className="flex items-center gap-1.5 text-[10px]">
-                           <span className="w-12 text-slate-400 font-bold">入口页面:</span>
-                           <span className="text-emerald-600 font-medium bg-emerald-50 px-1.5 rounded">{footprint.screenCount} 个页面</span>
-                         </div>
-                       </div>
-                     </div>
-                   )})}
-                 </div>
-              </section>
+                 {(() => {
+                   const selectedFeatureId = selectedObject?.featureId || (selectedObject?.kind === 'feature' ? parseInt(selectedObject.id, 10) : null);
+                   const isLeafSelected = selectedObject?.kind === 'feature' && selectedObject?.parentId !== null;
+                   
+                   const displayedScenarios = (isLeafSelected && selectedFeatureId)
+                     ? allScenarios.filter(s => s.featureId === selectedFeatureId)
+                     : allScenarios;
 
-              <section>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">关键业务分岔</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {branchItems.length === 0 && (
-                    <div className="bg-white rounded-2xl p-6 border border-dashed border-slate-200 text-xs text-slate-400 italic">
-                      当前没有需要在“要做什么”阶段处理的关键分岔。
-                    </div>
-                  )}
-                  {branchItems.map((item) => {
-                    if (item.kind === 'issue') {
-                      return (
-                        <div key={item.issue.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Issue</span>
-                            <span className="text-[10px] text-slate-400">{item.projection}</span>
-                          </div>
-                          <h4 className="mt-2 text-sm font-bold text-slate-800">{item.issue.title}</h4>
-                          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.issue.description}</p>
-                          <div className="mt-4 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleIssueBranch(item.issue.id)}
-                              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
-                            >
-                              创建 Slot
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedObject(item.issue)}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                            >
-                              查看
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
+                   return (
+                     <>
+                       <div className="flex justify-between items-center mb-3 px-1">
+                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                           成功场景与验收标准 (User Story & AC)
+                         </h3>
+                         {isLeafSelected && (
+                           <button 
+                             onClick={() => setSelectedObject(null)}
+                             className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-bold transition-all shadow-sm"
+                           >
+                             显示全部场景（当前过滤展示 {displayedScenarios.length} / {allScenarios.length} 项）
+                           </button>
+                         )}
+                       </div>
 
-                    if (item.kind === 'slot') {
-                      return (
-                        <div key={item.slot.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Slot</span>
-                            <span className="text-[10px] text-slate-400">{item.slot.status}</span>
-                          </div>
-                          <h4 className="mt-2 text-sm font-bold text-slate-800">{item.slot.name}</h4>
-                          <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.slot.description || '待系统展开为可选方案'}</p>
-                          <div className="mt-4 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void expandSlot(item.slot.id)}
-                              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
-                            >
-                              展开 Slot
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openSlot(item.slot.id)}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                            >
-                              查看
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
+                       {isLeafSelected && (
+                         <div className="mb-4 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-700 flex justify-between items-center shadow-sm">
+                           <div>
+                             已自动筛选具体功能点 <span className="font-extrabold font-mono bg-white border border-indigo-200 px-1.5 py-0.5 rounded text-indigo-800">“{selectedObject.title}”</span> 下的成功场景（共计 {displayedScenarios.length} 个）。
+                           </div>
+                         </div>
+                       )}
 
-                    return (
-                      <div key={item.choiceGroup.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500">ChoiceGroup</span>
-                          <span className="text-[10px] text-slate-400">{item.choiceGroup.choices.length} 个 Choice</span>
-                        </div>
-                        <h4 className="mt-2 text-sm font-bold text-slate-800">
-                          {ir?.slots[item.choiceGroup.slotId]?.name || item.choiceGroup.id}
-                        </h4>
-                        <p className="mt-1 text-xs text-slate-500 line-clamp-2">确认该分岔后，会同步更新目标、任务与后续流程细节。</p>
-                        <div className="mt-4 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedObject(item.choiceGroup)}
-                            className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
-                          >
-                            打开 ChoiceGroup
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openSlot(item.choiceGroup.slotId)}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                          >
-                            查看 Slot
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                       {displayedScenarios.length === 0 && (
+                         <div className="bg-white rounded-2xl p-8 border border-dashed border-slate-200 text-sm text-slate-400 italic text-center">
+                           该节点下暂无关联的成功场景与验收标准。
+                         </div>
+                       )}
+
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         {displayedScenarios.map(s => (
+                           <div 
+                             key={s.scenarioId} 
+                             onClick={() => setSelectedObject(s)} 
+                             className={`bg-white rounded-2xl p-6 cursor-pointer transition-all flex flex-col gap-4 border ${selectedObject?.id === s.scenarioId.toString() || selectedObject?.scenarioId === s.scenarioId ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300 shadow-sm'}`}
+                           >
+                             <div className="flex justify-between items-start">
+                               <div className="space-y-1">
+                                 <h4 className="font-bold text-slate-800 text-sm tracking-wide">{s.scenarioName}</h4>
+                                 <div className="flex flex-wrap gap-1.5 items-center">
+                                   <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-md">
+                                     功能: {s.featureName}
+                                   </span>
+                                   <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-md">
+                                     执行者: {getActorName(s.actorId)}
+                                   </span>
+                                 </div>
+                               </div>
+                             </div>
+                             
+                             <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 font-medium">
+                               "{s.scenarioContent}"
+                             </p>
+                             
+                             {/* Acceptance Criteria */}
+                             <div className="space-y-2 mt-2">
+                               <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">验收标准 (Acceptance Criteria)</div>
+                               {(s.acceptanceCriteria || []).length === 0 ? (
+                                 <div className="text-xs text-slate-400 italic bg-slate-50 p-2.5 rounded-lg border border-dashed border-slate-200/60">暂无具体验收标准。</div>
+                               ) : (
+                                 <div className="space-y-2">
+                                   {(s.acceptanceCriteria || []).map((ac, idx) => (
+                                     <div key={ac.criterionId || idx} className="flex items-start gap-2 text-xs text-slate-600 bg-emerald-50/20 p-2 rounded-lg border border-emerald-100/30">
+                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5"></span>
+                                       <span className="leading-normal">{ac.criterionContent}</span>
+                                     </div>
+                                   ))}
+                                 </div>
+                               )}
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     </>
+                   );
+                 })()}
+               </section>
             </div>
-
           </div>
         </div>
       </div>

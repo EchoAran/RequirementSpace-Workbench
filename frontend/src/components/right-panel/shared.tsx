@@ -9,7 +9,7 @@ import {
   RequirementNode,
   RequirementSpaceIR,
   ScopeStatusToText,
-} from '@/types';
+} from '@/core/schema';
 
 export const LINK_LABELS: Record<LinkType, string> = {
   realizes: '实现',
@@ -34,7 +34,7 @@ export type RelationSpec = {
   label: string;
   linkType: LinkType;
   direction: 'out' | 'in';
-  targetKinds: NodeKind[];
+  targetKinds: string[];
   multiple?: boolean;
 };
 
@@ -48,7 +48,7 @@ export function PanelShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-[360px] shrink-0 border-l border-slate-200 bg-white h-full overflow-y-auto">
+    <div className="w-full h-full bg-white overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-5 py-4">
         <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || 'IR Object'}</div>
         <h2 className="text-lg font-bold text-slate-900 mt-1">{title}</h2>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Issue, RequirementSpaceIR } from '@/types';
+import { Issue, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ActionButton, ActionRow, Badge, PanelShell, Section, SelectField, TextField } from './shared';
 

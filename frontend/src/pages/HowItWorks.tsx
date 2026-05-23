@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
-import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { IssueCard } from '@/components/shared/IssueCard';
 import { useNavigate } from 'react-router-dom';
-import { buildStepDetail, buildSystemProjection, projectionPath } from '@/domain/ir/selectors';
+import { ArrowRight, Workflow, GitBranch } from 'lucide-react';
+import { FlowStepTypeToText } from '@/core/schema';
+import { buildStepDetail, buildSystemProjection, projectionPath } from '@/core/selectors';
 import { 
   useWorkspaceStore, 
   selectIssues, 
@@ -27,11 +28,40 @@ export function HowItWorks() {
   const selectedObject = useWorkspaceStore(selectSelectedObject);
   const system = buildSystemProjection(ir);
   const [showAllIssues, setShowAllIssues] = useState(false);
-  
+
+  const isWhatComplete = (ir?.actors || []).length > 0 && (ir?.features || []).length > 0;
+
+  if (!isWhatComplete) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6 animate-in fade-in duration-300">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-500 shadow-sm animate-pulse">
+            <Workflow className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-slate-900 tracking-tight">业务流程建模前置依赖未满足</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              根据高一致性建模方法论，业务流程 (How) 是<b>执行角色</b>针对系统中的<b>功能特征点</b>展开的流转演化。
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100/60">
+              请先在 <b>“要做什么 (What)”</b> 页面中至少定义一个参与者角色与系统功能节点，然后才能在此处定义流程步骤及输入输出实体关系。
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/what')}
+            className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
+          >
+            → 前往 What 阶段进行角色与能力建模
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const abnormalIssues = system.abnormalIssues.length ? system.abnormalIssues : issues.filter(g => g.category === 'flow_gap' || g.category === 'rule_gap');
 
   const topIssue = abnormalIssues.length > 0 ? abnormalIssues[0] : null;
-  const businessObjects = system.businessObjects.length ? system.businessObjects : Object.values(ir?.nodes || {}).filter((n: any) => n.kind === 'business_object');
+  const businessObjects = system.businessObjects.length ? system.businessObjects : Object.values((ir as any)?.nodes || {}).filter((n: any) => n.kind === 'business_object');
 
   const openIssueFlow = async (issueId: string) => {
     const slotId = await createSlotFromIssue(issueId);
@@ -51,11 +81,12 @@ export function HowItWorks() {
           
           <div className="flex flex-col gap-6 h-full content-start">
             
-            {/* Main Flow Swimlanes */}
-            <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-x-auto w-full">
+            {/* System Business Flow Models */}
+            <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative w-full">
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">主线流程与可追踪泳道</h2>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">系统业务流程模型</h2>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Multiple Business Processes</p>
                 </div>
                 
                 {/* Unclosed path logic */}
@@ -130,56 +161,122 @@ export function HowItWorks() {
                   )}
                 </div>
               </div>
-              
-              <div className="flex min-w-[800px] gap-4">
-                {system.swimlanes.map((lane, laneIdx) => (
-                  <div key={lane} className="flex-1 border bg-slate-50/50 border-slate-100 rounded-xl flex flex-col min-h-[500px]">
-                    <div className="p-3 border-b border-slate-100 bg-white rounded-t-xl shrink-0">
-                       <h3 className="text-xs font-bold text-center text-slate-600">{lane}</h3>
-                    </div>
-                    <div className="flex-1 p-3 space-y-4 relative isolate">
-                      {system.getStepsBySwimlane(lane).map(step => {
-                        const nextSteps = system.getNextStepTitles(step.id);
-                        const excSteps = system.getExceptionStepTitles(step.id);
-                        const linkedSlots = system.getStepSlots(step.id);
-                        const stepDetail = buildStepDetail(ir, step.id);
-                        
-                        return (
-                          <div key={step.id} className="relative z-10 w-full" onClick={() => setSelectedObject(step)}>
-                            <div className={`
-                              rounded-xl transition-all cursor-pointer shadow-sm
-                              ${selectedObject?.id === step.id ? 'ring-2 ring-indigo-500 ring-offset-2 border-transparent' : 'border border-transparent hover:border-indigo-300'}
-                              ${highlightTarget === step.id ? 'ring-2 ring-amber-400' : ''}
-                            `}>
-                              <FlowStepCard 
-                                name={step.title}
-                                type={step.stepType}
-                                actor={lane}
-                                status={step.status}
-                                inputs={stepDetail.inputs}
-                                outputs={stepDetail.outputs}
-                                rules={stepDetail.rules}
-                                stateChanges={stepDetail.stateChanges}
-                                relatedPages={stepDetail.relatedPages}
-                                relatedIssueCount={stepDetail.relatedIssueIds.length}
-                                relatedChoiceCount={stepDetail.relatedChoiceIds.length}
-                                nextSteps={nextSteps.length > 0 ? nextSteps : undefined}
-                                exceptionSteps={excSteps.length > 0 ? excSteps : undefined}
-                                slots={linkedSlots}
-                                active={false}
-                                onClick={() => setSelectedObject(step)}
-                                onSlotClick={(slotId) => {
-                                  openSlot(slotId);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
 
-                    </div>
+              <div className="space-y-8">
+                {(!ir?.flows || ir.flows.length === 0) && (
+                  <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl text-slate-500 italic text-sm">
+                    当前需求空间没有定义任何业务流程。请尝试通过 AI 智能推演生成。
                   </div>
-                ))}
+                )}
+                
+                {(ir?.flows || []).map((flow) => {
+                  const featNames = (flow.featureIds || [])
+                    .map(fid => (ir.features || []).find(f => f.featureId === fid)?.featureName)
+                    .filter(Boolean) as string[];
+
+                  return (
+                    <div key={flow.flowId} onClick={() => setSelectedObject(flow)} className={`rounded-2xl border p-6 bg-slate-50/50 shadow-sm cursor-pointer transition-all ${selectedObject?.id === flow.flowId.toString() || selectedObject?.flowId === flow.flowId ? 'ring-2 ring-indigo-500 bg-slate-50 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-200'}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div className="space-y-1">
+                          <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                            <Workflow className="w-5 h-5 text-indigo-600" />
+                            {flow.flowName}
+                          </h3>
+                          <p className="text-xs text-slate-500 leading-normal">{flow.flowDescription}</p>
+                        </div>
+                        {featNames.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 shrink-0 self-start sm:self-center">
+                            {featNames.map(fName => (
+                              <span key={fName} className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-md">
+                                关联功能: {fName}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Steps flow container */}
+                      <div className="flex items-center overflow-x-auto gap-4 py-4 scrollbar-thin">
+                        {(flow.flowSteps || []).map((step, idx) => {
+                          const stepDetail = buildStepDetail(ir, step.id);
+                          const stepActors = (step.actorIds || [])
+                            .map(aid => (ir.actors || []).find(a => a.actorId === aid)?.actorName)
+                            .filter(Boolean);
+
+                          const stepTypeName = FlowStepTypeToText[step.stepType] || '动作';
+
+                          const stepBadgeStyle = step.stepType === 'judgment'
+                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                            : step.stepType === 'systemAction'
+                              ? 'bg-blue-100 text-blue-800 border-blue-200'
+                              : 'bg-indigo-100 text-indigo-800 border-indigo-200';
+
+                          return (
+                            <div key={step.stepId} className="flex items-center shrink-0">
+                              <div
+                                onClick={(e) => { e.stopPropagation(); setSelectedObject(step); }}
+                                className={`w-[260px] border p-4 rounded-xl shadow-sm transition-all flex flex-col gap-3 cursor-pointer bg-white ${selectedObject?.id === step.stepId.toString() || selectedObject?.stepId === step.stepId ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300'}`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">
+                                      {idx + 1}
+                                    </span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 border rounded ${stepBadgeStyle}`}>
+                                      {stepTypeName}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-bold text-slate-800 text-sm mb-1 truncate">{step.stepName}</h4>
+                                  <span className="text-[10px] font-bold text-indigo-600 uppercase">
+                                    执行者: {stepActors.length > 0 ? stepActors.join(', ') : '系统自动'}
+                                  </span>
+                                </div>
+
+                                <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                                  {step.stepDescription}
+                                </p>
+
+                                {/* Inputs & Outputs */}
+                                {(stepDetail.inputs.length > 0 || stepDetail.outputs.length > 0) && (
+                                  <div className="border-t border-slate-100 pt-2 mt-auto space-y-1.5">
+                                    {stepDetail.inputs.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 items-center">
+                                        <span className="text-[9px] text-slate-400 font-bold shrink-0">输入:</span>
+                                        {stepDetail.inputs.map(inp => (
+                                          <span key={inp} className="text-[9px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-600">
+                                            {inp}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {stepDetail.outputs.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 items-center">
+                                        <span className="text-[9px] text-slate-400 font-bold shrink-0">输出:</span>
+                                        {stepDetail.outputs.map(out => (
+                                          <span key={out} className="text-[9px] bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded text-emerald-700">
+                                            {out}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Arrow between steps */}
+                              {idx < (flow.flowSteps.length - 1) && (
+                                <ArrowRight className="w-5 h-5 text-slate-400 mx-2 shrink-0 animate-pulse" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 

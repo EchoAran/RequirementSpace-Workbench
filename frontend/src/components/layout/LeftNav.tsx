@@ -6,7 +6,7 @@ import {
   useWorkspaceStore, 
   selectPageHealth
 } from '@/store/useWorkspaceStore';
-import { buildReadiness } from '@/domain/ir/selectors';
+import { buildReadiness } from '@/core/selectors';
 
 export function LeftNav() {
   const location = useLocation();

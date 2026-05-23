@@ -3,12 +3,12 @@ import { ReadinessChecklist } from '@/components/shared/ReadinessChecklist';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ChoiceCard } from '@/components/shared/ChoiceCard';
 import { useNavigate } from 'react-router-dom';
-import { buildOverviewModel, projectionPath } from '@/domain/ir/selectors';
+import { buildOverviewModel, projectionPath } from '@/core/selectors';
 import { 
   useWorkspaceStore, 
   selectChoices 
 } from '@/store/useWorkspaceStore';
-import { NodeKindToText } from '@/types';
+import { NodeKindToText } from '@/core/schema';
 
 export function Overview() {
   const { 
@@ -161,7 +161,7 @@ export function Overview() {
                         <span className="text-[10px] text-slate-400">{new Date(operation.timestamp).toLocaleString()}</span>
                       </div>
                       <div className="mt-1 text-sm font-medium text-slate-800">{operation.summary || '应用变更'}</div>
-                      <div className="mt-1 text-xs text-slate-500">影响 {operation.targetIds.length} 个对象</div>
+                      <div className="mt-1 text-xs text-slate-500">影响 {operation.targetIds?.length || 0} 个对象</div>
                     </div>
                   ))}
                 </div>
@@ -225,7 +225,7 @@ export function Overview() {
                       key={item.id}
                       type="button"
                       onClick={() => {
-                        const node = ir?.nodes[item.id];
+                        const node = (ir as any)?.nodes?.[item.id];
                         if (node) {
                           setSelectedObject(node);
                           jumpToProjection(node.kind === 'screen' || node.kind === 'ui_component' ? 'ui' : node.kind === 'flow' || node.kind === 'flow_step' || node.kind === 'rule' ? 'system' : node.kind === 'business_object' || node.kind === 'field' || node.kind === 'state_machine' || node.kind === 'object_state' || node.kind === 'state_transition' ? 'data' : 'goal');

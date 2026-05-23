@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { NodeStatus, NodeStatusToText } from '@/types';
+import { NodeStatus, NodeStatusToText } from '@/core/schema';
 
 interface StatusBadgeProps {
   status: NodeStatus | string;

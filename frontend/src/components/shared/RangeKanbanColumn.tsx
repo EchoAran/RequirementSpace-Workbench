@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NodeKindToText } from '@/types';
+import { NodeKindToText } from '@/core/schema';
 import { StatusBadge } from './StatusBadge';
 
 interface DragItem {
@@ -8,6 +8,7 @@ interface DragItem {
   kind?: string;
   status: string;
   scopeStatus?: string;
+  parentModuleName?: string;
 }
 
 interface ColumnProps {
@@ -39,6 +40,13 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
             onClick={() => onItemClick(item)}
             className={`group bg-white rounded-lg p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border cursor-pointer transition-all ${selectedTarget === item.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300'} ${highlightTarget === item.id ? 'ring-2 ring-amber-400' : ''}`}
           >
+            {item.parentModuleName && (
+              <div className="mb-1.5 flex">
+                <span className="inline-block text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded shadow-sm">
+                  模块: {item.parentModuleName}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-start mb-3 gap-2 relative">
               <h5 className={`text-sm font-medium leading-tight pr-6 ${item.status === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'}`}>{item.title}</h5>
               <div className="absolute right-0 top-0 opacity-100 flex flex-col gap-1 z-10 group-hover:opacity-100">

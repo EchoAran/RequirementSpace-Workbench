@@ -16,7 +16,7 @@ const getSubtitle = (path: string) => {
 export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { initialPrompt, exitWorkspace, initializeWorkspace, runDiagnosis, ir, error } = useWorkspaceStore();
+  const { initialPrompt, exitWorkspace, startAIOnboarding, runDiagnosis, ir, error } = useWorkspaceStore();
   const issues = useWorkspaceStore(selectIssues);
   const actors = useWorkspaceStore(selectActors);
   const flowSteps = useWorkspaceStore(selectFlowSteps);
@@ -41,7 +41,7 @@ export function TopBar() {
             className="text-xs text-slate-500 hover:text-slate-800 transition-colors mr-2 flex items-center gap-1 font-medium"
           >← 返回</button>
           <div className="h-4 w-[1px] bg-slate-300"></div>
-          <h1 className="text-lg font-bold text-slate-800 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setShowPrompt(true)}>项目：{ir?.name || '需求探索项目'}</h1>
+          <h1 className="text-lg font-bold text-slate-800 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setShowPrompt(true)}>项目：{ir?.projectName || (ir as any)?.name || '需求探索项目'}</h1>
           <div className="h-4 w-[1px] bg-slate-300"></div>
           <span className="text-sm text-slate-500 italic">{getSubtitle(location.pathname)}</span>
         </div>
@@ -131,7 +131,8 @@ export function TopBar() {
           <div className="absolute inset-0" onClick={() => setShowRegenerateConfirm(false)}></div>
           <div className="bg-white rounded-2xl shadow-xl w-[400px] p-6 relative z-10">
             <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+              </svg>
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">生成新的工作区起点</h3>
             <p className="text-sm text-slate-500 mb-6 leading-relaxed">
@@ -143,9 +144,9 @@ export function TopBar() {
                 className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
               >取消</button>
               <button 
-                onClick={() => {
+                onClick={async () => {
                   setShowRegenerateConfirm(false);
-                  initializeWorkspace(initialPrompt);
+                  await startAIOnboarding(initialPrompt);
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors shadow-sm shadow-rose-200"
               >确认生成新工作区</button>

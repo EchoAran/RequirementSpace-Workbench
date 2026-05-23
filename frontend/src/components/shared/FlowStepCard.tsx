@@ -1,4 +1,4 @@
-import { NodeStatus } from "@/types";
+import { NodeStatus } from "@/core/schema";
 import { StatusBadge } from "./StatusBadge";
 import { ObjectLinkChips } from "./ObjectLinkChips";
 

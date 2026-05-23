@@ -1,5 +1,5 @@
 import React from 'react';
-import { Issue } from '@/types';
+import { Issue } from '@/core/schema';
 import { cn } from '@/lib/utils';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 

@@ -1,4 +1,4 @@
-import { RequirementNode, RequirementLink } from '@/types';
+import { RequirementNode, RequirementLink } from '@/core/schema';
 import { ArrowRight, Box, Component, Container, LayoutDashboard } from 'lucide-react';
 
 interface ComponentTreeProps {
@@ -12,7 +12,7 @@ interface ComponentTreeProps {
 export function ComponentTree({ nodes, links, actorId, onSelectNode, selectedNodeId }: ComponentTreeProps) {
   // Find all screens for this actor
   const actorScreens = links
-    .filter(l => l.targetId === actorId && l.type === 'accessible_by' && nodes[l.sourceId]?.kind === 'screen')
+    .filter(l => l.targetId === actorId && l.type === 'accessible_by' && (nodes[l.sourceId]?.kind as string) === 'screen')
     .map(l => nodes[l.sourceId]);
 
   const getChildren = (parentId: string) => {
@@ -23,18 +23,18 @@ export function ComponentTree({ nodes, links, actorId, onSelectNode, selectedNod
   };
 
   const renderTree = (node: RequirementNode, depth: number = 0) => {
-    const children = getChildren(node.id);
-    const isSelected = selectedNodeId === node.id;
+    const children = getChildren((node as any).id);
+    const isSelected = selectedNodeId === (node as any).id;
     
     return (
-      <div key={node.id} className="">
+      <div key={(node as any).id} className="">
         <div 
           onClick={() => onSelectNode(node)}
           className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
           style={{ paddingLeft: `${depth * 1.5 + 0.5}rem` }}
         >
-          {node.kind === 'screen' ? <LayoutDashboard className="w-4 h-4 shrink-0 text-sky-500" /> : <Component className="w-3.5 h-3.5 shrink-0 text-slate-400" />}
-          <span className="text-sm">{node.title} {node.kind === 'screen' && <span className="text-xs text-slate-400 italic font-normal ml-2">页面</span>}</span>
+          {(node.kind as string) === 'screen' ? <LayoutDashboard className="w-4 h-4 shrink-0 text-sky-500" /> : <Component className="w-3.5 h-3.5 shrink-0 text-slate-400" />}
+          <span className="text-sm">{(node as any).title} {(node.kind as string) === 'screen' && <span className="text-xs text-slate-400 italic font-normal ml-2">页面</span>}</span>
         </div>
         {children.length > 0 && (
           <div className="mt-1 flex flex-col space-y-0.5 border-l border-slate-100 ml-4">

@@ -1,4 +1,4 @@
-import { RequirementSpaceIR, RequirementSlot } from '@/types';
+import { RequirementSpaceIR, RequirementSlot } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ActionButton, ActionRow, Badge, PanelShell, Section } from './shared';
 

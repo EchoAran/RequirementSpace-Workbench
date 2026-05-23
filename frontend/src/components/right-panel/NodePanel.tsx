@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GraphPatch, RequirementNode, RequirementSpaceIR } from '@/types';
+import { GraphPatch, RequirementNode, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import {
   ActionButton,
@@ -24,7 +24,7 @@ const statusOptions = [
   { value: 'excluded', label: '已排除' },
 ];
 
-const relationSpecsByKind: Partial<Record<RequirementNode['kind'], RelationSpec[]>> = {
+const relationSpecsByKind: Record<string, RelationSpec[]> = {
   goal: [{ label: '包含能力', linkType: 'contains', direction: 'out', targetKinds: ['capability'], multiple: true }],
   capability: [
     { label: '父级能力', linkType: 'contains', direction: 'in', targetKinds: ['goal', 'capability'] },
@@ -68,7 +68,8 @@ const relationSpecsByKind: Partial<Record<RequirementNode['kind'], RelationSpec[
   ],
 };
 
-export function NodePanel({ node, ir }: { node: RequirementNode; ir: RequirementSpaceIR }) {
+export function NodePanel({ node: rawNode, ir }: { node: RequirementNode; ir: RequirementSpaceIR }) {
+  const node = rawNode as any;
   const { updateNodeAttributes, setNodeStatus, setScopeStatus, applyPatch } = useWorkspaceStore();
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description || '');

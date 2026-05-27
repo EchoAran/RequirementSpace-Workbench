@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Choice, ChoiceGroup, Issue, Proposal, RequirementSpaceIR, RequirementSlot } from '@/core/schema';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Choice, ChoiceGroup, Issue, RequirementSpaceIR, RequirementSlot } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPanel } from '../right-panel/ChoiceGroupPanel';
 import { ChoicePanel } from '../right-panel/ChoicePanel';
 import { IssuePanel } from '../right-panel/IssuePanel';
 import { NodePanel } from '../right-panel/NodePanel';
-import { PanelShell } from '../right-panel/shared';
-import { ProposalPanel } from '../right-panel/ProposalPanel';
+import { PanelShell, Section, TextField, SelectField, ActionRow, ActionButton } from '../right-panel/shared';
 import { SlotPanel } from '../right-panel/SlotPanel';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { normalizeScopeStatus } from '@/core/selectors';
 
 const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null): Choice | null => {
   if (!ir || !choiceId) return null;
@@ -19,11 +19,478 @@ const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null):
   return null;
 };
 
+class PanelErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("PanelErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <PanelShell title="审查面板渲染发生错误" subtitle="智能审查面板错误">
+          <div className="p-4 border border-rose-200 bg-rose-50/50 rounded-2xl space-y-4">
+            <div className="text-sm font-bold text-rose-700">抽屉面板渲染组件崩溃</div>
+            <div className="text-xs text-rose-600 font-medium leading-relaxed">
+              错误信息: {this.state.error?.message || '未知异常'}
+            </div>
+            <pre className="text-[10px] text-slate-700 bg-slate-50 border border-slate-100 rounded-xl p-3 max-h-[300px] overflow-auto font-mono">
+              {this.state.error?.stack || '无堆栈追踪'}
+            </pre>
+            <div className="text-[10px] text-slate-500">
+              请将该报错截图或复制发给开发人员进行排查。
+            </div>
+          </div>
+        </PanelShell>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// 1. Dedicated Actor Panel
+function ActorObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const updateActor = useWorkspaceStore((state) => state.updateActor);
+  const [actorName, setActorName] = useState(selectedObject.actorName || '');
+  const [actorDesc, setActorDesc] = useState(selectedObject.actorDescription || '');
+
+  useEffect(() => {
+    setActorName(selectedObject.actorName || '');
+    setActorDesc(selectedObject.actorDescription || '');
+  }, [selectedObject]);
+
+  const handleSave = async () => {
+    await updateActor(selectedObject.actorId, { 
+      actorName, 
+      actorDescription: actorDesc 
+    });
+  };
+
+  return (
+    <PanelShell title={actorName} subtitle="参与者角色">
+      <Section title="参与角色基本属性">
+        <TextField label="角色名称" value={actorName} onChange={setActorName} />
+        <TextField label="职责说明 / 描述" value={actorDesc} onChange={setActorDesc} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { setActorName(selectedObject.actorName || ''); setActorDesc(selectedObject.actorDescription || ''); }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 2. Dedicated Feature Panel
+function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const ir = useWorkspaceStore((state) => state.ir);
+  const updateFeature = useWorkspaceStore((state) => state.updateFeature);
+  const updateScope = useWorkspaceStore((state) => state.updateScope);
+  const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
+
+  // Find original feature in ir to get its scope/reason and complete fields
+  const originalFeature = useMemo(() => {
+    if (!ir || !ir.features) return null;
+    return ir.features.find((f: any) => f.featureId.toString() === selectedObject.id?.toString() || f.featureId === selectedObject.featureId);
+  }, [ir, selectedObject.id, selectedObject.featureId]);
+
+  const feat = originalFeature || selectedObject;
+
+  const [featName, setFeatName] = useState(feat.featureName || feat.title || '');
+  const [featDesc, setFeatDesc] = useState(feat.featureDescription || feat.description || '');
+  const [featScopeStatus, setFeatScopeStatus] = useState(normalizeScopeStatus(feat.scope?.scopeStatus || feat.scopeStatus));
+  const [featScopeReason, setFeatScopeReason] = useState(feat.scope?.reason || feat.reason || '');
+
+  useEffect(() => {
+    const f = originalFeature || selectedObject;
+    setFeatName(f.featureName || f.title || '');
+    setFeatDesc(f.featureDescription || f.description || '');
+    setFeatScopeStatus(normalizeScopeStatus(f.scope?.scopeStatus || f.scopeStatus));
+    setFeatScopeReason(f.scope?.reason || f.reason || '');
+  }, [selectedObject, originalFeature]);
+
+  const handleSave = async () => {
+    const fId = selectedObject.featureId || feat.featureId || parseInt(selectedObject.id, 10);
+    if (isNaN(fId)) return;
+    await updateFeature(fId, { 
+      featureName: featName, 
+      featureDescription: featDesc 
+    });
+    await updateScope(fId, {
+      scopeStatus: featScopeStatus as any,
+      reason: featScopeReason
+    });
+  };
+
+  // Find parent capability
+  const parentCap = useMemo(() => {
+    if (!ir || !ir.features || selectedObject.parentId === null) return null;
+    return ir.features.find((f: any) => f.featureId === selectedObject.parentId);
+  }, [ir, selectedObject.parentId]);
+
+  // Find child capabilities
+  const childCaps = useMemo(() => {
+    if (!ir || !ir.features) return [];
+    return ir.features.filter((f: any) => f.parentId === selectedObject.featureId);
+  }, [ir, selectedObject.featureId]);
+
+  // Find associated actors
+  const associatedActors = useMemo(() => {
+    if (!ir || !ir.actors) return [];
+    const actorIds = selectedObject.actorIds || [];
+    return actorIds.map((aid: number) => ir.actors.find((a: any) => a.actorId === aid)).filter(Boolean);
+  }, [ir, selectedObject.actorIds]);
+
+  return (
+    <PanelShell title={featName} subtitle="核心功能节点">
+      <Section title="交付范围与决策">
+        <SelectField 
+          label="交付范围" 
+          value={featScopeStatus} 
+          options={[
+            { value: '本期', label: '本期包含' },
+            { value: '暂缓', label: '暂缓处理' },
+            { value: '排除', label: '已排除' }
+          ]} 
+          onChange={(val) => setFeatScopeStatus(normalizeScopeStatus(val))} 
+        />
+        <TextField label="决策缘由 / 卡诺分析说明" value={featScopeReason} onChange={setFeatScopeReason} multiline />
+      </Section>
+      <Section title="功能节点基本属性">
+        <TextField label="功能名称" value={featName} onChange={setFeatName} />
+        <TextField label="描述说明" value={featDesc} onChange={setFeatDesc} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存属性更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { 
+            setFeatName(selectedObject.featureName || ''); 
+            setFeatDesc(selectedObject.featureDescription || ''); 
+            setFeatScopeStatus(normalizeScopeStatus(selectedObject.scope?.scopeStatus));
+            setFeatScopeReason(selectedObject.scope?.reason || '');
+          }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+
+      <Section title="架构关系定义">
+        <div className="space-y-3">
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">父级模块 / 能力</span>
+            {parentCap ? (
+              <button
+                type="button"
+                onClick={() => setSelectedObject(parentCap)}
+                className="text-xs text-indigo-650 hover:text-indigo-850 font-semibold bg-indigo-50/50 border border-indigo-100/60 rounded-lg px-2.5 py-1.5 transition-all text-left w-full truncate"
+              >
+                📁 {parentCap.featureName}
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400 italic">无（当前是顶级功能节点）</span>
+            )}
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">子级能力点 / 叶子功能</span>
+            {childCaps.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {childCaps.map((c: any) => (
+                  <button
+                    key={c.featureId}
+                    type="button"
+                    onClick={() => setSelectedObject(c)}
+                    className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 hover:border-indigo-350 hover:text-indigo-755 hover:bg-white rounded-md px-2 py-0.5 font-medium transition-all"
+                  >
+                    📄 {c.featureName}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400 italic">无（当前是具体叶子节点）</span>
+            )}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="关联参与者角色">
+        {associatedActors.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {associatedActors.map((actor: any) => (
+              <button
+                key={actor.actorId}
+                type="button"
+                onClick={() => setSelectedObject(actor)}
+                className="text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-750 hover:border-emerald-350 rounded-md px-2 py-0.5 font-bold transition-all"
+              >
+                👤 {actor.actorName}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400 italic">未关联任何角色。请在 What 页面中关联。</span>
+        )}
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 3. Dedicated Business Object Panel
+function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const updateBusinessObject = useWorkspaceStore((state) => state.updateBusinessObject);
+  const [boName, setBoName] = useState(selectedObject.businessObjectName || '');
+  const [boDesc, setBoDesc] = useState(selectedObject.businessObjectDescription || '');
+
+  useEffect(() => {
+    setBoName(selectedObject.businessObjectName || '');
+    setBoDesc(selectedObject.businessObjectDescription || '');
+  }, [selectedObject]);
+
+  const handleSave = async () => {
+    await updateBusinessObject(selectedObject.businessObjectId, boName, boDesc);
+  };
+
+  return (
+    <PanelShell title={boName} subtitle="核心业务对象">
+      <Section title="数据实体基本属性">
+        <TextField label="实体名称" value={boName} onChange={setBoName} />
+        <TextField label="实体描述说明" value={boDesc} onChange={setBoDesc} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { setBoName(selectedObject.businessObjectName || ''); setBoDesc(selectedObject.businessObjectDescription || ''); }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+
+      <Section title="数据字段及属性定义">
+        {(selectedObject.businessObjectAttributes || []).length === 0 ? (
+          <div className="text-xs text-slate-400 italic">该实体暂未定义任何数据字段属性。</div>
+        ) : (
+          <div className="space-y-3 select-text">
+            {(selectedObject.businessObjectAttributes || []).map((attr: any) => (
+              <div key={attr.businessObjectAttributeId} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-1.5 shadow-sm">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-800 text-xs">{attr.businessObjectAttributeName}</span>
+                  <span className="text-[9px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-500 font-bold">{attr.businessObjectAttributeType}</span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium leading-relaxed">{attr.businessObjectAttributeDescription}</div>
+                {attr.businessObjectAttributeExample && (
+                  <div className="text-[10px] text-indigo-650 bg-indigo-50/40 p-1.5 rounded font-mono leading-none">
+                    字段示例值: {attr.businessObjectAttributeExample}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 4. Dedicated Flow Step Panel
+function FlowStepObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any }) {
+  const updateFlowStep = useWorkspaceStore((state) => state.updateFlowStep);
+  const [stepName, setStepName] = useState(selectedObject.stepName || '');
+  const [stepDesc, setStepDesc] = useState(selectedObject.stepDescription || '');
+  const [stepType, setStepType] = useState(selectedObject.stepType || 'actorAction');
+
+  useEffect(() => {
+    setStepName(selectedObject.stepName || '');
+    setStepDesc(selectedObject.stepDescription || '');
+    setStepType(selectedObject.stepType || 'actorAction');
+  }, [selectedObject]);
+
+  const handleSave = async () => {
+    const flow = ir.flows?.find((f: any) => (f.flowSteps || []).some((s: any) => s.stepId === selectedObject.stepId));
+    if (!flow) return;
+    await updateFlowStep(flow.flowId, selectedObject.stepId, {
+      stepName,
+      stepDescription: stepDesc,
+      stepType: stepType as any
+    });
+  };
+
+  return (
+    <PanelShell title={stepName} subtitle="流程步骤节点">
+      <Section title="流程步骤基本属性">
+        <TextField label="步骤名称" value={stepName} onChange={setStepName} />
+        <SelectField 
+          label="步骤协作类型" 
+          value={stepType} 
+          options={[
+            { value: 'actorAction', label: '用户角色交互步骤' },
+            { value: 'systemAction', label: '系统后台自动步骤' },
+            { value: 'judgment', label: '逻辑分支判定步骤' }
+          ]} 
+          onChange={setStepType} 
+        />
+        <TextField label="步骤执行说明" value={stepDesc} onChange={setStepDesc} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { setStepName(selectedObject.stepName || ''); setStepDesc(selectedObject.stepDescription || ''); setStepType(selectedObject.stepType || 'actorAction'); }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 5. Dedicated Flow Panel
+function FlowObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const updateFlow = useWorkspaceStore((state) => state.updateFlow);
+  const [flowName, setFlowName] = useState(selectedObject.flowName || '');
+  const [flowDesc, setFlowDesc] = useState(selectedObject.flowDescription || '');
+
+  useEffect(() => {
+    setFlowName(selectedObject.flowName || '');
+    setFlowDesc(selectedObject.flowDescription || '');
+  }, [selectedObject]);
+
+  const handleSave = async () => {
+    await updateFlow(selectedObject.flowId, {
+      flowName,
+      flowDescription: flowDesc
+    });
+  };
+
+  return (
+    <PanelShell title={flowName} subtitle="业务流程">
+      <Section title="流程基本属性">
+        <TextField label="流程名称" value={flowName} onChange={setFlowName} />
+        <TextField label="流程场景描述" value={flowDesc} onChange={setFlowDesc} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { setFlowName(selectedObject.flowName || ''); setFlowDesc(selectedObject.flowDescription || ''); }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 6. Dedicated Scenario Panel
+function ScenarioObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const updateScenario = useWorkspaceStore((state) => state.updateScenario);
+  const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
+  const [scenName, setScenName] = useState(selectedObject.scenarioName || '');
+  const [scenContent, setScenContent] = useState(selectedObject.scenarioContent || '');
+
+  useEffect(() => {
+    setScenName(selectedObject.scenarioName || '');
+    setScenContent(selectedObject.scenarioContent || '');
+  }, [selectedObject]);
+
+  const handleSave = async () => {
+    await updateScenario(selectedObject.featureId, selectedObject.scenarioId, {
+      scenarioName: scenName,
+      scenarioContent: scenContent
+    });
+  };
+
+  return (
+    <PanelShell title={scenName} subtitle="业务成功场景">
+      <Section title="成功场景基本属性">
+        <TextField label="场景名称" value={scenName} onChange={setScenName} />
+        <TextField label="场景交互过程 / 用户故事描述" value={scenContent} onChange={setScenContent} multiline />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+          <ActionButton variant="secondary" onClick={() => { setScenName(selectedObject.scenarioName || ''); setScenContent(selectedObject.scenarioContent || ''); }}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+
+      <Section title="系统交付验收标准">
+        {(selectedObject.acceptanceCriteria || []).length === 0 ? (
+          <div className="text-xs text-slate-400 italic">该场景暂无关联的交付验收标准。</div>
+        ) : (
+          <div className="space-y-3 select-text">
+            {(selectedObject.acceptanceCriteria || []).map((ac: any) => {
+              return (
+                <div 
+                  key={ac.criterionId} 
+                  onClick={() => setSelectedObject({ ...ac, kind: 'acceptance_criterion' })}
+                  className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 hover:bg-indigo-50/40 hover:border-indigo-300 transition-all cursor-pointer space-y-1.5 shadow-sm group"
+                  title="点击即可单独编辑此条验收标准"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-extrabold text-[10px] text-indigo-500 group-hover:text-indigo-600 transition-colors">验收标准 #{ac.criterionId}</span>
+                    <span className="text-[9px] text-indigo-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">编辑该条验收标准 →</span>
+                  </div>
+                  <div className="text-xs text-slate-700 font-medium leading-relaxed">{ac.criterionContent}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+    </PanelShell>
+  );
+}
+
+// 7. Dedicated Acceptance Criterion Panel
+function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any }) {
+  const updateAcceptanceCriterion = useWorkspaceStore((state) => state.updateAcceptanceCriterion);
+  const [acContent, setAcContent] = useState(selectedObject.criterionContent || '');
+
+  useEffect(() => {
+    setAcContent(selectedObject.criterionContent || '');
+  }, [selectedObject]);
+
+  const parent = useMemo(() => {
+    for (const f of ir.features || []) {
+      for (const s of f.scenarios || []) {
+        if ((s.acceptanceCriteria || []).some((ac: any) => ac.criterionId === selectedObject.criterionId)) {
+          return { featureId: f.featureId, scenarioId: s.scenarioId };
+        }
+      }
+    }
+    return null;
+  }, [ir, selectedObject.criterionId]);
+
+  const handleSave = async () => {
+    if (!parent) return;
+    await updateAcceptanceCriterion(parent.featureId, parent.scenarioId, selectedObject.criterionId, acContent);
+  };
+
+  return (
+    <PanelShell title={`验收标准 #${selectedObject.criterionId}`} subtitle="交付验收标准">
+      <Section title="验收标准详细说明">
+        <TextField label="交付验收标准具体内容" value={acContent} onChange={setAcContent} multiline />
+        {parent ? (
+          <ActionRow>
+            <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
+            <ActionButton variant="secondary" onClick={() => setAcContent(selectedObject.criterionContent || '')}>
+              重置修改
+            </ActionButton>
+          </ActionRow>
+        ) : (
+          <div className="text-xs text-rose-500 italic mt-2 font-medium">⚠️ 无法定位该验收标准所属的父级功能及场景，属性只读。</div>
+        )}
+      </Section>
+    </PanelShell>
+  );
+}
+
 export function RightObjectPanel() {
   const ir = useWorkspaceStore((state) => state.ir);
   const selectedObject: any = useWorkspaceStore(selectSelectedObject);
 
-  // Local storage persistence for premium user experience
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem('right-panel-width');
     return saved ? parseInt(saved, 10) : 360;
@@ -50,7 +517,6 @@ export function RightObjectPanel() {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // The panel is on the right, so as mouse X increases (moves right), width decreases
       const newWidth = window.innerWidth - e.clientX;
       handleWidthChange(newWidth);
     };
@@ -72,15 +538,48 @@ export function RightObjectPanel() {
   const renderContent = () => {
     if (!selectedObject) {
       return (
-        <PanelShell title="选择一个对象" subtitle="Inspector">
-          <div className="text-sm text-slate-500 leading-relaxed">
-            右侧面板统一审阅和编辑 Node、Issue、Slot、ChoiceGroup、Choice、Proposal。
+        <PanelShell title="建模资产编辑面板" subtitle="建模资产面板">
+          <div className="text-sm text-slate-500 leading-relaxed font-medium">
+            右侧面板统一审阅和编辑角色、功能树、业务流程步骤、数据对象等项目模型资产。
           </div>
         </PanelShell>
       );
     }
 
-    // Adapt to cases where selectedObject has perceptionSlotId instead of id (like Slots)
+    // Intercept active refactored RequirementSpace node kinds
+    const kind = selectedObject.kind || (
+      selectedObject.scenarioId !== undefined ? 'scenario' :
+      selectedObject.criterionId !== undefined ? 'acceptance_criterion' :
+      selectedObject.actorId !== undefined ? 'actor' :
+      selectedObject.featureId !== undefined ? 'feature' :
+      selectedObject.businessObjectId !== undefined ? 'business_object' :
+      selectedObject.stepId !== undefined ? 'flow_step' :
+      selectedObject.flowId !== undefined ? 'flow' : undefined
+    );
+
+    if (kind === 'actor') {
+      return <ActorObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'feature') {
+      return <FeatureObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'scenario') {
+      return <ScenarioObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'acceptance_criterion') {
+      return <ACObjectPanel selectedObject={selectedObject} ir={ir} />;
+    }
+    if (kind === 'business_object') {
+      return <BusinessObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'flow_step') {
+      return <FlowStepObjectPanel selectedObject={selectedObject} ir={ir} />;
+    }
+    if (kind === 'flow') {
+      return <FlowObjectPanel selectedObject={selectedObject} />;
+    }
+
+    // Fallback for legacy indexing kinds
     const objId = selectedObject.id || selectedObject.perceptionSlotId?.toString();
 
     if (objId) {
@@ -96,9 +595,6 @@ export function RightObjectPanel() {
       if (ir.choiceGroups && ir.choiceGroups[objId]) {
         return <ChoiceGroupPanel choiceGroup={ir.choiceGroups[objId] as ChoiceGroup} ir={ir} />;
       }
-      if (ir.proposals && ir.proposals[objId]) {
-        return <ProposalPanel proposal={ir.proposals[objId] as Proposal} ir={ir} />;
-      }
 
       const choice = findChoiceById(ir, objId);
       if (choice) {
@@ -107,7 +603,7 @@ export function RightObjectPanel() {
     }
 
     return (
-      <PanelShell title={selectedObject.title || selectedObject.name || selectedObject.id || '未知对象'} subtitle="Inspector">
+      <PanelShell title={selectedObject.title || selectedObject.name || selectedObject.id || '未知对象'} subtitle="对象属性详情">
         <pre className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 overflow-auto">
           {JSON.stringify(selectedObject, null, 2)}
         </pre>
@@ -151,7 +647,9 @@ export function RightObjectPanel() {
 
       {/* Actual Panel Content */}
       <div className="w-full h-full overflow-hidden bg-white">
-        {renderContent()}
+        <PanelErrorBoundary key={selectedObject?.id || selectedObject?.scenarioId || selectedObject?.criterionId || 'empty'}>
+          {renderContent()}
+        </PanelErrorBoundary>
       </div>
     </div>
   );

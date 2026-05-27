@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gherkin2code-skill"
+version = "0.1.0"
+description = "Generate web application code from user requirements and Gherkin acceptance criteria."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Your Name"}
+]
+keywords = ["gherkin", "code-generation", "html", "css", "javascript", "openai", "cli"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "openai>=1.56.0"
+]
+
+[project.scripts]
+gherkin2code-skill = "gherkin2code_skill.cli:main"
+g2c-skill = "gherkin2code_skill.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gherkin2code_skill*"]
+
+[tool.setuptools.package-data]
+gherkin2code_skill = ["resources/config/*.json", "resources/prompts/*.txt"]

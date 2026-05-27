@@ -79,6 +79,7 @@ class LLMHandler:
         prompt: str,
         query: str = "",
         print_log: bool = True,
+        response_format: dict | None = None,
     ) -> Optional[str]:
         if not self._validate_settings():
             self._log(
@@ -96,6 +97,9 @@ class LLMHandler:
         except ValueError as exc:
             self._log(print_log, f"Invalid LLM temperature value: {self.temperature} \n{exc}")
             return None
+
+        if response_format is not None:
+            request_data["response_format"] = response_format
 
         headers = self._build_headers()
         url = f"{self.api_url}/v1/chat/completions"

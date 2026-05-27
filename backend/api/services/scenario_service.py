@@ -219,6 +219,16 @@ class ScenarioService:
         session.add(ac)
         await session.flush()
 
+        # 审计日志: 新增验收标准
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="create_ac",
+            summary=f"手动新增验收标准: {ac.content[:50]}...",
+            target_type="acceptance_criterion",
+            target_id=str(ac.id),
+            payload={},
+        ))
+
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
@@ -264,6 +274,16 @@ class ScenarioService:
         ac.content = req.content
         await session.flush()
 
+        # 审计日志: 更新验收标准
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="update_ac",
+            summary=f"手动更新验收标准: {ac.content[:50]}...",
+            target_type="acceptance_criterion",
+            target_id=str(ac.id),
+            payload={},
+        ))
+
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
@@ -307,6 +327,16 @@ class ScenarioService:
 
         await session.delete(ac)
         await session.flush()
+
+        # 审计日志: 删除验收标准
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="delete_ac",
+            summary=f"手动删除验收标准: ID {ac_id}",
+            target_type="acceptance_criterion",
+            target_id=str(ac_id),
+            payload={},
+        ))
 
         # Re-index remaining criteria position to prevent unique constraint failures
         list_res = await session.execute(

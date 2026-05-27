@@ -24,10 +24,12 @@ from backend.api.schemas.feature_generation_schema import (
     FeatureGenerationDraftResponse,
 )
 from backend.api.schemas.acceptance_criteria_generation_schema import (
+    AcceptanceCriteriaGenerationBatchDraftCreateRequest,
     AcceptanceCriteriaGenerationConfirmResponse,
-    AcceptanceCriteriaGenerationDraftCreateRequest,
     AcceptanceCriteriaGenerationDraftDiscardResponse,
     AcceptanceCriteriaGenerationDraftResponse,
+    AcceptanceCriteriaGenerationFullDraftCreateRequest,
+    AcceptanceCriteriaGenerationSingleDraftCreateRequest,
     GeneratedAcceptanceCriteriaPreview,
 )
 from backend.api.schemas.scenario_generation_schema import (
@@ -101,6 +103,16 @@ from backend.api.schemas.audit_schema import (
     UserRequirementsResponse,
     DraftRegenerateRequest,
 )
+from backend.api.schemas.project_schema import (
+    ProjectListItemResponse,
+    ProjectDeleteResponse,
+    ProjectDetailResponse,
+)
+from backend.api.schemas.prototype_generation_schema import (
+    PrototypePreviewGenerateRequest,
+    PrototypePreviewNotFoundResponse,
+    PrototypePreviewResponse,
+)
 
 __all__ = [
     "GeneratedActorPreview",
@@ -123,10 +135,12 @@ __all__ = [
     "ScenarioGenerationDraftResponse",
     "ScenarioGenerationFullDraftCreateRequest",
     "ScenarioGenerationSingleDraftCreateRequest",
+    "AcceptanceCriteriaGenerationBatchDraftCreateRequest",
     "AcceptanceCriteriaGenerationConfirmResponse",
-    "AcceptanceCriteriaGenerationDraftCreateRequest",
     "AcceptanceCriteriaGenerationDraftDiscardResponse",
     "AcceptanceCriteriaGenerationDraftResponse",
+    "AcceptanceCriteriaGenerationFullDraftCreateRequest",
+    "AcceptanceCriteriaGenerationSingleDraftCreateRequest",
     "ProjectCreationConfirmResponse",
     "ProjectCreationDraftCreateRequest",
     "ProjectCreationDraftDiscardResponse",
@@ -182,5 +196,10 @@ __all__ = [
     "UserRequirementsRefineRequest",
     "UserRequirementsResponse",
     "DraftRegenerateRequest",
+    "ProjectListItemResponse",
+    "ProjectDeleteResponse",
+    "ProjectDetailResponse",
+    "PrototypePreviewGenerateRequest",
+    "PrototypePreviewNotFoundResponse",
+    "PrototypePreviewResponse",
 ]
-

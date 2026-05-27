@@ -27,6 +27,8 @@ FEATURE_GENERATION_ERRORS = {
     "missing_parent_feature",
     "invalid_root_feature_count",
     "invalid_actor_reference",
+    "invalid_feature_payload",
+    "invalid_skill_payload",
     "features_already_exist",
 }
 

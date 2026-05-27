@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from backend.api.schemas.project_schema import CamelModel
 
 
-class NextSuggestionResponseItem(BaseModel):
+class NextSuggestionResponseItem(CamelModel):
     source_type: str
     code: str
     title: str
@@ -11,20 +12,20 @@ class NextSuggestionResponseItem(BaseModel):
     action: dict = Field(default_factory=dict)
 
 
-class NextSuggestionResponse(BaseModel):
+class NextSuggestionResponse(CamelModel):
     project_id: int
     stage: str
     suggestion: NextSuggestionResponseItem
 
 
-class NextSuggestionStartRequest(BaseModel):
+class NextSuggestionStartRequest(CamelModel):
     stage: str
     suggestion_code: str
     target: dict | None = None
     query: str | None = None
 
 
-class NextSuggestionStartResponse(BaseModel):
+class NextSuggestionStartResponse(CamelModel):
     project_id: int
     stage: str
     suggestion_code: str

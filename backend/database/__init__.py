@@ -1,1 +1,8 @@
-from backend.database.model import ActorModel, FeatureModel, FeatureRelationModel, ProjectModel
+from backend.database.model import (
+    ActorModel,
+    FeatureModel,
+    FeatureRelationModel,
+    GherkinSpecModel,
+    ProjectModel,
+    PrototypePreviewModel,
+)

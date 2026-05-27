@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { ProjectionKind } from '@/core/schema';
 import { selectCurrentPage, selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { Sparkles, Minus } from 'lucide-react';
@@ -37,6 +37,8 @@ export function ScopedAIBar() {
     isLoading,
     lastActionMessage,
     runDiagnosis,
+    executeNextSuggestion,
+    nextSuggestions,
     rewrite,
     explainImpact,
   } = useWorkspaceStore();
@@ -195,6 +197,19 @@ export function ScopedAIBar() {
     setIntent('diagnose');
   }, [selectedObject, currentPage]);
 
+  const currentStage = useMemo(() => {
+    if (currentPage === '/flow') return 'how';
+    if (currentPage === '/scope') return 'scope';
+    if (currentPage === '/preview') return 'preview';
+    return 'what';
+  }, [currentPage]);
+
+  const currentSuggestion = (nextSuggestions || {})[currentStage];
+
+  const showSuggestionCard = useMemo(() => {
+    return intent === 'diagnose' && currentSuggestion && currentSuggestion.status !== 'failed';
+  }, [intent, currentSuggestion]);
+
   const scope = scopes[selectedScopeIndex] || scopes[0];
 
   const placeholder =
@@ -306,23 +321,66 @@ export function ScopedAIBar() {
 
             <div className="h-4 w-px bg-slate-200 mx-1"></div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(['diagnose', 'rewrite', 'explain_impact'] as AIIntent[]).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setIntent(item)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                    intent === item
-                      ? 'bg-indigo-600 text-white border border-indigo-500'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                  }`}
-                >
-                  {INTENT_LABELS[item]}
-                </button>
-              ))}
-            </div>
+              {(['diagnose', 'rewrite', 'explain_impact'] as AIIntent[]).map((item) => {
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setIntent(item);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                      intent === item
+                        ? 'bg-indigo-600 text-white border border-indigo-500'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                    }`}
+                  >
+                    {INTENT_LABELS[item]}
+                  </button>
+                );
+              })}
           </div>
+
+          {showSuggestionCard && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {currentSuggestion.status === 'running' ? (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center gap-3 shadow-inner">
+                  <span className="flex h-2.5 w-2.5 relative shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                  </span>
+                  <div className="text-xs flex-1">
+                    <p className="font-bold text-slate-700">{currentSuggestion.title || 'AI 正在深度诊断中'}</p>
+                    <p className="text-slate-400 mt-0.5 text-[10px]">正在感知系统在当前建模阶段的设计缝隙，请稍候...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50/50 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="p-2 bg-amber-100/80 text-amber-600 rounded-xl mt-0.5 shrink-0">
+                      <Sparkles className="w-4 h-4 animate-pulse" />
+                    </span>
+                    <div className="text-xs flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-amber-800 uppercase tracking-widest text-[9px] bg-amber-100/60 px-2 py-0.5 rounded font-mono">AI 感知槽建议</span>
+                        <span className="font-black text-slate-700">{currentSuggestion.title}</span>
+                      </div>
+                      <p className="text-slate-600 mt-1.5 leading-relaxed font-medium text-[11px]">{currentSuggestion.description}</p>
+                    </div>
+                  </div>
+                  {currentSuggestion.code?.endsWith('_SLOT') && (
+                    <button
+                      type="button"
+                      onClick={() => void executeNextSuggestion(currentStage)}
+                      className="self-end sm:self-center px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-extrabold text-xs rounded-xl shadow hover:from-amber-600 hover:to-orange-600 hover:scale-102 hover:shadow-amber-100 transition-all shrink-0 active:scale-98 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>⚡ 处理此感知槽</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <input

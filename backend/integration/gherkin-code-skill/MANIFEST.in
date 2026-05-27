@@ -1,0 +1,1 @@
+recursive-include gherkin2code_skill/resources *.json *.txt

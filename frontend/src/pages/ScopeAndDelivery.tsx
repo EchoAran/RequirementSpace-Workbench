@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RangeKanbanColumn } from '@/components/shared/RangeKanbanColumn';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ImpactPreview, ImpactGroup } from '@/components/shared/ImpactPreview';
+import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { workspaceApi } from '@/lib/api';
 import { Sparkles, Check, X, RefreshCw, CheckSquare } from 'lucide-react';
 import { 
@@ -22,15 +23,18 @@ export function ScopeAndDelivery() {
   const { 
     selectedObject, highlightTarget,
     setSelectedObject, ir, updateScope, addFeature,
-    generateScope, confirmScope, discardDraft,
+    generateScope, confirmScope, discardDraft, regenerateScope,
     activeDraft, activeDraftType, isGenerating, isLoading
   } = useWorkspaceStore();
+  
+  const [scopeFeedback, setScopeFeedback] = useState('');
   
   const scopeItems = useWorkspaceStore(selectScopeItems);
   const [impactGroups, setImpactGroups] = useState<ImpactGroup[]>([]);
   const [pendingMove, setPendingMove] = useState<{ itemId: string; targetKey: string } | null>(null);
   const [pendingMoveLabel, setPendingMoveLabel] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isImpactLoading, setIsImpactLoading] = useState(false);
 
   // Group items based on our three-column status mapping
   const grouped = ir ? groupScopeItems(ir) : { inScope: [], deferred: [], excluded: [] };
@@ -70,25 +74,37 @@ export function ScopeAndDelivery() {
 
   const buildImpactGroups = (resp: any): ImpactGroup[] => {
     const groups: ImpactGroup[] = [];
-    if (resp.affected_scenarios_count > 0) {
+    const scenarios = resp.affectedScenarios || resp.affected_scenarios || [];
+    const flows = resp.affectedFlows || resp.affected_flows || [];
+    const objects = resp.affectedBusinessObjects || resp.affected_business_objects || [];
+    
+    if (scenarios.length > 0) {
       groups.push({
         type: 'info',
-        title: `影响 ${resp.affected_scenarios_count} 个验收场景 (User Story)`,
-        items: [`关联的典型用户场景将会相应归档或恢复`]
+        title: `直接/间接波及场景 (${scenarios.length} 个)`,
+        items: scenarios
       });
     }
-    if (resp.affected_flows_count > 0) {
+    if (flows.length > 0) {
       groups.push({
         type: 'process',
-        title: `涉及 ${resp.affected_flows_count} 个业务流程`,
-        items: [`泳道图中的对应执行节点将发生启用状态转变`]
+        title: `波及流程泳道线 (${flows.length} 个)`,
+        items: flows
       });
     }
-    if (resp.affected_objects_count > 0) {
+    if (objects.length > 0) {
       groups.push({
         type: 'info',
-        title: `影响 ${resp.affected_objects_count} 个业务数据对象`,
-        items: [`数据实体的字段及其在关系中的生命周期被改变`]
+        title: `涉及核心数据实体 (${objects.length} 个)`,
+        items: objects
+      });
+    }
+
+    if (groups.length === 0) {
+      groups.push({
+        type: 'info',
+        title: '影响分析完成',
+        items: [resp.summary || '此调整相对独立，暂无级联波及关系。']
       });
     }
     return groups;
@@ -114,14 +130,23 @@ export function ScopeAndDelivery() {
 
   const previewScopeMove = async (itemId: string, targetKey: string) => {
     if (!ir?.projectId) return;
+    const targetLabel = SCOPE_COLUMNS.find((column) => column.key === targetKey)?.label || targetKey;
+    const scopeStatus = targetKey === 'deferred' ? '暂缓' : targetKey === 'excluded' ? '排除' : '本期';
+    const featureId = parseInt(itemId, 10);
+
+    setPendingMove({ itemId, targetKey });
+    setPendingMoveLabel(targetLabel);
+    setIsImpactLoading(true);
+    setImpactGroups([]);
+    setPreviewError(null);
+
     try {
-      const resp = await workspaceApi.impactPreview(ir.projectId);
-      setPendingMove({ itemId, targetKey });
-      setPendingMoveLabel(SCOPE_COLUMNS.find((column) => column.key === targetKey)?.label || targetKey);
+      const resp = await workspaceApi.impactPreview(ir.projectId, featureId, scopeStatus);
       setImpactGroups(buildImpactGroups(resp));
-      setPreviewError(null);
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : '影响分析失败');
+    } finally {
+      setIsImpactLoading(false);
     }
   };
 
@@ -145,19 +170,42 @@ export function ScopeAndDelivery() {
         <div className="max-w-[1200px] mx-auto space-y-8 animate-in fade-in">
           
           {/* AI Scope Draft Preview Banner */}
-          {activeDraft && activeDraftType === 'scope' && (
+          {false && activeDraft && activeDraftType === 'scope' && (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200/80 shadow-md animate-in slide-in-from-top-4 duration-500 space-y-4">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 mr-4">
                   <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
                     <Sparkles className="w-5 h-5 animate-pulse" />
                   </span>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">AI 推荐的 Kano 范围决策已生成</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">AI 基于系统复杂度与业务优先级自动进行了过滤与分析。</p>
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">AI 推荐的 Kano 范围决策已生成</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">AI 基于系统复杂度与业务优先级自动进行了过滤与分析。</p>
+                    </div>
+                    <div className="flex gap-2 items-center max-w-md">
+                      <input
+                        type="text"
+                        value={scopeFeedback}
+                        onChange={(e) => setScopeFeedback(e.target.value)}
+                        placeholder="补充调整意见，例如：'把扫码功能包含在内' (可选)"
+                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
+                        disabled={isWorking}
+                      />
+                      <button
+                        onClick={async () => {
+                          await regenerateScope(scopeFeedback || undefined);
+                          setScopeFeedback('');
+                        }}
+                        disabled={isWorking}
+                        className="flex items-center gap-1 px-3 py-1.5 border border-slate-250 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 text-indigo-500 ${isWorking ? 'animate-spin' : ''}`} />
+                        重新推演
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <button
                     onClick={confirmScope}
                     disabled={isWorking}
@@ -257,46 +305,73 @@ export function ScopeAndDelivery() {
              </div>
           </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <section className="flex flex-col md:col-span-2 bg-white rounded-3xl p-8 border border-slate-200 shadow-md">
-              <h3 className="text-base font-black text-slate-900 mb-4 tracking-tight">范围调整影响分析</h3>
-              
-              {pendingMoveLabel && (
-                <div className="mb-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-bold text-sky-900">范围影响评估生成完毕</div>
-                    <div className="text-xs text-sky-700 mt-1">确认移动后将变更该功能的交付栏位为：{pendingMoveLabel}。</div>
-                  </div>
-                  <div className="flex items-center gap-2 self-end shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => { setPendingMove(null); setPendingMoveLabel(null); setImpactGroups([]); }}
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyPendingMove}
-                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors shadow-sm"
-                    >
-                      确认移动
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {previewError && <div className="mb-4 text-xs text-rose-600 font-medium">{previewError}</div>}
-              
-              <div className="flex-1 min-h-[150px]">
-                <ImpactPreview impacts={impactGroups} />
-              </div>
-            </section>
-          </div>
-
         </div>
       </div>
       
+      {/* 范围调整影响评估确认弹窗 */}
+      {pendingMove && (
+        <div className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div 
+            className="absolute inset-0" 
+            onClick={() => { setPendingMove(null); setPendingMoveLabel(null); setImpactGroups([]); }}
+          ></div>
+          
+          <div className="bg-white rounded-3xl border border-slate-100/50 shadow-2xl w-[min(540px,100%)] p-6 relative z-10 space-y-5 animate-in zoom-in-95 duration-200 flex flex-col">
+            <div className="text-center">
+              <div className="mx-auto w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center text-indigo-600 mb-3 shadow-sm">
+                <RefreshCw className={`w-5 h-5 ${isImpactLoading ? 'animate-spin' : ''}`} />
+              </div>
+              <h3 className="text-base font-black text-slate-900 tracking-tight">🔄 范围调整影响评估</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                确认将该功能点的交付范围调整为：<span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/50">{pendingMoveLabel}</span> 吗？
+              </p>
+            </div>
+
+            {isImpactLoading ? (
+              <div className="flex flex-col items-center justify-center py-8 space-y-3 bg-slate-50 rounded-2xl border border-slate-200/50">
+                <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+                <span className="text-xs text-slate-500 font-bold">正在计算级联受损与链路变更...</span>
+              </div>
+            ) : previewError ? (
+              <div className="text-xs text-rose-600 font-medium py-4 text-center bg-rose-50 rounded-2xl border border-rose-200/50">
+                ⚠️ {previewError}
+              </div>
+            ) : (
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-inner max-h-[250px] overflow-y-auto">
+                <ImpactPreview impacts={impactGroups} />
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => { setPendingMove(null); setPendingMoveLabel(null); setImpactGroups([]); }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={applyPendingMove}
+                disabled={isImpactLoading}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-indigo-100 disabled:opacity-50"
+              >
+                确认变更
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DraftPreviewModal
+        draft={activeDraft}
+        draftType={activeDraftType}
+        isWorking={isGenerating || isLoading}
+        onDiscard={discardDraft}
+        onRegenerate={(feedback) => regenerateScope(feedback)}
+        onConfirm={confirmScope}
+      />
+
       <RightObjectPanel />
     </div>
   );

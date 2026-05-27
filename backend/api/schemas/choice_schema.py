@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
+from backend.api.schemas.project_schema import CamelModel
 
-class ChoiceResponse(BaseModel):
+class ChoiceResponse(CamelModel):
     id: int
     choice_group_id: int
     title: str
@@ -12,11 +13,8 @@ class ChoiceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
-
-class ChoiceGroupResponse(BaseModel):
+class ChoiceGroupResponse(CamelModel):
     id: int
     project_id: int
     slot_id: int | None = None
@@ -26,16 +24,13 @@ class ChoiceGroupResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
-
-class ProjectChoiceGroupsResponse(BaseModel):
+class ProjectChoiceGroupsResponse(CamelModel):
     project_id: int
     choice_groups: list[ChoiceGroupResponse]
 
 
-class ChoiceActionResponse(BaseModel):
+class ChoiceActionResponse(CamelModel):
     message: str
     choice_id: int
     status: str

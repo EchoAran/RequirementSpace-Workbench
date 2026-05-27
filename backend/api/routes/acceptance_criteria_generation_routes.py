@@ -3,10 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.schemas import DraftRegenerateRequest
 from backend.api.schemas.acceptance_criteria_generation_schema import (
+    AcceptanceCriteriaGenerationBatchDraftCreateRequest,
     AcceptanceCriteriaGenerationConfirmResponse,
-    AcceptanceCriteriaGenerationDraftCreateRequest,
     AcceptanceCriteriaGenerationDraftDiscardResponse,
     AcceptanceCriteriaGenerationDraftResponse,
+    AcceptanceCriteriaGenerationFullDraftCreateRequest,
+    AcceptanceCriteriaGenerationSingleDraftCreateRequest,
 )
 from backend.api.services.service_registry import (
     acceptance_criteria_generation_service,
@@ -21,6 +23,7 @@ router = APIRouter(
 
 ACCEPTANCE_CRITERIA_GENERATION_ERRORS = {
     "project_not_found",
+    "no_scenarios_found",
     "empty_scenarios",
     "scenario_not_found",
     "duplicate_scenario_id",
@@ -29,20 +32,66 @@ ACCEPTANCE_CRITERIA_GENERATION_ERRORS = {
     "invalid_scenario_feature_reference",
     "empty_acceptance_criteria",
     "invalid_acceptance_criteria_payload",
+    "invalid_skill_payload",
     "acceptance_criteria_already_exist",
 }
 
 
 @router.post(
-    "",
+    "/full",
     response_model=AcceptanceCriteriaGenerationDraftResponse,
 )
-async def create_acceptance_criteria_generation_draft(
-    request: AcceptanceCriteriaGenerationDraftCreateRequest,
+async def create_full_acceptance_criteria_generation_draft(
+    request: AcceptanceCriteriaGenerationFullDraftCreateRequest,
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        return await acceptance_criteria_generation_service.create_draft(
+        return await acceptance_criteria_generation_service.create_full_draft(
+            project_id=request.project_id,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.post(
+    "/single",
+    response_model=AcceptanceCriteriaGenerationDraftResponse,
+)
+async def create_single_acceptance_criteria_generation_draft(
+    request: AcceptanceCriteriaGenerationSingleDraftCreateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await acceptance_criteria_generation_service.create_single_draft(
+            project_id=request.project_id,
+            scenario_id=request.scenario_id,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.post(
+    "/batch",
+    response_model=AcceptanceCriteriaGenerationDraftResponse,
+)
+async def create_batch_acceptance_criteria_generation_draft(
+    request: AcceptanceCriteriaGenerationBatchDraftCreateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await acceptance_criteria_generation_service.create_batch_draft(
             project_id=request.project_id,
             scenario_ids=request.scenario_ids,
             session=session,

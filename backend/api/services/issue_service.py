@@ -170,9 +170,9 @@ class IssueService:
             if scenario_id is None:
                 raise ValueError("invalid_resolution_payload")
 
-            draft = await acceptance_criteria_generation_service.create_draft(
+            draft = await acceptance_criteria_generation_service.create_single_draft(
                 project_id=project_id,
-                scenario_ids=[int(scenario_id)],
+                scenario_id=int(scenario_id),
                 session=session,
             )
 

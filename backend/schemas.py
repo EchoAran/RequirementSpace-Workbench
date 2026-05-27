@@ -306,7 +306,14 @@ class NextSuggestion(BaseNode):
 @node_dataclass
 class PreviewUI(BaseNode):
     kind: str = field(default="preview_ui", init=False)
-    # 暂未确定
+    prototypeId: int
+    projectId: int
+    html: str
+    javascript: str
+    css: str
+    pages: List[dict] = field(default_factory=list)
+    source: str = "placeholder"
+    status: str = "ready"
 
 @node_dataclass
 class RequirementSpace(BaseNode):

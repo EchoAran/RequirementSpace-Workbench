@@ -1,4 +1,4 @@
-import { ChoiceGroup, RequirementSpaceIR } from '@/types';
+import { ChoiceGroup, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ActionButton, ActionRow, Badge, PanelShell, Section } from './shared';
 

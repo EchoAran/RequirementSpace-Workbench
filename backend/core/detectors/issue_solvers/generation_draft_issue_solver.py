@@ -59,6 +59,18 @@ class GenerationDraftIssueSolver(BaseIssueSolver):
             if issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
                 payload.setdefault("feature_id", target_id)
 
+            if issue_code == "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO":
+                if isinstance(target_id, str) and ":" in target_id:
+                    try:
+                        feat_str, actor_str = target_id.split(":", 1)
+                        payload.setdefault("feature_id", int(feat_str))
+                        payload.setdefault("actor_id", int(actor_str))
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(target_id, int):
+                    # Fallback if target_id is just feature_id
+                    payload.setdefault("feature_id", target_id)
+
         return IssueResolution(
             issueCode=issue_code,
             resolutionType="generation_draft",

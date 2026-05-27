@@ -1,5 +1,5 @@
 import React from 'react';
-import { Choice } from '@/types';
+import { Choice } from '@/core/schema';
 import { AlertTriangle, CheckCircle2, Undo2, Zap } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 

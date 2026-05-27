@@ -1,4 +1,5 @@
 import asyncio
+import os
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -24,7 +25,21 @@ class ScenarioGenerationService:
         self._acceptance_criteria_generation_service = (
             AcceptanceCriteriaGenerationService()
         )
-        self._max_concurrency = 5       # 限流并发数
+        self._max_concurrency = self._read_int_env(
+            "SCENARIO_GENERATION_MAX_CONCURRENCY",
+            5,
+        )
+
+    @staticmethod
+    def _read_int_env(name: str, default: int) -> int:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return max(1, value)
 
     async def create_full_draft(
         self,

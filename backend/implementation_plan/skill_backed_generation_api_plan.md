@@ -2,11 +2,12 @@
 
 ## 目标
 
-构建一套基于 `backend/integration` 中各个 skill 的生成服务，用于平替当前的特征树生成、场景生成、成功标准生成和范围生成流程，同时保留现有 API 和现有服务实现。
+构建一套基于 `backend/integration` 中各个 skill 的生成服务，用于平替当前的特征树生成、场景生成、成功标准生成和范围生成流程，同时保留旧服务实现，并按新的设计调整成功标准创建 API。
 
 新的实现需要满足：
 
-- 保持现有 route URL、请求 schema、响应 schema、草稿生命周期、确认生命周期和持久化行为不变。
+- 特征树、场景、范围生成保持现有 route URL、请求 schema、响应 schema、草稿生命周期、确认生命周期和持久化行为不变。
+- 成功标准生成的创建入口直接改为 `full` / `single` / `batch`，不保留旧的根路径创建入口；其草稿响应、重新生成、确认和删除接口保持当前风格。
 - 不删除、不破坏当前基于 `backend/core/generators` 的旧实现。
 - 在 `backend/api/services/service_registry.py` 中增加切换逻辑，使应用可以选择旧服务或 skill-backed 新服务。
 - skill 改造、adapter 和 skill-backed service 尽量集中放在 `backend/integration` 下，避免逻辑散落到太多目录。
@@ -21,6 +22,14 @@ REQUIREMENTSPACE_GENERATION_BACKEND=legacy | skill
 ```
 
 默认值应为 `legacy`，避免在未显式配置时改变当前行为。
+
+该变量必须支持配置在项目根目录 `.env` 中，例如：
+
+```env
+REQUIREMENTSPACE_GENERATION_BACKEND=skill
+```
+
+实现时不能只使用 `os.environ.get(...)`，因为 `service_registry.py` 可能在 `LLM_service.py` 加载 `.env` 之前被导入。`service_registry.py` 或统一配置模块需要主动加载项目根目录 `.env`，再读取 `REQUIREMENTSPACE_GENERATION_BACKEND`。
 
 在 `backend/api/services/service_registry.py` 中根据开关实例化不同服务：
 
@@ -37,7 +46,72 @@ else:
     scope_generation_service = ScopeGenerationService()
 ```
 
-route 层原则上不修改。除非新增的 skill 错误需要暴露为明确的 HTTP 错误码，否则保持现有 route 文件稳定。
+route 层原则上不修改。例外是成功标准生成创建入口需要直接改为 `full` / `single` / `batch`。除此之外，除非新增的 skill 错误需要暴露为明确的 HTTP 错误码，否则保持现有 route 文件稳定。
+
+更高层 API 也必须遵守同一个切换逻辑。尤其是项目创建草稿 API：
+
+```text
+POST   /api/project_creation_drafts
+POST   /api/project_creation_drafts/{draft_id}/regenerate
+POST   /api/project_creation_drafts/{draft_id}/confirm
+DELETE /api/project_creation_drafts/{draft_id}
+```
+
+当前项目创建服务内部会生成 actors 和 features，因此它不能直接绕过 `service_registry.py`。实施要求：
+
+- `project_creation_service` 也要放入 `backend/api/services/service_registry.py` 统一管理。
+- `project_creation_routes.py` 不应直接实例化 `ProjectCreationService()`。
+- `legacy` 模式继续使用当前 `ProjectCreationService`。
+- `skill` 模式使用 `SkillBackedProjectCreationService`。
+- 第一版可以保留旧的 actor 生成和 blank project 生成逻辑，只把项目创建过程中的 feature 生成替换为 feature-tree-skill + adapter。
+- 后续如果 actor 生成也有 skill，再单独纳入切换。
+
+## 大模型调用方式要求
+
+skill-backed API 必须使用系统原有的大模型调用入口：
+
+```text
+backend/services/LLM_service.py
+```
+
+也就是说，`feature-tree-skill`、`scenario-generation-skill`、`scenario-feedback-skill` 和 `kano-skill` 在被后端 API 调用时，不应再直接读取各自 config 中的模型配置或直接依赖 `OPENAI_API_KEY`。后端 API 路径下应统一使用 `.env` 中的：
+
+```env
+LLM_API_URL=...
+LLM_API_KEY=...
+LLM_MODEL_NAME=...
+LLM_TEMPERATURE=...
+```
+
+实施方式：
+
+- skill 原有 CLI 可以保留 OpenAI SDK 调用方式，避免破坏其独立运行能力。
+- skill-backed service 应通过 adapter/wrapper 调用 skill prompt，但实际请求由 `LLMHandler` 发出。
+- `LLMHandler` 需要轻度增强，支持 JSON object 输出，例如 `response_format={"type": "json_object"}`，因为这些 skill 都依赖模型返回可解析 JSON。
+- skill-backed service 不应直接使用 `OPENAI_API_KEY`、skill 内部 `config.json` 的 model 字段，或 OpenAI SDK 客户端完成后端 API 请求。
+
+## Kano 图片传输和入库要求
+
+Kano 图表在业务层和 API 响应中使用 base64 字符串：
+
+```text
+positive_picture_base64
+negative_picture_base64
+```
+
+入库时继续复用已有转换服务：
+
+```text
+backend/services/binary_conversion_service.py
+```
+
+也就是：
+
+- API/draft/service 层传输：base64。
+- `ScopeModel.positive_picture` / `ScopeModel.negative_picture` 入库：二进制 bytes。
+- 从数据库读取后返回前端：二进制 bytes 再转 base64。
+
+第一版不新增图片存储字段，继续使用现有 scope 表字段。
 
 ## 推荐目录结构
 
@@ -193,6 +267,44 @@ discard_draft(draft_id)
 
 这个原始结构后续对 Kano 分析很有用。
 
+### 项目创建 API 中的 Feature Tree 平替
+
+项目创建草稿是更高层 API，会在一次流程中同时生成项目预览、actors 和 features。该 API 也必须遵守 `REQUIREMENTSPACE_GENERATION_BACKEND`。
+
+新增 `SkillBackedProjectCreationService`，建议继承当前 `ProjectCreationService`，只覆写 `_generate_actor_and_feature_previews` 中 feature 生成部分：
+
+- actors 仍使用当前 `ActorsGenerator`。
+- actor 生成完成后，用临时 `ActorNode(actorId=index, ...)` 传给 `feature-tree-skill`。
+- feature-tree-skill 的输出交给 `FeatureTreeAdapter` 转为当前项目创建 draft 需要的结构。
+- 当前项目创建 draft 内部 feature 使用的是 `actor_numbers`，因此 adapter 产出的 `actor_ids` 需要转换成 `A001/A002/...`。
+- route 继续保持当前响应结构：
+
+```json
+{
+  "actors": [
+    {
+      "actor_name": "...",
+      "actor_description": "..."
+    }
+  ],
+  "features": [
+    {
+      "feature_name": "...",
+      "feature_description": "...",
+      "actor_names": ["..."]
+    }
+  ]
+}
+```
+
+项目创建 route 的错误白名单需要补充：
+
+```text
+invalid_actor_reference
+invalid_feature_payload
+invalid_skill_payload
+```
+
 ## 阶段 2：Scenario Generation Skill + Scenario Feedback Skill 平替场景和成功标准
 
 ### 需要保持的现有行为
@@ -207,14 +319,24 @@ POST   /api/scenario_generation_drafts/{draft_id}/confirm
 DELETE /api/scenario_generation_drafts/{draft_id}
 ```
 
-现有成功标准 API：
+成功标准 API 需要直接改成与场景生成一致的分层创建风格，不保留旧的根路径创建入口：
 
 ```text
-POST   /api/acceptance_criteria_generation_drafts
+POST   /api/acceptance_criteria_generation_drafts/full
+POST   /api/acceptance_criteria_generation_drafts/single
+POST   /api/acceptance_criteria_generation_drafts/batch
 POST   /api/acceptance_criteria_generation_drafts/{draft_id}/regenerate
 POST   /api/acceptance_criteria_generation_drafts/{draft_id}/confirm
 DELETE /api/acceptance_criteria_generation_drafts/{draft_id}
 ```
+
+也就是说，原来的：
+
+```text
+POST /api/acceptance_criteria_generation_drafts
+```
+
+应直接移除或停止注册，不做兼容保留。调用方必须明确表达是全量、单个场景，还是一组场景生成成功标准。
 
 现有场景草稿响应必须保持：
 
@@ -307,7 +429,7 @@ Feature Name [Role: ActorName]
   - `Narrative` 或生成出的 `story` 转成 `scenario_content`。
   - Gherkin step 转成成功标准字符串。
 - 从 service 上下文补回 `feature_id` 和 `actor_id`。
-- 在用户反馈重新生成时，根据当前 draft 或已落库的 scenario/criteria 重新组装 raw Gherkin。
+- 在用户反馈重新生成时，优先使用当前 draft 或已落库 `GherkinSpecModel` 中的 raw Gherkin；只有 legacy 数据没有 spec 时，才根据已落库的 scenario/criteria 重新组装 raw Gherkin。
 - 支持普通 scenario 和带 `Examples` 的 scenario outline。
 - 在草稿内部保留 `raw_gherkin`，用于反馈修订和未来可能的前端展示。
 
@@ -340,9 +462,9 @@ discard_draft(draft_id)
 
 确认行为：
 
-- 按当前逻辑持久化 scenarios。
+- 按当前逻辑持久化 scenarios，并额外持久化对应的 `GherkinSpecModel`。
 - 如果 `generate_acceptance_criteria=True`，直接持久化同一次 Gherkin 生成得到的 criteria，不再调用第二个不相关的 LLM 生成器。
-- 如果 `generate_acceptance_criteria=False`，只持久化 scenarios。
+- 如果 `generate_acceptance_criteria=False`，不写入 criteria，但仍必须持久化 Gherkin spec，并让每个 scenario 指向对应 spec。
 
 重新生成行为：
 
@@ -358,32 +480,195 @@ discard_draft(draft_id)
 
 行为：
 
-- 和当前服务一样加载已有 scenarios。
-- 根据已有 `ScenarioModel` 组装每组 feature/actor 对应的 Gherkin 输入。
-- 如果有 user feedback，优先使用 `scenario-feedback-skill` 修订。
-- 如果没有 user feedback，建议新增一个轻量的 skill 方法，从已有 scenario list 生成 criteria。
+- 和当前服务一样加载已有 scenarios，但创建入口改为 `full` / `single` / `batch` 三种明确模式。
+- 优先从已落库的 Gherkin 源记录恢复上下文，再生成或修订成功标准。
+- 如果有 user feedback，优先使用 `scenario-feedback-skill` 基于原始 Gherkin 修订。
+- 如果没有 user feedback，优先直接从原始 Gherkin steps 转换成功标准，避免对同一场景再次做语义生成。
+- 如果旧数据没有 Gherkin 源记录，再 fallback 到根据 `ScenarioModel` 重新组装 Gherkin 的旧式路径。
 
-推荐第一版新增一个场景成功标准生成函数，放在 `scenario-generation-skill` 内：
+成功标准创建 API 详细设计：
 
-```text
-requirement + feature + actor + existing scenario list
+```python
+create_full_draft(project_id, session)
+create_single_draft(project_id, scenario_id, session)
+create_batch_draft(project_id, scenario_ids, session)
+regenerate_draft(draft_id, user_feedback, session)
+confirm_draft(draft_id, session)
+discard_draft(draft_id)
 ```
 
-输出：
+route 层设计：
 
 ```text
-scenario_id -> acceptance_criteria[]
+POST /api/acceptance_criteria_generation_drafts/full
+request: { "project_id": 1 }
+
+POST /api/acceptance_criteria_generation_drafts/single
+request: { "project_id": 1, "scenario_id": 123 }
+
+POST /api/acceptance_criteria_generation_drafts/batch
+request: { "project_id": 1, "scenario_ids": [123, 124, 125] }
 ```
 
-这样可以避免“重新生成一批 Gherkin scenario 后再用标题模糊匹配已有 scenario_id”的风险。
+schema 层设计：
+
+```python
+AcceptanceCriteriaGenerationFullDraftCreateRequest:
+    project_id: int
+
+AcceptanceCriteriaGenerationSingleDraftCreateRequest:
+    project_id: int
+    scenario_id: int
+
+AcceptanceCriteriaGenerationBatchDraftCreateRequest:
+    project_id: int
+    scenario_ids: list[int]
+```
+
+原 `AcceptanceCriteriaGenerationDraftCreateRequest(project_id, scenario_ids=None)` 不再作为 route 入参使用。service 内部如果想复用，可以保留一个私有 helper：
+
+```python
+_create_draft_for_scenarios(project_id, scenario_ids, generation_mode, session)
+```
+
+但 public API 和 route 层不再暴露“`scenario_ids` 可空代表 full”的隐式语义。
+
+校验规则：
+
+- `full`：加载项目下全部场景。若没有场景，返回 `no_scenarios_found`。
+- `single`：校验 `scenario_id` 属于当前 `project_id`。若不存在，返回 `scenario_not_found`。
+- `batch`：`scenario_ids` 不能为空，空数组返回 `empty_scenarios`。
+- `batch`：`scenario_ids` 不允许重复，重复返回 `duplicate_scenario_id`。
+- `batch`：每个 scenario 都必须属于当前项目，否则返回 `scenario_not_found`。
+- 三种模式生成出的 draft response 继续使用当前 `AcceptanceCriteriaGenerationDraftResponse`，不改变前端展示结构。
+
+这样可以避免旧接口“传不传 scenario_ids 含义不同”的隐式行为，也和场景生成的 `full` / `single` 风格保持一致。
+
+### 方案 B：持久化 Gherkin 源上下文
+
+为了解决“分阶段生成场景和成功标准时，上下文可能不一致”的问题，采用方案 B：场景确认入库时，额外持久化同一轮 skill 生成得到的原始 Gherkin 源记录。成功标准后续单独生成时，不再凭已落库的场景标题和内容重新猜测上下文，而是优先回到这份原始 Gherkin。
+
+新增数据库模型：
+
+```python
+class GherkinSpecModel(Base):
+    __tablename__ = "gherkin_specs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    feature_id: Mapped[int] = mapped_column(
+        ForeignKey("features.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_id: Mapped[int] = mapped_column(
+        ForeignKey("actors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    gherkin_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="scenario_generation_skill",
+    )
+```
+
+`gherkin_specs` 表不建议对 `(project_id, feature_id, actor_id)` 加唯一约束。原因是同一 feature/actor 后续可能重新生成多轮场景，历史场景仍应能指回它们各自确认时使用的 Gherkin 源。
+
+修改 `ScenarioModel`：
+
+```python
+gherkin_spec_id: Mapped[int | None] = mapped_column(
+    ForeignKey("gherkin_specs.id", ondelete="SET NULL"),
+    nullable=True,
+    index=True,
+)
+gherkin_scenario_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+```
+
+含义：
+
+- `gherkin_spec_id` 指向该 scenario 来源的原始 Gherkin spec。
+- `gherkin_scenario_index` 表示该 scenario 对应 spec 内第几个 `Scenario` / `Scenario Outline`。
+- legacy 生成的旧数据这两个字段为 `NULL`。
+
+关系补充：
+
+- `ProjectModel` 增加 `gherkin_specs` relationship。
+- `ScenarioModel` 增加 `gherkin_spec` relationship。
+- `GherkinSpecModel` 可增加 `project`、`feature`、`actor`、`scenarios` relationships，方便 service 查询。
+
+场景确认流程调整：
+
+1. `SkillBackedScenarioGenerationService` 的 draft 内部继续保存每个 feature/actor target 的 raw Gherkin。
+2. `GherkinAdapter` 拆分 scenario item 时，除当前字段外，还必须补充内部字段：
+
+```json
+{
+  "gherkin_target_key": "feature_id:actor_id",
+  "gherkin_scenario_index": 0
+}
+```
+
+3. `confirm_draft` 持久化时，先按 target 写入 `GherkinSpecModel`，得到 `gherkin_spec_id`。
+4. 写入每个 `ScenarioModel` 时，同时写入对应的 `gherkin_spec_id` 和 `gherkin_scenario_index`。
+5. 如果 `generate_acceptance_criteria=True`，继续使用同一份 Gherkin 直接写入 criteria。
+6. 如果 `generate_acceptance_criteria=False`，只写入 scenarios，但 Gherkin spec 必须仍然入库。这样后续单独生成成功标准时仍有一致上下文。
+
+成功标准生成流程调整：
+
+1. `full` / `single` / `batch` 先加载目标 scenarios。
+2. 对每个 scenario，优先读取 `scenario.gherkin_spec_id` 和 `scenario.gherkin_scenario_index`。
+3. 如果存在有效 spec：
+   - 从 `GherkinSpecModel.gherkin_json` 中取出对应 scenario。
+   - 无 user feedback 时，直接用 `GherkinAdapter.acceptance_criteria_from_gherkin_scenario(...)` 转换为当前成功标准字符串数组。
+   - 有 user feedback 时，把原始 Gherkin 和反馈交给 `scenario-feedback-skill` 修订，再按 `gherkin_scenario_index` 映射回当前 `scenario_id`。
+4. 如果不存在有效 spec：
+   - fallback 到根据 `ScenarioModel.name`、`ScenarioModel.content`、feature、actor 和已有 criteria 重新组装 Gherkin。
+   - 该 fallback 主要用于 legacy 数据和迁移前生成的数据。
+5. draft 内部保存：
+
+```json
+{
+  "generation_mode": "full | single | batch",
+  "scenario_ids": [123],
+  "raw_gherkin_by_spec": {
+    "gherkin_spec_id": { "...": "..." }
+  },
+  "scenario_acceptance_criteria": [
+    {
+      "scenario_id": 123,
+      "acceptance_criteria": ["Given ... When ... Then ..."]
+    }
+  ]
+}
+```
+
+6. `confirm_draft` 仍按当前成功标准确认逻辑写入 `ScenarioAcceptanceCriterionModel`，不改变成功标准表结构。
+
+迁移和兼容数据处理：
+
+- 新表和新列对 legacy 服务透明，legacy 写入 scenario 时保持 `gherkin_spec_id=NULL`。
+- 如果当前开发环境使用 `Base.metadata.create_all`，它只会创建新表，不会自动给已有表加列。已有 SQLite 数据库需要手动迁移或重建开发库。
+- 生产环境如果已有真实数据，应增加显式 migration，而不是依赖 `create_all`。
+- route response 不暴露 `gherkin_spec_id` 和 `gherkin_scenario_index`，它们只作为后端一致性上下文。
+
+这个方案的关键收益是：场景先落库、成功标准后生成时，仍然使用同一轮 skill 输出的 Gherkin 作为事实来源，不会因为草稿被删除而丢失上下文。
 
 ### 当前逻辑需要调整的点
 
 - 当前场景和成功标准是两个相对独立的 LLM 流程。skill-backed 版本应以 Gherkin 作为核心中间结构。
-- draft payload 需要新增内部字段 `raw_gherkin` 和草稿级 criteria，即使 response schema 不暴露它们。
+- draft payload 需要新增内部字段 `raw_gherkin`、`gherkin_target_key`、`gherkin_scenario_index` 和草稿级 criteria，即使 response schema 不暴露它们。
+- 场景确认后，raw Gherkin 不能只保存在内存 draft 中，必须写入 `GherkinSpecModel`。
 - 场景确认时，如果 `generate_acceptance_criteria=True`，应持久化同一份 Gherkin 中的 criteria，而不是再次调用旧的成功标准生成器。
+- 场景确认时，如果 `generate_acceptance_criteria=False`，也必须持久化 Gherkin spec，避免后续独立生成成功标准时上下文丢失。
 - 有用户反馈的重新生成，应优先使用 `scenario-feedback-skill`。
-- 独立成功标准 API 需要一条新的 skill-backed 路径，因为它必须保留已有 scenario id。
+- 独立成功标准 API 需要改成 `full` / `single` / `batch` 三个创建入口，并移除旧根路径创建入口。
 
 ## 阶段 3：Kano Skill 平替 Scope 生成
 
@@ -594,7 +879,9 @@ Gherkin adapter 测试：
 - 能把 Gherkin steps 转成成功标准字符串。
 - 能保留 feature id 和 actor id。
 - 能处理 scenario outline。
-- 能从已有 scenario 和 criteria 重新组装 raw Gherkin。
+- 能给每个 scenario item 补充 `gherkin_target_key` 和 `gherkin_scenario_index`。
+- 能从 `GherkinSpecModel.gherkin_json` 和 `gherkin_scenario_index` 精确恢复单个 scenario 的成功标准。
+- 能从已有 scenario 和 criteria 重新组装 raw Gherkin，作为 legacy 数据 fallback。
 
 Kano scope adapter 测试：
 
@@ -608,6 +895,10 @@ Service 测试：
 - `create_draft` 返回与旧服务相同的 response schema。
 - `confirm_draft` 持久化与旧服务兼容的数据库记录。
 - 场景确认且 `generate_acceptance_criteria=True` 时，同时持久化 scenarios 和 criteria。
+- 场景确认且 `generate_acceptance_criteria=False` 时，也会持久化 `GherkinSpecModel`，并让 scenarios 指向对应 spec。
+- 成功标准 `full` / `single` / `batch` 三个创建入口都能生成相同 response schema 的 draft。
+- 成功标准 `batch` 对空数组、重复 id、跨项目 scenario id 有明确错误。
+- 成功标准生成在存在 Gherkin spec 时优先使用 spec；没有 spec 时 fallback 到 legacy 重组路径。
 - `service_registry` 默认使用 legacy，并能通过环境变量切换到 skill。
 
 ## 阶段 6：上线顺序
@@ -616,15 +907,16 @@ Service 测试：
 2. 添加 adapter 测试。
 3. 添加使用 mock skill 输出的 service 测试。
 4. 在 `service_registry` 中增加开关，默认 `legacy`。
-5. 手动验证 `legacy` 模式下所有现有草稿 API 行为不变。
-6. 手动验证 `skill` 模式下所有草稿 API 可正常创建、重新生成、确认、丢弃。
-7. 等 skill 模式稳定后，再考虑是否把默认值切到 `skill`。
+5. 手动验证 `legacy` 模式下除成功标准创建入口外的草稿 API 行为不变。
+6. 手动验证 `legacy` 和 `skill` 模式下成功标准 `full` / `single` / `batch` 都可创建草稿。
+7. 手动验证 `skill` 模式下所有草稿 API 可正常创建、重新生成、确认、丢弃。
+8. 等 skill 模式稳定后，再考虑是否把默认值切到 `skill`。
 
-## 待确认决策
+## 已确认决策与剩余待确认
 
-- 是否给数据库增加 raw Gherkin 字段。第一版可以只存在内存 draft 中。
+- 已确认：成功标准创建入口直接改为 `full` / `single` / `batch`，不保留旧根路径创建入口。
+- 已确认：采用方案 B，新增 `GherkinSpecModel` 持久化 raw Gherkin，上下文不只保存在内存 draft。
 - `Common` 是否映射到所有 actor 或默认 actor。推荐：所有 actor。
 - `Attractive(A)` 且 Better 较高时是否进入 `CURRENT`。推荐：`Better >= 0.6` 时进入 `CURRENT`。
 - 图表渲染依赖是否强制安装。推荐：第一版可选，缺少依赖时图片字段为空。
 - feature-tree skill 是否强制生成 description。推荐：要求生成，但 adapter 仍提供 fallback。
-

@@ -23,10 +23,55 @@ class AcceptanceCriteriaGenerationService:
         self._acceptance_criteria_generator = AcceptanceCriteriaGenerator()
         self._max_concurrency = 5
 
-    async def create_draft(
+    async def create_full_draft(
+        self,
+        project_id: int,
+        session,
+    ) -> dict:
+        return await self._create_draft_for_scenarios(
+            project_id=project_id,
+            scenario_ids=None,
+            generation_mode="full",
+            session=session,
+        )
+
+    async def create_single_draft(
+        self,
+        project_id: int,
+        scenario_id: int,
+        session,
+    ) -> dict:
+        return await self._create_draft_for_scenarios(
+            project_id=project_id,
+            scenario_ids=[scenario_id],
+            generation_mode="single",
+            session=session,
+        )
+
+    async def create_batch_draft(
+        self,
+        project_id: int,
+        scenario_ids: list[int],
+        session,
+    ) -> dict:
+        if not scenario_ids:
+            raise ValueError("empty_scenarios")
+
+        if len(set(scenario_ids)) != len(scenario_ids):
+            raise ValueError("duplicate_scenario_id")
+
+        return await self._create_draft_for_scenarios(
+            project_id=project_id,
+            scenario_ids=scenario_ids,
+            generation_mode="batch",
+            session=session,
+        )
+
+    async def _create_draft_for_scenarios(
         self,
         project_id: int,
         scenario_ids: list[int] | None,
+        generation_mode: str,
         session,
     ) -> dict:
         draft_id = uuid4().hex
@@ -34,6 +79,7 @@ class AcceptanceCriteriaGenerationService:
         draft_payload, response_payload = await self._generate_preview(
             project_id=project_id,
             scenario_ids=scenario_ids,
+            generation_mode=generation_mode,
             user_feedback=None,
             session=session,
         )
@@ -56,6 +102,7 @@ class AcceptanceCriteriaGenerationService:
         draft_payload, response_payload = await self._generate_preview(
             project_id=draft["project_id"],
             scenario_ids=draft["scenario_ids"],
+            generation_mode=draft.get("generation_mode", "batch"),
             user_feedback=user_feedback,
             session=session,
         )
@@ -108,6 +155,7 @@ class AcceptanceCriteriaGenerationService:
         draft_payload, _ = await self._generate_preview(
             project_id=project_id,
             scenario_ids=scenario_ids,
+            generation_mode="batch",
             user_feedback=None,
             session=session,
         )
@@ -139,6 +187,7 @@ class AcceptanceCriteriaGenerationService:
         self,
         project_id: int,
         scenario_ids: list[int] | None,
+        generation_mode: str,
         user_feedback: str | None,
         session,
     ) -> tuple[dict, dict]:
@@ -173,6 +222,7 @@ class AcceptanceCriteriaGenerationService:
 
         draft_payload = {
             "project_id": project_id,
+            "generation_mode": generation_mode,
             "scenario_ids": [
                 scenario.scenarioId
                 for scenario in scenario_nodes
@@ -244,7 +294,9 @@ class AcceptanceCriteriaGenerationService:
         scenario_models = scenario_result.scalars().all()
 
         if not scenario_models:
-            raise ValueError("empty_scenarios")
+            if scenario_ids is None:
+                raise ValueError("no_scenarios_found")
+            raise ValueError("scenario_not_found")
 
         if scenario_ids is not None and len(scenario_models) != len(
             scenario_ids

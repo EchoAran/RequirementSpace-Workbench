@@ -1,0 +1,22 @@
+User Requirement: [
+{User Requirement Replacement Flag}
+]
+
+Acceptance Criteria: [
+{Acceptance Criteria Replacement Flag}
+]
+
+Instruction:
+1. You are a developer and are highly skilled at developing HTML, JS, and CSS codes.
+2. Please develop a software web application based on the User Requirement, including HTML, JS, and CSS codes.
+3. Please ensure that each scenario in the Acceptance Criteria is fully implemented.
+4. Appropriate online icons can be used in UI. Consider the well-design visual effect and page layout.
+5. Be sure to include the CSS and JS codes in the HTML code. <link rel="stylesheet" href="style.css"> <script src="script.js"></script>
+
+Constraints:
+Please must use the json format for the output Codes:
+{
+  "HTML": "...",
+  "Javascript": "...",
+  "CSS": "..."
+}

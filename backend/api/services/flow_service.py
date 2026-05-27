@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import select, func, insert
 from sqlalchemy.orm import selectinload
 from backend.database.model import (
     FlowModel,
@@ -7,6 +7,11 @@ from backend.database.model import (
     ActorModel,
     BusinessObjectModel,
     AuditLogModel,
+    flow_feature_table,
+    flow_step_actor_table,
+    flow_step_input_business_object_table,
+    flow_step_output_business_object_table,
+    flow_step_next_table,
 )
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
@@ -37,13 +42,25 @@ class FlowService:
         await session.flush()
 
         if req.feature_ids:
+            # 验证 feature 是否属于该项目
             features_result = await session.execute(
-                select(FeatureModel).where(
+                select(FeatureModel.id).where(
                     FeatureModel.project_id == project_id,
                     FeatureModel.id.in_(req.feature_ids),
                 )
             )
-            flow.features = features_result.scalars().all()
+            valid_feature_ids = features_result.scalars().all()
+            if len(valid_feature_ids) != len(req.feature_ids):
+                raise ValueError("invalid_feature_ids")
+            if valid_feature_ids:
+                flow_feature_rows = [
+                    {"flow_id": flow.id, "feature_id": feat_id}
+                    for feat_id in valid_feature_ids
+                ]
+                await session.execute(
+                    insert(flow_feature_table),
+                    flow_feature_rows,
+                )
 
         await session.flush()
 
@@ -67,7 +84,7 @@ class FlowService:
             flow_id=flow.id,
             name=flow.name,
             description=flow.description,
-            feature_ids=[f.id for f in flow.features],
+            feature_ids=req.feature_ids or [],
             steps=[],
         )
 
@@ -105,12 +122,21 @@ class FlowService:
         if req.feature_ids is not None:
             if req.feature_ids:
                 features_result = await session.execute(
-                    select(FeatureModel).where(
+                    select(FeatureModel.id).where(
                         FeatureModel.project_id == project_id,
                         FeatureModel.id.in_(req.feature_ids),
                     )
                 )
-                flow.features = features_result.scalars().all()
+                valid_feature_ids = features_result.scalars().all()
+                if len(valid_feature_ids) != len(req.feature_ids):
+                    raise ValueError("invalid_feature_ids")
+                
+                features_models_result = await session.execute(
+                    select(FeatureModel).where(
+                        FeatureModel.id.in_(valid_feature_ids)
+                    )
+                )
+                flow.features = features_models_result.scalars().all()
             else:
                 flow.features = []
 
@@ -210,44 +236,111 @@ class FlowService:
         session.add(step)
         await session.flush()
 
-        # Load and bind relationships
+        # 审计日志: 新增流程步骤
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="create_flow_step",
+            summary=f"手动新增流程步骤: {step.name}",
+            target_type="flow_step",
+            target_id=str(step.id),
+            payload={},
+        ))
+
+        # Verify and insert relationships directly into association tables to avoid async lazy loading on newly created Step model
         if req.actor_ids:
             actors_res = await session.execute(
-                select(ActorModel).where(
+                select(ActorModel.id).where(
                     ActorModel.project_id == project_id,
                     ActorModel.id.in_(req.actor_ids),
                 )
             )
-            step.actors = actors_res.scalars().all()
+            valid_actor_ids = actors_res.scalars().all()
+            if len(valid_actor_ids) != len(req.actor_ids):
+                raise ValueError("invalid_actor_ids")
+            
+            flow_step_actor_rows = [
+                {"flow_step_id": step.id, "actor_id": act_id}
+                for act_id in valid_actor_ids
+            ]
+            await session.execute(
+                insert(flow_step_actor_table),
+                flow_step_actor_rows,
+            )
 
         if req.input_business_object_ids:
             bo_res = await session.execute(
-                select(BusinessObjectModel).where(
+                select(BusinessObjectModel.id).where(
                     BusinessObjectModel.project_id == project_id,
                     BusinessObjectModel.id.in_(req.input_business_object_ids),
                 )
             )
-            step.input_business_objects = bo_res.scalars().all()
+            valid_input_bo_ids = bo_res.scalars().all()
+            if len(valid_input_bo_ids) != len(req.input_business_object_ids):
+                raise ValueError("invalid_input_business_object_ids")
+            
+            flow_step_input_bo_rows = [
+                {"flow_step_id": step.id, "business_object_id": bo_id}
+                for bo_id in valid_input_bo_ids
+            ]
+            await session.execute(
+                insert(flow_step_input_business_object_table),
+                flow_step_input_bo_rows,
+            )
 
         if req.output_business_object_ids:
             bo_res = await session.execute(
-                select(BusinessObjectModel).where(
+                select(BusinessObjectModel.id).where(
                     BusinessObjectModel.project_id == project_id,
                     BusinessObjectModel.id.in_(req.output_business_object_ids),
                 )
             )
-            step.output_business_objects = bo_res.scalars().all()
+            valid_output_bo_ids = bo_res.scalars().all()
+            if len(valid_output_bo_ids) != len(req.output_business_object_ids):
+                raise ValueError("invalid_output_business_object_ids")
+            
+            flow_step_output_bo_rows = [
+                {"flow_step_id": step.id, "business_object_id": bo_id}
+                for bo_id in valid_output_bo_ids
+            ]
+            await session.execute(
+                insert(flow_step_output_business_object_table),
+                flow_step_output_bo_rows,
+            )
 
         if req.next_step_ids:
             next_res = await session.execute(
-                select(FlowStepModel).where(
+                select(FlowStepModel.id).where(
                     FlowStepModel.flow_id == flow_id,
                     FlowStepModel.id.in_(req.next_step_ids),
                 )
             )
-            step.next_steps = next_res.scalars().all()
+            valid_next_step_ids = next_res.scalars().all()
+            if len(valid_next_step_ids) != len(req.next_step_ids):
+                raise ValueError("invalid_next_step_ids")
+            
+            flow_step_next_rows = [
+                {"source_step_id": step.id, "target_step_id": target_step_id}
+                for target_step_id in valid_next_step_ids
+            ]
+            await session.execute(
+                insert(flow_step_next_table),
+                flow_step_next_rows,
+            )
 
         await session.flush()
+
+        # Reload the step with preloaded relationships for safe serialization
+        reloaded_step_res = await session.execute(
+            select(FlowStepModel)
+            .where(FlowStepModel.id == step.id)
+            .options(
+                selectinload(FlowStepModel.actors),
+                selectinload(FlowStepModel.input_business_objects),
+                selectinload(FlowStepModel.output_business_objects),
+                selectinload(FlowStepModel.next_steps),
+            )
+        )
+        reloaded_step = reloaded_step_res.scalar_one()
 
         await mark_perception_jobs_stale(
             project_id=project_id,
@@ -255,7 +348,7 @@ class FlowService:
             session=session,
         )
 
-        return self._serialize_flow_step(step)
+        return self._serialize_flow_step(reloaded_step)
 
     async def update_flow_step(
         self,
@@ -308,7 +401,10 @@ class FlowService:
                         ActorModel.id.in_(req.actor_ids),
                     )
                 )
-                step.actors = actors_res.scalars().all()
+                valid_actors = actors_res.scalars().all()
+                if len(valid_actors) != len(req.actor_ids):
+                    raise ValueError("invalid_actor_ids")
+                step.actors = valid_actors
             else:
                 step.actors = []
 
@@ -320,7 +416,10 @@ class FlowService:
                         BusinessObjectModel.id.in_(req.input_business_object_ids),
                     )
                 )
-                step.input_business_objects = bo_res.scalars().all()
+                valid_input_bos = bo_res.scalars().all()
+                if len(valid_input_bos) != len(req.input_business_object_ids):
+                    raise ValueError("invalid_input_business_object_ids")
+                step.input_business_objects = valid_input_bos
             else:
                 step.input_business_objects = []
 
@@ -332,7 +431,10 @@ class FlowService:
                         BusinessObjectModel.id.in_(req.output_business_object_ids),
                     )
                 )
-                step.output_business_objects = bo_res.scalars().all()
+                valid_output_bos = bo_res.scalars().all()
+                if len(valid_output_bos) != len(req.output_business_object_ids):
+                    raise ValueError("invalid_output_business_object_ids")
+                step.output_business_objects = valid_output_bos
             else:
                 step.output_business_objects = []
 
@@ -344,11 +446,24 @@ class FlowService:
                         FlowStepModel.id.in_(req.next_step_ids),
                     )
                 )
-                step.next_steps = next_res.scalars().all()
+                valid_next_steps = next_res.scalars().all()
+                if len(valid_next_steps) != len(req.next_step_ids):
+                    raise ValueError("invalid_next_step_ids")
+                step.next_steps = valid_next_steps
             else:
                 step.next_steps = []
 
         await session.flush()
+
+        # 审计日志: 更新流程步骤
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="update_flow_step",
+            summary=f"手动更新流程步骤: {step.name}",
+            target_type="flow_step",
+            target_id=str(step.id),
+            payload={},
+        ))
 
         await mark_perception_jobs_stale(
             project_id=project_id,
@@ -386,8 +501,19 @@ class FlowService:
         if step is None:
             raise ValueError("flow_step_not_found")
 
+        step_name = step.name
         await session.delete(step)
         await session.flush()
+
+        # 审计日志: 删除流程步骤
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="delete_flow_step",
+            summary=f"手动删除流程步骤: {step_name}",
+            target_type="flow_step",
+            target_id=str(step_id),
+            payload={},
+        ))
 
         # Re-index remaining flow step positions to prevent UniqueConstraint errors
         list_res = await session.execute(

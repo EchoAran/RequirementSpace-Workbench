@@ -36,6 +36,7 @@ SCENARIO_GENERATION_ERRORS = {
     "empty_generation_targets",
     "empty_scenarios",
     "invalid_scenario_payload",
+    "invalid_skill_payload",
     "invalid_scenario_reference",
     "duplicate_scenario_id",
     "invalid_scenario_actor_reference",

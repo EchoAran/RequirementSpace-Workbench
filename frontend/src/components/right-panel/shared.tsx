@@ -3,10 +3,8 @@ import {
   GraphPatch,
   ImpactPreview,
   LinkType,
-  NodeKind,
   NodeKindToText,
   RequirementLink,
-  RequirementNode,
   RequirementSpaceIR,
   ScopeStatusToText,
 } from '@/core/schema';
@@ -14,28 +12,20 @@ import {
 export const LINK_LABELS: Record<LinkType, string> = {
   realizes: '实现',
   supports: '支撑',
-  performed_by: '执行者',
-  owns: '负责',
-  precedes: '前置',
-  branches_to: '分支',
-  guards: '约束',
+  performed_by: '由...执行',
+  owns: '拥有',
+  precedes: '前置于',
+  branches_to: '分支至',
+  guards: '守卫',
   reads: '读取',
   writes: '写入',
-  changes_state: '触发状态变化',
+  changes_state: '改变状态',
   depends_on: '依赖',
   diagnoses: '诊断',
   contains: '包含',
-  accessible_by: '可访问',
+  accessible_by: '可被访问',
   binds_field: '绑定字段',
   invokes_step: '触发步骤',
-};
-
-export type RelationSpec = {
-  label: string;
-  linkType: LinkType;
-  direction: 'out' | 'in';
-  targetKinds: string[];
-  multiple?: boolean;
 };
 
 export function PanelShell({
@@ -50,7 +40,7 @@ export function PanelShell({
   return (
     <div className="w-full h-full bg-white overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-5 py-4">
-        <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || 'IR Object'}</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || '建模对象'}</div>
         <h2 className="text-lg font-bold text-slate-900 mt-1">{title}</h2>
       </div>
       <div className="p-5 space-y-5">{children}</div>
@@ -58,10 +48,21 @@ export function PanelShell({
   );
 }
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="space-y-3">
-      <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{title}</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{title}</h3>
+        {action}
+      </div>
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -71,11 +72,13 @@ export function TextField({
   label,
   value,
   onChange,
+  placeholder,
   multiline = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
   multiline?: boolean;
 }) {
   return (
@@ -85,12 +88,14 @@ export function TextField({
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 min-h-[88px]"
         />
       ) : (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
         />
       )}
@@ -146,6 +151,7 @@ export function ActionButton({
       : variant === 'danger'
         ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200'
         : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200';
+
   return (
     <button
       type="button"
@@ -183,7 +189,7 @@ export function LinkList({
             <div className="font-medium">{LINK_LABELS[link.type]}</div>
             <div className="text-xs text-slate-500 mt-1">
               {relatedNode?.title || relatedId}
-              {relatedNode ? ` · ${NodeKindToText[relatedNode.kind]}` : ''}
+              {relatedNode ? ` / ${NodeKindToText[relatedNode.kind]}` : ''}
             </div>
           </div>
         );
@@ -193,25 +199,26 @@ export function LinkList({
 
   return (
     <div className="space-y-3">
-      {renderLinks(outgoing, '出向关系')}
-      {renderLinks(incoming, '入向关系')}
+      {renderLinks(outgoing, '从当前对象发出')}
+      {renderLinks(incoming, '流向当前对象')}
     </div>
   );
 }
 
-export function PatchSummary({ patch }: { patch: GraphPatch }) {
+export function PatchSummary({ patch }: { patch?: GraphPatch }) {
+  const safePatch = patch || {};
   const summary = [
-    { label: '新增节点', count: patch.addNodes?.length || 0 },
-    { label: '更新节点', count: patch.updateNodes?.length || 0 },
-    { label: '新增关系', count: patch.addLinks?.length || 0 },
-    { label: '删除关系', count: patch.removeLinkIds?.length || 0 },
-    { label: '新增 Slot', count: patch.addSlots?.length || 0 },
-    { label: '新增 Issue', count: patch.addIssues?.length || 0 },
+    { label: '新增节点', count: safePatch.addNodes?.length || 0 },
+    { label: '更新节点', count: safePatch.updateNodes?.length || 0 },
+    { label: '新增关系', count: safePatch.addLinks?.length || 0 },
+    { label: '移除关系', count: safePatch.removeLinkIds?.length || 0 },
+    { label: '新增槽位', count: safePatch.addSlots?.length || 0 },
+    { label: '新增问题', count: safePatch.addIssues?.length || 0 },
   ].filter((item) => item.count > 0);
 
   return (
     <div className="space-y-2">
-      {summary.length === 0 && <div className="text-xs text-slate-400 italic">空 Patch</div>}
+      {summary.length === 0 && <div className="text-xs text-slate-400 italic">暂无变更内容</div>}
       {summary.map(({ label, count }) => (
         <div key={label} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm">
           <span className="text-slate-600">{label}</span>
@@ -223,14 +230,15 @@ export function PatchSummary({ patch }: { patch: GraphPatch }) {
 }
 
 export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: ImpactPreview }) {
+  const safeImpact = impact || {};
   const groups = [
-    ['目标', impact.affectedGoals],
-    ['角色', impact.affectedActors],
-    ['流程', impact.affectedFlows],
-    ['数据', impact.affectedObjects],
-    ['界面', impact.affectedScreens],
-    ['新增 Issue', impact.newIssues || []],
-    ['解决 Issue', impact.resolvedIssues || []],
+    ['目标', safeImpact.affectedGoals || []],
+    ['角色', safeImpact.affectedActors || []],
+    ['流程', safeImpact.affectedFlows || []],
+    ['对象', safeImpact.affectedObjects || []],
+    ['界面', safeImpact.affectedScreens || []],
+    ['新增问题', safeImpact.newIssues || []],
+    ['已解决问题', safeImpact.resolvedIssues || []],
   ] as const;
 
   return (
@@ -240,112 +248,10 @@ export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: 
           <div key={label} className="rounded-xl border border-slate-200 px-3 py-2">
             <div className="text-xs font-medium text-slate-500">{label}</div>
             <div className="text-sm text-slate-700 mt-1">
-              {ids.map((id) => ir.nodes[id]?.title || id).join('、')}
+              {ids.map((id) => ir.nodes[id]?.title || id).join(', ')}
             </div>
           </div>
         ) : null,
-      )}
-    </div>
-  );
-}
-
-export function RelationEditor({
-  ir,
-  node,
-  spec,
-  onApplyPatch,
-}: {
-  ir: RequirementSpaceIR;
-  node: RequirementNode;
-  spec: RelationSpec;
-  onApplyPatch: (patch: GraphPatch) => Promise<void>;
-}) {
-  const matchingLinks = ir.links.filter((link) => {
-    if (link.type !== spec.linkType) return false;
-    return spec.direction === 'out' ? link.sourceId === node.id : link.targetId === node.id;
-  });
-  const selectedIds = matchingLinks.map((link) => (spec.direction === 'out' ? link.targetId : link.sourceId));
-  const options = Object.values(ir.nodes).filter((candidate) => spec.targetKinds.includes(candidate.kind) && candidate.id !== node.id);
-
-  const buildLink = (targetId: string): RequirementLink => ({
-    id: `link_${node.id}_${spec.linkType}_${targetId}_${Date.now()}`,
-    sourceId: spec.direction === 'out' ? node.id : targetId,
-    targetId: spec.direction === 'out' ? targetId : node.id,
-    type: spec.linkType,
-    status: 'active',
-    source: { type: 'user', text: '右侧面板关系编辑' },
-  });
-
-  const replaceSingle = async (targetId: string) => {
-    const removeLinkIds = matchingLinks.map((link) => link.id);
-    const patch: GraphPatch = { removeLinkIds };
-    if (targetId) {
-      patch.addLinks = [buildLink(targetId)];
-    }
-    await onApplyPatch(patch);
-  };
-
-  const addMulti = async (targetId: string) => {
-    if (!targetId || selectedIds.includes(targetId)) return;
-    await onApplyPatch({ addLinks: [buildLink(targetId)] });
-  };
-
-  const removeMulti = async (targetId: string) => {
-    const link = matchingLinks.find((item) =>
-      spec.direction === 'out' ? item.targetId === targetId : item.sourceId === targetId,
-    );
-    if (!link) return;
-    await onApplyPatch({ removeLinkIds: [link.id] });
-  };
-
-  return (
-    <div className="rounded-xl border border-slate-200 p-3 space-y-2">
-      <div className="text-xs font-medium text-slate-500">{spec.label}</div>
-      {!spec.multiple ? (
-        <select
-          value={selectedIds[0] || ''}
-          onChange={(e) => void replaceSingle(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
-        >
-          <option value="">未设置</option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.title}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            {selectedIds.length === 0 && <span className="text-xs text-slate-400 italic">暂无</span>}
-            {selectedIds.map((targetId) => (
-              <button
-                key={targetId}
-                type="button"
-                onClick={() => void removeMulti(targetId)}
-                className="px-2 py-1 rounded-full border border-slate-200 text-xs text-slate-700 hover:border-rose-200 hover:text-rose-600"
-              >
-                {ir.nodes[targetId]?.title || targetId} ×
-              </button>
-            ))}
-          </div>
-          <select
-            defaultValue=""
-            onChange={(e) => {
-              const targetId = e.target.value;
-              e.target.value = '';
-              void addMulti(targetId);
-            }}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
-          >
-            <option value="">添加关系</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.title}
-              </option>
-            ))}
-          </select>
-        </div>
       )}
     </div>
   );

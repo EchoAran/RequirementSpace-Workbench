@@ -1,12 +1,25 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { AppWindow, Plus, Clock, ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
+import { AppWindow, ArrowRight, Clock, Edit, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 export function Home() {
-  const { setSystemView, openWorkspace, loadWorkspaces, workspaces, isLoading, error } = useWorkspaceStore();
+  const {
+    setSystemView,
+    openWorkspace,
+    loadWorkspaces,
+    workspaces,
+    isLoading,
+    error,
+    updateProject,
+    deleteProject,
+  } = useWorkspaceStore();
+
+  const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
-    loadWorkspaces();
+    void loadWorkspaces();
   }, [loadWorkspaces]);
 
   const sorted = useMemo(() => {
@@ -22,162 +35,252 @@ export function Home() {
     if (mins < 60) return `${mins} 分钟前修改`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours} 小时前修改`;
-    const days = Math.floor(hours / 24);
-    return `${days} 天前修改`;
+    return `${Math.floor(hours / 24)} 天前修改`;
   };
 
-  const renderStatusSticker = (p: any) => {
-    if (p.status === '待确认 Issue') {
-      return (
-        <span className="px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-xl border border-amber-200/60 uppercase tracking-widest flex items-center gap-1 shadow-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-          {p.status} {p.issueCount > 0 ? `(${p.issueCount})` : ''}
-        </span>
-      );
-    }
-    if (p.status === '设计中') {
-      return (
-        <span className="px-3 py-1.5 bg-sky-50 text-sky-700 text-[10px] font-bold rounded-xl border border-sky-200/60 uppercase tracking-widest shadow-sm">
-          {p.status}
-        </span>
-      );
-    }
-    if (p.status === '草稿') {
-      return (
-        <span className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-xl border border-slate-200/60 uppercase tracking-widest shadow-sm">
-          {p.status}
-        </span>
-      );
-    }
+  const renderStatus = (p: any) => {
+    const status = p.status || '项目';
+    const tone =
+      status.includes('Issue') || status.includes('待确认')
+        ? 'bg-amber-50 text-amber-700 border-amber-200'
+        : status.includes('设计') || status.includes('进行')
+          ? 'bg-sky-50 text-sky-700 border-sky-200'
+          : 'bg-slate-100 text-slate-600 border-slate-200';
+
     return (
-      <span className="px-3 py-1.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-xl border border-slate-200/60 uppercase tracking-widest shadow-sm">
-        {p.status || '项目'}
+      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold ${tone}`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+        {status}
+        {p.issueCount > 0 ? ` (${p.issueCount})` : ''}
       </span>
     );
   };
 
-  return (
-    <div className="flex-1 min-h-[100dvh] bg-[#F8FAFC] flex flex-col font-sans selection:bg-indigo-100 relative overflow-hidden">
-      {/* Decorative Background */}
-      <div className="absolute inset-0 z-0 pointer-events-none flex justify-center">
-        <div className="absolute top-0 w-full h-[500px] bg-gradient-to-b from-indigo-50/80 to-transparent"></div>
-        <div className="absolute -top-48 right-0 w-[600px] h-[600px] bg-indigo-300/20 rounded-full blur-[100px]"></div>
-        <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMCwwLDAsMC4wMikiLz48L3N2Zz4=')] [mask-image:linear-gradient(to_bottom,white,transparent)]"></div>
-      </div>
+  const startEditing = (project: any) => {
+    setEditingProject(project);
+    setEditName(project.name || '');
+    setEditDescription(project.description || project.idea || '');
+  };
 
-      {/* Top Navigation */}
-      <header className="h-16 border-b border-slate-200/50 bg-white/60 backdrop-blur-xl flex items-center px-10 shrink-0 sticky top-0 z-20">
+  const handleDelete = async (project: any) => {
+    const ok = window.confirm(`确定删除项目“${project.name}”吗？此操作将永久清除该工作区所有建模数据。`);
+    if (!ok) return;
+    await deleteProject(Number(project.id));
+    await loadWorkspaces();
+  };
+
+  return (
+    <div className="flex-1 h-[100dvh] bg-slate-50/50 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.08),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.05),transparent_40%)] flex flex-col font-sans selection:bg-indigo-100 relative overflow-hidden">
+      {/* Dynamic Ambient Background Dots */}
+      <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1.2px,transparent_1.2px)] [background-size:24px_24px] opacity-75 pointer-events-none" />
+
+      <header className="h-16 border-b border-slate-200/50 bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
-          <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
-          <span className="font-extrabold text-lg tracking-tight text-slate-900">需求空间工作台</span>
-        </div>
-        <div className="ml-auto flex items-center gap-4">
-           <div className="w-8 h-8 overflow-hidden rounded-full bg-slate-200 ring-2 ring-white shadow-sm cursor-pointer hover:ring-indigo-100 transition-all">
-             <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix&backgroundColor=e0e7ff" alt="User avatar" />
-           </div>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent">需求空间工作台</span>
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-7xl mx-auto px-8 sm:px-12 py-16 lg:py-24 z-10 flex flex-col relative">
-        <div className="max-w-3xl mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold tracking-wide uppercase mb-6 shadow-sm">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI-Powered Workspace</span>
+      <main className="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-10 py-8 lg:py-10 overflow-hidden flex flex-col relative z-10 min-h-0">
+        {/* Hero Banner Section */}
+        <div className="mb-8 shrink-0 animate-in fade-in slide-in-from-top-4 duration-700">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/10 to-violet-500/10 border border-indigo-150 text-indigo-700 text-xs font-bold tracking-wide uppercase mb-4 shadow-sm backdrop-blur-md">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+            AI-Powered Workbench v1.2
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-[1.1] mb-6">
-            将业务构想转化为<br className="hidden sm:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">可执行的产品定义</span>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight mb-3">
+            将业务构想转化为可执行的产品定义
           </h1>
-          <p className="text-slate-500 text-lg sm:text-xl leading-relaxed max-w-3xl font-medium">
-            通过自然语言自动化分析需求、生成工作流、识别系统 Issue 并产出界面原型。
+          <p className="text-slate-500 text-sm sm:text-base leading-relaxed max-w-3xl font-medium">
+            通过自然语言智能解析、全自动泳道流程生成、高准度系统一致性诊断，全闭环交付直观、可交互的产品高保真原型。
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Create New Project Card */}
-          <div 
+        {/* Dashboard Main Columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full min-h-0 flex-1 overflow-hidden">
+          
+          {/* Left Column: Create App Premium Panel */}
+          <button
+            type="button"
             onClick={() => setSystemView('onboarding')}
-            className="lg:col-span-5 bg-slate-900 text-white rounded-[2rem] cursor-pointer transition-all hover:shadow-2xl hover:shadow-indigo-900/20 hover:-translate-y-1 flex flex-col p-10 group relative overflow-hidden"
+            className="lg:col-span-4 self-start text-left bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl cursor-pointer transition-all hover:shadow-2xl hover:shadow-indigo-950/20 hover:-translate-y-1 hover:border-indigo-500/30 flex flex-col p-8 group relative overflow-hidden min-h-[340px] border border-slate-800 shadow-xl"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/30 blur-2xl rounded-full group-hover:bg-indigo-400/40 transition-colors"></div>
-
-            <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-10 border border-white/10 group-hover:scale-110 transition-transform origin-bottom-left shadow-inner">
-              <Plus className="w-8 h-8 text-white" />
-            </div>
-            <div className="mt-auto relative z-10">
-              <h2 className="text-3xl font-bold mb-3 tracking-tight flex items-center gap-3">
-                新建应用
-                <ArrowRight className="w-6 h-6 opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-              </h2>
-              <p className="text-slate-400 text-base leading-relaxed max-w-[90%]">
-                输入您的业务诉求或想法，唤起 AI 助手立即生成系统数据架构与流程约束。
-              </p>
-            </div>
-          </div>
-
-          {/* Recent Projects area */}
-          <div className="lg:col-span-7 flex flex-col gap-4">
-            <div className="flex items-center justify-between px-2 mb-2">
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                <LayoutGrid className="w-4 h-4 text-slate-400" />
-                正在进行的项目
-              </h2>
+            {/* Ambient Purple Light Inside Card */}
+            <div className="absolute -right-16 -top-16 w-36 h-36 bg-indigo-500/15 rounded-full blur-3xl group-hover:bg-indigo-500/25 transition-all duration-500" />
+            
+            <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-16 border border-white/10 group-hover:scale-110 group-hover:border-indigo-400/40 transition-all duration-300 shadow-inner">
+              <Plus className="w-7 h-7 text-white" />
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+            <div className="mt-auto relative z-10">
+              <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block mb-2">快速开始</span>
+              <h2 className="text-2xl font-bold mb-3 tracking-tight flex items-center gap-2 group-hover:text-indigo-250 transition-colors">
+                新建应用
+                <ArrowRight className="w-5 h-5 opacity-0 -translate-x-3 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-indigo-400" />
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-medium">
+                输入简单的业务述求或产品创想，调用大模型智能引擎快速搭建建模骨架、推演角色泳道及可预览运行原型。
+              </p>
+            </div>
+          </button>
+
+          {/* Right Column: Projects List Panel */}
+          <section className="lg:col-span-8 flex min-h-0 flex-col pb-4">
+            <div className="flex items-center justify-between mb-4 px-1 shrink-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-extrabold text-slate-800 tracking-wider uppercase">正在进行的项目</h2>
+                <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-md text-[10px] font-extrabold">{sorted.length}</span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium">最近更新时间排序</span>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-slate-200/60 bg-white/80 backdrop-blur-md shadow-lg p-5 space-y-4">
               {sorted.map((p) => (
                 <div
                   key={p.id}
-                  onClick={() => openWorkspace(p.id)}
-                  className="bg-white border border-slate-200/60 p-8 rounded-[2rem] hover:border-indigo-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all cursor-pointer flex flex-col group relative overflow-hidden"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void openWorkspace(String(p.id))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void openWorkspace(String(p.id));
+                  }}
+                  className="group flex items-start gap-4 border border-slate-100 hover:border-indigo-200 p-5 transition-all duration-300 hover:shadow-md bg-white rounded-2xl hover:bg-indigo-50/10 cursor-pointer"
                 >
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-bl-full -z-10 transition-transform group-hover:scale-110"></div>
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100">
-                      <AppWindow className="w-7 h-7" strokeWidth={1.5} />
-                    </div>
-                    {renderStatusSticker(p)}
+                  {/* Left Project Avatar Icon */}
+                  <div className="mt-1 h-12 w-12 shrink-0 rounded-2xl border border-indigo-50 bg-indigo-50/50 text-indigo-600 flex items-center justify-center transition-colors group-hover:bg-indigo-600 group-hover:text-white shadow-sm">
+                    <AppWindow className="h-5.5 w-5.5" />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight group-hover:text-indigo-600 transition-colors">
-                    {p.name}
-                  </h3>
-                  <p className="text-sm text-slate-500 mb-8 line-clamp-2 leading-relaxed flex-1">
-                    {p.idea || '暂无描述'}
-                  </p>
-                  <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5 uppercase tracking-wider bg-slate-50 self-start px-3 py-1.5 rounded-lg border border-slate-100">
-                    <Clock className="w-3.5 h-3.5" />
-                    {formatRelativeTime(p.updatedAt)}
+
+                  {/* Mid Project Information */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h3 className="truncate text-base font-extrabold text-slate-900 group-hover:text-indigo-650 transition-colors">
+                        {p.name}
+                      </h3>
+                      {renderStatus(p)}
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-xs sm:text-sm leading-relaxed text-slate-500 font-medium">
+                      {p.description || p.idea || '暂无项目描述，请点击卡片进入工作台丰富建模详情。'}
+                    </p>
+                    <div className="mt-4 flex items-center gap-4 text-[10px] font-bold text-slate-400">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5" />
+                        {formatRelativeTime(p.updatedAt)}
+                      </div>
+                      <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                      <div>ID: {p.id}</div>
+                    </div>
+                  </div>
+
+                  {/* Right Actions Trigger */}
+                  <div className="ml-auto flex shrink-0 items-center gap-2 self-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing(p);
+                      }}
+                      className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition-all hover:border-indigo-300 hover:text-indigo-650 hover:bg-indigo-50"
+                      title="编辑项目"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(p);
+                      }}
+                      className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition-all hover:border-rose-300 hover:text-rose-600 hover:bg-rose-50"
+                      title="删除项目"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
 
               {!isLoading && sorted.length === 0 && (
-                <div className="bg-white/60 border border-slate-200/60 p-8 rounded-[2rem] flex flex-col items-center justify-center text-center">
-                  <div className="w-14 h-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center border border-slate-200/50 mb-4">
-                    <AppWindow className="w-7 h-7" strokeWidth={1.5} />
+                <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-10 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 mb-4 shadow-sm">
+                    <AppWindow className="h-8 w-8" />
                   </div>
-                  <div className="text-sm font-bold text-slate-700 mb-1">暂无项目</div>
-                  <div className="text-xs text-slate-500">点击左侧“新建应用”开始创建</div>
+                  <div className="text-sm font-extrabold text-slate-800">暂无正在进行的项目</div>
+                  <div className="mt-1.5 text-xs text-slate-450 max-w-xs leading-normal">从左侧点击“新建应用”卡片，开启您的首个 AI 需求建模空间。</div>
                 </div>
               )}
 
-              {isLoading && (
-                <div className="bg-white/60 border border-slate-200/60 p-8 rounded-[2rem] flex items-center justify-center text-slate-500 text-sm">
-                  正在加载项目列表...
+              {isLoading && sorted.length === 0 && (
+                <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-10 text-center">
+                  <div className="h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin mb-4" />
+                  <div className="text-xs text-slate-500 font-bold">正在加载项目列表...</div>
                 </div>
               )}
             </div>
 
-            {error && (
-              <div className="text-sm text-rose-600 px-2">
-                {error}
+            {error && <div className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">{error}</div>}
+          </section>
+        </div>
+      </main>
+
+      {editingProject && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-350">
+          <div className="bg-white rounded-3xl p-7 max-w-lg w-full border border-slate-100 shadow-2xl space-y-6 mx-4 animate-in zoom-in-95 duration-250">
+            <div>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">编辑项目信息</h3>
+              <p className="text-xs text-slate-400 mt-1">更新工作空间名称和核心业务创想描述。</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">项目名称</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold"
+                />
               </div>
-            )}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">业务描述</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 leading-relaxed resize-none font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingProject(null)}
+                className="px-5 py-2.5 border border-slate-200 bg-white text-slate-650 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!editName.trim()) {
+                    window.alert('项目名称不能为空');
+                    return;
+                  }
+                  await updateProject(Number(editingProject.id), editName.trim(), editDescription.trim());
+                  setEditingProject(null);
+                  await loadWorkspaces();
+                }}
+                className="px-5 py-2.5 bg-indigo-650 text-white text-xs font-bold rounded-xl hover:bg-indigo-750 transition-colors shadow-md shadow-indigo-600/10"
+              >
+                确认保存
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
-

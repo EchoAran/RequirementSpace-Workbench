@@ -23,8 +23,9 @@ export function Overview() {
   
   const choices = useWorkspaceStore(selectChoices);
   const ir = useWorkspaceStore(state => state.ir);
+  const auditLogs = useWorkspaceStore(state => state.auditLogs);
 
-  const overview = buildOverviewModel(ir);
+  const overview = buildOverviewModel(ir, auditLogs);
   const highRiskIssues = overview.highRiskIssues;
   const decisionQueue = overview.decisionQueue;
   const recentChoices = overview.recentChoices.length ? overview.recentChoices : choices.filter(c => c.status === 'candidate').slice(0, 3);
@@ -90,10 +91,6 @@ export function Overview() {
                   <div className="flex flex-col">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 mt-1">开放 ChoiceGroup</p>
                     <span className="text-blue-600 text-lg font-bold font-mono">{String(overview.openChoiceGroupsCount).padStart(2, '0')}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 mt-1">待审阅 Proposal</p>
-                    <span className="text-violet-600 text-lg font-bold font-mono">{String(overview.pendingProposalCount).padStart(2, '0')}</span>
                   </div>
                 </div>
               </div>

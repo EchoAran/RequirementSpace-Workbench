@@ -5,3 +5,4 @@ from backend.core.generators.flows_generator import FlowsGenerator, FlowsGenerat
 from backend.core.generators.scenarios_generator import ScenariosGenerator, ScenariosGeneratorInput
 from backend.core.generators.acceptance_criteria_generator import AcceptanceCriteriaGenerator, AcceptanceCriteriaGeneratorInput
 from backend.core.generators.scopes_generator import ScopesGenerator, ScopesGeneratorInput
+from backend.core.generators.prototype_generator import PrototypeGenerator, PrototypeGeneratorInput

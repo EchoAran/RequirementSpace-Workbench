@@ -66,13 +66,14 @@ export function LeftNav() {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {hasRisk && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded font-medium italic whitespace-nowrap",
-                    status === '已收敛' ? "bg-emerald-100 text-emerald-700" :
-                    status === '可预览' ? "bg-indigo-100 text-indigo-700" :
-                    status === '阻塞' ? "bg-rose-100 text-rose-700" :
-                    status === '待决策' ? "bg-amber-100 text-amber-700" :
-                    status === '未开始' || status === '不可用' ? "bg-slate-100 text-slate-500" :
-                    "bg-slate-200 text-slate-600"
+                    "text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap shadow-sm border",
+                    status === '已收敛' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                    status === '可预览' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                    status === '阻塞' ? "bg-rose-50 text-rose-700 border-rose-100" :
+                    status === '待决策' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                    status === '待设计' ? "bg-slate-50 text-slate-500 border-slate-200" :
+                    status === '待前置就绪' || status === '不可用' ? "bg-slate-100/70 text-slate-400 border-slate-200/50" :
+                    "bg-slate-100 text-slate-500 border-slate-200"
                   )}>
                     {status}
                   </span>
@@ -80,15 +81,19 @@ export function LeftNav() {
               </div>
               
               <div className="pl-6 min-h-[14px] flex items-center">
-                {disabled && item.path === '/preview' ? (
-                  <span className="text-[10px] text-slate-500 leading-tight">需要先生成流程和角色后可查看</span>
+                {disabled ? (
+                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
+                    {item.path === '/flow' && '需先在 What 阶段定义角色与能力'}
+                    {item.path === '/scope' && '需先在 What 阶段建模功能树'}
+                    {item.path === '/preview' && '需先完成前置所有建模决策'}
+                  </span>
                 ) : (issueCount > 0 || todoCount > 0) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
                     {item.path === '/preview' ? (
                       `${todoCount} 个待处理`
                     ) : (
                       <>
-                        {issueCount > 0 && `${issueCount} Issue`}
+                        {issueCount > 0 && `${issueCount} 缺陷`}
                         {issueCount > 0 && todoCount > 0 && ' / '}
                         {todoCount > 0 && `${todoCount} 待确认`}
                       </>

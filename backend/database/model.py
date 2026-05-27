@@ -161,6 +161,14 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    prototype_previews: Mapped[list["PrototypePreviewModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     business_objects: Mapped[list[BusinessObjectModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
@@ -259,6 +267,9 @@ class ActorModel(TimestampMixin, Base):
         back_populates="actors",
     )
     scenarios: Mapped[list[ScenarioModel]] = relationship(back_populates="actor")
+    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+        back_populates="actor",
+    )
     flow_steps: Mapped[list[FlowStepModel]] = relationship(
         secondary=flow_step_actor_table,
         back_populates="actors",
@@ -355,6 +366,9 @@ class FeatureModel(TimestampMixin, Base):
         back_populates="feature",
         cascade="all, delete-orphan",
     )
+    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+        back_populates="feature",
+    )
 
     flows: Mapped[list["FlowModel"]] = relationship(
         secondary=flow_feature_table,
@@ -423,12 +437,90 @@ class ScenarioAcceptanceCriterionModel(TimestampMixin, Base):
     )
 
 
+class GherkinSpecModel(TimestampMixin, Base):
+    __tablename__ = "gherkin_specs"
+    __table_args__ = (
+        Index("ix_gherkin_specs_project_id", "project_id"),
+        Index("ix_gherkin_specs_feature_id", "feature_id"),
+        Index("ix_gherkin_specs_actor_id", "actor_id"),
+        Index(
+            "ix_gherkin_specs_project_feature_actor",
+            "project_id",
+            "feature_id",
+            "actor_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    feature_id: Mapped[int] = mapped_column(
+        ForeignKey("features.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id: Mapped[int] = mapped_column(
+        ForeignKey("actors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    gherkin_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default="scenario_generation_skill",
+        nullable=False,
+    )
+
+    project: Mapped[ProjectModel] = relationship(back_populates="gherkin_specs")
+    feature: Mapped[FeatureModel] = relationship(back_populates="gherkin_specs")
+    actor: Mapped[ActorModel] = relationship(back_populates="gherkin_specs")
+    scenarios: Mapped[list["ScenarioModel"]] = relationship(
+        back_populates="gherkin_spec",
+    )
+
+
+class PrototypePreviewModel(TimestampMixin, Base):
+    __tablename__ = "prototype_previews"
+    __table_args__ = (
+        Index("ix_prototype_previews_project_id", "project_id"),
+        Index("ix_prototype_previews_project_created", "project_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="ready",
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default="placeholder",
+        nullable=False,
+    )
+    html: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    javascript: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    css: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    pages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    input_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    gherkin_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+    project: Mapped[ProjectModel] = relationship(
+        back_populates="prototype_previews",
+    )
+
+
 class ScenarioModel(TimestampMixin, Base):
     __tablename__ = "scenarios"
     __table_args__ = (
         Index("ix_scenarios_project_id", "project_id"),
         Index("ix_scenarios_feature_id", "feature_id"),
         Index("ix_scenarios_actor_id", "actor_id"),
+        Index("ix_scenarios_gherkin_spec_id", "gherkin_spec_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -446,10 +538,21 @@ class ScenarioModel(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    gherkin_spec_id: Mapped[int | None] = mapped_column(
+        ForeignKey("gherkin_specs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    gherkin_scenario_index: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="scenarios")
     feature: Mapped[FeatureModel] = relationship(back_populates="scenarios")
     actor: Mapped[ActorModel] = relationship(back_populates="scenarios")
+    gherkin_spec: Mapped[GherkinSpecModel | None] = relationship(
+        back_populates="scenarios",
+    )
     acceptance_criteria: Mapped[list[ScenarioAcceptanceCriterionModel]] = relationship(
         back_populates="scenario",
         cascade="all, delete-orphan",
@@ -635,4 +738,3 @@ class AuditLogModel(TimestampMixin, Base):
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     project: Mapped[ProjectModel] = relationship(back_populates="audit_logs")
-

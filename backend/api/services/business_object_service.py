@@ -185,6 +185,16 @@ class BusinessObjectService:
         session.add(attr)
         await session.flush()
 
+        # 审计日志: 新增数据属性
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="create_business_object_attribute",
+            summary=f"手动新增数据属性: {attr.name}",
+            target_type="business_object_attribute",
+            target_id=str(attr.id),
+            payload={},
+        ))
+
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
@@ -240,6 +250,16 @@ class BusinessObjectService:
 
         await session.flush()
 
+        # 审计日志: 更新数据属性
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="update_business_object_attribute",
+            summary=f"手动更新数据属性: {attr.name}",
+            target_type="business_object_attribute",
+            target_id=str(attr.id),
+            payload={},
+        ))
+
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
@@ -285,6 +305,16 @@ class BusinessObjectService:
 
         await session.delete(attr)
         await session.flush()
+
+        # 审计日志: 删除数据属性
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="delete_business_object_attribute",
+            summary=f"手动删除数据属性: ID {attr_id}",
+            target_type="business_object_attribute",
+            target_id=str(attr_id),
+            payload={},
+        ))
 
         await mark_perception_jobs_stale(
             project_id=project_id,

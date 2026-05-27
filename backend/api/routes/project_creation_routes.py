@@ -8,8 +8,8 @@ from backend.api.schemas.project_creation_schema import (
     ProjectCreationDraftDiscardResponse,
     ProjectCreationDraftResponse,
 )
-from backend.api.services.project_creation_service import (
-    ProjectCreationService,
+from backend.api.services.service_registry import (
+    project_creation_service,
 )
 from backend.database.database import get_session
 
@@ -21,14 +21,15 @@ FEATURE_GENERATION_ERRORS = {
     "missing_parent_feature",
     "invalid_root_feature_count",
     "invalid_project_payload",
+    "invalid_actor_reference",
+    "invalid_feature_payload",
+    "invalid_skill_payload",
 }
 
 router = APIRouter(
     prefix="/api/project_creation_drafts",
     tags=["project_creation"],
 )
-
-project_creation_service = ProjectCreationService()
 
 @router.post(
     "",

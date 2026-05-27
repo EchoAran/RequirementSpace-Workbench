@@ -24,7 +24,8 @@ classifiers = [
   "Operating System :: OS Independent"
 ]
 dependencies = [
-  "openai>=1.56.0"
+  "openai>=1.56.0",
+  "matplotlib>=3.9.0"
 ]
 
 [project.scripts]

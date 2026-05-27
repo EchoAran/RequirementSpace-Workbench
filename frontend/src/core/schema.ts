@@ -186,6 +186,7 @@ export interface PerceptionSlot {
   perceptionSlotId: number;
   perceptionKind: PerceptionKindType;
   perceptionDescription: string;
+  perceptionJobId?: number;
 }
 
 // 整个项目空间
@@ -209,7 +210,16 @@ export interface RequirementSpace {
   issues?: Record<string, any>;
   slots?: Record<string, any>;
   choiceGroups?: Record<string, any>;
-  proposals?: Record<string, any>;
+
+  // Compatible properties for selector caching
+  actorsCompatible?: any[];
+  flowStepsCompatible?: any[];
+  issuesCompatible?: any[];
+  linksCompatible?: any[];
+  goalsCompatible?: any[];
+  capabilitiesCompatible?: any[];
+  tasksCompatible?: any[];
+  scopeItemsCompatible?: any[];
 }
 
 // -------------------------------------------------------------
@@ -265,6 +275,9 @@ export interface Issue {
   relatedNodeIds: string[];
   suggestedProjection: 'goal' | 'role' | 'system' | 'data' | 'ui';
   category?: string;
+  backendIssueCode?: string;
+  backendTarget?: any;
+  backendMetadata?: any;
 }
 
 export type RequirementNode =
@@ -304,18 +317,6 @@ export interface ChoiceGroup {
 
   // Compatibility properties for legacy components
   selectionMode?: 'single' | 'multiple';
-}
-
-export interface Proposal {
-  id: string;
-  title: string;
-  summary: string;
-  status: 'candidate' | 'accepted' | 'rejected';
-  scope: any;
-
-  // Compatibility properties for legacy components
-  patch?: GraphPatch;
-  impactPreview?: any;
 }
 
 export type NodeStatus = 'confirmed' | 'needs_confirmation' | 'ai_assumption';
@@ -374,3 +375,36 @@ export interface TaskNode {
   featureDescription: string;
 }
 
+export interface WorkspaceListItem {
+  id: string;
+  name: string;
+  idea: string;
+  description?: string;
+  updatedAt: string;
+  status: string;
+  issueCount: number;
+  nodeCount: number;
+}
+
+export interface ProjectCreationDraft {
+  draft_id: string;
+  user_requirements: string;
+  project_preview: {
+    project_name: string;
+    project_description: string;
+  };
+  actors: Array<{ actor_name: string; actor_description: string }>;
+  features: Array<{ feature_name: string; feature_description: string; actor_names: string[] }>;
+}
+
+export interface ProjectCreationConfirmResponse {
+  project_id: number;
+  project_name: string;
+  project_description: string;
+  message: string;
+}
+
+export interface ProjectCreationDiscardResponse {
+  draft_id: string;
+  message: string;
+}

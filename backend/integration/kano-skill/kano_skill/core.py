@@ -4,12 +4,16 @@ import json
 import os
 import re
 from collections import Counter, namedtuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 
 FIXED_PARTICIPANT_COUNT = 5
+DEFAULT_MAX_CONCURRENCY = 5
+T = TypeVar("T")
+R = TypeVar("R")
 FIXED_DISTRIBUTION = {
     "age": {
         "0-14": 0.1601,
@@ -118,6 +122,35 @@ def _json_loads_object(text: str, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a JSON object.")
     return value
+
+
+def _max_concurrency() -> int:
+    raw = os.environ.get("KANO_SKILL_MAX_CONCURRENCY", str(DEFAULT_MAX_CONCURRENCY))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = DEFAULT_MAX_CONCURRENCY
+    return max(1, value)
+
+
+def _parallel_map(items: list[T], worker: Callable[[T], R]) -> list[R]:
+    if len(items) <= 1:
+        return [worker(item) for item in items]
+
+    max_workers = min(_max_concurrency(), len(items))
+    if max_workers <= 1:
+        return [worker(item) for item in items]
+
+    results: list[R | None] = [None] * len(items)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(worker, item): index
+            for index, item in enumerate(items)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    return [result for result in results if result is not None]
 
 
 def _parse_rating_reason(value: Any) -> tuple[str, str]:
@@ -262,11 +295,41 @@ class KanoSkill:
         else:
             raise ValueError("feature_tree must be a JSON string or dict.")
 
-        features = [
-            str(value).strip()
-            for key, value in feature_tree_obj.items()
-            if str(key).startswith("L3") and str(value).strip()
-        ]
+        if isinstance(feature_tree_obj.get("features"), list):
+            features = []
+            for item in feature_tree_obj["features"]:
+                if isinstance(item, dict):
+                    value = item.get("name") or item.get("feature_name") or item.get("Feature")
+                else:
+                    value = item
+                if str(value or "").strip():
+                    features.append(str(value).strip())
+        else:
+            level_keys = {
+                str(key)
+                for key in feature_tree_obj.keys()
+                if re.fullmatch(r"L\d+(?:\.[\d.]+)?", str(key))
+            }
+
+            leaf_keys = []
+            for key in level_keys:
+                if key == "L1":
+                    prefix = "L2."
+                else:
+                    match = re.fullmatch(r"L(?P<level>\d+)\.(?P<parts>[\d.]+)", key)
+                    if match is None:
+                        continue
+                    prefix = f"L{int(match.group('level')) + 1}.{match.group('parts')}."
+                if not any(candidate.startswith(prefix) for candidate in level_keys):
+                    leaf_keys.append(key)
+
+            features = []
+            for key in sorted(leaf_keys):
+                value = feature_tree_obj.get(key)
+                if isinstance(value, dict):
+                    value = value.get("name") or value.get("feature_name") or value.get("Feature")
+                if str(value or "").strip():
+                    features.append(str(value).strip())
 
         clean_features: list[str] = []
         seen: set[str] = set()
@@ -275,8 +338,8 @@ class KanoSkill:
             if canon and canon not in seen:
                 clean_features.append(feature)
                 seen.add(canon)
-        if len(clean_features) < 3:
-            raise ValueError("feature_tree must contain at least three unique L3 features.")
+        if not clean_features:
+            raise ValueError("feature_tree must contain at least one unique leaf feature.")
         return clean_features
 
     def build_participants(self, requirement_text: str) -> dict[str, dict[str, Any]]:
@@ -304,13 +367,17 @@ class KanoSkill:
         requirement_text: str,
         users: dict[str, dict[str, Any]],
     ) -> dict[str, dict[str, Any]]:
-        enriched: dict[str, dict[str, Any]] = {}
-        for uid, profile in users.items():
+        def enrich_one(item: tuple[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+            uid, profile = item
             prompt = self._prompts["User_perference.txt"]
             prompt = prompt.replace("{User Profile Replacement Flag}", json.dumps(profile, ensure_ascii=False))
             prompt = prompt.replace("{Requirement Replacement Flag}", requirement_text)
             enriched_profile = dict(profile)
             enriched_profile.update(self._ask_json(prompt))
+            return uid, enriched_profile
+
+        enriched: dict[str, dict[str, Any]] = {}
+        for uid, enriched_profile in _parallel_map(list(users.items()), enrich_one):
             enriched[uid] = enriched_profile
         return enriched
 
@@ -328,8 +395,8 @@ class KanoSkill:
             feature: f"How would you feel if the product did not have {feature}?"
             for feature in features
         }
-        scores: dict[str, Any] = {}
-        for uid, profile in users.items():
+        def score_one(item: tuple[str, dict[str, Any]]) -> tuple[str, Any]:
+            uid, profile = item
             prompt = self._prompts["User_satisfaction.txt"]
             prompt = prompt.replace("{User Profile Replacement Flag}", json.dumps(profile, ensure_ascii=False))
             prompt = prompt.replace("{Profile}", json.dumps(profile, ensure_ascii=False))
@@ -342,7 +409,11 @@ class KanoSkill:
                 "use the exact feature names from the input question JSON as keys. Do not use "
                 "generic keys such as Question name 1, Question 1, Item 1, or full question sentences."
             )
-            scores[uid] = self._ask_json(prompt)
+            return uid, self._ask_json(prompt)
+
+        scores: dict[str, Any] = {}
+        for uid, score in _parallel_map(list(users.items()), score_one):
+            scores[uid] = score
         return scores
 
     def classify(
@@ -506,10 +577,9 @@ class KanoSkill:
         features: list[str],
         reasons_records: list[dict[str, Any]],
     ) -> dict[str, dict[str, str]]:
-        summaries: dict[str, dict[str, str]] = {}
-        for feature in features:
+        def summarize_one(feature: str) -> tuple[str, dict[str, str]]:
             rows = [row for row in reasons_records if row.get("Feature") == feature]
-            summaries[feature] = {
+            return feature, {
                 "functional_viewpoint": self._summarize_reason_group(
                     [
                         str(row.get("Functional_Reason", "")).strip()
@@ -525,6 +595,10 @@ class KanoSkill:
                     ]
                 ),
             }
+
+        summaries: dict[str, dict[str, str]] = {}
+        for feature, summary in _parallel_map(features, summarize_one):
+            summaries[feature] = summary
         return summaries
 
     def _summarize_reason_group(self, reasons: list[str]) -> str:

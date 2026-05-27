@@ -9,6 +9,16 @@ interface DragItem {
   status: string;
   scopeStatus?: string;
   parentModuleName?: string;
+  scope?: {
+    kind: 'scope';
+    scopeId: number;
+    scopeStatus: string;
+    reason: string;
+    positiveSummary: string | null;
+    negativeSummary: string | null;
+    positivePictureBase64: string | null;
+    negativePictureBase64: string | null;
+  };
 }
 
 interface ColumnProps {
@@ -24,115 +34,239 @@ interface ColumnProps {
 }
 
 export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
-  const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [activeKanoItem, setActiveKanoItem] = useState<DragItem | null>(null);
+
+  // Heuristic to get original AI recommended status based on generated summaries
+  const getOriginalAiRecommendation = (item: DragItem) => {
+    if (!item.scope) return null;
+    const { positiveSummary, negativeSummary } = item.scope;
+    if (positiveSummary && !negativeSummary) return '本期';
+    if (negativeSummary && !positiveSummary) return '暂缓';
+    return null;
+  };
+
+  const currentColumnLabel = columnKey === 'in_scope' ? '本期' : columnKey === 'deferred' ? '暂缓' : '排除';
 
   return (
-    <div className="bg-slate-100/50 rounded-xl p-3 flex flex-col gap-3 min-h-[400px]">
-      <h4 className="font-medium text-slate-700 text-sm flex justify-between items-center px-1">
+    <div 
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={() => setIsDragOver(true)}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const itemId = e.dataTransfer.getData('itemId');
+        const source = e.dataTransfer.getData('sourceColumn');
+        if (itemId && source !== columnKey) {
+          onMoveItem(itemId, columnKey);
+        }
+      }}
+      className={`rounded-xl p-3 flex flex-col gap-3 min-h-[450px] transition-all border-2 ${
+        isDragOver 
+          ? 'border-dashed border-indigo-400 bg-indigo-50/40 animate-pulse shadow-inner' 
+          : 'border-transparent bg-slate-100/50'
+      }`}
+    >
+      <h4 className="font-bold text-slate-700 text-sm flex justify-between items-center px-1">
         {title}
-        <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full">{items.length}</span>
+        <span className="bg-slate-200/80 text-slate-600 text-xs px-2.5 py-0.5 rounded-full font-bold">{items.length}</span>
       </h4>
+      
       <div className="space-y-3">
-        {items.map(item => (
-          <div 
-            key={item.id} 
-            onClick={() => onItemClick(item)}
-            className={`group bg-white rounded-lg p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border cursor-pointer transition-all ${selectedTarget === item.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300'} ${highlightTarget === item.id ? 'ring-2 ring-amber-400' : ''}`}
-          >
-            {item.parentModuleName && (
-              <div className="mb-1.5 flex">
-                <span className="inline-block text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded shadow-sm">
-                  模块: {item.parentModuleName}
-                </span>
+        {items.map(item => {
+          const originalAiRec = getOriginalAiRecommendation(item);
+          const isOverridden = originalAiRec && originalAiRec !== currentColumnLabel;
+
+          return (
+            <div 
+              key={item.id} 
+              onClick={() => onItemClick(item)}
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('itemId', item.id);
+                e.dataTransfer.setData('sourceColumn', columnKey);
+              }}
+              className={`group bg-white rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.05)] border cursor-grab active:cursor-grabbing transition-all select-none ${
+                selectedTarget === item.id 
+                  ? 'ring-2 ring-indigo-500 border-transparent shadow-md' 
+                  : 'border-slate-200/80 hover:border-indigo-300 hover:shadow-md'
+              } ${highlightTarget === item.id ? 'ring-2 ring-amber-400' : ''}`}
+            >
+              {item.parentModuleName && (
+                <div className="mb-2 flex">
+                  <span className="inline-block text-[9px] bg-indigo-50/60 text-indigo-600 font-extrabold px-2 py-0.5 rounded shadow-sm border border-indigo-100/20">
+                    模块: {item.parentModuleName}
+                  </span>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-start gap-2 relative">
+                <h5 className={`text-sm font-bold leading-snug ${
+                  columnKey === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'
+                }`}>
+                  {item.title}
+                </h5>
               </div>
-            )}
-            <div className="flex justify-between items-start mb-3 gap-2 relative">
-              <h5 className={`text-sm font-medium leading-tight pr-6 ${item.status === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'}`}>{item.title}</h5>
-              <div className="absolute right-0 top-0 opacity-100 flex flex-col gap-1 z-10 group-hover:opacity-100">
-                <div className="relative">
-                  {openMenuItemId === item.id && (
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMenuItemId(null);
-                        setMenuPos(null);
-                      }}
-                    ></div>
+
+              {item.scope && (
+                item.scope.positiveSummary ||
+                item.scope.negativeSummary ||
+                item.scope.positivePictureBase64 ||
+                item.scope.negativePictureBase64
+              ) && (
+                <div className="mt-2.5 flex flex-col gap-2">
+                  {isOverridden && (
+                    <span className="inline-flex items-center gap-1 text-[9px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
+                      ⚠️ 已手动覆盖 AI 原推荐 ({originalAiRec})
+                    </span>
                   )}
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (openMenuItemId === item.id) {
-                        setOpenMenuItemId(null);
-                        setMenuPos(null);
-                        return;
-                      }
-                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                      const menuWidth = 112;
-                      const menuHeight = 160;
-                      const viewportW = globalThis.innerWidth || 1024;
-                      const viewportH = globalThis.innerHeight || 768;
-
-                      const left = Math.min(Math.max(8, rect.right - menuWidth), viewportW - menuWidth - 8);
-                      const preferBottom = rect.bottom + 6;
-                      const preferTop = rect.top - menuHeight - 6;
-                      const top =
-                        preferBottom + menuHeight <= viewportH
-                          ? preferBottom
-                          : preferTop >= 8
-                            ? preferTop
-                            : Math.max(8, Math.min(preferBottom, viewportH - menuHeight - 8));
-
-                      setOpenMenuItemId(item.id);
-                      setMenuPos({ top, left });
+                      setActiveKanoItem(item);
                     }}
-                    className="text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded p-1 transition-colors relative z-50"
+                    className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold transition-colors border border-indigo-100/50 flex items-center justify-center gap-1 shadow-sm select-none"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    📊 查看 Kano 分析评估
                   </button>
-                  {openMenuItemId === item.id && (
-                  <div className="fixed bg-white border border-slate-200 rounded-lg shadow-lg w-28 py-1 z-50" style={menuPos || undefined}>
-                    <div className="px-2 py-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">移动至</div>
-                    {moveTargets
-                      .filter((target) => target.key !== columnKey)
-                      .map((target) => (
-                        <button
-                          key={target.key}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onMoveItem(item.id, target.key);
-                            setOpenMenuItemId(null);
-                            setMenuPos(null);
-                          }}
-                          className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                            target.danger
-                              ? 'text-rose-600 hover:bg-rose-50'
-                              : 'text-slate-700 hover:bg-slate-50 hover:text-indigo-600'
-                          }`}
-                        >
-                          {target.label}
-                        </button>
-                      ))}
-                  </div>
-                  )}
+                </div>
+              )}
+              
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 items-center justify-between">
+                <div className="w-full flex justify-between items-center">
+                  <StatusBadge status={item.status} /> 
+                  {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind] || item.kind}</span>}
                 </div>
               </div>
             </div>
-            
-            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 items-center justify-between">
-              <div className="w-full flex justify-between items-center"><StatusBadge status={item.status} /> {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind] || item.kind}</span>}</div>
+          );
+        })}
+      </div>
+      
+      {onAddItem && (
+        <button
+          onClick={() => onAddItem(columnKey)}
+          className="mt-auto flex items-center justify-center py-2 text-sm text-slate-500 border border-dashed border-slate-300 rounded-xl hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors font-medium"
+        >
+          + 添加项
+        </button>
+      )}
+
+      {/* Kano Modal Pop-up */}
+      {activeKanoItem && activeKanoItem.scope && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
+          onClick={() => setActiveKanoItem(null)}
+        >
+          <div 
+            className="bg-white/95 border border-slate-200 shadow-2xl max-w-3xl w-full flex flex-col rounded-3xl animate-in zoom-in-95 duration-200 max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50 shrink-0 flex justify-between items-start">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                  <span>📊</span> Kano 智能决策分析报告：{activeKanoItem.title}
+                </h3>
+                {activeKanoItem.parentModuleName && (
+                  <p className="text-[10px] text-indigo-650 font-bold mt-1">所属模块：{activeKanoItem.parentModuleName}</p>
+                )}
+              </div>
+              <button 
+                type="button"
+                onClick={() => setActiveKanoItem(null)}
+                className="text-slate-400 hover:text-slate-655 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-655 leading-normal">
+              {/* Row 1: Positive and Negative Summaries */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeKanoItem.scope.positiveSummary && (
+                  <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-4 flex flex-col gap-2">
+                    <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-[11px] uppercase tracking-wider">
+                      💡 AI 收益分析 (正方依据)
+                    </span>
+                    <div className="text-slate-700 bg-white/70 border border-emerald-100/50 p-3 rounded-xl italic leading-relaxed">
+                      "{activeKanoItem.scope.positiveSummary}"
+                    </div>
+                  </div>
+                )}
+
+                {activeKanoItem.scope.negativeSummary && (
+                  <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-4 flex flex-col gap-2">
+                    <span className="font-extrabold text-rose-800 flex items-center gap-1 text-[11px] uppercase tracking-wider">
+                      ⚠️ AI 风险评估 (反方依据)
+                    </span>
+                    <div className="text-slate-700 bg-white/70 border border-rose-100/50 p-3 rounded-xl italic leading-relaxed">
+                      "{activeKanoItem.scope.negativeSummary}"
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Row 2: Kano Pictures */}
+              {(activeKanoItem.scope.positivePictureBase64 || activeKanoItem.scope.negativePictureBase64) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                  {activeKanoItem.scope.positivePictureBase64 && (
+                    <div className="space-y-2">
+                      <span className="font-extrabold text-indigo-755 flex items-center gap-1 text-[11px]">
+                        📊 AI 收益功能链路图 (Kano Positive Chart)
+                      </span>
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
+                        <img 
+                          src={`data:image/png;base64,${activeKanoItem.scope.positivePictureBase64}`} 
+                          alt="AI Positive Chart" 
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {activeKanoItem.scope.negativePictureBase64 && (
+                    <div className="space-y-2">
+                      <span className="font-extrabold text-slate-700 flex items-center gap-1 text-[11px]">
+                        📉 AI 风险结构影响图 (Kano Negative Chart)
+                      </span>
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
+                        <img 
+                          src={`data:image/png;base64,${activeKanoItem.scope.negativePictureBase64}`} 
+                          alt="AI Negative Chart" 
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Decision Reason Details */}
+              {activeKanoItem.scope.reason && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1.5">
+                  <span className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider block">决策依据与论证</span>
+                  <p className="text-slate-600 font-medium leading-relaxed">{activeKanoItem.scope.reason}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 pt-4 border-t border-slate-100 flex justify-end bg-slate-50/30 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveKanoItem(null)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm font-semibold"
+              >
+                关闭报告
+              </button>
             </div>
           </div>
-        ))}
-      </div>
-      <button
-        onClick={() => onAddItem?.(columnKey)}
-        className="mt-auto flex items-center justify-center py-2 text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
-      >
-        + 添加项
-      </button>
+        </div>
+      )}
     </div>
-  )
+  );
 }

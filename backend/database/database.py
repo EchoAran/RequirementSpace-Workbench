@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -45,6 +45,48 @@ AsyncSessionLocal = async_sessionmaker(
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_sqlite_schema_migrations)
+
+
+def _ensure_sqlite_schema_migrations(sync_conn) -> None:
+    if sync_conn.dialect.name != "sqlite":
+        return
+
+    inspector = inspect(sync_conn)
+    if "scenarios" not in inspector.get_table_names():
+        return
+
+    scenario_columns = {
+        column["name"]
+        for column in inspector.get_columns("scenarios")
+    }
+
+    if "gherkin_spec_id" not in scenario_columns:
+        sync_conn.execute(
+            text("ALTER TABLE scenarios ADD COLUMN gherkin_spec_id INTEGER")
+        )
+
+    if "gherkin_scenario_index" not in scenario_columns:
+        sync_conn.execute(
+            text("ALTER TABLE scenarios ADD COLUMN gherkin_scenario_index INTEGER")
+        )
+
+    sync_conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_scenarios_gherkin_spec_id "
+            "ON scenarios (gherkin_spec_id)"
+        )
+    )
+
+    if "prototype_previews" in inspector.get_table_names():
+        prototype_columns = {
+            column["name"]
+            for column in inspector.get_columns("prototype_previews")
+        }
+        if "pages" not in prototype_columns:
+            sync_conn.execute(
+                text("ALTER TABLE prototype_previews ADD COLUMN pages JSON DEFAULT '[]' NOT NULL")
+            )
 
 
 async def drop_db() -> None:

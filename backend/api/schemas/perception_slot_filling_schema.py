@@ -1,17 +1,18 @@
 from pydantic import BaseModel, Field
+from backend.api.schemas.project_schema import CamelModel
 
 
-class PerceptionSlotFillingDraftCreateRequest(BaseModel):
+class PerceptionSlotFillingDraftCreateRequest(CamelModel):
     project_id: int = Field(gt=0)
     perception_job_id: int = Field(gt=0)
 
 
-class PerceptionSlotFilledActorPreview(BaseModel):
+class PerceptionSlotFilledActorPreview(CamelModel):
     actor_name: str
     actor_description: str
 
 
-class PerceptionSlotFilledFeaturePreview(BaseModel):
+class PerceptionSlotFilledFeaturePreview(CamelModel):
     temporary_feature_id: int
     feature_name: str
     feature_description: str
@@ -19,7 +20,7 @@ class PerceptionSlotFilledFeaturePreview(BaseModel):
     parent_feature_id: int | None = None
 
 
-class PerceptionSlotFilledScenarioPreview(BaseModel):
+class PerceptionSlotFilledScenarioPreview(CamelModel):
     feature_id: int
     feature_name: str
     actor_id: int
@@ -28,20 +29,20 @@ class PerceptionSlotFilledScenarioPreview(BaseModel):
     scenario_content: str
 
 
-class PerceptionSlotFilledAcceptanceCriteriaPreview(BaseModel):
+class PerceptionSlotFilledAcceptanceCriteriaPreview(CamelModel):
     scenario_id: int
     scenario_name: str
     acceptance_criteria: list[str]
 
 
-class PerceptionSlotFilledBusinessObjectAttributePreview(BaseModel):
+class PerceptionSlotFilledBusinessObjectAttributePreview(CamelModel):
     business_object_attribute_name: str
     business_object_attribute_description: str
     business_object_attribute_type: str
     business_object_attribute_example: str
 
 
-class PerceptionSlotFilledBusinessObjectPreview(BaseModel):
+class PerceptionSlotFilledBusinessObjectPreview(CamelModel):
     business_object_id: int
     business_object_name: str
     business_object_description: str
@@ -51,7 +52,7 @@ class PerceptionSlotFilledBusinessObjectPreview(BaseModel):
     ] = []
 
 
-class PerceptionSlotFilledFlowStepPreview(BaseModel):
+class PerceptionSlotFilledFlowStepPreview(CamelModel):
     step_name: str
     step_description: str
     step_type: str
@@ -61,14 +62,14 @@ class PerceptionSlotFilledFlowStepPreview(BaseModel):
     next_step_names: list[str] = []
 
 
-class PerceptionSlotFilledFlowPreview(BaseModel):
+class PerceptionSlotFilledFlowPreview(CamelModel):
     flow_name: str
     flow_description: str
     feature_names: list[str] = []
     flow_steps: list[PerceptionSlotFilledFlowStepPreview] = []
 
 
-class PerceptionSlotFillingDraftResponse(BaseModel):
+class PerceptionSlotFillingDraftResponse(CamelModel):
     draft_id: str
     project_id: int
     perception_job_id: int
@@ -83,7 +84,7 @@ class PerceptionSlotFillingDraftResponse(BaseModel):
     flows: list[PerceptionSlotFilledFlowPreview] = []
 
 
-class PerceptionSlotFillingConfirmResponse(BaseModel):
+class PerceptionSlotFillingConfirmResponse(CamelModel):
     project_id: int
     filler_kind: str
     created_count: int = 0
@@ -95,6 +96,6 @@ class PerceptionSlotFillingConfirmResponse(BaseModel):
     message: str = "perception_slot_filled"
 
 
-class PerceptionSlotFillingDraftDiscardResponse(BaseModel):
+class PerceptionSlotFillingDraftDiscardResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"

@@ -1,9 +1,18 @@
 from pydantic import BaseModel, Field
 
 
-class AcceptanceCriteriaGenerationDraftCreateRequest(BaseModel):
+class AcceptanceCriteriaGenerationFullDraftCreateRequest(BaseModel):
     project_id: int = Field(gt=0)
-    scenario_ids: list[int] | None = None
+
+
+class AcceptanceCriteriaGenerationSingleDraftCreateRequest(BaseModel):
+    project_id: int = Field(gt=0)
+    scenario_id: int = Field(gt=0)
+
+
+class AcceptanceCriteriaGenerationBatchDraftCreateRequest(BaseModel):
+    project_id: int = Field(gt=0)
+    scenario_ids: list[int]
 
 
 class GeneratedAcceptanceCriteriaPreview(BaseModel):

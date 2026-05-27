@@ -320,6 +320,26 @@ class PerceptionJobService:
                     "perception_kind_code": result_kind_code,
                     "perception_description": description,
                 }
+
+                # Also populate ProjectModel.perception_slot!
+                from backend.database.model import ProjectModel, PerceptionSlotModel
+                project_res = await session.execute(
+                    select(ProjectModel).where(ProjectModel.id == job.project_id)
+                )
+                project = project_res.scalar_one_or_none()
+                if project:
+                    # Clean up existing slot if any (since it's a 1-to-1 unique relationship)
+                    if project.perception_slot:
+                        await session.delete(project.perception_slot)
+                    # Create new slot
+                    slot_model = PerceptionSlotModel(
+                        id=job.id, # Use job id to align with job.result_slot_payload's slot id
+                        project_id=job.project_id,
+                        perception_kind=result_kind.value,
+                        description=description
+                    )
+                    session.add(slot_model)
+
                 await session.commit()
 
             except Exception as error:

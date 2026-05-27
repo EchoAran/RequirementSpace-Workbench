@@ -29,6 +29,7 @@ SCOPE_GENERATION_ERRORS = {
     "invalid_feature_reference",
     "invalid_scope_status",
     "invalid_scope_payload",
+    "invalid_skill_payload",
     "invalid_picture_base64",
 }
 

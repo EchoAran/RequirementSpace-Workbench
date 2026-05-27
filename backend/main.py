@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import logging
+
 from fastapi import FastAPI
 
 from backend.api.routes.project_creation_routes import (
@@ -58,13 +60,29 @@ from backend.api.routes.choice_routes import (
 from backend.api.routes.project_requirements_routes import (
     router as project_requirements_router,
 )
+from backend.api.routes.project_routes import (
+    router as project_router,
+)
+from backend.api.routes.prototype_generation_routes import (
+    router as prototype_generation_router,
+)
 
 from backend.database.database import init_db
+from backend.api.services import service_registry
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
 async def lifespan(fast_api: FastAPI):
     await init_db()
+    logger.info(
+        "RequirementSpace generation backend: %s; scope service: %s.%s",
+        service_registry.generation_backend,
+        type(service_registry.scope_generation_service).__module__,
+        type(service_registry.scope_generation_service).__name__,
+    )
     yield
     # 【应用关闭时执行】（可选）
     # await close_db()
@@ -73,6 +91,12 @@ app = FastAPI(
     title="Requirement Space Workbench API",
     lifespan=lifespan  # 绑定生命周期
 )
+
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "message": "Requirement Space Workbench API is running"}
+
 
 # 注册路由
 app.include_router(project_creation_router)
@@ -94,3 +118,5 @@ app.include_router(flow_router)
 app.include_router(scope_router)
 app.include_router(choice_router)
 app.include_router(project_requirements_router)
+app.include_router(project_router)
+app.include_router(prototype_generation_router)

@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 from datetime import datetime
 from typing import Optional
+from backend.api.schemas.project_schema import CamelModel
 
-class AuditLogResponse(BaseModel):
+class AuditLogResponse(CamelModel):
     id: int
     project_id: int
     action_type: str
@@ -13,22 +14,19 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
-
-class UserRequirementsUpdateRequest(BaseModel):
+class UserRequirementsUpdateRequest(CamelModel):
     user_requirements: str = Field(..., description="Project raw user requirements text")
 
 
-class UserRequirementsRefineRequest(BaseModel):
+class UserRequirementsRefineRequest(CamelModel):
     user_feedback: Optional[str] = Field(None, description="Optional extra user suggestions or feedback to guide requirement refinement")
 
 
-class UserRequirementsResponse(BaseModel):
+class UserRequirementsResponse(CamelModel):
     project_id: int
     user_requirements: str
 
 
-class DraftRegenerateRequest(BaseModel):
+class DraftRegenerateRequest(CamelModel):
     user_feedback: Optional[str] = Field(None, description="Optional modification suggestions or feedback to steer the regeneration process")

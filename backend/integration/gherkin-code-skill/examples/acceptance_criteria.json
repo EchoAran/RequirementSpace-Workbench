@@ -1,0 +1,132 @@
+{
+  "Features": [
+    {
+      "Feature": "Select historical era",
+      "Narrative": {
+        "As": "a visitor to the historical experience",
+        "I want": "to select a historical era and see era-specific content, settings, and options",
+        "So that": "I can explore the experience in a way that matches the era I chose"
+      },
+      "Background": [
+        "Given the system has historical-era views available for Ancient, Medieval, Industrial, Modern, and Future",
+        "And the user is currently on the historical era selection screen"
+      ],
+      "Scenarios": [
+        {
+          "Scenario": "Scenario 1: Display Ancient-era content when Ancient is selected",
+          "Given": "the user selects Ancient as the historical era",
+          "When": "the system updates the displayed experience",
+          "Then": "the system shall display Ancient-era content, settings, and options relevant to Ancient"
+        },
+        {
+          "Scenario": "Scenario 2: Display Medieval-era content when Medieval is selected",
+          "Given": "the user selects Medieval as the historical era",
+          "When": "the system updates the displayed experience",
+          "Then": "the system shall display Medieval-era content, settings, and options relevant to Medieval"
+        },
+        {
+          "Scenario": "Scenario 3: Display Industrial-era content when Industrial is selected",
+          "Given": "the user selects Industrial as the historical era",
+          "When": "the system updates the displayed experience",
+          "Then": "the system shall display Industrial-era content, settings, and options relevant to Industrial"
+        },
+        {
+          "Scenario": "Scenario 4: Display Modern-era content when Modern is selected",
+          "Given": "the user selects Modern as the historical era",
+          "When": "the system updates the displayed experience",
+          "Then": "the system shall display Modern-era content, settings, and options relevant to Modern"
+        },
+        {
+          "Scenario": "Scenario 5: Display Future-era content when Future is selected",
+          "Given": "the user selects Future as the historical era",
+          "When": "the system updates the displayed experience",
+          "Then": "the system shall display Future-era content, settings, and options relevant to Future"
+        },
+        {
+          "Scenario": "Scenario 6: Preserve the current view when no historical era is selected",
+          "Given": "the user has not selected any historical era",
+          "When": "the system evaluates the current era selection",
+          "Then": "the system shall preserve the current era-specific view",
+          "And": "the system shall not make any change to the displayed content, settings, or options"
+        },
+        {
+          "Scenario Outline": "Scenario Outline: Display the correct era-specific experience for a selected historical era",
+          "Given": "the user selects <historical-era> as the historical era",
+          "And": "the current experience is configured for <historical-era>",
+          "When": "the system refreshes the displayed view",
+          "Then": "the system shall display <historical-era>-era content, settings, and options relevant to <historical-era>",
+          "Examples": [
+            {
+              "Headers": ["historical-era"],
+              "Rows": [
+                ["Ancient"],
+                ["Medieval"],
+                ["Industrial"],
+                ["Modern"],
+                ["Future"]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Feature": "Browse era overview",
+      "Narrative": {
+        "As": "a visitor exploring the theme",
+        "I want": "to view a chronological overview of the eras and open a selected era for more detail",
+        "So that": "I can quickly understand the timeline and learn about the eras relevant to the theme"
+      },
+      "Background": [
+        "Given the user is on the era overview page",
+        "And the theme contains era overview data"
+      ],
+      "Scenarios": [
+        {
+          "Scenario": "Scenario 1: Display available eras in chronological order",
+          "Given": "era overview data is available",
+          "When": "the user views the era overview",
+          "Then": "the system displays each available era",
+          "And": [
+            "each era shows its era name, time period, and key highlights",
+            "the eras are presented in sequential order from earliest to latest based on their time period"
+          ]
+        },
+        {
+          "Scenario": "Scenario 2: Open a selected era from the overview",
+          "Given": "the user is viewing the era overview",
+          "And": "multiple eras are displayed",
+          "When": "the user selects a specific era",
+          "Then": "the system opens the detailed overview for the selected era"
+        },
+        {
+          "Scenario": "Scenario 3: Show an empty state when no era data is available",
+          "Given": "no era overview data is available",
+          "When": "the user views the era overview",
+          "Then": "the system displays an empty-state message",
+          "And": "the message indicates that the era overview cannot be displayed"
+        },
+        {
+          "Scenario Outline": "Scenario Outline: Display eras in chronological order with their details",
+          "Given": "era overview data is available for the theme",
+          "And": "the user is viewing the era overview",
+          "When": "the system displays the era <era-name> with time period <time-period> and key highlights <highlights>",
+          "Then": [
+            "the era is shown in the overview",
+            "the era appears in the correct chronological position relative to other eras"
+          ],
+          "Examples": [
+            {
+              "Headers": ["era-name", "time-period", "highlights"],
+              "Rows": [
+                ["Ancient Origins", "500 BCE - 200 CE", "Early settlements and foundational innovations"],
+                ["Medieval Expansion", "600 CE - 1400 CE", "Trade growth and cultural development"],
+                ["Modern Era", "1800 CE - Present", "Industrial change and global connectivity"]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

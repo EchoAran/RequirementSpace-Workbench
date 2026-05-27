@@ -60,6 +60,47 @@ function GlobalToast() {
   );
 }
 
+function GlobalTaskStatus() {
+  const isGenerating = useWorkspaceStore((s) => s.isGenerating);
+  const isLoading = useWorkspaceStore((s) => s.isLoading);
+  const lastActionMessage = useWorkspaceStore((s) => s.lastActionMessage);
+
+  if (!isGenerating && !isLoading) return null;
+
+  const message = lastActionMessage || (isGenerating ? 'AI 正在执行任务，请稍候...' : '任务正在处理中，请稍候...');
+
+  return (
+    <>
+      {isGenerating && (
+        <div className="fixed inset-0 z-[80] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white/95 shadow-2xl p-8 text-center space-y-5">
+            <div className="mx-auto relative flex h-16 w-16 items-center justify-center">
+              <div className="h-16 w-16 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-black tracking-[0.2em] text-indigo-600">AI 任务执行中</div>
+              <div className="text-sm font-bold text-slate-900 leading-relaxed">{message}</div>
+              <div className="text-xs text-slate-500 leading-relaxed">
+                页面会在任务完成后自动刷新当前结果，您无需重复点击按钮。
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isGenerating && isLoading && (
+        <div className="fixed top-4 right-4 z-[75] max-w-sm rounded-2xl border border-slate-200 bg-white/95 shadow-xl px-4 py-3 flex items-start gap-3">
+          <div className="mt-0.5 h-5 w-5 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[10px] font-black tracking-[0.2em] text-slate-500">任务处理中</div>
+            <div className="text-xs font-bold text-slate-800 leading-relaxed break-words">{message}</div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function App() {
   const { currentSystemView } = useWorkspaceStore();
 
@@ -82,6 +123,7 @@ export function App() {
           <ScopedAIBar />
         </div>
       </Layout>
+      <GlobalTaskStatus />
       <GlobalToast />
     </BrowserRouter>
   );

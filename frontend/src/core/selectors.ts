@@ -14,7 +14,6 @@ import type {
   Issue,
   Choice,
   ChoiceGroup,
-  Proposal,
   GoalNode,
   CapabilityNode,
   TaskNode,
@@ -40,7 +39,10 @@ export const selectAllNodes = (space: RequirementSpace | null): any[] => {
 };
 
 export const selectAllIssues = (space: RequirementSpace | null): Issue[] => {
-  return detectIssues(space);
+  if (!space) return [];
+  return space.issuesCompatible && space.issuesCompatible.length > 0
+    ? space.issuesCompatible
+    : detectIssues(space);
 };
 
 export const selectAllLinks = (): any[] => [];
@@ -50,7 +52,6 @@ export const selectAllSlots = (space: RequirementSpace | null): any[] => {
 };
 export const selectAllChoiceGroups = (): any[] => [];
 export const selectAllChoices = (): any[] => [];
-export const selectAllProposals = (): any[] => [];
 
 export const selectPerformerActorIds = (space: RequirementSpace | null, taskId: string | number): number[] => {
   if (!space) return [];
@@ -134,7 +135,7 @@ export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary
 
 // Page Health summary calculation
 export type PageHealth = {
-  status: '阻塞' | '待决策' | '可预览' | '已收敛' | '不可用' | '未开始';
+  status: '阻塞' | '待决策' | '可预览' | '已收敛' | '不可用' | '未开始' | '待前置就绪' | '待设计';
   issueCount: number;
   todoCount: number;
   hasRisk: boolean;
@@ -144,50 +145,144 @@ export type PageHealth = {
 export const buildPageHealth = (space: RequirementSpace | null, path: string): PageHealth => {
   if (!space) return { status: '未开始', issueCount: 0, todoCount: 0, hasRisk: false, disabled: false };
 
-  const issues = detectIssues(space);
+  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
+    ? space.issuesCompatible
+    : detectIssues(space);
   const hasPerception = space.perceptionSlot !== null;
+
+  // Prerequisites checks
+  const isWhatComplete = (space.actors || []).length > 0 && (space.features || []).length > 0;
+  
+  // Find leaf features
+  const leafFeatures = (space.features || []).filter(f => {
+    const isParent = (space.features || []).some(child => child.parentId === f.featureId);
+    return !isParent;
+  });
+  
+  // Check if all leaf features have been decided
+  const hasUndecidedScope = leafFeatures.length > 0 && leafFeatures.some(f => !f.scope || !f.scope.scopeStatus);
 
   let relatedIssues: Issue[] = [];
   let todoCount = 0;
-  let isPreview = false;
 
   if (path === '/') {
     relatedIssues = issues;
     todoCount = hasPerception ? 1 : 0;
-  } else if (path === '/what') {
+    
+    const issueCount = relatedIssues.length;
+    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
+    const hasRisk = highRiskCount > 0;
+    
+    let status: PageHealth['status'] = '已收敛';
+    if (hasRisk) {
+      status = '阻塞';
+    } else if (issueCount > 0 || todoCount > 0) {
+      status = '待决策';
+    }
+    
+    return { status, issueCount, todoCount, hasRisk, disabled: false };
+  } 
+  
+  if (path === '/what') {
     relatedIssues = issues.filter(i => i.suggestedProjection === 'goal' || i.suggestedProjection === 'role');
     todoCount = (hasPerception && (space.perceptionSlot?.perceptionKind.includes('角色') || space.perceptionSlot?.perceptionKind.includes('功能') || space.perceptionSlot?.perceptionKind.includes('场景') || space.perceptionSlot?.perceptionKind.includes('成功'))) ? 1 : 0;
-  } else if (path === '/flow') {
+    
+    const issueCount = relatedIssues.length;
+    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
+    const hasRisk = highRiskCount > 0;
+    
+    const isEmpty = (space.actors || []).length === 0 && (space.features || []).length === 0;
+    
+    let status: PageHealth['status'] = '已收敛';
+    if (isEmpty) {
+      status = '待设计';
+    } else if (hasRisk) {
+      status = '阻塞';
+    } else if (issueCount > 0 || todoCount > 0) {
+      status = '待决策';
+    }
+    
+    return { status, issueCount, todoCount, hasRisk, disabled: false };
+  } 
+  
+  if (path === '/flow') {
+    if (!isWhatComplete) {
+      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
+    }
+    
     relatedIssues = issues.filter(i => i.suggestedProjection === 'system');
     todoCount = (hasPerception && space.perceptionSlot?.perceptionKind.includes('流程')) ? 1 : 0;
-  } else if (path === '/scope') {
+    
+    const issueCount = relatedIssues.length;
+    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
+    const hasRisk = highRiskCount > 0;
+    
+    const isEmpty = (space.flows || []).length === 0;
+    
+    let status: PageHealth['status'] = '已收敛';
+    if (isEmpty) {
+      status = '待设计';
+    } else if (hasRisk) {
+      status = '阻塞';
+    } else if (issueCount > 0 || todoCount > 0) {
+      status = '待决策';
+    }
+    
+    return { status, issueCount, todoCount, hasRisk, disabled: false };
+  } 
+  
+  if (path === '/scope') {
+    if (!isWhatComplete) {
+      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
+    }
+    
+    // Fallback if there are actually no leaf features defined
+    if (leafFeatures.length === 0) {
+      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
+    }
+    
     relatedIssues = issues.filter(i => i.suggestedProjection === 'data');
-    todoCount = 0;
-  } else if (path === '/preview') {
-    isPreview = true;
+    
+    const issueCount = relatedIssues.length;
+    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
+    const hasRisk = highRiskCount > 0;
+    
+    let status: PageHealth['status'] = '已收敛';
+    if (hasUndecidedScope) {
+      status = '待决策';
+    } else if (hasRisk) {
+      status = '阻塞';
+    }
+    
+    return { status, issueCount, todoCount: 0, hasRisk, disabled: false };
+  } 
+  
+  if (path === '/preview') {
+    const isHowComplete = (space.flows || []).length > 0;
+    const isScopeComplete = leafFeatures.length > 0 && !hasUndecidedScope;
+    const isPreviewAvailable = isWhatComplete && isHowComplete && isScopeComplete;
+    
+    if (!isPreviewAvailable) {
+      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
+    }
+    
     relatedIssues = issues;
-    todoCount = 0;
+    
+    const issueCount = relatedIssues.length;
+    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
+    const hasRisk = highRiskCount > 0;
+    
+    let status: PageHealth['status'] = '可预览';
+    if (hasRisk) {
+      status = '阻塞';
+    } else if (issueCount > 0) {
+      status = '待决策';
+    }
+    
+    return { status, issueCount, todoCount: 0, hasRisk, disabled: false };
   }
 
-  const isAvailable = (space.actors || []).length > 0 && (space.features || []).length > 0;
-  if (isPreview && !isAvailable) {
-    return { status: '不可用', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-  }
-
-  const issueCount = relatedIssues.length;
-  const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-  const hasRisk = highRiskCount > 0;
-
-  let status: PageHealth['status'] = '已收敛';
-  if (hasRisk) {
-    status = '阻塞';
-  } else if (issueCount > 0 || todoCount > 0) {
-    status = '待决策';
-  } else if (isPreview) {
-    status = '可预览';
-  }
-
-  return { status, issueCount, todoCount, hasRisk, disabled: isPreview ? !isAvailable : false };
+  return { status: '未开始', issueCount: 0, todoCount: 0, hasRisk: false, disabled: false };
 };
 
 // Overview dashboard calculation
@@ -204,12 +299,12 @@ export type OverviewModel = {
   recentChoices: any[];
   openChoiceGroupsCount: number;
   openSlotsCount: number;
-  pendingProposalCount: number;
+
   aiAssumptionLedger: any[];
   recentAuditOperations: any[];
 };
 
-export const buildOverviewModel = (space: RequirementSpace | null): OverviewModel => {
+export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: any[] = []): OverviewModel => {
   const readiness = buildReadiness(space);
   if (!space) {
     return {
@@ -219,13 +314,15 @@ export const buildOverviewModel = (space: RequirementSpace | null): OverviewMode
       recentChoices: [],
       openChoiceGroupsCount: 0,
       openSlotsCount: 0,
-      pendingProposalCount: 0,
+
       aiAssumptionLedger: [],
       recentAuditOperations: [],
     };
   }
 
-  const issues = detectIssues(space);
+  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
+    ? space.issuesCompatible
+    : detectIssues(space);
   const highRiskIssues = issues.filter(i => i.severity === 'high');
 
   const dq: any[] = [];
@@ -241,6 +338,22 @@ export const buildOverviewModel = (space: RequirementSpace | null): OverviewMode
     });
   }
 
+  // Push open choice groups
+  if (space.choiceGroups) {
+    Object.values(space.choiceGroups).forEach((cg: any) => {
+      if (cg.status === 'open') {
+        const choicesCount = cg.choices?.length || 0;
+        dq.push({
+          id: cg.id,
+          kind: 'choiceGroup' as const,
+          title: `待决决策项：AI 推演方案`,
+          description: `针对检测到的系统设计缝隙，提供了 ${choicesCount} 个可选的 AI 智能推演落地方案。`,
+          original: cg,
+        });
+      }
+    });
+  }
+
   // Push rule-based issues next
   issues.forEach(issue => {
     dq.push({
@@ -252,24 +365,20 @@ export const buildOverviewModel = (space: RequirementSpace | null): OverviewMode
     });
   });
 
+  const choicesCompatible = (space as any).choicesCompatible || [];
+  const recentChoices = choicesCompatible.filter((c: any) => c.status === 'candidate').slice(0, 3);
+  const openChoiceGroupsCount = Object.values(space.choiceGroups || {}).filter((cg: any) => cg.status === 'open').length;
+
   return {
     readiness,
     highRiskIssues,
     decisionQueue: dq.slice(0, 5),
-    recentChoices: [],
-    openChoiceGroupsCount: 0,
+    recentChoices,
+    openChoiceGroupsCount,
     openSlotsCount: space.perceptionSlot ? 1 : 0,
-    pendingProposalCount: 0,
+
     aiAssumptionLedger: [],
-    recentAuditOperations: [
-      {
-        id: '1',
-        timestamp: new Date().toISOString(),
-        actionType: '系统初始化',
-        summary: '项目数据库加载成功，就绪度模型已就位。',
-        targetIds: []
-      }
-    ],
+    recentAuditOperations: auditLogs.slice(0, 5),
   };
 };
 
@@ -335,7 +444,7 @@ export type SystemProjection = {
   getExceptionStepTitles: (stepId: string) => string[];
   getStepSlots: (stepId: string) => any[];
   businessObjects: any[];
-  getRelatedStepsForObject: (objectId: string) => any[];
+  getRelatedStepsForObject: (objectId: string | number) => any[];
 };
 
 export const buildSystemProjection = (space: RequirementSpace | null): SystemProjection => {
@@ -355,7 +464,9 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
 
   if (!space) return empty;
 
-  const issues = detectIssues(space);
+  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
+    ? space.issuesCompatible
+    : detectIssues(space);
   const abnormalIssues = issues.filter(i => i.suggestedProjection === 'system');
 
   const allSteps = (space.flows || []).flatMap(f => f.flowSteps || []);
@@ -391,7 +502,16 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
 
   const getRelatedStepsForObject = (objectId: string | number) => {
     const numId = typeof objectId === 'string' ? parseInt(objectId, 10) : objectId;
-    return allSteps.filter(s => (s.inputBusinessObjectIds || []).includes(numId) || (s.outputBusinessObjectIds || []).includes(numId));
+    return allSteps
+      .filter(s => (s.inputBusinessObjectIds || []).includes(numId) || (s.outputBusinessObjectIds || []).includes(numId))
+      .map(step => ({
+        ...step,
+        id: step.stepId.toString(),
+        title: step.stepName,
+        description: step.stepDescription,
+        status: 'confirmed',
+        kind: 'flow_step'
+      }));
   };
 
   return {
@@ -436,7 +556,9 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
   }
 
   // Add relevant rule issues
-  const issues = detectIssues(space);
+  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
+    ? space.issuesCompatible
+    : detectIssues(space);
   issues.forEach(issue => {
     items.push({
       kind: 'issue',
@@ -448,18 +570,48 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
   return items;
 };
 
+export const normalizeScopeStatus = (status: string | undefined | null): '本期' | '暂缓' | '排除' => {
+  if (!status) return '本期';
+  const s = status.toLowerCase();
+  if (s === 'current' || s === 'in_scope' || s === '本期') return '本期';
+  if (s === 'postponed' || s === 'deferred' || s === '暂缓') return '暂缓';
+  if (s === 'exclude' || s === 'excluded' || s === '排除') return '排除';
+  return '本期';
+};
+
 // Tree-hierarchy feature selectors
 export const getRootCapabilities = (space: RequirementSpace | null): any[] => {
   if (!space) return [];
-  return (space.features || [])
-    .filter(f => f.parentId === null)
-    .map(f => ({
-      id: f.featureId.toString(),
-      title: f.featureName,
-      description: f.featureDescription,
-      status: 'confirmed',
-      scopeStatus: f.scope?.scopeStatus || '本期'
-    }));
+  const features = space.features || [];
+  const nullParentFeatures = features.filter(f => f.parentId === null);
+  
+  // If there is exactly one top-level root feature (the L1 system root)
+  // and other features exist, treat L2 features (children of L1) as the root capabilities.
+  if (nullParentFeatures.length === 1 && features.length > 1) {
+    const rootFeature = nullParentFeatures[0];
+    const l2Features = features.filter(f => f.parentId === rootFeature.featureId);
+    if (l2Features.length > 0) {
+      return l2Features.map(f => ({
+        ...f,
+        id: f.featureId.toString(),
+        title: f.featureName,
+        description: f.featureDescription,
+        status: 'confirmed',
+        scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
+        kind: 'feature'
+      }));
+    }
+  }
+  
+  return nullParentFeatures.map(f => ({
+    ...f,
+    id: f.featureId.toString(),
+    title: f.featureName,
+    description: f.featureDescription,
+    status: 'confirmed',
+    scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
+    kind: 'feature'
+  }));
 };
 
 export const getChildCapabilities = (space: RequirementSpace | null, capId: string | number): any[] => {
@@ -468,11 +620,13 @@ export const getChildCapabilities = (space: RequirementSpace | null, capId: stri
   return (space.features || [])
     .filter(f => f.parentId === numId)
     .map(f => ({
+      ...f,
       id: f.featureId.toString(),
       title: f.featureName,
       description: f.featureDescription,
       status: 'confirmed',
-      scopeStatus: f.scope?.scopeStatus || '本期'
+      scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
+      kind: 'feature'
     }));
 };
 
@@ -535,25 +689,29 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
   const empty = { inScope: [], deferred: [], dependencies: [], outOfScope: [], excluded: [] };
   if (!space) return empty;
 
-  // Filter leaf capabilities only (nodes with parent and no children)
+  // Filter leaf capabilities only
   const leafFeatures = (space.features || []).filter(f => {
-    const isLeaf = !(space.features || []).some(child => child.parentId === f.featureId);
-    return f.parentId !== null && isLeaf;
+    const isParent = (space.features || []).some(child => child.parentId === f.featureId);
+    return !isParent;
   });
 
   const mapToNode = (f: FeatureNode) => {
     const parentModule = (space.features || []).find(p => p.featureId === f.parentId);
+    const normStatus = normalizeScopeStatus(f.scope?.scopeStatus);
     return {
       id: f.featureId.toString(),
       title: f.featureName,
       description: f.featureDescription,
       status: 'confirmed',
-      scopeStatus: f.scope?.scopeStatus || '本期',
+      scopeStatus: normStatus,
       parentModuleName: parentModule ? parentModule.featureName : '未分组模块',
-      scope: f.scope || {
+      scope: f.scope ? {
+        ...f.scope,
+        scopeStatus: normStatus
+      } : {
         kind: 'scope' as const,
         scopeId: Math.floor(1000 + Math.random() * 9000),
-        scopeStatus: '本期',
+        scopeStatus: normStatus,
         reason: '默认包含在本期范围中，请点击卡片录入决策缘由与Kano分析。',
         positiveSummary: null,
         negativeSummary: null,
@@ -611,7 +769,7 @@ export const buildPreviewCheckpoints = (space: RequirementSpace | null) => {
       projection: 'system',
       checks: [
         { label: '存在流程步骤', passed: (space.flows || []).some(f => (f.flowSteps || []).length > 0) },
-        { label: '无严重业务缺陷', passed: detectIssues(space).filter(i => i.severity === 'high').length === 0 },
+        { label: '无严重业务缺陷', passed: (space.issuesCompatible && space.issuesCompatible.length > 0 ? space.issuesCompatible : detectIssues(space)).filter(i => i.severity === 'high').length === 0 },
       ],
       passed: false,
     },
@@ -639,10 +797,10 @@ export const buildRolePages = (space: RequirementSpace | null, actorId: string |
   const actor = (space.actors || []).find(a => a.actorId === numId);
   if (!actor) return [];
 
-  // Filter leaf capabilities only (nodes with parent and no children) associated with this actor
+  // Filter leaf capabilities only associated with this actor
   const leafFeatures = (space.features || []).filter(f => {
-    const isLeaf = !(space.features || []).some(child => child.parentId === f.featureId);
-    return f.parentId !== null && isLeaf && (f.actorIds || []).includes(numId);
+    const isParent = (space.features || []).some(child => child.parentId === f.featureId);
+    return !isParent && (f.actorIds || []).includes(numId);
   });
 
   return leafFeatures.map(f => {

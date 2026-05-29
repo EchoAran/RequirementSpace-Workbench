@@ -88,7 +88,7 @@ logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(fast_api: FastAPI):
-    await init_db()
+    # await init_db()
     logger.info(
         "RequirementSpace generation backend: %s; scope service: %s.%s",
         service_registry.generation_backend,

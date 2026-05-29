@@ -96,12 +96,12 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
       {(relatedIssueCount || relatedChoiceCount) ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {(relatedIssueCount || 0) > 0 && (
-            <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">
+            <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
               {relatedIssueCount} 个关联 Issue
             </span>
           )}
           {(relatedChoiceCount || 0) > 0 && (
-            <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
               {relatedChoiceCount} 个关联 Choice
             </span>
           )}
@@ -117,13 +117,13 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
       {(nextSteps?.length || exceptionSteps?.length) ? (
         <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
           {nextSteps && nextSteps.length > 0 && (
-            <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+            <div className="text-xs text-slate-500 flex items-center gap-1.5">
               <span className="text-slate-400 font-medium w-10 flex-shrink-0">下一步</span>
               <span className="font-medium text-slate-700">{nextSteps.join("、")}</span>
             </div>
           )}
           {exceptionSteps && exceptionSteps.length > 0 && (
-            <div className="text-[11px] text-rose-500 flex items-center gap-1.5">
+            <div className="text-xs text-rose-500 flex items-center gap-1.5">
               <span className="text-rose-400 font-medium w-10 flex-shrink-0">异常分支</span>
               <span className="font-medium text-rose-700">{exceptionSteps.join("、")}</span>
             </div>

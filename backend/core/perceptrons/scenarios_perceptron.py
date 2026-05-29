@@ -71,7 +71,7 @@ class ScenariosPerceptron(BasePerceptron[ScenariosPerceptronInput]):
                 "{{scenarios}}",
                 scenarios_,
             ),
-            print_log=False,
+            print_log=True,
         )
 
         return json.loads(response)

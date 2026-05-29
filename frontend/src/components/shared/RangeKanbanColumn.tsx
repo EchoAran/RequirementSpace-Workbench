@@ -46,7 +46,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
     return null;
   };
 
-  const currentColumnLabel = columnKey === 'in_scope' ? '本期' : columnKey === 'deferred' ? '暂缓' : '排除';
+  const currentColumnLabel = columnKey === 'current' ? '本期' : columnKey === 'postponed' ? '暂缓' : '排除';
 
   return (
     <div 
@@ -93,17 +93,17 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   : 'border-slate-200/80 hover:border-indigo-300 hover:shadow-md'
               } ${highlightTarget === item.id ? 'ring-2 ring-amber-400' : ''}`}
             >
-              {item.parentModuleName && (
-                <div className="mb-2 flex">
-                  <span className="inline-block text-[9px] bg-indigo-50/60 text-indigo-600 font-extrabold px-2 py-0.5 rounded shadow-sm border border-indigo-100/20">
+              <div className="mb-2 flex flex-wrap gap-1">
+                {item.parentModuleName && (
+                  <span className="inline-block text-[10px] bg-indigo-50/60 text-indigo-600 font-extrabold px-2 py-0.5 rounded shadow-sm border border-indigo-100/20">
                     模块: {item.parentModuleName}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               
               <div className="flex justify-between items-start gap-2 relative">
                 <h5 className={`text-sm font-bold leading-snug ${
-                  columnKey === 'excluded' ? 'line-through text-slate-400' : 'text-slate-900'
+                  columnKey === 'exclude' ? 'line-through text-slate-400' : 'text-slate-900'
                 }`}>
                   {item.title}
                 </h5>
@@ -117,7 +117,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
               ) && (
                 <div className="mt-2.5 flex flex-col gap-2">
                   {isOverridden && (
-                    <span className="inline-flex items-center gap-1 text-[9px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
+                    <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
                       ⚠️ 已手动覆盖 AI 原推荐 ({originalAiRec})
                     </span>
                   )}
@@ -145,15 +145,6 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
         })}
       </div>
       
-      {onAddItem && (
-        <button
-          onClick={() => onAddItem(columnKey)}
-          className="mt-auto flex items-center justify-center py-2 text-sm text-slate-500 border border-dashed border-slate-300 rounded-xl hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors font-medium"
-        >
-          + 添加项
-        </button>
-      )}
-
       {/* Kano Modal Pop-up */}
       {activeKanoItem && activeKanoItem.scope && (
         <div 
@@ -171,26 +162,26 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   <span>📊</span> Kano 智能决策分析报告：{activeKanoItem.title}
                 </h3>
                 {activeKanoItem.parentModuleName && (
-                  <p className="text-[10px] text-indigo-650 font-bold mt-1">所属模块：{activeKanoItem.parentModuleName}</p>
+                  <p className="text-[10px] text-indigo-600 font-bold mt-1">所属模块：{activeKanoItem.parentModuleName}</p>
                 )}
               </div>
               <button 
                 type="button"
                 onClick={() => setActiveKanoItem(null)}
-                className="text-slate-400 hover:text-slate-655 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
+                className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
               >
                 ✕
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-655 leading-normal">
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-600 leading-normal">
               {/* Row 1: Positive and Negative Summaries */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {activeKanoItem.scope.positiveSummary && (
                   <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-4 flex flex-col gap-2">
-                    <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-[11px] uppercase tracking-wider">
-                      💡 AI 收益分析 (正方依据)
+                    <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-xs uppercase tracking-wider">
+                      💡 有该功能时的用户感受
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-emerald-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.positiveSummary}"
@@ -200,8 +191,8 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
 
                 {activeKanoItem.scope.negativeSummary && (
                   <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-4 flex flex-col gap-2">
-                    <span className="font-extrabold text-rose-800 flex items-center gap-1 text-[11px] uppercase tracking-wider">
-                      ⚠️ AI 风险评估 (反方依据)
+                    <span className="font-extrabold text-rose-800 flex items-center gap-1 text-xs uppercase tracking-wider">
+                      ⚠️ 缺少该功能时的用户感受
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-rose-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.negativeSummary}"
@@ -215,8 +206,8 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
                   {activeKanoItem.scope.positivePictureBase64 && (
                     <div className="space-y-2">
-                      <span className="font-extrabold text-indigo-755 flex items-center gap-1 text-[11px]">
-                        📊 AI 收益功能链路图 (Kano Positive Chart)
+                      <span className="font-extrabold text-indigo-700 flex items-center gap-1 text-xs">
+                        📊 有该功能时的体验影响图
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -230,8 +221,8 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
 
                   {activeKanoItem.scope.negativePictureBase64 && (
                     <div className="space-y-2">
-                      <span className="font-extrabold text-slate-700 flex items-center gap-1 text-[11px]">
-                        📉 AI 风险结构影响图 (Kano Negative Chart)
+                      <span className="font-extrabold text-slate-700 flex items-center gap-1 text-xs">
+                        📉 缺少该功能时的体验影响图
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 

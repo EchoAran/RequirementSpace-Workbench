@@ -21,9 +21,25 @@ from backend.api.services.scope_generation_service import ScopeGenerationService
 from backend.api.services.project_service import ProjectService
 
 
-# Draft services keep in-memory draft state. Routes and issue resolvers must
-# share these instances, otherwise a resolver-created draft cannot be confirmed
-# through the normal draft API.
+# ==============================================================================
+# SERVICE REGISTRY ASYMMETRY DOCUMENTATION:
+#
+# 1. Background: The RequirementSpace workbench system operates in two backend modes
+#    controlled by the `REQUIREMENTSPACE_GENERATION_BACKEND` environment variable:
+#    - "legacy": Uses default generative LLM prompts and in-house parsing pipelines.
+#    - "skill": Uses specialized agentic/orchestration pipelines ("skills").
+#
+# 2. Registry Asymmetry:
+#    - Out of the 8 core generation services, 6 of them (Project Creation, Feature, 
+#      Scenario, Acceptance Criteria, Scope, and Prototype) support both "legacy" 
+#      and "skill" backends. Their concrete subclasses (prefixed with `SkillBacked...`) 
+#      are dynamically loaded below.
+#    - 2 services (ActorGenerationService and FlowGenerationService) do NOT have 
+#      SkillBacked counterparts and are initialized directly using the legacy/default 
+#      implementation, regardless of the active environment backend.
+#    - This asymmetry is normal: Actor and Flow extraction rely on robust and deterministic 
+#      in-memory extraction engines where specialized multi-agent skills are not needed.
+# ==============================================================================
 logger = logging.getLogger(__name__)
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[3] / ".env")

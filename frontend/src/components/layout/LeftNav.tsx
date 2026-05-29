@@ -6,24 +6,27 @@ import {
   useWorkspaceStore, 
   selectPageHealth
 } from '@/store/useWorkspaceStore';
-import { buildReadiness } from '@/core/selectors';
+import { buildProjectRoute, buildReadiness, extractWorkspacePage } from '@/core/selectors';
 
 export function LeftNav() {
   const location = useLocation();
   const ir = useWorkspaceStore(s => s.ir);
+  const activePage = useWorkspaceStore(s => s.activePage);
   const [collapsed, setCollapsed] = useState(false);
   const readinessScore = buildReadiness(ir).overallScore;
+  const locationPage = extractWorkspacePage(location.pathname);
+  const resolvedActivePage = locationPage || activePage;
 
   const getCounts = (path: string) => {
     return selectPageHealth({ ir } as any, path);
   };
 
   const NavItems = [
-    { path: '/', label: '概览', icon: LayoutDashboard },
-    { path: '/what', label: '要做什么', icon: Target },
-    { path: '/flow', label: '怎么运作', icon: Activity },
-    { path: '/scope', label: '范围与交付', icon: CheckSquare },
-    { path: '/preview', label: '方案预览', icon: Eye },
+    { page: '/overview' as const, label: '概览', icon: LayoutDashboard },
+    { page: '/what' as const, label: '要做什么', icon: Target },
+    { page: '/flow' as const, label: '怎么运作', icon: Activity },
+    { page: '/scope' as const, label: '范围与交付', icon: CheckSquare },
+    { page: '/preview' as const, label: '方案预览', icon: Eye },
   ];
 
   return (
@@ -42,18 +45,18 @@ export function LeftNav() {
         <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
         {!collapsed && <span className="font-bold text-lg tracking-tight italic text-slate-800">需求空间工作台</span>}
       </div>
-      
       <div className={cn("flex-1 space-y-1 overflow-y-auto overflow-x-hidden", collapsed ? "p-2" : "p-4")}>
         {NavItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = resolvedActivePage === item.page;
           const Icon = item.icon;
-          const { issueCount, todoCount, hasRisk, status, disabled } = getCounts(item.path);
+          const { issueCount, hasBlockingSlot, statusCode, statusLabel, disabled, disabledReason } = getCounts(item.page);
+          const to = buildProjectRoute(ir?.projectId, item.page);
           
           const InnerContent = collapsed ? (
              <div className="flex justify-center items-center w-full relative" title={item.label}>
                 <Icon className="h-5 w-5 shrink-0" />
-                {hasRisk && <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse border border-white"></div>}
-                {!hasRisk && (issueCount > 0 || todoCount > 0) && <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></div>}
+                {hasBlockingSlot && <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse border border-white"></div>}
+                {!hasBlockingSlot && issueCount > 0 && <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></div>}
              </div>
           ) : (
             <div className="flex flex-col gap-1.5 w-full overflow-hidden">
@@ -64,65 +67,58 @@ export function LeftNav() {
                 </div>
                 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {hasRisk && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
+                  {hasBlockingSlot && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap shadow-sm border",
-                    status === '已收敛' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                    status === '可预览' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
-                    status === '阻塞' ? "bg-rose-50 text-rose-700 border-rose-100" :
-                    status === '待决策' ? "bg-amber-50 text-amber-700 border-amber-100" :
-                    status === '待设计' ? "bg-slate-50 text-slate-500 border-slate-200" :
-                    status === '待前置就绪' || status === '不可用' ? "bg-slate-100/70 text-slate-400 border-slate-200/50" :
+                    statusCode === 'ready' || statusCode === 'real_ready' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                    statusCode === 'shadow_available' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                    statusCode === 'needs_attention' ? "bg-rose-50 text-rose-700 border-rose-100" :
+                    statusCode === 'in_progress' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                    statusCode === 'not_started' ? "bg-slate-50 text-slate-500 border-slate-200" :
+                    statusCode === 'locked' ? "bg-slate-100/70 text-slate-400 border-slate-200/50" :
                     "bg-slate-100 text-slate-500 border-slate-200"
                   )}>
-                    {status}
+                    {statusLabel}
                   </span>
                 </div>
               </div>
               
               <div className="pl-6 min-h-[14px] flex items-center">
-                {disabled ? (
-                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
-                    {item.path === '/flow' && '需先在 What 阶段定义角色与能力'}
-                    {item.path === '/scope' && '需先在 What 阶段建模功能树'}
-                    {item.path === '/preview' && '需先完成前置所有建模决策'}
-                  </span>
-                ) : (issueCount > 0 || todoCount > 0) ? (
+                {(issueCount > 0 || hasBlockingSlot) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
-                    {item.path === '/preview' ? (
-                      `${todoCount} 个待处理`
+                    {item.page === '/preview' ? (
+                      statusLabel
                     ) : (
                       <>
                         {issueCount > 0 && `${issueCount} 缺陷`}
-                        {issueCount > 0 && todoCount > 0 && ' / '}
-                        {todoCount > 0 && `${todoCount} 待确认`}
+                        {issueCount > 0 && hasBlockingSlot && ' / '}
+                        {hasBlockingSlot && '有阻塞建议'}
                       </>
                     )}
+                  </span>
+                ) : disabled ? (
+                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
+                    {disabledReason}
                   </span>
                 ) : null}
               </div>
             </div>
           );
           
-          if (disabled) {
-            return (
-              <div 
-                key={item.path} 
-                className={cn("flex items-center rounded-xl transition-colors relative block opacity-50 cursor-not-allowed grayscale bg-slate-50/30", collapsed ? "p-3 justify-center" : "p-3")}
-              >
-                {InnerContent}
-              </div>
-            );
-          }
-
           return (
             <Link 
-              key={item.path} 
-              to={item.path}
+              key={item.page} 
+              to={disabled ? '#' : to}
+              onClick={(e) => {
+                if (disabled) {
+                  e.preventDefault();
+                  useWorkspaceStore.getState().setError(disabledReason || '该阶段尚未解锁');
+                }
+              }}
               className={cn(
                 "flex items-center rounded-xl transition-colors relative block",
                 collapsed ? "p-3 justify-center" : "p-3",
-                isActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "hover:bg-slate-100 text-slate-600"
+                disabled ? "opacity-60 grayscale bg-slate-50/20 hover:bg-slate-100/50 cursor-not-allowed" : isActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "hover:bg-slate-100 text-slate-600"
               )}
             >
               {InnerContent}

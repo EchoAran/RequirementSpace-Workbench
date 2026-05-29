@@ -4,6 +4,8 @@ from backend.database.model import (
     BusinessObjectModel,
     BusinessObjectAttributeModel,
     AuditLogModel,
+    flow_step_input_business_object_table,
+    flow_step_output_business_object_table,
 )
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
@@ -46,6 +48,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -96,6 +99,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -133,6 +137,22 @@ class BusinessObjectService:
         if bo is None:
             raise ValueError("business_object_not_found")
 
+        # 校验是否被任意 FlowStep 的输入/输出引用
+        input_use = await session.execute(
+            select(1)
+            .select_from(flow_step_input_business_object_table)
+            .where(flow_step_input_business_object_table.c.business_object_id == bo_id)
+            .limit(1)
+        )
+        output_use = await session.execute(
+            select(1)
+            .select_from(flow_step_output_business_object_table)
+            .where(flow_step_output_business_object_table.c.business_object_id == bo_id)
+            .limit(1)
+        )
+        if input_use.scalar() is not None or output_use.scalar() is not None:
+            raise ValueError("business_object_in_use")
+
         bo_name = bo.name
         await session.delete(bo)
         await session.flush()
@@ -150,6 +170,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -198,6 +219,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -263,6 +285,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -319,6 +342,7 @@ class BusinessObjectService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 

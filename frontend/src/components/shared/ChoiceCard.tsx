@@ -34,7 +34,7 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onRewr
             {choice.rationale}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="flex items-start gap-1 p-1.5 rounded bg-white">
               <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <div className="flex flex-col">
@@ -101,19 +101,19 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onRewr
       <div className="flex items-center gap-2 pt-4 mt-auto">
         <button
           onClick={() => onAccept(choice)}
-          className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-colors shadow-sm"
+          className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
         >
           查看 / 采纳
         </button>
         <button
           onClick={() => onRewrite(choice)}
-          className="px-4 py-1.5 bg-white text-blue-600 hover:bg-blue-50 text-[11px] font-bold rounded-lg border border-blue-200 transition-colors shadow-sm"
+          className="px-4 py-1.5 bg-white text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-lg border border-blue-200 transition-colors shadow-sm"
         >
           改写
         </button>
         <button
           onClick={() => onReject(choice)}
-          className="px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 text-[11px] font-medium rounded-lg transition-colors"
+          className="px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 text-xs font-medium rounded-lg transition-colors"
         >
           拒绝
         </button>

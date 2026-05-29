@@ -83,3 +83,8 @@ class GenerationDraftIssueSolver(BaseIssueSolver):
                 "payload": payload,
             },
         )
+
+    def get_draft_type(self, issue_code: str) -> str | None:
+        """Return the draft_type for a given issue code, or None."""
+        config = self._draft_map.get(issue_code)
+        return config["draft_type"] if config else None

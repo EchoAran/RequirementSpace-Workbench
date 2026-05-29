@@ -55,7 +55,6 @@ class PerceptionSlotFillingService:
     }
 
     def __init__(self):
-        self._drafts: dict[str, dict] = {}
         self._actors_filler = ActorsFiller()
         self._features_filler = FeaturesFiller()
         self._scenarios_filler = ScenariosFiller()
@@ -145,7 +144,15 @@ class PerceptionSlotFillingService:
 
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
-        self._drafts[draft_id] = draft_payload
+
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=project_id,
+            draft_id=draft_id,
+            draft_type="perception_slot_filling",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -155,7 +162,7 @@ class PerceptionSlotFillingService:
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             project_id=draft["project_id"],
@@ -167,7 +174,15 @@ class PerceptionSlotFillingService:
 
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
-        self._drafts[draft_id] = draft_payload
+
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=draft["project_id"],
+            draft_id=draft_id,
+            draft_type="perception_slot_filling",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -176,7 +191,7 @@ class PerceptionSlotFillingService:
         draft_id: str,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         if draft["filler_kind"] == "actor":
             result = await self._persist_actor_draft(
@@ -184,63 +199,73 @@ class PerceptionSlotFillingService:
                 session=session,
             )
             stale_stages = {"what", "how"}
+            stale_kinds = {"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"}
         elif draft["filler_kind"] == "feature":
             result = await self._persist_feature_draft(
                 draft=draft,
                 session=session,
             )
             stale_stages = {"what", "how", "scope"}
+            stale_kinds = {
+                "FEATURE",
+                "SCENARIO",
+                "ACCEPTANCE_CRITERION",
+                "FLOW",
+            }
         elif draft["filler_kind"] == "scenario":
             result = await self._persist_scenario_draft(
                 draft=draft,
                 session=session,
             )
             stale_stages = {"what"}
+            stale_kinds = {"SCENARIO", "ACCEPTANCE_CRITERION"}
         elif draft["filler_kind"] == "acceptance_criteria":
             result = await self._persist_acceptance_criteria_draft(
                 draft=draft,
                 session=session,
             )
             stale_stages = {"what"}
+            stale_kinds = {"ACCEPTANCE_CRITERION"}
         elif draft["filler_kind"] == "flow":
             result = await self._persist_flow_draft(
                 draft=draft,
                 session=session,
             )
             stale_stages = {"how"}
+            stale_kinds = {"FLOW"}
         else:
             raise ValueError("unsupported_filler_kind")
 
         await mark_perception_jobs_stale(
             project_id=draft["project_id"],
             stages=stale_stages,
+            perception_kinds=stale_kinds,
             session=session,
         )
 
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
         return result
 
     async def discard_draft(
         self,
         draft_id: str,
     ) -> dict:
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.discard_draft_locally(draft_id)
 
         return {
             "draft_id": draft_id,
             "message": "draft_discarded",
         }
 
-    def _get_draft(
+    async def _get_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        draft = self._drafts.get(draft_id)
-
-        if draft is None:
-            raise ValueError("draft_not_found")
-
-        return draft
+        from backend.api.services.draft_store import GenerativeDraftStore
+        return await GenerativeDraftStore.get_draft(draft_id, session)
 
     async def _generate_preview(
         self,
@@ -679,6 +704,12 @@ class PerceptionSlotFillingService:
                             else FlowStepType.SYSTEM_ACTION
                         ),
                         actorIds=step.actor_ids,
+                        inputBusinessObjectIds=(
+                            step.input_business_object_ids
+                        ),
+                        outputBusinessObjectIds=(
+                            step.output_business_object_ids
+                        ),
                         nextStepIds=step.next_step_ids,
                     )
                     for step in flow.steps
@@ -975,14 +1006,17 @@ class PerceptionSlotFillingService:
         if raw is None:
             raise ValueError("empty_filler_response")
 
-        business_objects = self._normalize_filled_business_objects(
+        (
+            business_objects,
+            business_object_ref_map,
+        ) = self._normalize_filled_business_objects(
             raw.get("business_objects", []),
             business_object_nodes,
         )
-        flows = raw.get("flows", [])
-
-        if not isinstance(flows, list) or not flows:
-            raise ValueError("empty_flows")
+        flows = self._normalize_filled_flows(
+            raw.get("flows", []),
+            business_object_ref_map,
+        )
 
         self._validate_filled_flows(
             flows=flows,
@@ -996,11 +1030,255 @@ class PerceptionSlotFillingService:
             "flows": flows,
         }
 
+    def _normalize_filled_flows(
+        self,
+        raw_flows: list[dict],
+        business_object_ref_map: dict[object, int],
+    ) -> list[dict]:
+        if not isinstance(raw_flows, list) or not raw_flows:
+            raise ValueError("empty_flows")
+
+        flows = []
+
+        for flow in raw_flows:
+            if not isinstance(flow, dict):
+                raise ValueError("invalid_flow_payload")
+
+            raw_steps = flow.get("flow_steps", [])
+
+            if not isinstance(raw_steps, list) or not raw_steps:
+                raise ValueError("empty_flow_steps")
+
+            step_aliases: dict[object, str] = {}
+            used_step_numbers: set[str] = set()
+            normalized_steps = []
+
+            for index, step in enumerate(raw_steps, start=1):
+                if not isinstance(step, dict):
+                    raise ValueError("invalid_flow_step_payload")
+
+                raw_step_number = step.get("step_number")
+                step_number = self._normalize_step_number(
+                    raw_step_number,
+                    index,
+                )
+
+                if step_number in used_step_numbers:
+                    step_number = self._next_available_step_number(
+                        index,
+                        used_step_numbers,
+                    )
+
+                used_step_numbers.add(step_number)
+
+                for alias in {
+                    raw_step_number,
+                    "" if raw_step_number is None else str(raw_step_number),
+                    step_number,
+                }:
+                    if alias != "":
+                        step_aliases[alias] = step_number
+
+                normalized_steps.append(
+                    {
+                        **step,
+                        "step_number": step_number,
+                    }
+                )
+
+            for step in normalized_steps:
+                step["step_type"] = self._normalize_step_type(
+                    step.get("step_type")
+                )
+                step["actor_ids"] = self._dedupe_int_values(
+                    step.get("actor_ids", [])
+                )
+                step["input_business_object_ids"] = (
+                    self._dedupe_business_object_refs(
+                        self._coerce_list(
+                            step.get("input_business_object_ids", [])
+                        )
+                        + self._coerce_list(
+                            step.get("input_business_object_numbers", [])
+                        ),
+                        business_object_ref_map,
+                    )
+                )
+                step["output_business_object_ids"] = (
+                    self._dedupe_business_object_refs(
+                        self._coerce_list(
+                            step.get("output_business_object_ids", [])
+                        )
+                        + self._coerce_list(
+                            step.get("output_business_object_numbers", [])
+                        ),
+                        business_object_ref_map,
+                    )
+                )
+                step["next_steps"] = self._normalize_next_steps(
+                    step.get("next_steps", []),
+                    step_aliases,
+                    used_step_numbers,
+                )
+
+            flows.append(
+                {
+                    **flow,
+                    "feature_ids": self._dedupe_int_values(
+                        flow.get("feature_ids", [])
+                    ),
+                    "flow_steps": normalized_steps,
+                }
+            )
+
+        return flows
+
+    @classmethod
+    def _normalize_step_number(
+        cls,
+        value: object,
+        fallback_index: int,
+    ) -> str:
+        if isinstance(value, str):
+            stripped = value.strip().upper()
+            if cls._step_number_pattern.match(stripped) is not None:
+                return stripped
+
+            match = re.match(r"^S-?(\d+)$", stripped)
+            if match:
+                return f"S-{int(match.group(1)):03d}"
+
+            if stripped.isdigit():
+                return f"S-{int(stripped):03d}"
+
+        if isinstance(value, int):
+            return f"S-{value:03d}"
+
+        return f"S-{fallback_index:03d}"
+
+    @classmethod
+    def _next_available_step_number(
+        cls,
+        preferred_index: int,
+        used_step_numbers: set[str],
+    ) -> str:
+        index = preferred_index
+
+        while True:
+            step_number = f"S-{index:03d}"
+
+            if step_number not in used_step_numbers:
+                return step_number
+
+            index += 1
+
+    @staticmethod
+    def _normalize_step_type(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+
+        normalized = re.sub(r"[^a-z]", "", value.lower())
+        aliases = {
+            "actoraction": "actorAction",
+            "actor": "actorAction",
+            "useraction": "actorAction",
+            "systemaction": "systemAction",
+            "system": "systemAction",
+            "judgment": "judgment",
+            "decision": "judgment",
+            "condition": "judgment",
+        }
+
+        return aliases.get(normalized, value)
+
+    @staticmethod
+    def _coerce_list(value: object) -> list:
+        if value is None:
+            return []
+
+        if isinstance(value, list):
+            return value
+
+        return [value]
+
+    @classmethod
+    def _dedupe_int_values(cls, values: object) -> list[int]:
+        result = []
+        seen = set()
+
+        for value in cls._coerce_list(values):
+            try:
+                int_value = int(value)
+            except (TypeError, ValueError):
+                continue
+
+            if int_value in seen:
+                continue
+
+            seen.add(int_value)
+            result.append(int_value)
+
+        return result
+
+    @classmethod
+    def _dedupe_business_object_refs(
+        cls,
+        values: object,
+        business_object_ref_map: dict[object, int],
+    ) -> list[int]:
+        result = []
+        seen = set()
+
+        for value in cls._coerce_list(values):
+            business_object_id = (
+                business_object_ref_map.get(value)
+                or business_object_ref_map.get(str(value))
+            )
+
+            if business_object_id is None:
+                try:
+                    business_object_id = int(value)
+                except (TypeError, ValueError):
+                    continue
+
+            if business_object_id in seen:
+                continue
+
+            seen.add(business_object_id)
+            result.append(business_object_id)
+
+        return result
+
+    @classmethod
+    def _normalize_next_steps(
+        cls,
+        values: object,
+        step_aliases: dict[object, str],
+        step_number_set: set[str],
+    ) -> list[str]:
+        result = []
+        seen = set()
+
+        for value in cls._coerce_list(values):
+            step_number = (
+                step_aliases.get(value)
+                or step_aliases.get(str(value))
+                or cls._normalize_step_number(value, 0)
+            )
+
+            if step_number not in step_number_set or step_number in seen:
+                continue
+
+            seen.add(step_number)
+            result.append(step_number)
+
+        return result
+
     @staticmethod
     def _normalize_filled_business_objects(
         raw_items: list[dict],
         business_object_nodes: list[BusinessObjectNode],
-    ) -> list[dict]:
+    ) -> tuple[list[dict], dict[object, int]]:
         if not isinstance(raw_items, list):
             raise ValueError("invalid_business_object_payload")
 
@@ -1008,19 +1286,61 @@ class PerceptionSlotFillingService:
             item.businessObjectId
             for item in business_object_nodes
         }
+        business_object_ref_map: dict[object, int] = {}
+
+        for business_object_id in existing_business_object_ids:
+            business_object_ref_map[business_object_id] = business_object_id
+            business_object_ref_map[str(business_object_id)] = (
+                business_object_id
+            )
+
         seen_business_object_ids = set()
         business_objects = []
+        next_temporary_business_object_id = -1
 
         for item in raw_items:
+            if not isinstance(item, dict):
+                raise ValueError("invalid_business_object_payload")
+
+            business_object_ref = (
+                item.get("business_object_id")
+                if item.get("business_object_id") is not None
+                else item.get("business_object_number")
+            )
+
+            if business_object_ref is None:
+                raise ValueError("invalid_business_object_payload")
+
             try:
-                business_object_id = int(item.get("business_object_id"))
-            except (TypeError, ValueError) as error:
-                raise ValueError("invalid_business_object_payload") from error
+                business_object_id = int(business_object_ref)
+            except (TypeError, ValueError):
+                while (
+                    next_temporary_business_object_id
+                    in seen_business_object_ids
+                ):
+                    next_temporary_business_object_id -= 1
+
+                business_object_id = next_temporary_business_object_id
+                next_temporary_business_object_id -= 1
 
             if business_object_id in seen_business_object_ids:
                 raise ValueError("duplicate_business_object_id")
 
             seen_business_object_ids.add(business_object_id)
+            business_object_ref_map[business_object_ref] = business_object_id
+            business_object_ref_map[str(business_object_ref)] = (
+                business_object_id
+            )
+
+            business_object_number = item.get("business_object_number")
+
+            if business_object_number is not None:
+                business_object_ref_map[business_object_number] = (
+                    business_object_id
+                )
+                business_object_ref_map[str(business_object_number)] = (
+                    business_object_id
+                )
 
             business_object_name = item.get("business_object_name", "")
             business_object_description = item.get(
@@ -1033,7 +1353,21 @@ class PerceptionSlotFillingService:
 
             attributes = []
 
-            for attribute in item.get("business_object_attributes", []):
+            attributes_payload = item.get(
+                "business_object_attributes",
+                [],
+            )
+
+            if attributes_payload is None:
+                attributes_payload = []
+
+            if not isinstance(attributes_payload, list):
+                raise ValueError("invalid_business_object_payload")
+
+            for attribute in attributes_payload:
+                if not isinstance(attribute, dict):
+                    raise ValueError("invalid_business_object_payload")
+
                 attribute_name = attribute.get(
                     "business_object_attribute_name",
                     "",
@@ -1087,7 +1421,7 @@ class PerceptionSlotFillingService:
                 }
             )
 
-        return business_objects
+        return business_objects, business_object_ref_map
 
     def _validate_filled_flows(
         self,
@@ -1224,6 +1558,7 @@ class PerceptionSlotFillingService:
             for step in flow.get("flow_steps", []):
                 flow_steps_preview.append(
                     {
+                        "step_number": step["step_number"],
                         "step_name": step["step_name"],
                         "step_description": step["step_description"],
                         "step_type": step["step_type"],
@@ -1249,6 +1584,7 @@ class PerceptionSlotFillingService:
                             step_name_map[step_number]
                             for step_number in step.get("next_steps", [])
                         ],
+                        "next_steps": step.get("next_steps", []),
                     }
                 )
 
@@ -1256,6 +1592,7 @@ class PerceptionSlotFillingService:
                 {
                     "flow_name": flow["flow_name"],
                     "flow_description": flow["flow_description"],
+                    "feature_ids": flow.get("feature_ids", []),
                     "feature_names": [
                         feature_name_map[feature_id]
                         for feature_id in flow.get("feature_ids", [])

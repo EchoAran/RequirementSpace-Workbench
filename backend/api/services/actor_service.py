@@ -48,6 +48,7 @@ class ActorService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -95,6 +96,7 @@ class ActorService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -138,6 +140,7 @@ class ActorService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 

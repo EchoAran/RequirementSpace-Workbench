@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { ProjectionKind } from '@/core/schema';
 import { selectCurrentPage, selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { Sparkles, Minus } from 'lucide-react';
+import { Sparkles, Minus, Zap } from 'lucide-react';
 
 type AIScope =
   | { kind: 'workspace'; label: string }
@@ -29,6 +29,74 @@ const pageToStageLabel = (page: string): string => {
   if (page === '/scope') return 'Scope 范围决策';
   if (page === '/preview') return 'Preview 方案预览';
   return 'What 角色能力建模';
+};
+
+const getObjectId = (obj: any): string => {
+  const id =
+    obj?.id ??
+    obj?.actorId ??
+    obj?.featureId ??
+    obj?.scenarioId ??
+    obj?.criterionId ??
+    obj?.businessObjectId ??
+    obj?.businessObjectAttributeId ??
+    obj?.flowId ??
+    obj?.stepId ??
+    obj?.scopeId ??
+    obj?.perceptionSlotId;
+
+  return id !== undefined && id !== null ? String(id) : '';
+};
+
+const getObjectTitle = (obj: any): string => {
+  const title =
+    obj?.title ??
+    obj?.name ??
+    obj?.actorName ??
+    obj?.featureName ??
+    obj?.scenarioName ??
+    obj?.criterionContent ??
+    obj?.businessObjectName ??
+    obj?.businessObjectAttributeName ??
+    obj?.flowName ??
+    obj?.stepName ??
+    obj?.scopeStatus ??
+    obj?.perceptionKind ??
+    getObjectId(obj);
+
+  return title !== undefined && title !== null && String(title).trim()
+    ? String(title)
+    : '未命名对象';
+};
+
+const getObjectKind = (obj: any): string | undefined => {
+  return obj?.kind || (
+    obj?.scenarioId !== undefined ? 'scenario' :
+    obj?.criterionId !== undefined ? 'acceptance_criterion' :
+    obj?.actorId !== undefined ? 'actor' :
+    obj?.featureId !== undefined ? 'feature' :
+    obj?.businessObjectAttributeId !== undefined ? 'business_object_attribute' :
+    obj?.businessObjectId !== undefined ? 'business_object' :
+    obj?.stepId !== undefined ? 'flow_step' :
+    obj?.flowId !== undefined ? 'flow' :
+    obj?.scopeId !== undefined ? 'scope' :
+    obj?.perceptionSlotId !== undefined ? 'perception_slot' :
+    undefined
+  );
+};
+
+const getObjectScopePrefix = (kind?: string): string => {
+  if (kind === 'feature') return '能力点';
+  if (kind === 'flow') return '业务流程';
+  if (kind === 'flow_step') return '流程步骤';
+  if (kind === 'business_object') return '数据对象';
+  if (kind === 'business_object_attribute') return '数据字段';
+  if (kind === 'actor') return '业务角色';
+  if (kind === 'scenario') return '业务场景';
+  if (kind === 'acceptance_criterion') return '验收标准';
+  if (kind === 'scope') return '范围决策';
+  if (kind === 'perception_slot') return '感知槽';
+  return '选中项';
 };
 
 export function ScopedAIBar() {
@@ -172,18 +240,15 @@ export function ScopedAIBar() {
     ];
 
     if (!selectedObject) return nextScopes;
-    
-    const title = selectedObject.title || selectedObject.name || selectedObject.featureName || selectedObject.stepName || selectedObject.id;
 
-    if (selectedObject.kind === 'feature') {
-      nextScopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `能力点: ${title}` });
-    } else if (selectedObject.kind === 'flow_step') {
-      nextScopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `流程步骤: ${title}` });
-    } else if (selectedObject.kind === 'actor') {
-      nextScopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `业务角色: ${title}` });
-    } else {
-      nextScopes.unshift({ kind: 'node', nodeId: selectedObject.id, label: `选中项: ${title}` });
-    }
+    const nodeId = getObjectId(selectedObject);
+    const title = getObjectTitle(selectedObject);
+    const kind = getObjectKind(selectedObject);
+    nextScopes.unshift({
+      kind: 'node',
+      nodeId,
+      label: `${getObjectScopePrefix(kind)}: ${title}`,
+    });
 
     return nextScopes;
   }, [currentPage, selectedObject]);
@@ -252,7 +317,7 @@ export function ScopedAIBar() {
             setIsCollapsed(false);
           }}
           onMouseDown={handleMouseDown}
-          className={`w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center shadow-xl hover:shadow-indigo-150 hover:scale-105 border-2 border-white animate-in fade-in zoom-in-50 duration-200 ${
+          className={`w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center shadow-xl hover:shadow-indigo-200 hover:scale-105 border-2 border-white animate-in fade-in zoom-in-50 duration-200 ${
             isDragging ? 'cursor-grabbing' : 'cursor-grab transition-all active:scale-95'
           }`}
           style={{
@@ -294,7 +359,7 @@ export function ScopedAIBar() {
           <button 
             type="button"
             onClick={() => setIsCollapsed(true)}
-            className="p-1 hover:bg-slate-250 rounded-md text-slate-400 hover:text-slate-600 transition-colors"
+            className="p-1 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-600 transition-colors"
             title="折叠助手"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -305,7 +370,7 @@ export function ScopedAIBar() {
         <div className="p-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider pl-1">诊断范围:</span>
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider pl-1">诊断范围:</span>
               <select
                 value={selectedScopeIndex}
                 onChange={(e) => setSelectedScopeIndex(Number(e.target.value))}
@@ -362,10 +427,10 @@ export function ScopedAIBar() {
                     </span>
                     <div className="text-xs flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-amber-800 uppercase tracking-widest text-[9px] bg-amber-100/60 px-2 py-0.5 rounded font-mono">AI 感知槽建议</span>
+                        <span className="font-extrabold text-amber-800 uppercase tracking-widest text-[10px] bg-amber-100/60 px-2 py-0.5 rounded font-mono">AI 感知槽建议</span>
                         <span className="font-black text-slate-700">{currentSuggestion.title}</span>
                       </div>
-                      <p className="text-slate-600 mt-1.5 leading-relaxed font-medium text-[11px]">{currentSuggestion.description}</p>
+                      <p className="text-slate-600 mt-1.5 leading-relaxed font-medium text-xs">{currentSuggestion.description}</p>
                     </div>
                   </div>
                   {currentSuggestion.code?.endsWith('_SLOT') && (
@@ -374,7 +439,8 @@ export function ScopedAIBar() {
                       onClick={() => void executeNextSuggestion(currentStage)}
                       className="self-end sm:self-center px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-extrabold text-xs rounded-xl shadow hover:from-amber-600 hover:to-orange-600 hover:scale-102 hover:shadow-amber-100 transition-all shrink-0 active:scale-98 flex items-center gap-1.5 cursor-pointer"
                     >
-                      <span>⚡ 处理此感知槽</span>
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>处理此感知槽</span>
                     </button>
                   )}
                 </div>
@@ -406,7 +472,7 @@ export function ScopedAIBar() {
             </button>
           </div>
 
-          <div className="text-[11px] text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl leading-normal font-medium flex items-center gap-1.5 shadow-sm min-h-[36px]">
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl leading-normal font-medium flex items-center gap-1.5 shadow-sm min-h-[36px]">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 animate-pulse"></span>
             <span>
               {lastActionMessage || `当前将对 【${scope.label}】 执行 【${INTENT_LABELS[intent]}】 操作。`}

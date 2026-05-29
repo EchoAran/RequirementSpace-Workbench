@@ -49,6 +49,8 @@ class FlowStepIssueItem:
     description: str
     step_type: str
     actor_ids: list[int] = field(default_factory=list)
+    input_business_object_ids: list[int] = field(default_factory=list)
+    output_business_object_ids: list[int] = field(default_factory=list)
     next_step_ids: list[int] = field(default_factory=list)
 
 
@@ -219,6 +221,8 @@ async def load_issue_project_context(project_id: int, session) -> IssueProjectCo
     flow_feature_ids_map: dict[int, list[int]] = {}
     flow_steps_map: dict[int, list[FlowStepIssueItem]] = {}
     step_actor_ids_map: dict[int, list[int]] = {}
+    step_input_business_object_ids_map: dict[int, list[int]] = {}
+    step_output_business_object_ids_map: dict[int, list[int]] = {}
     step_next_ids_map: dict[int, list[int]] = {}
 
     if flow_ids:
@@ -253,6 +257,44 @@ async def load_issue_project_context(project_id: int, session) -> IssueProjectCo
             for step_id, actor_id in step_actor_result.all():
                 step_actor_ids_map.setdefault(step_id, []).append(actor_id)
 
+            step_input_business_object_result = await session.execute(
+                select(
+                    flow_step_input_business_object_table.c.flow_step_id,
+                    flow_step_input_business_object_table.c.business_object_id,
+                ).where(
+                    flow_step_input_business_object_table.c.flow_step_id.in_(
+                        step_ids
+                    )
+                )
+            )
+
+            for step_id, business_object_id in (
+                step_input_business_object_result.all()
+            ):
+                step_input_business_object_ids_map.setdefault(
+                    step_id,
+                    [],
+                ).append(business_object_id)
+
+            step_output_business_object_result = await session.execute(
+                select(
+                    flow_step_output_business_object_table.c.flow_step_id,
+                    flow_step_output_business_object_table.c.business_object_id,
+                ).where(
+                    flow_step_output_business_object_table.c.flow_step_id.in_(
+                        step_ids
+                    )
+                )
+            )
+
+            for step_id, business_object_id in (
+                step_output_business_object_result.all()
+            ):
+                step_output_business_object_ids_map.setdefault(
+                    step_id,
+                    [],
+                ).append(business_object_id)
+
             step_next_result = await session.execute(
                 select(
                     flow_step_next_table.c.source_step_id,
@@ -276,6 +318,12 @@ async def load_issue_project_context(project_id: int, session) -> IssueProjectCo
                     description=step.description,
                     step_type=step.step_type,
                     actor_ids=step_actor_ids_map.get(step.id, []),
+                    input_business_object_ids=(
+                        step_input_business_object_ids_map.get(step.id, [])
+                    ),
+                    output_business_object_ids=(
+                        step_output_business_object_ids_map.get(step.id, [])
+                    ),
                     next_step_ids=step_next_ids_map.get(step.id, []),
                 )
             )

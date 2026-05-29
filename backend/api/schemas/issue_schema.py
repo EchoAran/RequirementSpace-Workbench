@@ -28,9 +28,22 @@ class ProjectIssuesResponse(CamelModel):
 
 
 class IssueResolveRequest(CamelModel):
+    issue_id: str | None = None
     issue_code: str
+    stage: str | None = None
     target: IssueTargetResponse | None = None
     metadata: dict = Field(default_factory=dict)
+
+
+class IssueStatusUpdateRequest(CamelModel):
+    issue_id: str
+    status: str
+
+
+class IssueStatusUpdateResponse(CamelModel):
+    project_id: int
+    issue_id: str
+    status: str
 
 
 class IssueResolutionActionResponse(CamelModel):
@@ -52,3 +65,5 @@ class IssueResolutionResponse(CamelModel):
     draft_id: str | None = None
     draft: dict = Field(default_factory=dict)
     patch: dict | None = None
+    issue_fingerprint: str | None = None
+    context_hash: str | None = None

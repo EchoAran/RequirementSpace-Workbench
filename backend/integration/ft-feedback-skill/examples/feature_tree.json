@@ -1,0 +1,9 @@
+{
+  "L1": "Local Music Player",
+  "L2.1": "Local Music Library [Role: Common]",
+  "L3.1.1": "Scan Local Audio Files [Role: Local Content Importer]",
+  "L3.1.2": "Import Music Folders [Role: Local Content Importer]",
+  "L2.2": "Audio Playback [Role: Common]",
+  "L3.2.1": "Play Lossless Audio [Role: Regular Listener User]",
+  "L3.2.2": "Pause And Resume Playback [Role: Common]"
+}

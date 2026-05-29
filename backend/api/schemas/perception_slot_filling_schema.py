@@ -53,18 +53,21 @@ class PerceptionSlotFilledBusinessObjectPreview(CamelModel):
 
 
 class PerceptionSlotFilledFlowStepPreview(CamelModel):
+    step_number: str | None = None
     step_name: str
     step_description: str
     step_type: str
     actor_names: list[str] = []
     input_business_object_names: list[str] = []
     output_business_object_names: list[str] = []
+    next_steps: list[str] = []
     next_step_names: list[str] = []
 
 
 class PerceptionSlotFilledFlowPreview(CamelModel):
     flow_name: str
     flow_description: str
+    feature_ids: list[int] = []
     feature_names: list[str] = []
     flow_steps: list[PerceptionSlotFilledFlowStepPreview] = []
 

@@ -31,6 +31,7 @@ class PrototypePreviewResponse(CamelModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    shadow_draft_id: str | None = None
 
 
 class PrototypePreviewNotFoundResponse(CamelModel):

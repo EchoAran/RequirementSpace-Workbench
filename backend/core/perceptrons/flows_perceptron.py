@@ -54,7 +54,7 @@ class FlowsPerceptron(BasePerceptron[FlowsPerceptronInput]):
                 "{{user_requirements}}", user_requirements_).replace(
                 "{{features}}", features_).replace(
                 "{{flows}}", flows_),
-            print_log=False,
+            print_log=True,
         )
 
         return json.loads(response)

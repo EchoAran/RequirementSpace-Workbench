@@ -8,6 +8,7 @@ from backend.api.schemas.crud_schema import (
     FlowStepCreateRequest,
     FlowStepUpdateRequest,
     FlowStepResponse,
+    FlowStepsReorderRequest,
 )
 from backend.api.services.flow_service import FlowService
 from backend.database.database import get_session
@@ -173,4 +174,31 @@ async def delete_flow_step(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete flow step: {error}",
+        )
+
+
+@router.put("/{flow_id}/steps/reorder", response_model=FlowResponse)
+async def reorder_flow_steps(
+    project_id: int,
+    flow_id: int,
+    request: FlowStepsReorderRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await flow_service.reorder_flow_steps(
+            project_id=project_id,
+            flow_id=flow_id,
+            req=request,
+            session=session,
+        )
+    except ValueError as error:
+        status = 404 if str(error) == "flow_not_found" else 400
+        raise HTTPException(
+            status_code=status,
+            detail=str(error),
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reorder steps: {error}",
         )

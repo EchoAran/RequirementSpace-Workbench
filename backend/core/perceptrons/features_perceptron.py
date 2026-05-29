@@ -32,7 +32,7 @@ class FeaturesPerceptron(BasePerceptron[FeaturesPerceptronInput]):
                 "{{user_requirements}}",f"{user_requirements_}").replace(
                 "{{features}}", f"{features_}"
             ),
-            print_log=False,
+            print_log=True,
         )
         return json.loads(response)
 

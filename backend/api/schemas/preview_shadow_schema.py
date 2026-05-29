@@ -1,0 +1,16 @@
+from backend.api.schemas.project_schema import CamelModel
+from backend.api.schemas.prototype_generation_schema import PrototypePreviewResponse
+
+
+class PreviewShadowDraftResponse(CamelModel):
+    source: str  # "real_project" | "shadow_project"
+    draft_id: str | None = None
+    status: str  # "generating" | "ready" | "failed" | "committed" | "discarded" | "stale"
+    unready_gates: list[str] = []
+    shadow_summary: dict[str, int] = {}
+    prototype_preview: PrototypePreviewResponse | None = None
+    shadow_snapshot_json: dict | None = None
+
+
+class PreviewShadowRegenerateRequest(CamelModel):
+    user_feedback: str | None = None

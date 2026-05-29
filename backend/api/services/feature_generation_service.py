@@ -19,7 +19,6 @@ class FeatureGenerationService:
     )
 
     def __init__(self):
-        self._drafts: dict[str, dict] = {}
         self._features_generator = FeaturesGenerator()
 
     @staticmethod
@@ -90,7 +89,14 @@ class FeatureGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=project_id,
+            draft_id=draft_id,
+            draft_type="feature",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -100,7 +106,7 @@ class FeatureGenerationService:
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             project_id=draft["project_id"],
@@ -111,7 +117,14 @@ class FeatureGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=draft["project_id"],
+            draft_id=draft_id,
+            draft_type="feature",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -120,7 +133,7 @@ class FeatureGenerationService:
         draft_id: str,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         result = await self._persist_feature_generation_draft(
             draft=draft,
@@ -129,10 +142,17 @@ class FeatureGenerationService:
         await mark_perception_jobs_stale(
             project_id=draft["project_id"],
             stages={"what", "how", "scope"},
+            perception_kinds={
+                "FEATURE",
+                "SCENARIO",
+                "ACCEPTANCE_CRITERION",
+                "FLOW",
+            },
             session=session,
         )
 
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
 
         return result
 
@@ -140,23 +160,21 @@ class FeatureGenerationService:
         self,
         draft_id: str,
     ) -> dict:
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.discard_draft_locally(draft_id)
 
         return {
             "draft_id": draft_id,
             "message": "draft_discarded",
         }
 
-    def _get_draft(
+    async def _get_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        draft = self._drafts.get(draft_id)
-
-        if draft is None:
-            raise ValueError("draft_not_found")
-
-        return draft
+        from backend.api.services.draft_store import GenerativeDraftStore
+        return await GenerativeDraftStore.get_draft(draft_id, session)
 
     async def _generate_preview(
         self,

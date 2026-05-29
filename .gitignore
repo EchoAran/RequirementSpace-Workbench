@@ -1,60 +1,60 @@
-# Python environment
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
 .venv/
-.idea/
 venv/
 ENV/
 env/
-*.env
-*.venv
-node_modules/
+*.venv/
 
-# Python cache files
+# Python caches and build artifacts
 __pycache__/
 *.py[cod]
 *$py.class
-
-# IDE/editor files
-.vscode/
-.idea/
-*.iml
-
-# Backup and temporary folders
-backup/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs and runtime files
-*.log
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Byte-compiled / optimized / DLL files
-*.pyc
 *.pyo
 *.pyd
-
-# Distribution / packaging
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
 build/
 dist/
 *.egg-info/
 .eggs/
 
-# MyPy
-.mypy_cache/
+# Local SQLite runtime data
+requirement_space.db
+*.db-journal
+*.sqlite
+*.sqlite3
 
-# Coverage
-htmlcov/
-.coverage
-.coverage.*
+# Frontend dependencies and generated output
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Logs and temporary files
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+backup/
+tmp/
+temp/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# 数据库文件
-requirement_space.db
-
-# 备注与实施计划，我自己看的
-note.md
-*.implementation_plan/
+docs/

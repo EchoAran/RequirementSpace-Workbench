@@ -20,8 +20,10 @@ import type {
   NodeStatus,
   GraphPatch,
   FlowStepType,
+  Stage,
+  StageGateResult,
+  PageHealth,
 } from '@/core/schema';
-import { detectIssues } from '@/store/useWorkspaceStore';
 
 export const selectAllNodes = (space: RequirementSpace | null): any[] => {
   if (!space) return [];
@@ -104,7 +106,7 @@ export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary
     : 0;
 
   // 3. System - ratio of leaf features with flows
-  const leafFeatures = features.filter(f => (f.childrenIds || []).length === 0);
+  const leafFeatures = features.filter(f => f.parentId !== null && (f.childrenIds || []).length === 0);
   const flowsLinkedFeatures = new Set(flows.flatMap(f => f.featureIds || []));
   const systemScore = leafFeatures.length > 0
     ? Math.floor((leafFeatures.filter(f => flowsLinkedFeatures.has(f.featureId)).length / leafFeatures.length) * 100)
@@ -133,165 +135,908 @@ export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary
   return { overallScore, dimensions: dims };
 };
 
-// Page Health summary calculation
-export type PageHealth = {
-  status: '阻塞' | '待决策' | '可预览' | '已收敛' | '不可用' | '未开始' | '待前置就绪' | '待设计';
-  issueCount: number;
-  todoCount: number;
-  hasRisk: boolean;
-  disabled: boolean;
+// -------------------------------------------------------------
+// Stage-Gate Refactored Core Rule & Gate Evaluators
+// -------------------------------------------------------------
+
+export const detectStageIssues = (space: RequirementSpace | null, stage: Stage): Issue[] => {
+  if (!space) return [];
+  const issues: Issue[] = [];
+
+  const actors = space.actors || [];
+  const features = space.features || [];
+  const leafFeatures = features.filter(f => f.parentId !== null && !(features.some(child => child.parentId === f.featureId)));
+
+  if (stage === 'what') {
+    // 1. Roles without features (Warning Issue, low severity, non-blocking)
+    for (const actor of actors) {
+      const isUsed = features.some(f => (f.actorIds || []).includes(actor.actorId));
+      if (!isUsed) {
+        issues.push({
+          id: `rule_actor_unlinked_${actor.actorId}`,
+          stage: 'what',
+          domain: 'actor',
+          title: '参与者角色未关联任何功能',
+          description: `参与者 "${actor.actorName}" 目前在系统能力树中没有被任何功能结点引用，请为其添加相应功能，或删除该闲置角色。`,
+          severity: 'low',
+          blocking: false,
+          status: 'open',
+          relatedNodeIds: [actor.actorId.toString()],
+          suggestedProjection: 'role'
+        });
+      }
+    }
+
+    // 2. Features without Actors (High severity, blocking)
+    // Non-equilibrium algorithm:
+    const featuresWithActors = leafFeatures.filter(f => (f.actorIds || []).length > 0);
+    if (leafFeatures.length > 0 && featuresWithActors.length > 0 && featuresWithActors.length < leafFeatures.length) {
+      // Some have, some don't -> Report Issue
+      for (const feat of leafFeatures) {
+        if ((feat.actorIds || []).length === 0) {
+          issues.push({
+            id: `rule_feature_no_actor_${feat.featureId}`,
+            stage: 'what',
+            domain: 'feature_actor_binding',
+            title: '功能结点未关联任何角色',
+            description: `功能 "${feat.featureName}" 目前未指定任何参与者（执行人），请在该能力的右侧面板中绑定执行角色。`,
+            severity: 'high',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [feat.featureId.toString()],
+            suggestedProjection: 'goal'
+          });
+        }
+      }
+    }
+
+    // 3. Leaf Features with empty Scenarios (Medium severity, blocking)
+    // Non-equilibrium algorithm:
+    const featuresWithScenarios = leafFeatures.filter(f => (f.scenarios || []).length > 0);
+    if (leafFeatures.length > 0 && featuresWithScenarios.length > 0 && featuresWithScenarios.length < leafFeatures.length) {
+      for (const feat of leafFeatures) {
+        if ((feat.scenarios || []).length === 0) {
+          issues.push({
+            id: `rule_feature_no_scenarios_${feat.featureId}`,
+            stage: 'what',
+            domain: 'scenario',
+            title: '叶子功能未定义成功场景',
+            description: `功能结点 "${feat.featureName}" 作为叶子业务结点，尚未描述任何典型成功场景（User Story），可能导致需求不够具象化。`,
+            severity: 'medium',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [feat.featureId.toString()],
+            suggestedProjection: 'goal'
+          });
+        }
+      }
+    }
+
+    // 4. Scenarios without AC (High severity, blocking)
+    // Non-equilibrium algorithm:
+    const allScenarios = features.flatMap(f => f.scenarios || []);
+    const scenariosWithAC = allScenarios.filter(s => (s.acceptanceCriteria || []).length > 0);
+    if (allScenarios.length > 0 && scenariosWithAC.length > 0 && scenariosWithAC.length < allScenarios.length) {
+      for (const feat of features) {
+        for (const sc of feat.scenarios || []) {
+          if ((sc.acceptanceCriteria || []).length === 0) {
+            issues.push({
+              id: `rule_scenario_no_ac_${sc.scenarioId}`,
+              stage: 'what',
+              domain: 'ac',
+              title: '成功场景缺少验收标准',
+              description: `功能 "${feat.featureName}" 下的场景 "${sc.scenarioName}" 缺少对应的成功标准 (AC)，开发与测试人员将无法验证功能终态。`,
+              severity: 'high',
+              blocking: true,
+              status: 'open',
+              relatedNodeIds: [feat.featureId.toString()],
+              suggestedProjection: 'goal'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (stage === 'how') {
+    const flows = space.flows || [];
+    const businessObjects = space.businessObjects || [];
+
+    // 1. Flow steps references check (High severity, blocking)
+    for (const flow of flows) {
+      const steps = flow.flowSteps || [];
+      for (const step of steps) {
+        if (step.actorIds && step.actorIds.length > 0) {
+          const invalidActor = step.actorIds.some(aid => !actors.some(act => act.actorId === aid));
+          if (invalidActor) {
+            issues.push({
+              id: `rule_step_invalid_actor_${step.stepId}`,
+              stage: 'how',
+              domain: 'step',
+              title: '流程步骤引用了不存在的角色',
+              description: `流程 "${flow.flowName}" 的步骤 "${step.stepName}" 引用了不存在的参与者角色。`,
+              severity: 'high',
+              blocking: true,
+              status: 'open',
+              relatedNodeIds: [flow.flowId.toString()],
+              suggestedProjection: 'system'
+            });
+          }
+        }
+
+        const allBOReferences = [...(step.inputBusinessObjectIds || []), ...(step.outputBusinessObjectIds || [])];
+        const invalidBO = allBOReferences.some(boid => !businessObjects.some(bo => bo.businessObjectId === boid));
+        if (invalidBO) {
+          issues.push({
+            id: `rule_step_invalid_bo_${step.stepId}`,
+            stage: 'how',
+            domain: 'step',
+            title: '流程步骤引用了损坏的数据对象',
+            description: `流程 "${flow.flowName}" 的步骤 "${step.stepName}" 引用了已删除或不存在的数据对象，请核对数据源。`,
+            severity: 'high',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [flow.flowId.toString()],
+            suggestedProjection: 'system'
+          });
+        }
+      }
+    }
+
+    // 2. Business Objects Attributes (Medium severity, blocking)
+    // Non-equilibrium algorithm:
+    const objectsWithAttributes = businessObjects.filter(bo => (bo.businessObjectAttributes || []).length > 0);
+    if (businessObjects.length > 0 && objectsWithAttributes.length > 0 && objectsWithAttributes.length < businessObjects.length) {
+      for (const bo of businessObjects) {
+        if ((bo.businessObjectAttributes || []).length === 0) {
+          issues.push({
+            id: `rule_bo_no_attrs_${bo.businessObjectId}`,
+            stage: 'how',
+            domain: 'business_object_attribute',
+            title: '业务对象缺少字段属性定义',
+            description: `数据实体 "${bo.businessObjectName}" 没有包含任何具体字段属性，建议在其下添加代表业务字段的属性（如 ID、名称、状态等）。`,
+            severity: 'medium',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [bo.businessObjectId.toString()],
+            suggestedProjection: 'data'
+          });
+        }
+      }
+    }
+    // 3. Flow Steps Non-equilibrium check (Medium severity, blocking)
+    const flowsWithSteps = flows.filter(f => (f.flowSteps || []).length > 0);
+    if (flows.length > 0 && flowsWithSteps.length > 0 && flowsWithSteps.length < flows.length) {
+      for (const flow of flows) {
+        if ((flow.flowSteps || []).length === 0) {
+          issues.push({
+            id: `rule_flow_no_steps_${flow.flowId}`,
+            stage: 'how',
+            domain: 'step',
+            title: '业务流程缺少步骤编排',
+            description: `业务流程 "${flow.flowName}" 尚未进行步骤和泳道编排，请补充核心流转步骤。`,
+            severity: 'medium',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [flow.flowId.toString()],
+            suggestedProjection: 'system'
+          });
+        }
+      }
+    }
+  }
+
+  if (stage === 'scope') {
+    // 1. Leaf features without Scope Decisions (Medium severity, blocking)
+    // Non-equilibrium algorithm:
+    const featuresWithScope = leafFeatures.filter(f => f.scope && f.scope.scopeStatus);
+    if (leafFeatures.length > 0 && featuresWithScope.length > 0 && featuresWithScope.length < leafFeatures.length) {
+      for (const feat of leafFeatures) {
+        if (!feat.scope || !feat.scope.scopeStatus) {
+          issues.push({
+            id: `rule_feature_no_scope_${feat.featureId}`,
+            stage: 'scope',
+            domain: 'scope_decision',
+            title: '叶子功能缺少范围规划',
+            description: `叶子能力 "${feat.featureName}" 尚未进行交付范围规划（本期/暂缓/排除），请进入 Scope 页面进行范围选择。`,
+            severity: 'medium',
+            blocking: true,
+            status: 'open',
+            relatedNodeIds: [feat.featureId.toString()],
+            suggestedProjection: 'data'
+          });
+        }
+      }
+    }
+  }
+
+  return issues;
+};
+
+export const evaluateMissingKinds = (space: RequirementSpace | null, stage: Stage): string[] => {
+  if (!space) return [];
+  const missing: string[] = [];
+
+  const actors = space.actors || [];
+  const features = space.features || [];
+  const leafFeatures = features.filter(f => f.parentId !== null && !(features.some(child => child.parentId === f.featureId)));
+
+  if (stage === 'what') {
+    if (actors.length === 0) {
+      missing.push('missing_actor');
+    }
+    if (features.length === 0) {
+      missing.push('missing_feature');
+    }
+    
+    const featuresWithActors = leafFeatures.filter(f => (f.actorIds || []).length > 0);
+    if (leafFeatures.length > 0 && featuresWithActors.length === 0) {
+      missing.push('missing_feature_actor_binding');
+    }
+
+    const featuresWithScenarios = leafFeatures.filter(f => (f.scenarios || []).length > 0);
+    if (leafFeatures.length > 0 && featuresWithScenarios.length === 0) {
+      missing.push('missing_scenario');
+    }
+
+    const allScenarios = features.flatMap(f => f.scenarios || []);
+    const scenariosWithAC = allScenarios.filter(s => (s.acceptanceCriteria || []).length > 0);
+    if (allScenarios.length > 0 && scenariosWithAC.length === 0) {
+      missing.push('missing_acceptance_criteria');
+    }
+  }
+
+  if (stage === 'how') {
+    const flows = space.flows || [];
+    const businessObjects = space.businessObjects || [];
+
+    if (flows.length === 0) {
+      missing.push('missing_flow');
+    } else {
+      const anyEmptySteps = flows.some(f => (f.flowSteps || []).length === 0);
+      if (anyEmptySteps) {
+        missing.push('missing_flow_step');
+      }
+
+      // Check for invalid topology using linear position indices
+      const invalidTopology = flows.some(f => {
+        const steps = f.flowSteps || [];
+        if (steps.length === 0) return false;
+        const positions = steps.map(s => s.position || 0).sort((a,b) => a-b);
+        const hasDuplicate = new Set(positions).size !== positions.length;
+        return hasDuplicate;
+      });
+      if (invalidTopology) {
+        missing.push('invalid_flow_topology');
+      }
+    }
+
+    // Business Objects all lack Attributes
+    const objectsWithAttributes = businessObjects.filter(bo => (bo.businessObjectAttributes || []).length > 0);
+    if (businessObjects.length > 0 && objectsWithAttributes.length === 0) {
+      missing.push('missing_business_object_attribute');
+    }
+  }
+
+  if (stage === 'scope') {
+    const featuresWithScope = leafFeatures.filter(f => f.scope && f.scope.scopeStatus);
+    if (leafFeatures.length > 0 && featuresWithScope.length === 0) {
+      missing.push('missing_scope_decision');
+    }
+    if (space.kanoStatus !== 'generated' && space.kanoStatus !== 'skipped') {
+      if (space.kanoStatus === 'failed') {
+        missing.push('kano_failed_retry');
+      } else {
+        missing.push('missing_kano_analysis');
+      }
+    }
+  }
+
+  return missing;
+};
+
+export const buildSinglePerceptionSlot = (
+  space: RequirementSpace | null,
+  stage: Stage,
+  issues: Issue[],
+  missingKinds: string[]
+): PerceptionSlot | undefined => {
+  if (!space) return undefined;
+
+  const actors = space.actors || [];
+  const features = space.features || [];
+  const flows = space.flows || [];
+  const leafFeatures = features.filter(f => f.parentId !== null && !(features.some(child => child.parentId === f.featureId)));
+
+  // A. Onboarding slots check
+  if (stage === 'what' && actors.length === 0 && features.length === 0) {
+    return {
+      id: 'what_onboarding',
+      stage: 'what',
+      blocking: false,
+      kind: 'what_onboarding',
+      description: '欢迎进入要做什么阶段，请先创建系统参与者与核心功能能力。',
+      actions: {
+        manual: { label: '开始创建', targetRoute: '/what' },
+        ai: { label: 'AI 生成角色与能力', endpoint: '/api/actor_generation_drafts' }
+      }
+    };
+  }
+
+  if (stage === 'how' && flows.length === 0 && (space.businessObjects || []).length === 0) {
+    return {
+      id: 'how_onboarding',
+      stage: 'how',
+      blocking: false,
+      kind: 'how_onboarding',
+      description: '欢迎进入怎么运作阶段，请为您的系统核心能力设计第一个业务主流程。',
+      actions: {
+        manual: { label: '手动创建流程', targetRoute: '/flow' },
+        ai: { label: 'AI 一键生成流程', endpoint: '/api/flow_generation_drafts' }
+      }
+    };
+  }
+
+  // Generative Perception Slot check
+  if (space.perceptionSlot) {
+    const pKind = (space.perceptionSlot.perceptionKind || '') as string;
+    const isHowSlot = pKind === 'FLOW' || pKind === 'FLOW_STEP' || pKind === '流程主结点' || pKind === '流程步骤结点';
+    const slotStage = ((space.perceptionSlot as any).stage || (isHowSlot ? 'how' : 'what')) as Stage;
+
+    if (slotStage === stage) {
+      return {
+        id: space.perceptionSlot.perceptionSlotId?.toString() || 'generative_slot',
+        stage: slotStage,
+        blocking: true,
+        kind: 'generative_perception_slot',
+        perceptionKind: space.perceptionSlot.perceptionKind,
+        description: `🤖 AI 建议补充：${space.perceptionSlot.perceptionDescription || ''}`,
+        actions: {
+          manual: {
+            label: '手动补充',
+            targetRoute: slotStage === 'how' ? '/flow' : '/what',
+            focusMode: 'highlight'
+          },
+          ai: {
+            label: 'AI 智能填槽'
+          }
+        }
+      };
+    }
+  }
+
+  // B. Ordered Priority Scan for Active Blocking Slots
+  const hasGap = (kind: string, issueDomain: string) => {
+    return missingKinds.includes(kind) || issues.some(i => i.domain === issueDomain && i.blocking);
+  };
+
+  // 1. missing_actor
+  if (hasGap('missing_actor', 'actor')) {
+    return {
+      id: 'slot_missing_actor',
+      stage: 'what',
+      blocking: true,
+      kind: 'missing_actor',
+      description: '🔍 系统检测到尚未创建任何系统参与者角色，请立即添加角色。',
+      actions: {
+        manual: { label: '添加角色', targetRoute: '/what', focusMode: 'modal' },
+        ai: { label: 'AI 生成角色', endpoint: '/api/actor_generation_drafts' }
+      }
+    };
+  }
+
+  // 2. missing_feature
+  if (hasGap('missing_feature', 'feature')) {
+    return {
+      id: 'slot_missing_feature',
+      stage: 'what',
+      blocking: true,
+      kind: 'missing_feature',
+      description: '🔍 系统检测到尚未创建任何核心能力结点，请开始勾勒系统功能树。',
+      actions: {
+        manual: { label: '添加功能', targetRoute: '/what' },
+        ai: { label: 'AI 推演功能树', endpoint: '/api/feature_generation_drafts' }
+      }
+    };
+  }
+
+  // 3. missing_feature_actor_binding
+  if (hasGap('missing_feature_actor_binding', 'feature_actor_binding')) {
+    const badFeat = leafFeatures.find(f => (f.actorIds || []).length === 0);
+    return {
+      id: 'slot_missing_feature_actor_binding',
+      stage: 'what',
+      blocking: true,
+      kind: 'missing_feature_actor_binding',
+      description: '🔍 系统检测到存在功能结点尚未指定任何执行角色，请补充绑定。',
+      targetKind: 'feature',
+      targetId: badFeat?.featureId,
+      actions: {
+        manual: { 
+          label: '去绑定角色', 
+          targetRoute: '/what', 
+          targetId: badFeat?.featureId, 
+          focusMode: 'highlight' 
+        }
+      }
+    };
+  }
+
+  // 4. missing_scenario
+  if (hasGap('missing_scenario', 'scenario')) {
+    const badFeat = leafFeatures.find(f => (f.scenarios || []).length === 0);
+    return {
+      id: 'slot_missing_scenario',
+      stage: 'what',
+      blocking: true,
+      kind: 'missing_scenario',
+      description: '🔍 部分叶子业务结点尚未编写成功典型验收场景（User Story），请补充。',
+      targetKind: 'feature',
+      targetId: badFeat?.featureId,
+      actions: {
+        manual: { 
+          label: '添加场景', 
+          targetRoute: '/what', 
+          targetId: badFeat?.featureId, 
+          focusMode: 'scroll' 
+        },
+        ai: { label: 'AI 生成场景', endpoint: `/api/scenario_generation_drafts` }
+      }
+    };
+  }
+
+  // 5. missing_acceptance_criteria
+  if (hasGap('missing_acceptance_criteria', 'ac')) {
+    const badFeat = features.find(f => (f.scenarios || []).some(s => (s.acceptanceCriteria || []).length === 0));
+    return {
+      id: 'slot_missing_acceptance_criteria',
+      stage: 'what',
+      blocking: true,
+      kind: 'missing_acceptance_criteria',
+      description: '🔍 存在典型验收场景缺少验收标准(AC)，开发人员将无法验证完成状态，请补充。',
+      targetKind: 'feature',
+      targetId: badFeat?.featureId,
+      actions: {
+        manual: { 
+          label: '完善AC', 
+          targetRoute: '/what', 
+          targetId: badFeat?.featureId, 
+          focusMode: 'highlight' 
+        },
+        ai: { label: 'AI 补齐标准', endpoint: `/api/acceptance_criteria_generation_drafts` }
+      }
+    };
+  }
+
+  // 6. missing_flow
+  if (hasGap('missing_flow', 'flow')) {
+    return {
+      id: 'slot_missing_flow',
+      stage: 'how',
+      blocking: true,
+      kind: 'missing_flow',
+      description: '🔍 业务运作模型缺少核心业务主流程，请添加代表系统流转的业务流程模型。',
+      actions: {
+        manual: { label: '创建业务流程', targetRoute: '/flow' },
+        ai: { label: 'AI 一键生成流程', endpoint: '/api/flow_generation_drafts' }
+      }
+    };
+  }
+
+  // 7. invalid_flow_topology / missing_flow_step
+  if (hasGap('invalid_flow_topology', 'step') || missingKinds.includes('missing_flow_step')) {
+    return {
+      id: 'slot_invalid_flow_topology',
+      stage: 'how',
+      blocking: true,
+      kind: 'invalid_flow_topology',
+      description: '🔍 检测到业务流程步骤尚未编排或步骤顺序链路损坏，请检查步骤拓扑结构。',
+      actions: {
+        manual: { label: '编排步骤', targetRoute: '/flow' }
+      }
+    };
+  }
+
+  // 8. missing_business_object_attribute
+  if (hasGap('missing_business_object_attribute', 'business_object_attribute')) {
+    const bo = (space.businessObjects || []).find(b => (b.businessObjectAttributes || []).length === 0);
+    return {
+      id: 'slot_missing_business_object_attribute',
+      stage: 'how',
+      blocking: true,
+      kind: 'missing_business_object_attribute',
+      description: '🔍 数据实体尚未定义任何业务字段属性，数据模型不完整，建议补充。',
+      targetKind: 'business_object',
+      targetId: bo?.businessObjectId,
+      actions: {
+        manual: { 
+          label: '定义字段', 
+          targetRoute: '/flow', 
+          targetId: bo?.businessObjectId, 
+          focusMode: 'highlight' 
+        }
+      }
+    };
+  }
+
+  // 9. missing_scope_decision
+  if (hasGap('missing_scope_decision', 'scope_decision')) {
+    const badFeat = leafFeatures.find(f => !f.scope || !f.scope.scopeStatus);
+    return {
+      id: 'slot_missing_scope_decision',
+      stage: 'scope',
+      blocking: true,
+      kind: 'missing_scope_decision',
+      description: '🔍 部分业务叶子功能尚未制定交付计划，请将其指派给当前迭代或进行暂缓。',
+      targetKind: 'feature',
+      targetId: badFeat?.featureId,
+      actions: {
+        ai: { label: 'AI 自动划分范围' }
+      }
+    };
+  }
+
+  // 10. missing_kano_analysis / kano_failed_retry
+  if (hasGap('missing_kano_analysis', 'kano_analysis') || hasGap('kano_failed_retry', 'kano_analysis')) {
+    const kStatus = space.kanoStatus || 'missing';
+    let desc = '🔍 交付范围尚未进行 Kano 需求属性归类分析，请完成此分析或跳过。';
+    let aiLabel = 'AI 自动划分范围';
+    
+    if (kStatus === 'generating') {
+      desc = '🤖 AI 正在对系统功能卡片进行 Kano 模型分类分析并推演交付安排，请耐心等待...';
+      aiLabel = 'AI 正在划分范围';
+    } else if (kStatus === 'draft_ready') {
+      desc = '🎨 AI 已生成 Kano 分析与交付建议草稿！请在下方核对并确认发布计划。';
+      aiLabel = 'AI 自动划分范围';
+    } else if (kStatus === 'failed') {
+      desc = '❌ Kano 需求分类分析生成超时或失败。您可以重新发起评估，或直接跳过以进行纯手工范围划分。';
+      aiLabel = 'AI 自动划分范围';
+    }
+
+    return {
+      id: kStatus === 'failed' ? 'slot_kano_failed_retry' : 'slot_missing_kano_analysis',
+      stage: 'scope',
+      blocking: true,
+      kind: kStatus === 'failed' ? 'kano_failed_retry' : 'missing_kano_analysis',
+      description: desc,
+      actions: {
+        ai: { label: aiLabel }
+      }
+    };
+  }
+
+  // 11. Stage gate transition confirmation slot (when static mandatory checks pass but stage is not unlocked)
+  if ((stage === 'what' || stage === 'how') && evaluateMandatoryChecks(space, stage) && !space.unlockedStages?.includes(stage)) {
+    return {
+      id: `slot_${stage}_gate_confirm`,
+      stage: stage,
+      blocking: true,
+      kind: 'stage_gate_transition_confirm',
+      description: `🌳 ${stage === 'what' ? 'What' : 'How'} 阶段基础建模规则已满足。建议运行 AI 智能诊断以检查潜在缺口，或申请解锁进入下一阶段。`,
+      actions: {
+        manual: {
+          label: '申请进入下一阶段',
+          focusMode: 'modal'
+        },
+        ai: {
+          label: 'AI 智能诊断 (推荐)'
+        }
+      }
+    };
+  }
+
+  return undefined;
+};
+
+export const evaluateMandatoryChecks = (space: RequirementSpace | null, stage: Stage): boolean => {
+  if (!space) return false;
+
+  const actors = space.actors || [];
+  const features = space.features || [];
+  const leafFeatures = features.filter(f => f.parentId !== null && !(features.some(child => child.parentId === f.featureId)));
+
+  if (stage === 'what') {
+    if (actors.length === 0) return false;
+    if (leafFeatures.length === 0) return false;
+    
+    const allBound = leafFeatures.every(f => (f.actorIds || []).length > 0);
+    if (!allBound) return false;
+
+    const allHaveScenarios = leafFeatures.every(f => (f.scenarios || []).length > 0);
+    if (!allHaveScenarios) return false;
+
+    const allScenarios = leafFeatures.flatMap(f => f.scenarios || []);
+    const allHaveAC = allScenarios.every(s => (s.acceptanceCriteria || []).length > 0);
+    if (!allHaveAC) return false;
+
+    return true;
+  }
+
+  if (stage === 'how') {
+    const flows = space.flows || [];
+    const businessObjects = space.businessObjects || [];
+
+    if (flows.length === 0) return false;
+    
+    const allHaveSteps = flows.every(f => (f.flowSteps || []).length > 0);
+    if (!allHaveSteps) return false;
+
+    for (const flow of flows) {
+      for (const step of flow.flowSteps || []) {
+        if (step.actorIds && step.actorIds.length > 0) {
+          const invalidActor = step.actorIds.some(aid => !actors.some(act => act.actorId === aid));
+          if (invalidActor) return false;
+        }
+        const allBOs = [...(step.inputBusinessObjectIds || []), ...(step.outputBusinessObjectIds || [])];
+        const invalidBO = allBOs.some(boid => !businessObjects.some(bo => bo.businessObjectId === boid));
+        if (invalidBO) return false;
+      }
+    }
+
+    if (businessObjects.length > 0) {
+      const objectsWithAttributes = businessObjects.filter(bo => (bo.businessObjectAttributes || []).length > 0);
+      if (objectsWithAttributes.length === 0) return false;
+    }
+
+    return true;
+  }
+
+  if (stage === 'scope') {
+    if (leafFeatures.length === 0) return false;
+    
+    const allHaveScope = leafFeatures.every(f => f.scope && f.scope.scopeStatus);
+    if (!allHaveScope) return false;
+
+    if (space.kanoStatus !== 'generated' && space.kanoStatus !== 'skipped') {
+      return false;
+    }
+
+    return true;
+  }
+
+  return false;
+};
+
+export const buildStageGate = (space: RequirementSpace | null, stage: Stage): StageGateResult => {
+  const issues = detectStageIssues(space, stage);
+  const missingKinds = evaluateMissingKinds(space, stage);
+  const slot = buildSinglePerceptionSlot(space, stage, issues, missingKinds);
+  const mandatoryChecksPassed = evaluateMandatoryChecks(space, stage);
+
+  const passed = mandatoryChecksPassed && !(slot && slot.blocking);
+
+  return {
+    stage,
+    mandatoryChecksPassed,
+    passed,
+    issues,
+    activeSlot: slot || undefined,
+    blockingSlot: slot && slot.blocking ? slot : undefined,
+    missingKinds
+  };
+};
+
+export const inferIssueStage = (issue: Issue): Stage | null => {
+  if (issue.stage === 'what' || issue.stage === 'how' || issue.stage === 'scope') {
+    return issue.stage;
+  }
+
+  switch (issue.domain) {
+    case 'actor':
+    case 'feature':
+    case 'feature_actor_binding':
+    case 'scenario':
+    case 'ac':
+      return 'what';
+    case 'flow':
+    case 'step':
+    case 'business_object':
+    case 'business_object_attribute':
+      return 'how';
+    case 'scope_decision':
+    case 'kano':
+      return 'scope';
+    default:
+      break;
+  }
+
+  switch (issue.suggestedProjection) {
+    case 'goal':
+    case 'role':
+    case 'ui':
+      return 'what';
+    case 'system':
+      return 'how';
+    case 'data':
+      return 'scope';
+    default:
+      return null;
+  }
+};
+
+export const getStageIssues = (space: RequirementSpace | null, stage: Stage): Issue[] => {
+  if (!space) return [];
+
+  const compatibleIssues = Array.isArray((space as any).issuesCompatible)
+    ? ((space as any).issuesCompatible as Issue[])
+    : [];
+
+  return compatibleIssues.filter(
+    (issue) => issue.status === 'open' && inferIssueStage(issue) === stage
+  );
 };
 
 export const buildPageHealth = (space: RequirementSpace | null, path: string): PageHealth => {
-  if (!space) return { status: '未开始', issueCount: 0, todoCount: 0, hasRisk: false, disabled: false };
-
-  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
-    ? space.issuesCompatible
-    : detectIssues(space);
-  const hasPerception = space.perceptionSlot !== null;
-
-  // Prerequisites checks
-  const isWhatComplete = (space.actors || []).length > 0 && (space.features || []).length > 0;
-  
-  // Find leaf features
-  const leafFeatures = (space.features || []).filter(f => {
-    const isParent = (space.features || []).some(child => child.parentId === f.featureId);
-    return !isParent;
-  });
-  
-  // Check if all leaf features have been decided
-  const hasUndecidedScope = leafFeatures.length > 0 && leafFeatures.some(f => !f.scope || !f.scope.scopeStatus);
-
-  let relatedIssues: Issue[] = [];
-  let todoCount = 0;
-
-  if (path === '/') {
-    relatedIssues = issues;
-    todoCount = hasPerception ? 1 : 0;
-    
-    const issueCount = relatedIssues.length;
-    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-    const hasRisk = highRiskCount > 0;
-    
-    let status: PageHealth['status'] = '已收敛';
-    if (hasRisk) {
-      status = '阻塞';
-    } else if (issueCount > 0 || todoCount > 0) {
-      status = '待决策';
-    }
-    
-    return { status, issueCount, todoCount, hasRisk, disabled: false };
-  } 
-  
-  if (path === '/what') {
-    relatedIssues = issues.filter(i => i.suggestedProjection === 'goal' || i.suggestedProjection === 'role');
-    todoCount = (hasPerception && (space.perceptionSlot?.perceptionKind.includes('角色') || space.perceptionSlot?.perceptionKind.includes('功能') || space.perceptionSlot?.perceptionKind.includes('场景') || space.perceptionSlot?.perceptionKind.includes('成功'))) ? 1 : 0;
-    
-    const issueCount = relatedIssues.length;
-    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-    const hasRisk = highRiskCount > 0;
-    
-    const isEmpty = (space.actors || []).length === 0 && (space.features || []).length === 0;
-    
-    let status: PageHealth['status'] = '已收敛';
-    if (isEmpty) {
-      status = '待设计';
-    } else if (hasRisk) {
-      status = '阻塞';
-    } else if (issueCount > 0 || todoCount > 0) {
-      status = '待决策';
-    }
-    
-    return { status, issueCount, todoCount, hasRisk, disabled: false };
-  } 
-  
-  if (path === '/flow') {
-    if (!isWhatComplete) {
-      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-    }
-    
-    relatedIssues = issues.filter(i => i.suggestedProjection === 'system');
-    todoCount = (hasPerception && space.perceptionSlot?.perceptionKind.includes('流程')) ? 1 : 0;
-    
-    const issueCount = relatedIssues.length;
-    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-    const hasRisk = highRiskCount > 0;
-    
-    const isEmpty = (space.flows || []).length === 0;
-    
-    let status: PageHealth['status'] = '已收敛';
-    if (isEmpty) {
-      status = '待设计';
-    } else if (hasRisk) {
-      status = '阻塞';
-    } else if (issueCount > 0 || todoCount > 0) {
-      status = '待决策';
-    }
-    
-    return { status, issueCount, todoCount, hasRisk, disabled: false };
-  } 
-  
-  if (path === '/scope') {
-    if (!isWhatComplete) {
-      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-    }
-    
-    // Fallback if there are actually no leaf features defined
-    if (leafFeatures.length === 0) {
-      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-    }
-    
-    relatedIssues = issues.filter(i => i.suggestedProjection === 'data');
-    
-    const issueCount = relatedIssues.length;
-    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-    const hasRisk = highRiskCount > 0;
-    
-    let status: PageHealth['status'] = '已收敛';
-    if (hasUndecidedScope) {
-      status = '待决策';
-    } else if (hasRisk) {
-      status = '阻塞';
-    }
-    
-    return { status, issueCount, todoCount: 0, hasRisk, disabled: false };
-  } 
-  
-  if (path === '/preview') {
-    const isHowComplete = (space.flows || []).length > 0;
-    const isScopeComplete = leafFeatures.length > 0 && !hasUndecidedScope;
-    const isPreviewAvailable = isWhatComplete && isHowComplete && isScopeComplete;
-    
-    if (!isPreviewAvailable) {
-      return { status: '待前置就绪', issueCount: 0, todoCount: 0, hasRisk: false, disabled: true };
-    }
-    
-    relatedIssues = issues;
-    
-    const issueCount = relatedIssues.length;
-    const highRiskCount = relatedIssues.filter(i => i.severity === 'high').length;
-    const hasRisk = highRiskCount > 0;
-    
-    let status: PageHealth['status'] = '可预览';
-    if (hasRisk) {
-      status = '阻塞';
-    } else if (issueCount > 0) {
-      status = '待决策';
-    }
-    
-    return { status, issueCount, todoCount: 0, hasRisk, disabled: false };
+  if (!space) {
+    return {
+      statusCode: 'not_started',
+      statusLabel: '未开始',
+      disabled: false,
+      issueCount: 0,
+      hasBlockingSlot: false
+    };
   }
 
-  return { status: '未开始', issueCount: 0, todoCount: 0, hasRisk: false, disabled: false };
+  const whatGate = buildStageGate(space, 'what');
+  const howGate = buildStageGate(space, 'how');
+  const scopeGate = buildStageGate(space, 'scope');
+  const whatIssues = getStageIssues(space, 'what');
+  const howIssues = getStageIssues(space, 'how');
+  const scopeIssues = getStageIssues(space, 'scope');
+
+  if (path === '/what') {
+    const hasBlockingSlot = whatGate.blockingSlot !== undefined;
+    const isUnused = (space.actors || []).length === 0 && (space.features || []).length === 0;
+    
+    let statusCode: PageHealth['statusCode'] = 'ready';
+    let statusLabel = '已就绪';
+
+    if (isUnused) {
+      statusCode = 'not_started';
+      statusLabel = '未开始';
+    } else if (hasBlockingSlot) {
+      statusCode = 'needs_attention';
+      statusLabel = '待补齐';
+    } else if (whatGate.passed) {
+      statusCode = 'ready';
+      statusLabel = '已收敛';
+    } else {
+      statusCode = 'in_progress';
+      statusLabel = '进行中';
+    }
+
+    return {
+      statusCode,
+      statusLabel,
+      disabled: false,
+      issueCount: whatIssues.length,
+      hasBlockingSlot,
+      nextSlot: whatGate.activeSlot
+    };
+  }
+
+  if (path === '/flow') {
+    const disabled = !whatGate.passed;
+    const hasBlockingSlot = howGate.blockingSlot !== undefined;
+    const isUnused = (space.flows || []).length === 0;
+
+    let statusCode: PageHealth['statusCode'] = 'locked';
+    let statusLabel = '已锁定';
+
+    if (disabled) {
+      statusCode = 'locked';
+      statusLabel = '待前置就绪';
+    } else if (isUnused) {
+      statusCode = 'not_started';
+      statusLabel = '未开始';
+    } else if (hasBlockingSlot) {
+      statusCode = 'needs_attention';
+      statusLabel = '待补齐';
+    } else if (howGate.passed) {
+      statusCode = 'ready';
+      statusLabel = '已收敛';
+    } else {
+      statusCode = 'in_progress';
+      statusLabel = '进行中';
+    }
+
+    return {
+      statusCode,
+      statusLabel,
+      disabled,
+      disabledReason: disabled ? '需先补齐 What 阶段的所有核心建模规则' : undefined,
+      issueCount: howIssues.length,
+      hasBlockingSlot,
+      nextSlot: howGate.activeSlot
+    };
+  }
+
+  if (path === '/scope') {
+    const disabled = !whatGate.passed || !howGate.passed;
+    const hasBlockingSlot = scopeGate.blockingSlot !== undefined;
+    
+    const leafFeatures = (space.features || []).filter(f => {
+      const isParent = (space.features || []).some(child => child.parentId === f.featureId);
+      return f.parentId !== null && !isParent;
+    });
+    const isUnused = leafFeatures.length > 0 && leafFeatures.every(f => !f.scope || !f.scope.scopeStatus);
+
+    let statusCode: PageHealth['statusCode'] = 'locked';
+    let statusLabel = '已锁定';
+
+    if (disabled) {
+      statusCode = 'locked';
+      statusLabel = '待前置就绪';
+    } else if (isUnused) {
+      statusCode = 'not_started';
+      statusLabel = '未开始';
+    } else if (hasBlockingSlot) {
+      statusCode = 'needs_attention';
+      statusLabel = '待补齐';
+    } else if (scopeGate.passed) {
+      statusCode = 'ready';
+      statusLabel = '已收敛';
+    } else {
+      statusCode = 'in_progress';
+      statusLabel = '进行中';
+    }
+
+    return {
+      statusCode,
+      statusLabel,
+      disabled,
+      disabledReason: disabled ? '需先补齐 What 和 How 阶段的核心规则' : undefined,
+      issueCount: scopeIssues.length,
+      hasBlockingSlot,
+      nextSlot: scopeGate.activeSlot
+    };
+  }
+
+  if (path === '/preview') {
+    const allGatesPassed = whatGate.passed && howGate.passed && scopeGate.passed;
+    
+    return {
+      statusCode: allGatesPassed ? 'real_ready' : 'shadow_available',
+      statusLabel: allGatesPassed ? '已就绪' : '影子预览可用',
+      disabled: false,
+      issueCount: whatIssues.length + howIssues.length + scopeIssues.length,
+      hasBlockingSlot: false
+    };
+  }
+
+  if (path === '/overview' || path === '/') {
+    const totalIssues = whatIssues.length + howIssues.length + scopeIssues.length;
+    const hasAnyBlocking = whatGate.blockingSlot || howGate.blockingSlot || scopeGate.blockingSlot;
+
+    return {
+      statusCode: hasAnyBlocking ? 'needs_attention' : totalIssues > 0 ? 'in_progress' : 'ready',
+      statusLabel: hasAnyBlocking ? '待决策' : '已收敛',
+      disabled: false,
+      issueCount: totalIssues,
+      hasBlockingSlot: hasAnyBlocking !== undefined
+    };
+  }
+
+  // Dashboard Overview Path fallback
+  const totalIssues = whatIssues.length + howIssues.length + scopeIssues.length;
+  const hasAnyBlocking = whatGate.blockingSlot || howGate.blockingSlot || scopeGate.blockingSlot;
+
+  return {
+    statusCode: hasAnyBlocking ? 'needs_attention' : totalIssues > 0 ? 'in_progress' : 'ready',
+    statusLabel: hasAnyBlocking ? '待决策' : '已收敛',
+    disabled: false,
+    issueCount: totalIssues,
+    hasBlockingSlot: hasAnyBlocking !== undefined
+  };
 };
 
-// Overview dashboard calculation
 export type OverviewModel = {
   readiness: ReadinessSummary;
+  openIssues: Issue[];
   highRiskIssues: Issue[];
   decisionQueue: Array<{
     id: string;
-    kind: 'issue' | 'slot' | 'choiceGroup' | 'proposal';
+    kind: 'choiceGroup';
     title: string;
     description: string;
     original: any;
@@ -309,6 +1054,7 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
   if (!space) {
     return {
       readiness,
+      openIssues: [],
       highRiskIssues: [],
       decisionQueue: [],
       recentChoices: [],
@@ -320,25 +1066,17 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
     };
   }
 
-  const issues = space.issuesCompatible && space.issuesCompatible.length > 0
-    ? space.issuesCompatible
-    : detectIssues(space);
-  const highRiskIssues = issues.filter(i => i.severity === 'high');
+  const whatGate = buildStageGate(space, 'what');
+  const howGate = buildStageGate(space, 'how');
+  const scopeGate = buildStageGate(space, 'scope');
+
+  const allIssues = selectAllIssues(space);
+  const openIssues = allIssues.filter(i => i.status === 'open');
+  const highRiskIssues = openIssues.filter(i => i.severity === 'high');
 
   const dq: any[] = [];
 
-  // If perception slot is present, it's the highest priority todo!
-  if (space.perceptionSlot) {
-    dq.push({
-      id: space.perceptionSlot.perceptionSlotId.toString(),
-      kind: 'slot' as const,
-      title: space.perceptionSlot.perceptionKind,
-      description: space.perceptionSlot.perceptionDescription,
-      original: space.perceptionSlot,
-    });
-  }
-
-  // Push open choice groups
+  // 1. 抉择项：ChoiceGroups (处于 open 状态)
   if (space.choiceGroups) {
     Object.values(space.choiceGroups).forEach((cg: any) => {
       if (cg.status === 'open') {
@@ -346,38 +1084,38 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
         dq.push({
           id: cg.id,
           kind: 'choiceGroup' as const,
-          title: `待决决策项：AI 推演方案`,
-          description: `针对检测到的系统设计缝隙，提供了 ${choicesCount} 个可选的 AI 智能推演落地方案。`,
+          title: `方案决策：${cg.title || 'AI 智能推演落地决策'}`,
+          description: `针对系统设计缝隙，AI 生成了 ${choicesCount} 个可选的联动落地方案，请采纳。`,
           original: cg,
         });
       }
     });
   }
 
-  // Push rule-based issues next
-  issues.forEach(issue => {
-    dq.push({
-      id: issue.id,
-      kind: 'issue' as const,
-      title: issue.title,
-      description: issue.description,
-      original: issue,
-    });
-  });
+  const nodes = space.nodes || {};
 
   const choicesCompatible = (space as any).choicesCompatible || [];
   const recentChoices = choicesCompatible.filter((c: any) => c.status === 'candidate').slice(0, 3);
   const openChoiceGroupsCount = Object.values(space.choiceGroups || {}).filter((cg: any) => cg.status === 'open').length;
 
+  // 获取当前活跃阶段，仅统计当前阶段的阻塞槽位
+  let activeStage: Stage = 'what';
+  if (whatGate.passed) {
+    activeStage = howGate.passed ? 'scope' : 'how';
+  }
+  const activeGate = activeStage === 'what' ? whatGate : activeStage === 'how' ? howGate : scopeGate;
+  const openSlotsCount = activeGate.blockingSlot ? 1 : 0;
+
   return {
     readiness,
+    openIssues,
     highRiskIssues,
     decisionQueue: dq.slice(0, 5),
     recentChoices,
     openChoiceGroupsCount,
-    openSlotsCount: space.perceptionSlot ? 1 : 0,
+    openSlotsCount,
 
-    aiAssumptionLedger: [],
+    aiAssumptionLedger: Object.values(nodes).filter((n: any) => n.status === 'ai_assumption'),
     recentAuditOperations: auditLogs.slice(0, 5),
   };
 };
@@ -387,6 +1125,35 @@ export const projectionPath = (projection: string) => {
   if (projection === 'data') return '/scope';
   if (projection === 'ui') return '/preview';
   return '/what';
+};
+
+export const buildProjectRoute = (
+  projectId: number | string | null | undefined,
+  page: '/overview' | '/what' | '/flow' | '/scope' | '/preview'
+): string => {
+  if (projectId === null || projectId === undefined || projectId === '') return page;
+  return `/projects/${projectId}${page}`;
+};
+
+export const extractWorkspacePage = (
+  pathname: string
+): '/overview' | '/what' | '/flow' | '/scope' | '/preview' | null => {
+  const match = pathname.match(/\/projects\/[^/]+(\/overview|\/what|\/flow|\/scope|\/preview)$/);
+  if (match) {
+    return match[1] as '/overview' | '/what' | '/flow' | '/scope' | '/preview';
+  }
+
+  if (
+    pathname === '/overview' ||
+    pathname === '/what' ||
+    pathname === '/flow' ||
+    pathname === '/scope' ||
+    pathname === '/preview'
+  ) {
+    return pathname;
+  }
+
+  return null;
 };
 
 // Flow step topology detail
@@ -543,6 +1310,8 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
 
   // Add active perception slot
   if (space.perceptionSlot) {
+    const slotStage = ((space.perceptionSlot as any).stage || 'what') as Stage;
+    const projection = slotStage === 'how' ? 'system' : slotStage === 'scope' ? 'data' : 'goal';
     items.push({
       kind: 'slot',
       slot: {
@@ -551,7 +1320,7 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
         description: space.perceptionSlot.perceptionDescription,
         status: 'empty'
       },
-      projection: 'goal'
+      projection
     });
   }
 
@@ -570,48 +1339,33 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
   return items;
 };
 
-export const normalizeScopeStatus = (status: string | undefined | null): '本期' | '暂缓' | '排除' => {
-  if (!status) return '本期';
+export const normalizeScopeStatus = (status: string | undefined | null): 'current' | 'postponed' | 'exclude' => {
+  if (!status) return 'current';
   const s = status.toLowerCase();
-  if (s === 'current' || s === 'in_scope' || s === '本期') return '本期';
-  if (s === 'postponed' || s === 'deferred' || s === '暂缓') return '暂缓';
-  if (s === 'exclude' || s === 'excluded' || s === '排除') return '排除';
-  return '本期';
+  if (s === 'current' || s === 'in_scope' || s === '本期') return 'current';
+  if (s === 'postponed' || s === 'deferred' || s === '暂缓') return 'postponed';
+  if (s === 'exclude' || s === 'excluded' || s === '排除') return 'exclude';
+  return 'current';
 };
 
 // Tree-hierarchy feature selectors
 export const getRootCapabilities = (space: RequirementSpace | null): any[] => {
   if (!space) return [];
   const features = space.features || [];
-  const nullParentFeatures = features.filter(f => f.parentId === null);
+  const dbRoot = features.find(f => f.parentId === null);
+  if (!dbRoot) return [];
   
-  // If there is exactly one top-level root feature (the L1 system root)
-  // and other features exist, treat L2 features (children of L1) as the root capabilities.
-  if (nullParentFeatures.length === 1 && features.length > 1) {
-    const rootFeature = nullParentFeatures[0];
-    const l2Features = features.filter(f => f.parentId === rootFeature.featureId);
-    if (l2Features.length > 0) {
-      return l2Features.map(f => ({
-        ...f,
-        id: f.featureId.toString(),
-        title: f.featureName,
-        description: f.featureDescription,
-        status: 'confirmed',
-        scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
-        kind: 'feature'
-      }));
-    }
-  }
-  
-  return nullParentFeatures.map(f => ({
-    ...f,
-    id: f.featureId.toString(),
-    title: f.featureName,
-    description: f.featureDescription,
-    status: 'confirmed',
-    scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
-    kind: 'feature'
-  }));
+  return features
+    .filter(f => f.parentId === dbRoot.featureId)
+    .map(f => ({
+      ...f,
+      id: f.featureId.toString(),
+      title: f.featureName,
+      description: f.featureDescription,
+      status: 'confirmed',
+      scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
+      kind: 'feature'
+    }));
 };
 
 export const getChildCapabilities = (space: RequirementSpace | null, capId: string | number): any[] => {
@@ -686,24 +1440,28 @@ export const formatImpactPreview = (space: RequirementSpace | null, impact: any)
 };
 
 export const groupScopeItems = (space: RequirementSpace | null) => {
-  const empty = { inScope: [], deferred: [], dependencies: [], outOfScope: [], excluded: [] };
+  const empty = { inScope: [], deferred: [], dependencies: [], outOfScope: [], excluded: [], undecided: [] };
   if (!space) return empty;
 
   // Filter leaf capabilities only
   const leafFeatures = (space.features || []).filter(f => {
     const isParent = (space.features || []).some(child => child.parentId === f.featureId);
-    return !isParent;
+    return f.parentId !== null && !isParent;
   });
 
   const mapToNode = (f: FeatureNode) => {
     const parentModule = (space.features || []).find(p => p.featureId === f.parentId);
-    const normStatus = normalizeScopeStatus(f.scope?.scopeStatus);
+    const hasScope = f.scope && f.scope.scopeStatus;
+    const normStatus = hasScope ? normalizeScopeStatus(f.scope.scopeStatus) : undefined;
+    const isDecisionMissing = !hasScope;
+
     return {
       id: f.featureId.toString(),
       title: f.featureName,
       description: f.featureDescription,
       status: 'confirmed',
       scopeStatus: normStatus,
+      isDecisionMissing,
       parentModuleName: parentModule ? parentModule.featureName : '未分组模块',
       scope: f.scope ? {
         ...f.scope,
@@ -711,12 +1469,14 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
       } : {
         kind: 'scope' as const,
         scopeId: Math.floor(1000 + Math.random() * 9000),
-        scopeStatus: normStatus,
-        reason: '默认包含在本期范围中，请点击卡片录入决策缘由与Kano分析。',
+        scopeStatus: normStatus as any,
+        reason: '',
         positiveSummary: null,
         negativeSummary: null,
         positivePictureBase64: null,
-        negativePictureBase64: null
+        negativePictureBase64: null,
+        kanoCategory: null,
+        kanoCategoryName: null
       }
     };
   };
@@ -724,11 +1484,12 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
   const mapped = leafFeatures.map(mapToNode);
 
   return {
-    inScope: mapped.filter(f => f.scopeStatus === '本期'),
-    deferred: mapped.filter(f => f.scopeStatus === '暂缓'),
+    inScope: mapped.filter(f => f.scopeStatus === 'current'),
+    deferred: mapped.filter(f => f.scopeStatus === 'postponed'),
     dependencies: [],
     outOfScope: [],
-    excluded: mapped.filter(f => f.scopeStatus === '排除'),
+    excluded: mapped.filter(f => f.scopeStatus === 'exclude'),
+    undecided: mapped.filter(f => f.isDecisionMissing),
   };
 };
 
@@ -800,7 +1561,7 @@ export const buildRolePages = (space: RequirementSpace | null, actorId: string |
   // Filter leaf capabilities only associated with this actor
   const leafFeatures = (space.features || []).filter(f => {
     const isParent = (space.features || []).some(child => child.parentId === f.featureId);
-    return !isParent && (f.actorIds || []).includes(numId);
+    return f.parentId !== null && !isParent && (f.actorIds || []).includes(numId);
   });
 
   return leafFeatures.map(f => {
@@ -832,4 +1593,147 @@ export const buildPlaybackForActor = (space: RequirementSpace | null, actorId: s
     stepIds: page.relatedSteps,
     stepTitles: page.relatedSteps
   }));
+};
+
+export const getGuardRedirect = (
+  path: string,
+  space: RequirementSpace | null
+): { targetRoute: string; errorToast: string } | undefined => {
+  if (!space) return undefined;
+
+  const whatGate = buildStageGate(space, 'what');
+  const howGate = buildStageGate(space, 'how');
+
+  if (path === '/flow') {
+    if (!whatGate.passed) {
+      return {
+        targetRoute: '/what',
+        errorToast: '⚠️ 需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
+      };
+    }
+  }
+
+  if (path === '/scope') {
+    if (!whatGate.passed) {
+      return {
+        targetRoute: '/what',
+        errorToast: '⚠️ 需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
+      };
+    }
+    if (!howGate.passed) {
+      return {
+        targetRoute: '/flow',
+        errorToast: '⚠️ 需先补齐 How 阶段：至少存在一条核心业务流程且拓扑关联关系完整，字段属性满足非平衡校验，且无阻碍性感知槽。'
+      };
+    }
+  }
+
+  return undefined;
+};
+
+export const detectIssues = (space: RequirementSpace | null): Issue[] => {
+  if (!space) return [];
+  const issues: Issue[] = [];
+
+  const actors = space.actors || [];
+  const features = space.features || [];
+  const businessObjects = space.businessObjects || [];
+  const flows = space.flows || [];
+
+  // 1. Roles without features
+  for (const actor of actors) {
+    const isUsed = features.some((f) => (f.actorIds || []).includes(actor.actorId));
+    if (!isUsed) {
+      issues.push({
+        id: `rule_actor_unlinked_${actor.actorId}`,
+        title: `参与者角色未关联任何功能`,
+        description: `参与者 "${actor.actorName}" 目前在系统架构中没有被任何功能结点引用，请为其添加相应功能，或删除该闲置角色。`,
+        severity: 'medium',
+        status: 'open',
+        relatedNodeIds: [actor.actorId.toString()],
+        suggestedProjection: 'role',
+        category: 'rule_gap',
+      });
+    }
+  }
+
+  // 2. Features without roles
+  for (const feature of features) {
+    if ((feature.actorIds || []).length === 0) {
+      issues.push({
+        id: `rule_feature_no_actor_${feature.featureId}`,
+        title: `功能结点未关联任何角色`,
+        description: `功能 "${feature.featureName}" 目前未指定任何参与者（执行人），请在该功能的右侧面板中绑定执行角色。`,
+        severity: 'high',
+        status: 'open',
+        relatedNodeIds: [feature.featureId.toString()],
+        suggestedProjection: 'goal',
+        category: 'rule_gap',
+      });
+    }
+
+    // 3. Leaf features with empty scenarios
+    const isLeaf = (feature.childrenIds || []).length === 0;
+    if (isLeaf && (feature.scenarios || []).length === 0) {
+      issues.push({
+        id: `rule_feature_no_scenarios_${feature.featureId}`,
+        title: `叶子功能未定义验收场景`,
+        description: `功能结点 "${feature.featureName}" 作为叶子业务结点，尚未描述任何典型成功场景（User Story），可能导致需求不够具象化。`,
+        severity: 'medium',
+        status: 'open',
+        relatedNodeIds: [feature.featureId.toString()],
+        suggestedProjection: 'goal',
+        category: 'rule_gap',
+      });
+    }
+
+    // 4. Scenarios without AC
+    for (const sc of feature.scenarios || []) {
+      if ((sc.acceptanceCriteria || []).length === 0) {
+        issues.push({
+          id: `rule_scenario_no_ac_${sc.scenarioId}`,
+          title: `成功场景缺少验收标准`,
+          description: `功能 "${feature.featureName}" 下的场景 "${sc.scenarioName}" 缺少对应的成功标准 (AC)，开发与测试人员将无法验证功能终态。`,
+          severity: 'high',
+          status: 'open',
+          relatedNodeIds: [feature.featureId.toString()],
+          suggestedProjection: 'goal',
+          category: 'rule_gap',
+        });
+      }
+    }
+  }
+
+  // 5. Business objects without attributes
+  for (const bo of businessObjects) {
+    if ((bo.businessObjectAttributes || []).length === 0) {
+      issues.push({
+        id: `rule_bo_no_attrs_${bo.businessObjectId}`,
+        title: `业务对象缺少字段属性定义`,
+        description: `数据实体 "${bo.businessObjectName}" 没有包含任何具体字段属性，建议在其下添加代表业务字段的属性（如 ID、名称、状态等）。`,
+        severity: 'medium',
+        status: 'open',
+        relatedNodeIds: [bo.businessObjectId.toString()],
+        suggestedProjection: 'data',
+        category: 'rule_gap',
+      });
+    }
+  }
+
+  // 6. Flows without steps
+  for (const flow of flows) {
+    if ((flow.flowSteps || []).length === 0) {
+      issues.push({
+        id: `rule_flow_no_steps_${flow.flowId}`,
+        title: `业务流程未定义任何步骤`,
+        description: `业务流 "${flow.flowName}" 属于空壳流程，没有任何流转的执行步骤，请为其配置用户/系统步骤。`,
+        severity: 'high',
+        status: 'open',
+        relatedNodeIds: [flow.flowId.toString()],
+        suggestedProjection: 'system',
+      });
+    }
+  }
+
+  return issues;
 };

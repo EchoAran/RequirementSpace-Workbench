@@ -23,9 +23,9 @@ const statusOptions = [
 ];
 
 const scopeStatusOptions = [
-  { value: 'in_scope', label: '本期包含' },
-  { value: 'deferred', label: '暂缓处理' },
-  { value: 'excluded', label: '已排除' },
+  { value: 'current', label: '本期包含' },
+  { value: 'postponed', label: '暂缓处理' },
+  { value: 'exclude', label: '已排除' },
 ];
 
 const kindMap: Record<string, string> = {

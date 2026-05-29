@@ -42,51 +42,61 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def init_db() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_ensure_sqlite_schema_migrations)
+def run_upgrade() -> None:
+    import sqlite3
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic import command
 
+    base_dir = Path(__file__).resolve().parents[2]
+    db_path = base_dir / "requirement_space.db"
+    alembic_ini_path = base_dir / "alembic.ini"
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
 
-def _ensure_sqlite_schema_migrations(sync_conn) -> None:
-    if sync_conn.dialect.name != "sqlite":
-        return
+    # Always run upgrade — Alembic only applies pending migrations.
+    # If the DB is already at head, this is a safe no-op.
+    command.upgrade(alembic_cfg, "head")
 
-    inspector = inspect(sync_conn)
-    if "scenarios" not in inspector.get_table_names():
-        return
-
-    scenario_columns = {
-        column["name"]
-        for column in inspector.get_columns("scenarios")
-    }
-
-    if "gherkin_spec_id" not in scenario_columns:
-        sync_conn.execute(
-            text("ALTER TABLE scenarios ADD COLUMN gherkin_spec_id INTEGER")
-        )
-
-    if "gherkin_scenario_index" not in scenario_columns:
-        sync_conn.execute(
-            text("ALTER TABLE scenarios ADD COLUMN gherkin_scenario_index INTEGER")
-        )
-
-    sync_conn.execute(
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_scenarios_gherkin_spec_id "
-            "ON scenarios (gherkin_spec_id)"
-        )
-    )
-
-    if "prototype_previews" in inspector.get_table_names():
-        prototype_columns = {
-            column["name"]
-            for column in inspector.get_columns("prototype_previews")
-        }
-        if "pages" not in prototype_columns:
-            sync_conn.execute(
-                text("ALTER TABLE prototype_previews ADD COLUMN pages JSON DEFAULT '[]' NOT NULL")
+    # Repair case: if a migration was previously "stamp"ed without running its
+    # DDL (old behaviour), the alembic_version says "up to date" but the table
+    # is missing.  Detect and fix.
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='issue_repair_drafts';"
             )
+            if cursor.fetchone() is None:
+                from backend.database.model import IssueRepairDraftModel
+                from sqlalchemy import create_engine
+                sync_engine = create_engine(f"sqlite:///{db_path}")
+                IssueRepairDraftModel.__table__.create(sync_engine, checkfirst=True)
+                sync_engine.dispose()
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+    # Data migration: Convert legacy Chinese scope status to canonical English keys
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute("UPDATE feature_scopes SET status = 'current' WHERE status = '本期';")
+            cursor.execute("UPDATE feature_scopes SET status = 'postponed' WHERE status = '暂缓';")
+            cursor.execute("UPDATE feature_scopes SET status = 'exclude' WHERE status = '排除';")
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+
+async def init_db() -> None:
+    import asyncio
+    await asyncio.to_thread(run_upgrade)
 
 
 async def drop_db() -> None:

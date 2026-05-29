@@ -18,7 +18,7 @@ export type NodeKind =
   | 'goal'
   | 'capability';
 
-export type ScopeStatus = '本期' | '暂缓' | '排除';
+export type ScopeStatus = 'current' | 'postponed' | 'exclude';
 
 export type FlowStepType = 'actorAction' | 'systemAction' | 'judgment';
 
@@ -86,6 +86,8 @@ export interface ScopeNode {
   negativeSummary: string | null;
   positivePictureBase64: string | null;
   negativePictureBase64: string | null;
+  kanoCategory?: string | null;
+  kanoCategoryName?: string | null;
 
   // Compatibility properties for legacy components
   id?: string;
@@ -180,13 +182,65 @@ export interface FlowNode {
   status?: NodeStatus;
 }
 
+export type Stage = 'what' | 'how' | 'scope';
+
+export interface StageGateResult {
+  stage: Stage;
+  mandatoryChecksPassed: boolean;
+  passed: boolean;
+  issues: Issue[];
+  activeSlot?: PerceptionSlot;
+  blockingSlot?: PerceptionSlot;
+  missingKinds: string[];
+}
+
+export interface PageHealth {
+  statusCode: 'not_started' | 'in_progress' | 'needs_attention' | 'ready' | 'locked' | 'real_ready' | 'shadow_available';
+  statusLabel: string;
+  disabled: boolean;
+  disabledReason?: string;
+  issueCount: number;
+  hasBlockingSlot: boolean;
+  nextSlot?: PerceptionSlot;
+}
+
 // 感知槽建议
 export interface PerceptionSlot {
-  kind: 'perception_slot';
-  perceptionSlotId: number;
-  perceptionKind: PerceptionKindType;
-  perceptionDescription: string;
+  id: string;
+  stage: Stage;
+  blocking: boolean;                  // 是否阻塞当前阶段 Gate (如：暖场建议为 false)
+  kind: string;                       // 槽位类型标识 (如：'missing_scenario')
+  description: string;                // 行动引导话术
+  targetKind?: string;
+  targetId?: number;
+  actions: {
+    manual?: {
+      label: string;
+      targetRoute?: string;           // 手动跳转的路径
+      targetId?: number;              // 聚焦高亮的目标ID
+      focusMode?: 'highlight' | 'modal' | 'scroll';
+    };
+    ai?: {
+      label: string;
+      endpoint?: string;              // AI 槽填充请求接口
+      payload?: Record<string, unknown>;
+    };
+  };
+
+  // 兼容老版本的字段，避免底层代码或网络请求映射报错
+  kind_legacy?: 'perception_slot';
+  perceptionSlotId?: number;
+  perceptionKind?: PerceptionKindType;
+  perceptionDescription?: string;
   perceptionJobId?: number;
+}
+
+export interface PendingManualAction {
+  kind: string;
+  targetRoute?: string;
+  targetKind?: string;
+  targetId?: number;
+  focusMode?: 'highlight' | 'modal' | 'scroll';
 }
 
 // 整个项目空间
@@ -201,6 +255,8 @@ export interface RequirementSpace {
   features: FeatureNode[];
   businessObjects: BusinessObjectNode[];
   flows: FlowNode[];
+  kanoStatus?: 'missing' | 'generating' | 'draft_ready' | 'generated' | 'skipped' | 'failed';
+  unlockedStages?: string[];
 
   // Legacy properties for compatibility
   id?: string;
@@ -218,6 +274,7 @@ export interface RequirementSpace {
   linksCompatible?: any[];
   goalsCompatible?: any[];
   capabilitiesCompatible?: any[];
+  /** @deprecated Use capabilitiesCompatible instead */
   tasksCompatible?: any[];
   scopeItemsCompatible?: any[];
 }
@@ -228,7 +285,7 @@ export interface RequirementSpace {
 
 export const NodeKindToText: Record<NodeKind, string> = {
   actor: '系统参与者',
-  feature: '功能节点',
+  feature: '功能结点',
   scenario: '成功场景 (User Story)',
   acceptance_criterion: '成功标准 (AC)',
   scope: '范围分析',
@@ -256,7 +313,7 @@ export const FlowStepTypeToText: Record<FlowStepType, string> = {
 export const PerceptionKindToText: Record<PerceptionKindType, string> = {
   '角色结点': '检测到缺少参与者',
   '功能模块结点': '检测到缺少功能模块',
-  '功能叶子结点': '检测到缺少功能叶子节点',
+  '功能叶子结点': '检测到缺少功能叶子结点',
   '场景结点': '检测到缺少典型场景 (User Story)',
   '成功标准结点': '检测到场景缺少成功标准',
   '流程主结点': '检测到功能缺少系统流程',
@@ -278,6 +335,23 @@ export interface Issue {
   backendIssueCode?: string;
   backendTarget?: any;
   backendMetadata?: any;
+
+  // 新增分阶段隔离的属性
+  stage?: 'what' | 'how' | 'scope';
+  domain?:
+    | 'actor'
+    | 'feature'
+    | 'feature_actor_binding'
+    | 'scenario'
+    | 'ac'
+    | 'flow'
+    | 'step'
+    | 'business_object'
+    | 'business_object_attribute'
+    | 'scope_decision'
+    | 'kano';
+  blocking?: boolean;
+  suggestedActionKind?: string;
 }
 
 export type RequirementNode =
@@ -314,6 +388,9 @@ export interface ChoiceGroup {
   slotId: string;
   status: 'open' | 'resolved';
   choices: Choice[];
+  sourceType?: string;
+  issueCode?: string;
+  issueId?: string;
 
   // Compatibility properties for legacy components
   selectionMode?: 'single' | 'multiple';
@@ -345,11 +422,14 @@ export const NodeStatusToText: Record<string, string> = {
 };
 
 export const ScopeStatusToText: Record<string, string> = {
-  in_scope: '本期包含',
-  deferred: '暂缓处理',
+  current: '本期',
+  postponed: '暂缓',
+  exclude: '排除',
+  in_scope: '本期',
+  deferred: '暂缓',
   external_dependency: '外部依赖',
   out_of_scope: '范围外',
-  excluded: '已排除',
+  excluded: '排除',
 };
 
 export type ImpactPreview = any;
@@ -394,7 +474,12 @@ export interface ProjectCreationDraft {
     project_description: string;
   };
   actors: Array<{ actor_name: string; actor_description: string }>;
-  features: Array<{ feature_name: string; feature_description: string; actor_names: string[] }>;
+  features: Array<{
+    feature_number?: string | null;
+    feature_name: string;
+    feature_description: string;
+    actor_names: string[];
+  }>;
 }
 
 export interface ProjectCreationConfirmResponse {

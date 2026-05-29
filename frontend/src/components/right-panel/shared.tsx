@@ -60,7 +60,7 @@ export function Section({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{title}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">{title}</h3>
         {action}
       </div>
       <div className="space-y-3">{children}</div>
@@ -174,8 +174,11 @@ export function LinkList({
   ir: RequirementSpaceIR;
   nodeId: string;
 }) {
-  const incoming = ir.links.filter((link) => link.targetId === nodeId);
-  const outgoing = ir.links.filter((link) => link.sourceId === nodeId);
+  const dedupeLinks = (links: RequirementLink[]) =>
+    Array.from(new Map(links.map((link) => [link.id, link])).values());
+
+  const incoming = dedupeLinks(ir.links.filter((link) => link.targetId === nodeId));
+  const outgoing = dedupeLinks(ir.links.filter((link) => link.sourceId === nodeId));
 
   const renderLinks = (links: RequirementLink[], directionLabel: string) => (
     <div className="space-y-2">

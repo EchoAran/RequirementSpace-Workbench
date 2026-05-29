@@ -14,6 +14,8 @@ class GeneratedScopePreview(BaseModel):
     negative_summary: str | None = None
     positive_picture_base64: str | None = None
     negative_picture_base64: str | None = None
+    kano_category: str | None = None
+    kano_category_name: str | None = None
 
 
 class ScopeGenerationDraftResponse(BaseModel):

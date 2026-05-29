@@ -38,7 +38,7 @@ class PrototypeGenerationService:
         self,
         project_id: int,
         session,
-        force_regenerate: bool = True,
+        force_regenerate: bool = False,
     ) -> PrototypePreviewResponse:
         if not force_regenerate:
             latest = await self.get_latest_preview(

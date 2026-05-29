@@ -20,7 +20,6 @@ from backend.schemas import ActorNode
 
 class ProjectCreationService:
     def __init__(self):
-        self._drafts: dict[str, dict] = {}
         self._actors_generator = ActorsGenerator()
         self._blank_project_generator = BlankProjectGenerator()
         self._features_generator = FeaturesGenerator()
@@ -84,6 +83,7 @@ class ProjectCreationService:
     async def create_draft(
             self,
             user_requirements: str,
+            session,
             project_name: str | None = None,
             project_description: str | None = None,
     ) -> dict:
@@ -99,7 +99,14 @@ class ProjectCreationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=None,
+            draft_id=draft_id,
+            draft_type="project_creation",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -107,8 +114,9 @@ class ProjectCreationService:
             self,
             draft_id: str,
             user_feedback: str | None,
+            session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             user_requirements=draft["user_requirements"],
@@ -128,7 +136,14 @@ class ProjectCreationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=None,
+            draft_id=draft_id,
+            draft_type="project_creation",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -137,14 +152,15 @@ class ProjectCreationService:
         draft_id: str,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         project = await self._persist_project_creation_draft(
             draft=draft,
             session=session,
         )
 
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
 
         return {
             "project_id": project.id,
@@ -157,7 +173,8 @@ class ProjectCreationService:
         self,
         draft_id: str,
     ) -> dict:
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.discard_draft_locally(draft_id)
 
         return {
             "draft_id": draft_id,
@@ -345,6 +362,7 @@ class ProjectCreationService:
 
         feature_previews_for_response = [
             {
+                "feature_number": feature["feature_number"],
                 "feature_name": feature["feature_name"],
                 "feature_description": feature["feature_description"],
                 "actor_names": [
@@ -378,16 +396,13 @@ class ProjectCreationService:
 
         raise ValueError("invalid_root_feature_count")
 
-    def _get_draft(
+    async def _get_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        draft = self._drafts.get(draft_id)
-
-        if draft is None:
-            raise ValueError("draft_not_found")
-
-        return draft
+        from backend.api.services.draft_store import GenerativeDraftStore
+        return await GenerativeDraftStore.get_draft(draft_id, session)
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

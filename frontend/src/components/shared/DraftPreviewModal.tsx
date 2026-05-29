@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
 
-type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | null;
+type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
 
 interface DraftPreviewModalProps {
   draft: any | null;
@@ -21,6 +21,7 @@ const titles: Record<Exclude<DraftType, null>, string> = {
   scenario: '业务场景草稿',
   ac: '验收标准草稿',
   scope: '交付范围草稿',
+  repair: 'AI 修复草稿',
 };
 
 function asArray(value: any): any[] {
@@ -36,6 +37,35 @@ function getDraftItems(draft: any, draftType: DraftType) {
   if (draftType === 'ac') return asArray(draft.acceptance_criteria || draft.criteria || draft.scenario_acceptance_criteria);
   if (draftType === 'scope') return asArray(draft.scopes);
   if (draftType === 'project') return [draft.project_preview || draft].filter(Boolean);
+  // P5: repair draft — title + rationale (truncated) + structured patch summary + risk level
+  if (draftType === 'repair') {
+    const items: any[] = [];
+    if (draft.title) items.push({ _kind: 'title', _label: '修复建议', name: draft.title });
+    if (draft.rationale) {
+      const text = draft.rationale.length > 200 ? draft.rationale.slice(0, 200) + '…' : draft.rationale;
+      items.push({ _kind: 'rationale', _label: 'AI 分析依据', name: text });
+    }
+    const report = draft.validation_report || draft.proposal || {};
+    const preview = report.impact_preview || {};
+    if (preview.affected_nodes?.length > 0) {
+      preview.affected_nodes.forEach((n: any) => {
+        items.push({ _kind: 'node', _label: n.change || '变更', name: n.name || `${n.kind} (id=${n.id})` });
+      });
+    }
+    if (preview.affected_relations?.length > 0) {
+      preview.affected_relations.forEach((r: any) => {
+        items.push({ _kind: 'relation', _label: r.change || '关系变更', name: `${r.source || '?'} → ${r.target || '?'}` });
+      });
+    }
+    if (preview.risk_level) {
+      const riskLabel = preview.risk_level === 'high' ? '⚠️ 高风险' : preview.risk_level === 'medium' ? '• 中等风险' : '✓ 低风险';
+      items.push({ _kind: 'risk', _label: '风险等级', name: riskLabel });
+    }
+    if (preview.summary && items.length === 0) {
+      items.push({ _kind: 'summary', _label: '影响摘要', name: preview.summary });
+    }
+    return items;
+  }
   return [];
 }
 
@@ -69,6 +99,308 @@ function itemDescription(item: any) {
     item.content ||
     item.project_description ||
     ''
+  );
+}
+
+function parentFeatureNumber(featureNumber?: string | null) {
+  if (!featureNumber || !featureNumber.includes('-')) return null;
+  return featureNumber.split('-').slice(0, -1).join('-');
+}
+
+function featureDepth(featureNumber?: string | null) {
+  if (!featureNumber) return 0;
+  return featureNumber.split('-').length - 1;
+}
+
+function buildProjectFeatureTree(features: any[]) {
+  const byNumber = new Map<string, any>();
+  const roots: any[] = [];
+
+  features.forEach((feature, index) => {
+    const number = feature.feature_number || `draft-${index}`;
+    byNumber.set(number, { ...feature, feature_number: number, children: [] });
+  });
+
+  Array.from(byNumber.values()).forEach((feature) => {
+    const parentNumber = parentFeatureNumber(feature.feature_number);
+    const parent = parentNumber ? byNumber.get(parentNumber) : null;
+    if (parent) {
+      parent.children.push(feature);
+    } else {
+      roots.push(feature);
+    }
+  });
+
+  const sortByNumber = (items: any[]) => {
+    items.sort((a, b) => String(a.feature_number).localeCompare(String(b.feature_number), undefined, { numeric: true }));
+    items.forEach((item) => sortByNumber(item.children));
+    return items;
+  };
+
+  return sortByNumber(roots);
+}
+
+function ProjectFeatureTreeNode({ node }: { node: any }) {
+  const depth = featureDepth(node.feature_number);
+  return (
+    <div className={depth === 0 ? '' : 'border-l border-slate-200 pl-3'}>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {node.feature_number && (
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+              {node.feature_number}
+            </span>
+          )}
+          <h5 className="min-w-0 text-sm font-extrabold text-slate-900">{node.feature_name}</h5>
+        </div>
+        {node.feature_description && (
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">{node.feature_description}</p>
+        )}
+        {node.actor_names?.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {node.actor_names.map((actorName: string) => (
+              <span key={actorName} className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                {actorName}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      {node.children?.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {node.children.map((child: any) => (
+            <ProjectFeatureTreeNode key={child.feature_number || child.feature_name} node={child} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectDraftPreview({ draft }: { draft: any }) {
+  const project = draft.project_preview || draft;
+  const actors = asArray(draft.actors);
+  const featureTree = buildProjectFeatureTree(asArray(draft.features));
+
+  return (
+    <div className="space-y-5">
+      <section>
+        <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">项目概览</h4>
+        <div className="mt-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h5 className="text-sm font-extrabold text-slate-900">{project.project_name}</h5>
+          {project.project_description && (
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">{project.project_description}</p>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">角色</h4>
+          <span className="text-[11px] font-bold text-slate-400">{actors.length} 个</span>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {actors.map((actor: any, index: number) => (
+            <div key={actor.actor_name || index} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <h5 className="text-sm font-extrabold text-slate-900">{actor.actor_name}</h5>
+              {actor.actor_description && (
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{actor.actor_description}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">功能树</h4>
+          <span className="text-[11px] font-bold text-slate-400">{asArray(draft.features).length} 个节点</span>
+        </div>
+        <div className="mt-2 space-y-2">
+          {featureTree.map((root) => (
+            <ProjectFeatureTreeNode key={root.feature_number || root.feature_name} node={root} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DetailChips({ items, tone = 'slate' }: { items: string[]; tone?: 'slate' | 'indigo' | 'emerald' | 'amber' }) {
+  if (!items?.length) return null;
+
+  const toneClass = {
+    slate: 'border-slate-200 bg-slate-50 text-slate-600',
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-700',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-100 bg-amber-50 text-amber-700',
+  }[tone];
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <span key={item} className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${toneClass}`}>
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function pickField(item: any, snakeKey: string, camelKey: string) {
+  return item?.[snakeKey] ?? item?.[camelKey];
+}
+
+function pickArray(item: any, snakeKey: string, camelKey: string) {
+  return asArray(pickField(item, snakeKey, camelKey));
+}
+
+function FlowDraftPreview({ draft }: { draft: any }) {
+  const flows = asArray(draft.flows);
+  const businessObjects = asArray(draft.business_objects || draft.businessObjects);
+  const normalizedFlows = flows.map((flow: any) => ({
+    ...flow,
+    flow_name: pickField(flow, 'flow_name', 'flowName'),
+    flow_description: pickField(flow, 'flow_description', 'flowDescription'),
+    feature_names: pickArray(flow, 'feature_names', 'featureNames'),
+    flow_steps: pickArray(flow, 'flow_steps', 'flowSteps').map((step: any) => ({
+      ...step,
+      step_number: pickField(step, 'step_number', 'stepNumber'),
+      step_name: pickField(step, 'step_name', 'stepName'),
+      step_description: pickField(step, 'step_description', 'stepDescription'),
+      step_type: pickField(step, 'step_type', 'stepType'),
+      actor_names: pickArray(step, 'actor_names', 'actorNames'),
+      input_business_object_names: pickArray(step, 'input_business_object_names', 'inputBusinessObjectNames'),
+      output_business_object_names: pickArray(step, 'output_business_object_names', 'outputBusinessObjectNames'),
+      next_step_names: pickArray(step, 'next_step_names', 'nextStepNames'),
+    })),
+  }));
+  const normalizedBusinessObjects = businessObjects.map((businessObject: any) => ({
+    ...businessObject,
+    business_object_id: pickField(businessObject, 'business_object_id', 'businessObjectId'),
+    business_object_name: pickField(businessObject, 'business_object_name', 'businessObjectName'),
+    business_object_description: pickField(businessObject, 'business_object_description', 'businessObjectDescription'),
+    is_existing: pickField(businessObject, 'is_existing', 'isExisting'),
+    business_object_attributes: pickArray(businessObject, 'business_object_attributes', 'businessObjectAttributes').map((attribute: any) => ({
+      ...attribute,
+      business_object_attribute_name: pickField(attribute, 'business_object_attribute_name', 'businessObjectAttributeName'),
+      business_object_attribute_description: pickField(attribute, 'business_object_attribute_description', 'businessObjectAttributeDescription'),
+      business_object_attribute_type: pickField(attribute, 'business_object_attribute_type', 'businessObjectAttributeType'),
+    })),
+  }));
+
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">流程</h4>
+          <span className="text-[11px] font-bold text-slate-400">{normalizedFlows.length} 个</span>
+        </div>
+        <div className="mt-2 space-y-3">
+          {normalizedFlows.map((flow: any, flowIndex: number) => (
+            <div key={flow.flow_name || flowIndex} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h5 className="text-sm font-extrabold text-slate-900">{flow.flow_name || `流程 ${flowIndex + 1}`}</h5>
+                  {flow.flow_description && (
+                    <p className="mt-2 text-xs leading-relaxed text-slate-600">{flow.flow_description}</p>
+                  )}
+                </div>
+                {flow.feature_names?.length > 0 && <DetailChips items={flow.feature_names} tone="indigo" />}
+              </div>
+
+              {asArray(flow.flow_steps).length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {asArray(flow.flow_steps).map((step: any, stepIndex: number) => (
+                    <div key={step.step_number || step.step_name || stepIndex} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-black text-slate-500">
+                          {step.step_number || `S-${String(stepIndex + 1).padStart(3, '0')}`}
+                        </span>
+                        <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                          {step.step_type || 'step'}
+                        </span>
+                        <h6 className="min-w-0 text-xs font-extrabold text-slate-900">{step.step_name}</h6>
+                      </div>
+                      {step.step_description && (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-600">{step.step_description}</p>
+                      )}
+                      <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2">
+                        {step.actor_names?.length > 0 && (
+                          <div>
+                            <div className="mb-1 font-black text-slate-400">角色</div>
+                            <DetailChips items={step.actor_names} tone="amber" />
+                          </div>
+                        )}
+                        {step.input_business_object_names?.length > 0 && (
+                          <div>
+                            <div className="mb-1 font-black text-slate-400">输入对象</div>
+                            <DetailChips items={step.input_business_object_names} />
+                          </div>
+                        )}
+                        {step.output_business_object_names?.length > 0 && (
+                          <div>
+                            <div className="mb-1 font-black text-slate-400">输出对象</div>
+                            <DetailChips items={step.output_business_object_names} tone="emerald" />
+                          </div>
+                        )}
+                        {step.next_step_names?.length > 0 && (
+                          <div>
+                            <div className="mb-1 font-black text-slate-400">下一步</div>
+                            <DetailChips items={step.next_step_names} tone="indigo" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">业务对象</h4>
+          <span className="text-[11px] font-bold text-slate-400">{normalizedBusinessObjects.length} 个</span>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {normalizedBusinessObjects.map((businessObject: any, index: number) => (
+            <div key={businessObject.business_object_id || businessObject.business_object_name || index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <h5 className="min-w-0 text-sm font-extrabold text-slate-900">{businessObject.business_object_name}</h5>
+                {businessObject.is_existing && (
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                    已存在
+                  </span>
+                )}
+              </div>
+              {businessObject.business_object_description && (
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">{businessObject.business_object_description}</p>
+              )}
+              {asArray(businessObject.business_object_attributes).length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {asArray(businessObject.business_object_attributes).map((attribute: any, attributeIndex: number) => (
+                    <div key={attribute.business_object_attribute_name || attributeIndex} className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-black text-slate-800">{attribute.business_object_attribute_name}</span>
+                        <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                          {attribute.business_object_attribute_type}
+                        </span>
+                      </div>
+                      {attribute.business_object_attribute_description && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{attribute.business_object_attribute_description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -114,7 +446,11 @@ export function DraftPreviewModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {items.length === 0 ? (
+          {draftType === 'project' ? (
+            <ProjectDraftPreview draft={draft} />
+          ) : draftType === 'flow' ? (
+            <FlowDraftPreview draft={draft} />
+          ) : items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
               当前草稿没有可展示的条目。
             </div>
@@ -133,18 +469,49 @@ export function DraftPreviewModal({
                   {itemDescription(item) && (
                     <p className="mt-2 line-clamp-4 text-xs leading-relaxed text-slate-600">{itemDescription(item)}</p>
                   )}
+
                   {(item.positive_summary || item.negative_summary) && (
-                    <div className="mt-3 grid gap-2 text-[11px] leading-relaxed text-slate-600 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-2 text-xs leading-relaxed text-slate-600 sm:grid-cols-2">
                       {item.positive_summary && (
                         <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
-                          <div className="mb-1 font-bold text-emerald-700">正方依据</div>
+                          <div className="mb-1 font-bold text-emerald-700">有该功能时的用户感受</div>
                           {item.positive_summary}
                         </div>
                       )}
                       {item.negative_summary && (
                         <div className="rounded-lg border border-rose-100 bg-rose-50/60 p-2">
-                          <div className="mb-1 font-bold text-rose-700">反方依据</div>
+                          <div className="mb-1 font-bold text-rose-700">缺少该功能时的用户感受</div>
                           {item.negative_summary}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Kano Distribution Charts */}
+                  {(item.positive_picture_base64 || item.positivePictureBase64 || item.negative_picture_base64 || item.negativePictureBase64) && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3">
+                      {(item.positive_picture_base64 || item.positivePictureBase64) && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-indigo-600 font-bold block text-center">正向收益曲线</span>
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
+                            <img
+                              src={`data:image/png;base64,${item.positive_picture_base64 || item.positivePictureBase64}`}
+                              alt="Positive Distribution"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {(item.negative_picture_base64 || item.negativePictureBase64) && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-slate-500 font-bold block text-center">负向风险曲线</span>
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
+                            <img
+                              src={`data:image/png;base64,${item.negative_picture_base64 || item.negativePictureBase64}`}
+                              alt="Negative Distribution"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>

@@ -77,10 +77,12 @@ class LLMHandler:
     async def call_llm(
         self,
         prompt: str,
-        query: str = "",
+        query: str | None = "",
         print_log: bool = True,
         response_format: dict | None = None,
     ) -> Optional[str]:
+        query = query or ""
+
         if not self._validate_settings():
             self._log(
                 print_log,

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { ArrowLeft, Plus, Sparkles } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
+import { useNavigate } from 'react-router-dom';
+import { buildProjectRoute } from '@/core/selectors';
 
 export function ProjectOnboarding() {
   const {
@@ -12,11 +14,11 @@ export function ProjectOnboarding() {
     createBlankWorkspace,
     activeDraft,
     activeDraftType,
-    setSystemView,
     isLoading,
     isGenerating,
     error,
   } = useWorkspaceStore();
+  const navigate = useNavigate();
 
   const [prompt, setPrompt] = useState('');
   const [name, setName] = useState('');
@@ -34,6 +36,18 @@ export function ProjectOnboarding() {
     const finalName = name.trim() || '未命名需求空间';
     const finalDesc = description.trim() || '由用户手动初始化的空白需求空间项目。';
     await createBlankWorkspace(finalName, finalDesc, prompt.trim());
+    const state = useWorkspaceStore.getState();
+    if (state.currentSystemView === 'workspace' && state.ir) {
+      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    }
+  };
+
+  const handleConfirmDraft = async () => {
+    await confirmAIOnboarding();
+    const state = useWorkspaceStore.getState();
+    if (state.currentSystemView === 'workspace' && state.ir) {
+      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    }
   };
 
   return (
@@ -41,7 +55,7 @@ export function ProjectOnboarding() {
       <div className="max-w-4xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 relative pb-20">
         <button
           type="button"
-          onClick={() => setSystemView('home')}
+          onClick={() => navigate('/home')}
           className="absolute -top-10 left-0 flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -49,16 +63,9 @@ export function ProjectOnboarding() {
         </button>
 
         <div className="text-center mb-10 mt-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full mb-5 border border-indigo-100 shadow-sm">
-            <Sparkles className="w-4 h-4" />
-            AI 应用架构助手
-          </div>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mb-4">
-            开始构建完整的应用体系
+            开始构建项目需求
           </h1>
-          <p className="text-slate-500 text-sm max-w-xl mx-auto leading-relaxed">
-            输入业务想法后生成项目草稿。草稿会在弹窗中预览，确认后才会进入工作区。
-          </p>
         </div>
 
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden relative">
@@ -119,20 +126,23 @@ export function ProjectOnboarding() {
               type="button"
               onClick={handleCreateBlank}
               disabled={!prompt.trim() || isWorking}
-              className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-100 transition-colors disabled:opacity-50"
+              className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl border border-slate-200 bg-white px-6 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
               创建空白项目
             </button>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isWorking}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-colors disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              生成 AI 项目草稿
-            </button>
+            <div className="relative group">
+              <div className="pointer-events-none absolute bottom-full right-0 mb-2 w-56 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-relaxed text-slate-600 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0">
+                先生成草稿预览，确认后再进入工作区。
+              </div>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isWorking}
+                className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition-colors hover:bg-indigo-700 disabled:opacity-50"
+              >
+                生成AI项目草稿
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -143,7 +153,7 @@ export function ProjectOnboarding() {
         isWorking={isWorking}
         onDiscard={discardAIOnboarding}
         onRegenerate={(feedback) => regenerateAIOnboarding(feedback)}
-        onConfirm={confirmAIOnboarding}
+        onConfirm={handleConfirmDraft}
         confirmLabel="确认并进入工作区"
       />
     </div>

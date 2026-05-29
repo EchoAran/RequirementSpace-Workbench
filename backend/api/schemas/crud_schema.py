@@ -205,6 +205,10 @@ class FlowUpdateRequest(BaseModel):
     feature_ids: list[int] | None = Field(default=None)
 
 
+class FlowStepsReorderRequest(BaseModel):
+    step_ids: list[int] = Field(..., min_length=1)
+
+
 class FlowResponse(BaseModel):
     flow_id: int
     name: str
@@ -220,7 +224,7 @@ class FlowResponse(BaseModel):
 # 9. Scope CRUD Schemas
 # ==========================================
 class ScopeUpdateRequest(BaseModel):
-    status: str = Field(..., pattern="^(本期|暂缓|排除)$")
+    status: str = Field(..., pattern="^(current|postponed|exclude)$")
     reason: str = Field(default="")
     positive_summary: str | None = Field(default=None)
     negative_summary: str | None = Field(default=None)
@@ -233,6 +237,10 @@ class ScopeResponse(BaseModel):
     reason: str
     positive_summary: str | None = None
     negative_summary: str | None = None
+    positive_picture_base64: str | None = None
+    negative_picture_base64: str | None = None
+    kano_category: str | None = None
+    kano_category_name: str | None = None
 
     class Config:
         from_attributes = True

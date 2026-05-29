@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include feature_tree_feedback_skill/resources *.json *.txt
+recursive-include examples *.txt

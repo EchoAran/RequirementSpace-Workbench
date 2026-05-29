@@ -23,6 +23,7 @@ from backend.api.schemas.crud_schema import (
     FlowStepCreateRequest,
     FlowStepUpdateRequest,
     FlowStepResponse,
+    FlowStepsReorderRequest,
 )
 
 
@@ -77,6 +78,7 @@ class FlowService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -155,6 +157,7 @@ class FlowService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -194,6 +197,7 @@ class FlowService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -219,12 +223,17 @@ class FlowService:
         if flow_res.scalar_one_or_none() is None:
             raise ValueError("flow_not_found")
 
+        # 轻量约束校验
+        if req.step_type == "actorAction" and not req.actor_ids:
+            raise ValueError("actor_ids_cannot_be_empty_for_actor_action")
+
         pos_res = await session.execute(
             select(func.count(FlowStepModel.id)).where(
                 FlowStepModel.flow_id == flow_id
             )
         )
-        position = pos_res.scalar() or 0
+        # Position starts at 1
+        position = (pos_res.scalar() or 0) + 1
 
         step = FlowStepModel(
             flow_id=flow_id,
@@ -345,6 +354,7 @@ class FlowService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -385,6 +395,12 @@ class FlowService:
 
         if step is None:
             raise ValueError("flow_step_not_found")
+
+        # 轻量约束校验
+        new_step_type = req.step_type if req.step_type is not None else step.step_type
+        new_actor_ids = req.actor_ids if req.actor_ids is not None else [actor.id for actor in step.actors]
+        if new_step_type == "actorAction" and not new_actor_ids:
+            raise ValueError("actor_ids_cannot_be_empty_for_actor_action")
 
         if req.name is not None:
             step.name = req.name
@@ -468,6 +484,7 @@ class FlowService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -501,9 +518,41 @@ class FlowService:
         if step is None:
             raise ValueError("flow_step_not_found")
 
+        # 查找被删除步骤的前驱和后继以进行拓扑修复
+        pred_res = await session.execute(
+            select(flow_step_next_table.c.source_step_id)
+            .where(flow_step_next_table.c.target_step_id == step_id)
+        )
+        predecessors = pred_res.scalars().all()
+
+        succ_res = await session.execute(
+            select(flow_step_next_table.c.target_step_id)
+            .where(flow_step_next_table.c.source_step_id == step_id)
+        )
+        successors = succ_res.scalars().all()
+
         step_name = step.name
         await session.delete(step)
         await session.flush()
+
+        # 重新建立前驱和后继之间的直接关联来修复流程链
+        for pred_id in predecessors:
+            for succ_id in successors:
+                exists = await session.execute(
+                    select(1).select_from(flow_step_next_table)
+                    .where(
+                        flow_step_next_table.c.source_step_id == pred_id,
+                        flow_step_next_table.c.target_step_id == succ_id
+                    )
+                    .limit(1)
+                )
+                if exists.scalar() is None:
+                    await session.execute(
+                        insert(flow_step_next_table).values(
+                            source_step_id=pred_id,
+                            target_step_id=succ_id
+                        )
+                    )
 
         # 审计日志: 删除流程步骤
         session.add(AuditLogModel(
@@ -522,14 +571,20 @@ class FlowService:
             .order_by(FlowStepModel.position.asc())
         )
         step_list = list_res.scalars().all()
+        # Step 1: Negate positions to bypass constraints
         for idx, item in enumerate(step_list):
-            item.position = idx
+            item.position = -(idx + 1)
+        await session.flush()
 
+        # Step 2: Set final normalized 1..n positions
+        for idx, item in enumerate(step_list):
+            item.position = idx + 1
         await session.flush()
 
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"how"},
+            perception_kinds={"FLOW"},
             session=session,
         )
 
@@ -537,6 +592,121 @@ class FlowService:
             "step_id": step_id,
             "message": "flow_step_deleted",
         }
+
+    async def reorder_flow_steps(
+        self,
+        project_id: int,
+        flow_id: int,
+        req: FlowStepsReorderRequest,
+        session,
+    ) -> FlowResponse:
+        # 1. Verify flow belongs to project
+        result = await session.execute(
+            select(FlowModel)
+            .where(
+                FlowModel.project_id == project_id,
+                FlowModel.id == flow_id,
+            )
+            .options(
+                selectinload(FlowModel.features),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.actors),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.input_business_objects),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.output_business_objects),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.next_steps),
+            )
+        )
+        flow = result.scalar_one_or_none()
+        if flow is None:
+            raise ValueError("flow_not_found")
+
+        # 2. Strict validation of step_ids
+        step_ids = req.step_ids
+        if not step_ids:
+            raise ValueError("step_ids_cannot_be_empty")
+        
+        if len(step_ids) != len(set(step_ids)):
+            raise ValueError("duplicate_step_ids")
+
+        # Get all current steps in flow
+        db_steps_res = await session.execute(
+            select(FlowStepModel).where(FlowStepModel.flow_id == flow_id)
+        )
+        db_steps = {s.id: s for s in db_steps_res.scalars().all()}
+        
+        # Check set equality (no missing steps, no extra steps)
+        if set(step_ids) != set(db_steps.keys()):
+            raise ValueError("invalid_step_ids_match")
+
+        # 3. Safe index negation to bypass SQLite UniqueConstraint
+        for idx, sid in enumerate(step_ids):
+            step = db_steps[sid]
+            step.position = -(idx + 1)
+        await session.flush()
+
+        # Set final 1..n positions
+        for idx, sid in enumerate(step_ids):
+            step = db_steps[sid]
+            step.position = idx + 1
+        await session.flush()
+
+        # 4. Sync linear topology connection (next_step_ids)
+        # Clear existing next_step associations for all steps in this flow
+        for sid in step_ids:
+            await session.execute(
+                flow_step_next_table.delete().where(
+                    flow_step_next_table.c.source_step_id == sid
+                )
+            )
+        await session.flush()
+
+        # Link step i -> step i+1 consecutively, last step's next list is empty
+        for i in range(len(step_ids) - 1):
+            source_id = step_ids[i]
+            target_id = step_ids[i+1]
+            await session.execute(
+                insert(flow_step_next_table).values(
+                    source_step_id=source_id,
+                    target_step_id=target_id
+                )
+            )
+        await session.flush()
+
+        # 5. Audit Log and Mark Perception Jobs Stale
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="reorder_flow_steps",
+            summary=f"手动重排流程步骤，流程: {flow.name}",
+            target_type="flow",
+            target_id=str(flow.id),
+            payload={"step_ids": step_ids},
+        ))
+
+        await mark_perception_jobs_stale(
+            project_id=project_id,
+            stages={"how"},
+            perception_kinds={"FLOW"},
+            session=session,
+        )
+
+        session.expire_all()
+
+        # Reload the flow to get clean relationships after the updates
+        refreshed_result = await session.execute(
+            select(FlowModel)
+            .where(
+                FlowModel.project_id == project_id,
+                FlowModel.id == flow_id,
+            )
+            .options(
+                selectinload(FlowModel.features),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.actors),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.input_business_objects),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.output_business_objects),
+                selectinload(FlowModel.steps).selectinload(FlowStepModel.next_steps),
+            )
+        )
+        refreshed_flow = refreshed_result.scalar_one()
+        return self._serialize_flow(refreshed_flow)
 
     @staticmethod
     def _serialize_flow_step(step: FlowStepModel) -> FlowStepResponse:

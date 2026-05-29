@@ -33,7 +33,7 @@ class ActorsPerceptron(BasePerceptron[ActorsPerceptronInput]):
                 "{{user_requirements}}", f"{user_requirements_}").replace(
                 "{{actors}}", f"{actors_}"
             ),
-            print_log=False,
+            print_log=True,
         )
         return json.loads(response)
 

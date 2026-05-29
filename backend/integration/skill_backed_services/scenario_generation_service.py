@@ -49,7 +49,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         if not user_feedback or not draft.get("gherkin_by_target"):
             return await super().regenerate_draft(
@@ -112,7 +112,15 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         )
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
-        self._drafts[draft_id] = draft_payload
+
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=draft["project_id"],
+            draft_id=draft_id,
+            draft_type="scenario",
+            payload=draft_payload,
+            session=session,
+        )
         return response_payload
 
     async def _generate_preview(
@@ -163,7 +171,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         session,
         generate_acceptance_criteria: bool = False,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         result = await self._persist_scenario_generation_draft(
             draft=draft,
@@ -172,6 +180,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         await mark_perception_jobs_stale(
             project_id=draft["project_id"],
             stages={"what"},
+            perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
         scenario_ids = result.pop("scenario_ids")
@@ -210,7 +219,8 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         else:
             result["acceptance_criterion_count"] = 0
 
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
         return result
 
     async def _generate_with_skill(

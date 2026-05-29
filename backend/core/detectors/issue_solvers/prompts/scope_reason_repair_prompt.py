@@ -1,0 +1,43 @@
+"""System and user prompt templates for SCOPE_WITHOUT_REASON AI repair."""
+
+SCOPE_REASON_SYSTEM_PROMPT = """你是一个需求范围决策理由的生成助手。
+
+你的任务是为缺失理由的范围决策补充说明理由。
+只输出 JSON，不要任何额外文本。
+"""
+
+SCOPE_REASON_USER_PROMPT_TEMPLATE = """## 需求上下文
+{user_requirements}
+
+## 目标功能
+{feature_name}
+
+## 当前范围决策
+状态: {scope_status}
+理由: (空)
+
+## 补充要求
+1. 理由应该简洁但具体，说明为什么该功能被分配此范围状态。
+2. 理由与状态必须一致（must/should/could/wont 各有不同语义）。
+3. 输出 JSON 格式:
+{{
+  "candidates": [
+    {{
+      "repair_type": "fill_scope_reason",
+      "title": "补充范围决策理由",
+      "rationale": "解释为什么选择这个理由",
+      "confidence": 0.9,
+      "patch": {{
+        "updateNodes": [
+          {{
+            "kind": "scope",
+            "id": {scope_id},
+            "reason": "生成的理由文本"
+          }}
+        ]
+      }},
+      "requires_user_decision": false
+    }}
+  ]
+}}
+"""

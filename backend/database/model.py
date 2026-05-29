@@ -139,6 +139,8 @@ class ProjectModel(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     user_requirements: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    kano_status: Mapped[str] = mapped_column(String(50), default="missing", nullable=False)
+    unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
     perception_slot: Mapped[PerceptionSlotModel | None] = relationship(
         back_populates="project",
@@ -182,6 +184,22 @@ class ProjectModel(TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     audit_logs: Mapped[list[AuditLogModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    preview_shadow_drafts: Mapped[list[PreviewShadowDraftModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    generative_drafts: Mapped[list[GenerativeDraftModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    issue_repair_drafts: Mapped[list[IssueRepairDraftModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    issue_overrides: Mapped[list["IssueOverrideModel"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -266,9 +284,15 @@ class ActorModel(TimestampMixin, Base):
         secondary=feature_actor_table,
         back_populates="actors",
     )
-    scenarios: Mapped[list[ScenarioModel]] = relationship(back_populates="actor")
+    scenarios: Mapped[list[ScenarioModel]] = relationship(
+        back_populates="actor",
+        cascade="all, delete",
+        passive_deletes=True,
+    )
     gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
         back_populates="actor",
+        cascade="all, delete",
+        passive_deletes=True,
     )
     flow_steps: Mapped[list[FlowStepModel]] = relationship(
         secondary=flow_step_actor_table,
@@ -408,6 +432,8 @@ class ScopeModel(TimestampMixin, Base):
     positive_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     negative_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    kano_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    kano_category_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     feature: Mapped["FeatureModel"] = relationship(
         back_populates="scope",
@@ -697,6 +723,15 @@ class ChoiceGroupModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), default="open", nullable=False)
     selection_mode: Mapped[str] = mapped_column(String(50), default="single", nullable=False)
 
+    # P3: issue repair source tracking
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+    source_id: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None)
+    issue_code: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
+    issue_id: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None)
+    stage: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    target: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+
     project: Mapped[ProjectModel] = relationship(back_populates="choice_groups")
     choices: Mapped[list[ChoiceModel]] = relationship(
         back_populates="choice_group",
@@ -738,3 +773,98 @@ class AuditLogModel(TimestampMixin, Base):
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     project: Mapped[ProjectModel] = relationship(back_populates="audit_logs")
+
+
+class PreviewShadowDraftModel(TimestampMixin, Base):
+    __tablename__ = "preview_shadow_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    draft_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="generating", nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="shadow_project", nullable=False)
+    
+    base_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    shadow_snapshot_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    
+    base_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    shadow_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    patch_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    
+    prototype_preview_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    project: Mapped[ProjectModel] = relationship(back_populates="preview_shadow_drafts")
+
+
+class GenerativeDraftModel(TimestampMixin, Base):
+    __tablename__ = "generative_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    draft_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    draft_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    project: Mapped[ProjectModel | None] = relationship(back_populates="generative_drafts")
+
+
+class IssueRepairDraftModel(TimestampMixin, Base):
+    """AI-generated repair draft for a specific issue.
+
+    Created when an issue is resolved via AI, and confirmed/discarded
+    by the user. Stale detection is based on context_hash.
+    """
+
+    __tablename__ = "issue_repair_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    draft_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    issue_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    issue_id: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    stage: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    target: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    issue_fingerprint: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    context_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    repair_type: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    rationale: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proposal: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    patch: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    validation_report: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+
+    project: Mapped[ProjectModel] = relationship(back_populates="issue_repair_drafts")
+
+
+class IssueOverrideModel(TimestampMixin, Base):
+    __tablename__ = "issue_overrides"
+    __table_args__ = (
+        UniqueConstraint("project_id", "issue_id", name="uq_issue_override_project_issue"),
+        Index("ix_issue_overrides_project_status", "project_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    issue_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ignored")
+
+    project: Mapped[ProjectModel] = relationship(back_populates="issue_overrides")

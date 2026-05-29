@@ -1,0 +1,1 @@
+Add playlist management for regular listener users. It should include creating playlists, adding songs to playlists, and reordering playlist tracks. Also rename "Audio Playback" to "Playback Control".

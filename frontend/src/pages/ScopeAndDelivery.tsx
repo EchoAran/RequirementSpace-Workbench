@@ -6,43 +6,79 @@ import { ImpactPreview, ImpactGroup } from '@/components/shared/ImpactPreview';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { workspaceApi } from '@/lib/api';
 import { Sparkles, Check, X, RefreshCw, CheckSquare } from 'lucide-react';
+import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { 
   useWorkspaceStore, 
-  selectScopeItems
+  selectScopeItems,
+  selectPageHealth,
 } from '@/store/useWorkspaceStore';
-import { groupScopeItems } from '@/core/selectors';
+import { buildProjectRoute, getStageIssues, groupScopeItems } from '@/core/selectors';
 
 const SCOPE_COLUMNS = [
-  { key: 'in_scope', label: '本期包含' },
-  { key: 'deferred', label: '暂缓处理' },
-  { key: 'excluded', label: '已排除', danger: true },
+  { key: 'undecided', label: '未交付决策', warning: true },
+  { key: 'current', label: '本期包含' },
+  { key: 'postponed', label: '暂缓处理' },
+  { key: 'exclude', label: '已排除', danger: true },
 ] as const;
 
 export function ScopeAndDelivery() {
   const navigate = useNavigate();
   const { 
-    selectedObject, highlightTarget,
+    selectedObject, highlightTarget, setHighlightTarget,
     setSelectedObject, ir, updateScope, addFeature,
     generateScope, confirmScope, discardDraft, regenerateScope,
-    activeDraft, activeDraftType, isGenerating, isLoading
+    activeDraft, activeDraftType, isGenerating, isLoading,
+    setPendingManualAction, resetKano, runDiagnosis,
+    confirmRepairDraft, discardRepairDraft, regenerateRepairDraft,
+    createSlotFromIssue, expandSlot, updateIssueAttributes, clearPerceptionSlot
   } = useWorkspaceStore();
   
   const [scopeFeedback, setScopeFeedback] = useState('');
+
+  const pageHealth = selectPageHealth({ ir } as any, '/scope');
+
+  const handleManualAction = (slot: any) => {
+    if (slot.kind === 'generative_perception_slot') {
+      void clearPerceptionSlot();
+      return;
+    }
+
+    const targetId = slot.targetId || slot.actions?.manual?.targetId;
+    const targetRoute = slot.actions?.manual?.targetRoute;
+    if (targetId) {
+      const targetKey = targetId.toString();
+      setHighlightTarget(targetKey);
+      const feature = ir?.features?.find((item: any) => item.featureId === targetId);
+      setSelectedObject(feature || null);
+    }
+    if (targetRoute && targetRoute !== '/scope') {
+      navigate(buildProjectRoute(ir?.projectId, targetRoute));
+    }
+  };
+
+  const handleAIAction = async (slot: any) => {
+    const kind = slot.kind;
+    if (kind === 'missing_scope_decision' || kind === 'missing_kano_analysis' || kind === 'kano_failed_retry') {
+      await generateScope();
+    }
+  };
   
   const scopeItems = useWorkspaceStore(selectScopeItems);
+  const scopeIssues = getStageIssues(ir, 'scope');
   const [impactGroups, setImpactGroups] = useState<ImpactGroup[]>([]);
   const [pendingMove, setPendingMove] = useState<{ itemId: string; targetKey: string } | null>(null);
   const [pendingMoveLabel, setPendingMoveLabel] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isImpactLoading, setIsImpactLoading] = useState(false);
 
-  // Group items based on our three-column status mapping
-  const grouped = ir ? groupScopeItems(ir) : { inScope: [], deferred: [], excluded: [] };
+  // Group items based on our four-column status mapping
+  const grouped = ir ? groupScopeItems(ir) : { inScope: [], deferred: [], excluded: [], undecided: [] };
   const inScope = grouped.inScope;
   const deferred = grouped.deferred;
   const excluded = grouped.excluded;
+  const undecided = grouped.undecided || [];
 
-  const totalLeafs = inScope.length + deferred.length + excluded.length;
+  const totalLeafs = inScope.length + deferred.length + excluded.length + undecided.length;
   const isScopeComplete = totalLeafs > 0;
 
   if (!isScopeComplete) {
@@ -62,7 +98,7 @@ export function ScopeAndDelivery() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/what')}
+            onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
             → 前往 What 阶段完善特征树结构
@@ -111,18 +147,18 @@ export function ScopeAndDelivery() {
   };
 
   const createScopeItem = async (columnKey: string) => {
-    const scopeStatus = columnKey === 'deferred' ? '暂缓' : columnKey === 'excluded' ? '排除' : '本期';
+    const scopeStatus = columnKey;
     const tempName = `手动功能项-${Math.floor(1000 + Math.random() * 9000)}`;
     
     // Add feature node (default to '本期' containing empty scope)
     await addFeature(tempName, '手动创建的功能模块，可用作产品迭代边界规划。', null);
     
-    // Find the feature by name in state and update its scope status if not '本期'
+    // Find the feature by name in state and update its scope status if not 'current'
     const space = useWorkspaceStore.getState().ir;
     const created = space?.features.find(f => f.featureName === tempName);
     if (created) {
-      if (scopeStatus !== '本期') {
-        await updateScope(created.featureId, { scopeStatus });
+      if (scopeStatus !== 'current') {
+        await updateScope(created.featureId, { scopeStatus: scopeStatus as any });
       }
       setSelectedObject(created);
     }
@@ -131,7 +167,7 @@ export function ScopeAndDelivery() {
   const previewScopeMove = async (itemId: string, targetKey: string) => {
     if (!ir?.projectId) return;
     const targetLabel = SCOPE_COLUMNS.find((column) => column.key === targetKey)?.label || targetKey;
-    const scopeStatus = targetKey === 'deferred' ? '暂缓' : targetKey === 'excluded' ? '排除' : '本期';
+    const scopeStatus = targetKey;
     const featureId = parseInt(itemId, 10);
 
     setPendingMove({ itemId, targetKey });
@@ -154,9 +190,9 @@ export function ScopeAndDelivery() {
     if (!pendingMove) return;
     const { itemId, targetKey } = pendingMove;
     const numId = parseInt(itemId, 10);
-    const scopeStatus = targetKey === 'deferred' ? '暂缓' : targetKey === 'excluded' ? '排除' : '本期';
+    const scopeStatus = targetKey;
     
-    await updateScope(numId, { scopeStatus });
+    await updateScope(numId, { scopeStatus: scopeStatus as any });
     setPendingMove(null);
     setPendingMoveLabel(null);
     setImpactGroups([]);
@@ -164,11 +200,51 @@ export function ScopeAndDelivery() {
 
   const isWorking = isGenerating || isLoading;
 
+  const handleIssueClick = (issue: any) => {
+    setSelectedObject(issue);
+    if (issue.relatedNodeIds?.[0]) {
+      setHighlightTarget(issue.relatedNodeIds[0]);
+    }
+  };
+
+  const openIssueFlow = async (issue: any) => {
+    const slotId = await createSlotFromIssue(issue.id);
+    if (slotId) {
+      await expandSlot(slotId);
+    }
+  };
+
   return (
     <div className="flex-1 flex w-full relative">
       <div className="flex-1 p-6 pb-24 overflow-y-auto">
         <div className="max-w-[1200px] mx-auto space-y-8 animate-in fade-in">
           
+          {pageHealth.nextSlot && (
+            <div className="space-y-3">
+              <StageGuidanceBanner 
+                slot={pageHealth.nextSlot} 
+                issues={scopeIssues as any}
+                onManualAction={handleManualAction} 
+                onAIAction={handleAIAction}
+                onIssueClick={handleIssueClick}
+                onIssueCreateSlot={(issue) => void openIssueFlow(issue)}
+                onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
+                isWorking={isWorking}
+              />
+            </div>
+          )}
+
+          {!pageHealth.nextSlot && (
+            <StageGuidanceBanner
+              issues={scopeIssues as any}
+              onReDiagnose={runDiagnosis}
+              onIssueClick={handleIssueClick}
+              onIssueCreateSlot={(issue) => void openIssueFlow(issue)}
+              onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
+              isWorking={isWorking}
+            />
+          )}
+
           {/* AI Scope Draft Preview Banner */}
           {false && activeDraft && activeDraftType === 'scope' && (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200/80 shadow-md animate-in slide-in-from-top-4 duration-500 space-y-4">
@@ -197,7 +273,7 @@ export function ScopeAndDelivery() {
                           setScopeFeedback('');
                         }}
                         disabled={isWorking}
-                        className="flex items-center gap-1 px-3 py-1.5 border border-slate-250 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                       >
                         <RefreshCw className={`w-3 h-3 text-indigo-500 ${isWorking ? 'animate-spin' : ''}`} />
                         重新推演
@@ -231,7 +307,7 @@ export function ScopeAndDelivery() {
                     <div>
                       <div className="flex justify-between items-center mb-1.5">
                         <h4 className="font-bold text-slate-800 text-xs">{sc.feature_name}</h4>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           sc.scope_status === '本期'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                             : sc.scope_status === '暂缓'
@@ -239,7 +315,7 @@ export function ScopeAndDelivery() {
                             : 'bg-rose-50 text-rose-700 border border-rose-100'
                         }`}>{sc.scope_status}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 leading-relaxed mb-3">{sc.reason}</p>
+                      <p className="text-xs text-slate-500 leading-relaxed mb-3">{sc.reason}</p>
                     </div>
                     {sc.positive_summary && (
                       <div className="text-[10px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 font-medium">
@@ -254,26 +330,84 @@ export function ScopeAndDelivery() {
 
           <section className="bg-white rounded-3xl p-8 border border-slate-200 shadow-md">
              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
-               <div>
-                  <h2 className="text-xl font-black text-slate-900 tracking-tight mb-2">范围决策板</h2>
-                  <p className="text-xs text-slate-500">将识别到的各类功能模块拖动或变更到不同的交付栏位，作为敏捷规划底座。</p>
-               </div>
-               <button
-                 onClick={generateScope}
-                 disabled={isWorking}
-                 className="flex items-center gap-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-4 py-2.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
-               >
-                 <RefreshCw className={`w-3.5 h-3.5 ${isWorking ? 'animate-spin' : ''}`} />
-                 AI 自动划分范围
-               </button>
+                <div>
+                   <h2 className="text-xl font-black text-slate-900 tracking-tight mb-2">范围决策板</h2>
+                  <p className="text-xs text-slate-500 flex flex-wrap items-center gap-1.5">
+                    {ir?.kanoStatus === 'skipped' && (
+                      <span className="inline-block px-2 py-0.5 bg-amber-50 border border-amber-200/60 text-amber-700 text-[10px] font-extrabold rounded">
+                        已跳过 Kano 分析
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(!ir?.kanoStatus || ir.kanoStatus === 'missing' || ir.kanoStatus === 'failed') && (
+                    <>
+                      <button
+                        onClick={generateScope}
+                        disabled={isWorking}
+                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isWorking ? 'animate-pulse' : ''}`} />
+                        AI 自动划分范围
+                      </button>
+                    </>
+                  )}
+
+                  {ir?.kanoStatus === 'generating' && (
+                    <button
+                      disabled={true}
+                      className="flex items-center gap-1.5 text-xs bg-slate-100 text-slate-500 font-bold px-4 py-2.5 rounded-xl border border-slate-200/50"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                      🤖 AI 正在评估中，请稍候...
+                    </button>
+                  )}
+
+                  {activeDraft && activeDraftType === 'scope' && (
+                    <>
+                      <button
+                        onClick={confirmScope}
+                        className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
+                      >
+                        🎨 确认并采纳 AI 范围建议
+                      </button>
+                    </>
+                  )}
+
+                  {(ir?.kanoStatus === 'generated' || ir?.kanoStatus === 'skipped') && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('确定重置 Kano 分析吗？重置将清理 AI 生成的类别与分布图，但会【保留】您手工调整过的交付范围与决策说明。')) {
+                          await resetKano();
+                        }
+                      }}
+                      disabled={isWorking}
+                      className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isWorking ? 'animate-pulse' : ''}`} />
+                      重置 Kano 分析
+                    </button>
+                  )}
+                </div>
              </div>
 
-             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                 <RangeKanbanColumn 
-                  columnKey="in_scope"
+                  columnKey="undecided"
+                  title="未交付决策" 
+                  items={undecided} 
+                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
+                  highlightTarget={highlightTarget}
+                  selectedTarget={selectedObject?.id?.toString()}
+                  onItemClick={(item) => setSelectedObject(item)}
+                  onMoveItem={previewScopeMove}
+                />
+                <RangeKanbanColumn 
+                  columnKey="current"
                   title="本期包含" 
                   items={inScope} 
-                  moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'excluded' }))}
+                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(item)}
@@ -281,10 +415,10 @@ export function ScopeAndDelivery() {
                   onAddItem={createScopeItem}
                 />
                 <RangeKanbanColumn 
-                  columnKey="deferred"
+                  columnKey="postponed"
                   title="暂缓处理" 
                   items={deferred} 
-                  moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'excluded' }))}
+                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(item)}
@@ -292,10 +426,10 @@ export function ScopeAndDelivery() {
                   onAddItem={createScopeItem}
                 />
                 <RangeKanbanColumn 
-                  columnKey="excluded"
+                  columnKey="exclude"
                   title="已排除" 
                   items={excluded} 
-                  moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'excluded' }))}
+                  moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(item)}
@@ -367,9 +501,30 @@ export function ScopeAndDelivery() {
         draft={activeDraft}
         draftType={activeDraftType}
         isWorking={isGenerating || isLoading}
-        onDiscard={discardDraft}
-        onRegenerate={(feedback) => regenerateScope(feedback)}
-        onConfirm={confirmScope}
+        onDiscard={() => {
+          if (activeDraftType === 'repair') {
+            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            if (dId) discardRepairDraft(dId);
+          } else {
+            discardDraft();
+          }
+        }}
+        onRegenerate={(feedback) => {
+          if (activeDraftType === 'repair') {
+            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            if (dId) regenerateRepairDraft(dId);
+          } else {
+            regenerateScope(feedback)
+          };
+        }}
+        onConfirm={async () => {
+          if (activeDraftType === 'repair') {
+            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            if (dId) await confirmRepairDraft(dId);
+          } else {
+            await confirmScope();
+          }
+        }}
       />
 
       <RightObjectPanel />

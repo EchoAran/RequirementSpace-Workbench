@@ -54,6 +54,8 @@ flows_fill_prompt = """
 4. step_number 只需要在当前 flow 内唯一，格式为 S-001、S-002。
 5. next_steps 只能引用当前 flow 内存在的 step_number。
 6. feature_ids 只能引用系统能力输入中存在的 feature_id。
+7. 步骤之间必须是连续的，不能存在不连接或不被链接的结点。
+8. 判断类型的步骤必须至少具有两个后继分支。
 
 # 示例
 ## 示例输入
@@ -504,7 +506,7 @@ business_objects_actors_label_prompt = """
 {
     "business_objects": [
         {
-            "business_object_id": <业务对象id>, 
+            "business_object_id": <已有业务对象使用输入中的业务对象id；新增业务对象可使用临时引用，例如"B-001">,
             "business_object_name": "<业务对象名字>", 
             "business_object_description": "<业务对象描述>", 
             "business_object_attributes": [
@@ -564,7 +566,7 @@ business_objects_actors_label_prompt = """
 3. 输出 JSON 风格的标准格式化内容，而不是被压缩的一行内容。
 4. step_type 只能是 actorAction、systemAction、judgment。
 5. 若某些步骤需要的输入输出是尚未建模的数据模型，那你需要把这部分数据建模并输出（注意是仅输出新增的）。若不需要，这部分直接输出"business_objects": []即可。
-6. 注意新增数据模型的id需不同于已有数据模型的任一id，即id是唯一的。
+6. 已有业务对象必须使用输入中的 business_object_id；新增业务对象不要假设数据库真实 id，可使用临时引用（例如"B-001"、"B-002"）。流程步骤中的 input_business_object_ids / output_business_object_ids 引用同一个临时值即可，系统会在入库时转换为真实数据库 id。
 7. business_object_attribute_example 必须是字符串。即使 business_object_attribute_type 是 integer、bool、array[string]、object等，也必须把示例值写成字符串。例如："business_object_attribute_type": "integer","business_object_attribute_example": "14"。
 8. business_object_attribute_example 中若本身带有"符号则需要转义，例如"business_object_attribute_example": "[\"M-001\", \"M-003\", \"M-009\"]"，错误写法为"business_object_attribute_example": "["M-001", "M-003", "M-009"]"。
 

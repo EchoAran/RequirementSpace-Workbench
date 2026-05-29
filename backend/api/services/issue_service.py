@@ -1,16 +1,11 @@
 from sqlalchemy import select
 
-from backend.api.services.service_registry import (
-    acceptance_criteria_generation_service,
-    scenario_generation_service,
-    scope_generation_service,
-)
+from backend.api.services.issue_repair_service import IssueRepairService
 from backend.core.detectors import (
     HowIssueDetector,
     ScopeIssueDetector,
     WhatIssueDetector,
 )
-from backend.core.detectors.issue_solvers import IssueSolverRegistry
 from backend.schemas import Issue, IssueStage, IssueTarget
 
 
@@ -21,7 +16,7 @@ class IssueService:
             IssueStage.HOW.value: HowIssueDetector(),
             IssueStage.SCOPE.value: ScopeIssueDetector(),
         }
-        self._solver_registry = IssueSolverRegistry()
+        self._repair_service = IssueRepairService()
 
     async def list_issues(
         self,
@@ -30,6 +25,13 @@ class IssueService:
         session,
     ) -> dict:
         stage = self._normalize_stage(stage)
+
+        if not await self._is_stage_visible(project_id, stage, session):
+            return {
+                "project_id": project_id,
+                "stage": stage,
+                "issues": [],
+            }
 
         detector = self._detectors.get(stage)
 
@@ -41,6 +43,13 @@ class IssueService:
                 project_id=project_id,
                 session=session,
             )
+
+        hidden_issue_ids = await self._load_hidden_issue_ids(project_id, session)
+        issues = [
+            issue
+            for issue in issues
+            if issue.issueId not in hidden_issue_ids
+        ]
 
         return {
             "project_id": project_id,
@@ -54,31 +63,76 @@ class IssueService:
     async def resolve_issue(
         self,
         project_id: int,
+        issue_id: str | None,
         issue_code: str,
+        stage: str | None,
         target: dict | None,
         metadata: dict,
         session,
     ) -> dict:
-        await self._ensure_project_exists(project_id, session)
+        """Resolve an issue by delegating to IssueRepairService.
 
-        resolution = await self._solver_registry.resolve(
+        IssueRepairService handles re-detection, fingerprint/context hash,
+        strategy dispatch, and generation draft creation.
+        """
+        # Load metadata from the request, with issue_id for tracing
+        merged_metadata = {**(metadata or {})}
+        if issue_id:
+            merged_metadata["issue_id"] = issue_id
+
+        return await self._repair_service.resolve(
             project_id=project_id,
             issue_code=issue_code,
-            target=self._build_issue_target(target),
-            metadata=metadata or {},
+            stage=stage,
+            target=target,
+            metadata=merged_metadata,
             session=session,
         )
 
-        if resolution.resolutionType == "generation_draft":
-            resolution = await self._create_resolution_draft(
-                project_id=project_id,
-                resolution=resolution,
-                session=session,
+    async def set_issue_status(
+        self,
+        project_id: int,
+        issue_id: str,
+        status: str,
+        session,
+    ) -> dict:
+        from backend.database.model import IssueOverrideModel
+
+        normalized_status = (status or "").strip().lower()
+        if normalized_status not in {"open", "ignored", "resolved"}:
+            raise ValueError("invalid_issue_status")
+
+        await self._ensure_project_exists(project_id, session)
+
+        existing_result = await session.execute(
+            select(IssueOverrideModel).where(
+                IssueOverrideModel.project_id == project_id,
+                IssueOverrideModel.issue_id == issue_id,
             )
+        )
+        existing = existing_result.scalar_one_or_none()
+
+        if normalized_status == "open":
+            if existing is not None:
+                await session.delete(existing)
+        else:
+            if existing is None:
+                session.add(
+                    IssueOverrideModel(
+                        project_id=project_id,
+                        issue_id=issue_id,
+                        status=normalized_status,
+                    )
+                )
+            else:
+                existing.status = normalized_status
+
+        await session.flush()
 
         return {
             "project_id": project_id,
-            **resolution.to_dict(),
+            "issue_id": issue_id,
+            "status": normalized_status,
         }
 
     @staticmethod
@@ -106,17 +160,63 @@ class IssueService:
         if project_result.scalar_one_or_none() is None:
             raise ValueError("project_not_found")
 
-    @staticmethod
-    def _build_issue_target(target: dict | None) -> IssueTarget | None:
-        if target is None:
-            return None
+    @classmethod
+    async def _is_stage_visible(
+        cls,
+        project_id: int,
+        stage: str,
+        session,
+    ) -> bool:
+        from backend.database.model import ProjectModel
 
-        return IssueTarget(
-            targetType=target.get("target_type"),
-            targetId=target.get("target_id"),
-            parentType=target.get("parent_type"),
-            parentId=target.get("parent_id"),
+        project_result = await session.execute(
+            select(ProjectModel.unlocked_stages).where(
+                ProjectModel.id == project_id,
+            )
         )
+        unlocked_text = project_result.scalar_one_or_none()
+
+        if unlocked_text is None:
+            raise ValueError("project_not_found")
+
+        return cls._is_stage_unlocked_for_detection(
+            stage=stage,
+            unlocked_stages=unlocked_text,
+        )
+
+    @staticmethod
+    def _is_stage_unlocked_for_detection(
+        stage: str,
+        unlocked_stages: str,
+    ) -> bool:
+        unlocked = {
+            item.strip()
+            for item in (unlocked_stages or "").split(",")
+            if item.strip()
+        }
+
+        if stage == "what":
+            return True
+        if stage == "how":
+            return "what" in unlocked
+        if stage == "scope":
+            return "how" in unlocked
+        if stage == "preview":
+            return "scope" in unlocked
+
+        return False
+
+    @staticmethod
+    async def _load_hidden_issue_ids(project_id: int, session) -> set[str]:
+        from backend.database.model import IssueOverrideModel
+
+        result = await session.execute(
+            select(IssueOverrideModel.issue_id).where(
+                IssueOverrideModel.project_id == project_id,
+                IssueOverrideModel.status.in_(("ignored", "resolved")),
+            )
+        )
+        return {issue_id for issue_id in result.scalars().all() if issue_id}
 
     @staticmethod
     def _serialize_issue(issue: Issue) -> dict:
@@ -140,59 +240,3 @@ class IssueService:
             "resolver_code": issue.resolverCode,
             "metadata": issue.metadata,
         }
-
-    async def _create_resolution_draft(
-        self,
-        project_id: int,
-        resolution,
-        session,
-    ):
-        draft_type = resolution.action.get("draft_type")
-        payload = resolution.action.get("payload", {})
-
-        if draft_type == "scenario_generation":
-            feature_id = payload.get("feature_id")
-            actor_id = payload.get("actor_id")
-
-            if feature_id is None or actor_id is None:
-                raise ValueError("invalid_resolution_payload")
-
-            draft = await scenario_generation_service.create_pair_draft(
-                project_id=project_id,
-                feature_id=int(feature_id),
-                actor_id=int(actor_id),
-                session=session,
-            )
-
-        elif draft_type == "acceptance_criteria_generation":
-            scenario_id = payload.get("scenario_id")
-
-            if scenario_id is None:
-                raise ValueError("invalid_resolution_payload")
-
-            draft = await acceptance_criteria_generation_service.create_single_draft(
-                project_id=project_id,
-                scenario_id=int(scenario_id),
-                session=session,
-            )
-
-        elif draft_type == "scope_generation":
-            draft = await scope_generation_service.create_draft(
-                project_id=project_id,
-                session=session,
-            )
-
-        else:
-            raise ValueError("unsupported_resolution_draft")
-
-        resolution.draftId = draft["draft_id"]
-        resolution.draft = draft
-        resolution.action["endpoint"] = resolution.action[
-            "endpoint"
-        ].format(draft_id=draft["draft_id"])
-        resolution.action["payload"] = {
-            **payload,
-            "draft_id": draft["draft_id"],
-        }
-
-        return resolution

@@ -99,6 +99,12 @@ class FeatureService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what", "how", "scope"},
+            perception_kinds={
+                "FEATURE",
+                "SCENARIO",
+                "ACCEPTANCE_CRITERION",
+                "FLOW",
+            },
             session=session,
         )
 
@@ -186,6 +192,12 @@ class FeatureService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what", "how", "scope"},
+            perception_kinds={
+                "FEATURE",
+                "SCENARIO",
+                "ACCEPTANCE_CRITERION",
+                "FLOW",
+            },
             session=session,
         )
 
@@ -237,6 +249,12 @@ class FeatureService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what", "how", "scope"},
+            perception_kinds={
+                "FEATURE",
+                "SCENARIO",
+                "ACCEPTANCE_CRITERION",
+                "FLOW",
+            },
             session=session,
         )
 

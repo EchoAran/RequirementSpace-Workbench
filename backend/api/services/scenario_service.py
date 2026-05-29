@@ -70,6 +70,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -122,6 +123,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -176,6 +178,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -232,6 +235,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -287,6 +291,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
         )
 
@@ -353,6 +358,7 @@ class ScenarioService:
         await mark_perception_jobs_stale(
             project_id=project_id,
             stages={"what"},
+            perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
         )
 

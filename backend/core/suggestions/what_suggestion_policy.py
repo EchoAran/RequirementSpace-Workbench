@@ -50,6 +50,30 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
                 },
             )
 
+        leaf_without_actor = [
+            f for f in context.leaf_features if len(f.actor_ids) == 0
+        ]
+        if leaf_without_actor:
+            first_bad = leaf_without_actor[0]
+            return NextSuggestion(
+                sourceType="predefined",
+                code="BIND_ACTORS_TO_FEATURE",
+                title="补充功能执行角色",
+                description=f"检测到叶子功能“{first_bad.name}”尚未绑定任何执行角色，请先完成绑定。",
+                target={
+                    "type": "feature",
+                    "id": first_bad.feature_id,
+                },
+                action={
+                    "kind": "open_panel",
+                    "route": f"/projects/{project_id}/what",
+                    "panel": "feature",
+                    "payload": {
+                        "feature_id": first_bad.feature_id,
+                    },
+                },
+            )
+
         if not context.scenarios:
             return NextSuggestion(
                 sourceType="generator",

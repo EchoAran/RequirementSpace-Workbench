@@ -20,7 +20,6 @@ from backend.schemas import ActorNode, FeatureNode
 
 class ScenarioGenerationService:
     def __init__(self):
-        self._drafts: dict[str, dict] = {}
         self._scenarios_generator = ScenariosGenerator()
         self._acceptance_criteria_generation_service = (
             AcceptanceCriteriaGenerationService()
@@ -60,7 +59,14 @@ class ScenarioGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=project_id,
+            draft_id=draft_id,
+            draft_type="scenario",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -84,7 +90,14 @@ class ScenarioGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=project_id,
+            draft_id=draft_id,
+            draft_type="scenario",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -109,7 +122,14 @@ class ScenarioGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=project_id,
+            draft_id=draft_id,
+            draft_type="scenario",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -119,7 +139,7 @@ class ScenarioGenerationService:
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             project_id=draft["project_id"],
@@ -133,7 +153,14 @@ class ScenarioGenerationService:
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        self._drafts[draft_id] = draft_payload
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.save_draft(
+            project_id=draft["project_id"],
+            draft_id=draft_id,
+            draft_type="scenario",
+            payload=draft_payload,
+            session=session,
+        )
 
         return response_payload
 
@@ -143,7 +170,7 @@ class ScenarioGenerationService:
         session,
         generate_acceptance_criteria: bool = False,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        draft = await self._get_draft(draft_id, session)
 
         result = await self._persist_scenario_generation_draft(
             draft=draft,
@@ -152,6 +179,7 @@ class ScenarioGenerationService:
         await mark_perception_jobs_stale(
             project_id=draft["project_id"],
             stages={"what"},
+            perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
         scenario_ids = result.pop("scenario_ids")
@@ -170,7 +198,8 @@ class ScenarioGenerationService:
         else:
             result["acceptance_criterion_count"] = 0
 
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
 
         return result
 
@@ -178,23 +207,21 @@ class ScenarioGenerationService:
         self,
         draft_id: str,
     ) -> dict:
-        self._drafts.pop(draft_id, None)
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.discard_draft_locally(draft_id)
 
         return {
             "draft_id": draft_id,
             "message": "draft_discarded",
         }
 
-    def _get_draft(
+    async def _get_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        draft = self._drafts.get(draft_id)
-
-        if draft is None:
-            raise ValueError("draft_not_found")
-
-        return draft
+        from backend.api.services.draft_store import GenerativeDraftStore
+        return await GenerativeDraftStore.get_draft(draft_id, session)
 
     async def _generate_preview(
         self,

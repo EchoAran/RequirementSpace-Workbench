@@ -21,10 +21,12 @@ class ScopeGenerationService:
         "CURRENT",
         "POSTPONED",
         "EXCLUDE",
+        "current",
+        "postponed",
+        "exclude",
     }
 
     def __init__(self):
-        self._drafts: dict[str, dict] = {}
         self._scopes_generator = ScopesGenerator()
 
     async def create_draft(
@@ -32,20 +34,62 @@ class ScopeGenerationService:
         project_id: int,
         session,
     ) -> dict:
-        draft_id = uuid4().hex
-
-        draft_payload, response_payload = await self._generate_preview(
-            project_id=project_id,
-            user_feedback=None,
-            session=session,
+        from backend.database.model import ProjectModel
+        # 1. Update project kano_status to generating and commit immediately
+        project_res = await session.execute(
+            select(ProjectModel).where(ProjectModel.id == project_id)
         )
+        project = project_res.scalar_one_or_none()
+        if project is None:
+            raise ValueError("project_not_found")
+        project.kano_status = "generating"
+        await session.flush()
+        await session.commit()
 
-        draft_payload["draft_id"] = draft_id
-        response_payload["draft_id"] = draft_id
+        try:
+            draft_id = uuid4().hex
 
-        self._drafts[draft_id] = draft_payload
+            draft_payload, response_payload = await self._generate_preview(
+                project_id=project_id,
+                user_feedback=None,
+                session=session,
+            )
 
-        return response_payload
+            draft_payload["draft_id"] = draft_id
+            response_payload["draft_id"] = draft_id
+
+            from backend.api.services.draft_store import GenerativeDraftStore
+            await GenerativeDraftStore.save_draft(
+                project_id=project_id,
+                draft_id=draft_id,
+                draft_type="scope",
+                payload=draft_payload,
+                session=session,
+            )
+
+            # 2. Re-acquire project to set draft_ready state
+            project_res = await session.execute(
+                select(ProjectModel).where(ProjectModel.id == project_id)
+            )
+            project = project_res.scalar_one()
+            project.kano_status = "missing"
+            await session.flush()
+
+            return response_payload
+        except Exception as err:
+            # Re-acquire project under new transaction to set failed state
+            try:
+                project_res = await session.execute(
+                    select(ProjectModel).where(ProjectModel.id == project_id)
+                )
+                project = project_res.scalar_one_or_none()
+                if project:
+                    project.kano_status = "failed"
+                    await session.flush()
+                    await session.commit()
+            except Exception:
+                pass
+            raise err
 
     async def regenerate_draft(
         self,
@@ -53,63 +97,129 @@ class ScopeGenerationService:
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        from backend.database.model import ProjectModel
+        draft = await self._get_draft(draft_id, session)
+        project_id = draft["project_id"]
 
-        draft_payload, response_payload = await self._generate_preview(
-            project_id=draft["project_id"],
-            user_feedback=user_feedback,
-            session=session,
+        # 1. Set project kano_status to generating
+        project_res = await session.execute(
+            select(ProjectModel).where(ProjectModel.id == project_id)
         )
+        project = project_res.scalar_one_or_none()
+        if project:
+            project.kano_status = "generating"
+            await session.flush()
+            await session.commit()
 
-        draft_payload["draft_id"] = draft_id
-        response_payload["draft_id"] = draft_id
+        try:
+            draft_payload, response_payload = await self._generate_preview(
+                project_id=project_id,
+                user_feedback=user_feedback,
+                session=session,
+            )
 
-        self._drafts[draft_id] = draft_payload
+            draft_payload["draft_id"] = draft_id
+            response_payload["draft_id"] = draft_id
 
-        return response_payload
+            from backend.api.services.draft_store import GenerativeDraftStore
+            await GenerativeDraftStore.save_draft(
+                project_id=project_id,
+                draft_id=draft_id,
+                draft_type="scope",
+                payload=draft_payload,
+                session=session,
+            )
+
+            # 2. Re-acquire to set draft_ready
+            project_res = await session.execute(
+                select(ProjectModel).where(ProjectModel.id == project_id)
+            )
+            project = project_res.scalar_one()
+            project.kano_status = "missing"
+            await session.flush()
+
+            return response_payload
+        except Exception as err:
+            try:
+                project_res = await session.execute(
+                    select(ProjectModel).where(ProjectModel.id == project_id)
+                )
+                project = project_res.scalar_one_or_none()
+                if project:
+                    project.kano_status = "failed"
+                    await session.flush()
+                    await session.commit()
+            except Exception:
+                pass
+            raise err
 
     async def confirm_draft(
         self,
         draft_id: str,
         session,
     ) -> dict:
-        draft = self._get_draft(draft_id)
+        from backend.database.model import ProjectModel
+        draft = await self._get_draft(draft_id, session)
+        project_id = draft["project_id"]
 
         result = await self._persist_scope_generation_draft(
             draft=draft,
             session=session,
         )
         await mark_perception_jobs_stale(
-            project_id=draft["project_id"],
+            project_id=project_id,
             stages={"scope"},
             session=session,
         )
 
-        self._drafts.pop(draft_id, None)
+        # Set kano_status to generated
+        project_res = await session.execute(
+            select(ProjectModel).where(ProjectModel.id == project_id)
+        )
+        project = project_res.scalar_one_or_none()
+        if project:
+            project.kano_status = "generated"
+            await session.flush()
+
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
 
         return result
 
     async def discard_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        self._drafts.pop(draft_id, None)
+        from backend.database.model import ProjectModel
+        try:
+            draft = await self._get_draft(draft_id, session)
+            project_id = draft["project_id"]
+            project_res = await session.execute(
+                select(ProjectModel).where(ProjectModel.id == project_id)
+            )
+            project = project_res.scalar_one_or_none()
+            if project:
+                project.kano_status = "missing"
+                await session.flush()
+        except ValueError:
+            pass
+
+        from backend.api.services.draft_store import GenerativeDraftStore
+        await GenerativeDraftStore.delete_draft(draft_id, session)
 
         return {
             "draft_id": draft_id,
             "message": "draft_discarded",
         }
 
-    def _get_draft(
+    async def _get_draft(
         self,
         draft_id: str,
+        session,
     ) -> dict:
-        draft = self._drafts.get(draft_id)
-
-        if draft is None:
-            raise ValueError("draft_not_found")
-
-        return draft
+        from backend.api.services.draft_store import GenerativeDraftStore
+        return await GenerativeDraftStore.get_draft(draft_id, session)
 
     async def _generate_preview(
         self,
@@ -242,11 +352,12 @@ class ScopeGenerationService:
         scope_node_map = {}
 
         for scope in scope_models:
-            if scope.status in ScopeStatus.__members__:
-                scope_status = ScopeStatus[scope.status]
+            status_str = scope.status.upper()
+            if status_str in ScopeStatus.__members__:
+                scope_status = ScopeStatus[status_str]
             else:
                 try:
-                    scope_status = ScopeStatus(scope.status)
+                    scope_status = ScopeStatus(scope.status.lower())
                 except ValueError:
                     continue
 
@@ -270,6 +381,8 @@ class ScopeGenerationService:
                     if scope.negative_picture is not None
                     else None
                 ),
+                kanoCategory=scope.kano_category,
+                kanoCategoryName=scope.kano_category_name,
             )
 
         feature_nodes = [
@@ -364,12 +477,14 @@ class ScopeGenerationService:
             scopes.append(
                 {
                     "feature_id": feature_id,
-                    "scope_status": scope_status,
+                    "scope_status": scope_status.lower(),
                     "reason": reason,
                     "positive_summary": positive_summary,
                     "negative_summary": negative_summary,
                     "positive_picture_base64": positive_picture_base64,
                     "negative_picture_base64": negative_picture_base64,
+                    "kano_category": item.get("kano_category", item.get("kanoCategory")),
+                    "kano_category_name": item.get("kano_category_name", item.get("kanoCategoryName")),
                 }
             )
 
@@ -402,6 +517,8 @@ class ScopeGenerationService:
                     "negative_picture_base64": item.get(
                         "negative_picture_base64"
                     ),
+                    "kano_category": item.get("kano_category"),
+                    "kano_category_name": item.get("kano_category_name"),
                 }
                 for item in draft_payload["scopes"]
             ],
@@ -461,6 +578,8 @@ class ScopeGenerationService:
                     positive_picture=positive_picture,
                     negative_picture=negative_picture,
                     reason=item["reason"],
+                    kano_category=item.get("kano_category"),
+                    kano_category_name=item.get("kano_category_name"),
                 )
                 session.add(scope_model)
                 continue
@@ -471,6 +590,8 @@ class ScopeGenerationService:
             scope_model.positive_picture = positive_picture
             scope_model.negative_picture = negative_picture
             scope_model.reason = item["reason"]
+            scope_model.kano_category = item.get("kano_category")
+            scope_model.kano_category_name = item.get("kano_category_name")
 
         await session.flush()
 

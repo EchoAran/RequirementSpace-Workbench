@@ -71,12 +71,12 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
                 "{{perception_description}}", f"{perception_description_}"
             ),
             query=input_data.user_feedback,
-            print_log=False,
+            print_log=True,
         )
 
         actors_payload = ActorNode.schema(
             many=True,
-            only=("actorName", "actorDescription")
+            only=("actorId", "actorName", "actorDescription")
         ).dump(input_data.actors)
 
         actors_ = json.dumps(
@@ -109,7 +109,7 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
                 "{{flow}}", f"{flows_response}"
             ),
             query=input_data.user_feedback,
-            print_log=False,
+            print_log=True,
         )
         return json.loads(response)
 

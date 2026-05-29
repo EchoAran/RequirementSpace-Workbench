@@ -48,7 +48,12 @@ from backend.api.schemas.issue_schema import (
     IssueTargetResponse,
     ProjectIssuesResponse,
 )
+from backend.api.schemas.issue_repair_draft_schema import (
+    IssueRepairDraftActionResponse,
+    IssueRepairDraftResponse,
+)
 from backend.api.schemas.next_suggestion_schema import (
+    NextSuggestionRediagnoseRequest,
     NextSuggestionResponse,
     NextSuggestionResponseItem,
     NextSuggestionStartRequest,
@@ -86,6 +91,7 @@ from backend.api.schemas.crud_schema import (
     FlowStepResponse,
     FlowCreateRequest,
     FlowUpdateRequest,
+    FlowStepsReorderRequest,
     FlowResponse,
     ScopeUpdateRequest,
     ScopeResponse,
@@ -184,6 +190,7 @@ __all__ = [
     "FlowStepResponse",
     "FlowCreateRequest",
     "FlowUpdateRequest",
+    "FlowStepsReorderRequest",
     "FlowResponse",
     "ScopeUpdateRequest",
     "ScopeResponse",

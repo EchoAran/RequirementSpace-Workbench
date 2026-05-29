@@ -37,10 +37,12 @@ router = APIRouter(
 )
 async def create_project_creation_draft(
     request: ProjectCreationDraftCreateRequest,
+    session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_creation_service.create_draft(
             user_requirements=request.user_requirements,
+            session=session,
             project_name=request.project_name,
             project_description=request.project_description,
         )
@@ -60,12 +62,14 @@ async def create_project_creation_draft(
 async def regenerate_project_creation_draft(
     draft_id: str,
     request: DraftRegenerateRequest | None = None,
+    session: AsyncSession = Depends(get_session),
 ):
     user_feedback = request.user_feedback if request else None
     try:
         return await project_creation_service.regenerate_draft(
             draft_id=draft_id,
             user_feedback=user_feedback,
+            session=session,
         )
     except ValueError as error:
         if str(error) == "draft_not_found":

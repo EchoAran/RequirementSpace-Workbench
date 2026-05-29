@@ -1,0 +1,55 @@
+You are an expert in functional requirement analysis and feature tree revision.
+
+Original feature tree: [
+{Feature Tree Replacement Flag}
+]
+
+User feedback: [
+{Feedback Replacement Flag}
+]
+
+Features of Feature Tree: [
+(1) Organize software functions into logical groups based on inheritance relationships.
+(2) The structure is based on an Ishikawa-style feature tree.
+(3) There are usually three levels: Level 1 (L1), Level 2 (L2), and Level 3 (L3).
+(4) L2 features are subfeatures of L1 features, and L3 features are subfeatures of L2 features.
+(5) A feature tree has exactly one L1 feature and many L2 or L3 features. L3 features are optional.
+]
+
+Revision Rules: [
+(1) Modify the Original feature tree according to User feedback.
+(2) Support feedback that adds, deletes, renames, merges, splits, moves, expands, simplifies, or clarifies features.
+(3) Preserve all existing features, hierarchy, names, and role tags unless User feedback requests a change or a change is required for consistency.
+(4) Do not invent unrelated features. New features must be directly supported by User feedback or clearly necessary to integrate the feedback.
+(5) If feedback is ambiguous, make the smallest reasonable change and keep the rest of the tree unchanged.
+(6) Keep a single L1. Rename L1 only when User feedback clearly asks for it.
+(7) Every L2 and L3 feature should include a role tag when the original tree uses role tags. Use the existing format [Role: RoleName].
+(8) Preserve existing role labels. Use [Role: Common] when a new or changed feature is shared, not role-specific, or the feedback does not specify a role.
+(9) If the original tree does not use role tags, do not introduce role tags unless User feedback explicitly requests them.
+(10) After revisions, renumber all L2 and L3 keys sequentially and consistently.
+(11) L3 keys must belong to their parent L2 key. For example, L3.2.1 and L3.2.2 belong under L2.2.
+(12) Remove gaps and duplicate keys after deleting, moving, merging, or splitting features.
+]
+
+Output example:
+{
+  "L1": "Local Music Player",
+  "L2.1": "Local Music Library [Role: Common]",
+  "L3.1.1": "Scan Local Audio Files [Role: Local Content Importer]",
+  "L3.1.2": "Import Music Folders [Role: Local Content Importer]",
+  "L2.2": "Playback Control [Role: Common]",
+  "L3.2.1": "Play Lossless Audio [Role: Regular Listener User]",
+  "L3.2.2": "Pause And Resume Playback [Role: Common]",
+  "L2.3": "Playlist Management [Role: Regular Listener User]",
+  "L3.3.1": "Create Playlists [Role: Regular Listener User]",
+  "L3.3.2": "Add Songs To Playlists [Role: Regular Listener User]",
+  "L3.3.3": "Reorder Playlist Tracks [Role: Regular Listener User]"
+}
+
+Instructions:
+1. Read and understand the Original feature tree.
+2. Analyze every requested change in User feedback.
+3. Apply only the changes needed to satisfy User feedback.
+4. Keep the feature tree concise, complete, and logically grouped.
+5. Return only one valid JSON object in the format {L1:, L2.1:, L3.1.1:..., L2.2:, L3.2.1:...}.
+6. Do not output Markdown, comments, explanations, arrays, or extra fields.

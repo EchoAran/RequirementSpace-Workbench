@@ -6,7 +6,9 @@ from backend.database.model import (
     FeatureRelationModel,
     ScenarioModel,
     BusinessObjectModel,
+    BusinessObjectAttributeModel,
     FlowModel,
+    ScopeModel,
     feature_actor_table,
     flow_feature_table,
 )
@@ -162,6 +164,23 @@ class GraphPatchEngine:
                 if temp_id:
                     temp_to_real_id[temp_id] = flow.id
 
+            elif kind == "business_object_attribute":
+                bo_id = resolve_id(
+                    node.get("business_object_id") or node.get("businessObjectId"),
+                    "business_object",
+                )
+                name = node.get("name", "")
+                if not name:
+                    raise ValueError("business_object_attribute requires name")
+                attr = BusinessObjectAttributeModel(
+                    business_object_id=bo_id,
+                    name=name,
+                    description=node.get("description", ""),
+                    data_type=node.get("data_type") or node.get("type") or "string",
+                    example=node.get("example", ""),
+                )
+                session.add(attr)
+
         # 3. Execute updates (updateNodes)
         for node in patch.get("updateNodes", []):
             kind = node.get("kind")
@@ -221,6 +240,21 @@ class GraphPatchEngine:
                         flow.name = node.get("name") or node.get("flowName")
                     if "description" in node or "flowDescription" in node:
                         flow.description = node.get("description") or node.get("flowDescription")
+
+            elif kind == "scope":
+                from backend.database.model import FeatureModel
+                res = await session.execute(
+                    select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
+                    .where(ScopeModel.id == node_id, FeatureModel.project_id == project_id)
+                )
+                scope = res.scalar_one_or_none()
+                if scope:
+                    if "reason" in node:
+                        scope.reason = node["reason"]
+                    if "status" in node:
+                        scope.status = node["status"]
+                    elif "scopeStatus" in node or "scope_status" in node:
+                        scope.status = node.get("scopeStatus") or node.get("scope_status")
 
         # 4. Establish relation links (addLinks)
         for link in patch.get("addLinks", []):

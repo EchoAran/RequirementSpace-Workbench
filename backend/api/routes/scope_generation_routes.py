@@ -119,7 +119,9 @@ async def confirm_scope_generation_draft(
 )
 async def discard_scope_generation_draft(
     draft_id: str,
+    session: AsyncSession = Depends(get_session),
 ):
     return await scope_generation_service.discard_draft(
         draft_id=draft_id,
+        session=session,
     )

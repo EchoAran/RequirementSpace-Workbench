@@ -4,6 +4,7 @@ import json
 
 from fastapi import BackgroundTasks
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
@@ -184,33 +185,56 @@ class PerceptionJobService:
                 ):
                     active_job.status = PerceptionJobStatus.RUNNING.value
                     await session.flush()
-                    background_tasks.add_task(
-                        self.run_perception_job,
-                        active_job.id,
+                    await self._schedule_perception_job(
+                        background_tasks=background_tasks,
+                        session=session,
+                        job_id=active_job.id,
                     )
 
                 return self._build_running_suggestion(active_job)
 
-            job = PerceptionJobModel(
-                project_id=project_id,
-                stage=stage,
-                perception_kind=perception_kind,
-                target_type=target_type,
-                target_id=target_id,
-                context_hash=context_hash,
-                status=(
-                    PerceptionJobStatus.RUNNING.value
-                    if background_tasks is not None
-                    else PerceptionJobStatus.NOT_STARTED.value
-                ),
-            )
-            session.add(job)
-            await session.flush()
+            try:
+                async with session.begin_nested():
+                    job = PerceptionJobModel(
+                        project_id=project_id,
+                        stage=stage,
+                        perception_kind=perception_kind,
+                        target_type=target_type,
+                        target_id=target_id,
+                        context_hash=context_hash,
+                        status=(
+                            PerceptionJobStatus.RUNNING.value
+                            if background_tasks is not None
+                            else PerceptionJobStatus.NOT_STARTED.value
+                        ),
+                    )
+                    session.add(job)
+                    await session.flush()
+            except Exception:
+                # The nested transaction is automatically rolled back, so session is valid!
+                # Now we query again to fetch the concurrently inserted job!
+                job_result = await session.execute(
+                    select(PerceptionJobModel).where(
+                        PerceptionJobModel.project_id == project_id,
+                        PerceptionJobModel.stage == stage,
+                        PerceptionJobModel.perception_kind == perception_kind,
+                        PerceptionJobModel.target_type == target_type,
+                        PerceptionJobModel.target_id == target_id,
+                        PerceptionJobModel.context_hash == context_hash,
+                    )
+                )
+                job = job_result.scalar_one_or_none()
+                if job is None:
+                    raise
 
-            if background_tasks is not None:
-                background_tasks.add_task(
-                    self.run_perception_job,
-                    job.id,
+            if (
+                background_tasks is not None
+                and job.status == PerceptionJobStatus.RUNNING.value
+            ):
+                await self._schedule_perception_job(
+                    background_tasks=background_tasks,
+                    session=session,
+                    job_id=job.id,
                 )
 
             return self._build_running_suggestion(job)
@@ -225,20 +249,63 @@ class PerceptionJobService:
             )
 
         if job.status == PerceptionJobStatus.FAILED.value:
+            if background_tasks is not None:
+                job.status = PerceptionJobStatus.RUNNING.value
+                job.result_slot_payload = None
+                job.error_message = ""
+                await session.flush()
+                await self._schedule_perception_job(
+                    background_tasks=background_tasks,
+                    session=session,
+                    job_id=job.id,
+                )
+                return self._build_running_suggestion(job)
             return self._build_failed_suggestion(job)
+
+        if job.status == PerceptionJobStatus.STALE.value:
+            if background_tasks is not None:
+                job.status = PerceptionJobStatus.RUNNING.value
+                job.result_slot_payload = None
+                job.error_message = ""
+                await session.flush()
+                await self._schedule_perception_job(
+                    background_tasks=background_tasks,
+                    session=session,
+                    job_id=job.id,
+                )
+                return self._build_running_suggestion(job)
+            return None
 
         if (
             job.status == PerceptionJobStatus.NOT_STARTED.value
             and background_tasks is not None
         ):
             job.status = PerceptionJobStatus.RUNNING.value
+            job.result_slot_payload = None
+            job.error_message = ""
             await session.flush()
-            background_tasks.add_task(
-                self.run_perception_job,
-                job.id,
+            await self._schedule_perception_job(
+                background_tasks=background_tasks,
+                session=session,
+                job_id=job.id,
             )
 
         return self._build_running_suggestion(job)
+
+    async def _schedule_perception_job(
+        self,
+        background_tasks: BackgroundTasks,
+        session,
+        job_id: int,
+    ) -> None:
+        # FastAPI runs BackgroundTasks before yield-dependency cleanup.
+        # With SQLite, keeping this request transaction open can lock the
+        # background session when it updates the same job row.
+        await session.commit()
+        background_tasks.add_task(
+            self.run_perception_job,
+            job_id,
+        )
 
     @staticmethod
     async def _load_active_stage_job(
@@ -304,6 +371,11 @@ class PerceptionJobService:
                 if description is None:
                     job.status = PerceptionJobStatus.DONE_EMPTY.value
                     job.result_slot_payload = None
+                    await self._delete_slot_for_job(
+                        project_id=job.project_id,
+                        job_id=job.id,
+                        session=session,
+                    )
                     await session.commit()
                     return
 
@@ -324,7 +396,9 @@ class PerceptionJobService:
                 # Also populate ProjectModel.perception_slot!
                 from backend.database.model import ProjectModel, PerceptionSlotModel
                 project_res = await session.execute(
-                    select(ProjectModel).where(ProjectModel.id == job.project_id)
+                    select(ProjectModel)
+                    .where(ProjectModel.id == job.project_id)
+                    .options(selectinload(ProjectModel.perception_slot))
                 )
                 project = project_res.scalar_one_or_none()
                 if project:
@@ -343,6 +417,14 @@ class PerceptionJobService:
                 await session.commit()
 
             except Exception as error:
+                await session.rollback()
+                job = await self._load_job_with_retry(
+                    job_id=job_id,
+                    session=session,
+                )
+                if job is None:
+                    return
+
                 job.status = PerceptionJobStatus.FAILED.value
                 job.error_message = f"{type(error).__name__}: {error}"
                 await session.commit()
@@ -732,23 +814,95 @@ class PerceptionJobService:
     def _normalize_perception_description(raw: dict | None) -> str | None:
         if raw is None:
             raise ValueError("empty_perception_response")
+        if not isinstance(raw, dict):
+            raise ValueError("invalid_perception_response")
 
         description = str(raw.get("perception_description", "")).strip()
+        raw_kind = str(raw.get("perception_kind", "")).strip()
 
         if not description:
             return None
 
-        normalized = description.replace("。", "").strip()
+        normalized = PerceptionJobService._normalize_no_slot_marker(description)
+        normalized_kind = PerceptionJobService._normalize_no_slot_marker(raw_kind)
 
-        if normalized in {
+        no_slot_markers = {
             "不需要",
             "无需",
+            "无需要",
+            "无需补充",
             "不需补充",
             "不需要补充",
-        }:
+            "没有需要补充",
+            "无需新增",
+            "不需要新增",
+            "no need",
+            "none",
+            "not needed",
+            "not required",
+        }
+
+        if (
+            normalized in no_slot_markers
+            or normalized_kind in no_slot_markers
+            or any(normalized.startswith(marker) for marker in no_slot_markers)
+        ):
             return None
 
         return description
+
+    @staticmethod
+    def _normalize_no_slot_marker(value: str) -> str:
+        return (
+            value
+            .replace("\ufeff", "")
+            .replace("\u200b", "")
+            .replace("\u200c", "")
+            .replace("\u200d", "")
+            .strip()
+            .strip("\"'“”‘’`")
+            .replace("。", "")
+            .replace(".", "")
+            .replace("！", "")
+            .replace("!", "")
+            .replace("，", "")
+            .replace(",", "")
+            .strip()
+            .lower()
+        )
+
+    @staticmethod
+    async def _delete_slot_for_job(
+        project_id: int,
+        job_id: int,
+        session,
+    ) -> None:
+        from backend.database.model import ChoiceGroupModel, PerceptionSlotModel
+
+        slot_result = await session.execute(
+            select(PerceptionSlotModel).where(
+                PerceptionSlotModel.project_id == project_id,
+                PerceptionSlotModel.id == job_id,
+            )
+        )
+        slot = slot_result.scalar_one_or_none()
+        if slot is None:
+            return
+
+        # DONE_EMPTY means this exact perception job no longer has actionable
+        # content. Clear any open choice group still pointing at its old slot.
+        group_result = await session.execute(
+            select(ChoiceGroupModel).where(
+                ChoiceGroupModel.project_id == project_id,
+                ChoiceGroupModel.slot_id == slot.id,
+            )
+        )
+        for group in group_result.scalars().all():
+            if group.status == "open":
+                group.status = "resolved"
+            group.slot_id = None
+
+        await session.delete(slot)
 
     @staticmethod
     def _resolve_result_perception_kind(

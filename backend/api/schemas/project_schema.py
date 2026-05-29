@@ -24,6 +24,11 @@ class ProjectDeleteResponse(CamelModel):
     project_id: int
     message: str = "project_deleted"
 
+
+class PerceptionSlotDeleteResponse(CamelModel):
+    project_id: int
+    message: str = "perception_slot_deleted"
+
 class ProjectUpdateRequest(CamelModel):
     name: str
     description: str
@@ -41,6 +46,7 @@ class PerceptionSlotDetail(CamelModel):
     perception_slot_id: int
     perception_kind: str
     perception_description: str
+    stage: str | None = None
 
 class ActorDetail(CamelModel):
     kind: str = "actor"
@@ -57,6 +63,8 @@ class ScopeDetail(CamelModel):
     negative_summary: str | None = None
     positive_picture_base64: str | None = None
     negative_picture_base64: str | None = None
+    kano_category: str | None = None
+    kano_category_name: str | None = None
 
 class AcceptanceCriterionDetail(CamelModel):
     kind: str = "acceptance_criterion"
@@ -104,6 +112,7 @@ class FlowStepDetail(CamelModel):
     step_name: str
     step_description: str
     step_type: str
+    position: int
     actor_ids: list[int] = []
     input_business_object_ids: list[int] = []
     output_business_object_ids: list[int] = []
@@ -128,6 +137,11 @@ class ProjectDetailResponse(CamelModel):
     features: list[FeatureDetail] = []
     business_objects: list[BusinessObjectDetail] = []
     flows: list[FlowDetail] = []
+    kano_status: str = "missing"
+    unlocked_stages: list[str] = []
+
+class UnlockStageRequest(CamelModel):
+    stage: str
 
 class ScopeImpactPreviewRequest(CamelModel):
     feature_id: int

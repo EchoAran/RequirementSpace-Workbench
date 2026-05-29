@@ -15,7 +15,7 @@ class NextSuggestionResponseItem(CamelModel):
 class NextSuggestionResponse(CamelModel):
     project_id: int
     stage: str
-    suggestion: NextSuggestionResponseItem
+    suggestion: NextSuggestionResponseItem | None
 
 
 class NextSuggestionStartRequest(CamelModel):
@@ -23,6 +23,10 @@ class NextSuggestionStartRequest(CamelModel):
     suggestion_code: str
     target: dict | None = None
     query: str | None = None
+
+
+class NextSuggestionRediagnoseRequest(CamelModel):
+    stage: str
 
 
 class NextSuggestionStartResponse(CamelModel):

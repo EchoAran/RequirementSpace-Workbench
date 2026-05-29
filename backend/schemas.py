@@ -28,9 +28,9 @@ class BaseNode(DataClassJsonMixin):
 # 定义枚举类型
 class ScopeStatus(str, Enum):
     """功能范围状态枚举"""
-    CURRENT = "本期"
-    POSTPONED = "暂缓"
-    EXCLUDE = "排除"
+    CURRENT = "current"
+    POSTPONED = "postponed"
+    EXCLUDE = "exclude"
 
 class FlowStepType(str, Enum):
     """流程步骤类型枚举"""
@@ -88,6 +88,8 @@ class ScopeNode(BaseNode):
     negativeSummary: Optional[str] = None
     positivePictureBase64: Optional[str] = None
     negativePictureBase64: Optional[str] = None
+    kanoCategory: Optional[str] = None
+    kanoCategoryName: Optional[str] = None
 
 # 功能结点
 @node_dataclass

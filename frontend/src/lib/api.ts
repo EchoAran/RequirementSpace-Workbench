@@ -20,8 +20,14 @@ export const workspaceApi = {
   delete: async (id: string | number): Promise<void> => {
     await http.delete<{ project_id: number; message: string }>(`/projects/${id}`);
   },
+  deletePerceptionSlot: async (projectId: number): Promise<any> => {
+    return http.delete<any>(`/projects/${projectId}/perception-slot`);
+  },
   updateProject: async (projectId: number, payload: { name: string; description: string }): Promise<any> => {
     return http.put<any>(`/projects/${projectId}`, payload);
+  },
+  unlockStage: async (projectId: number, stage: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
   },
   createBlankProject: async (payload: { user_requirements: string; project_name?: string; project_description?: string }): Promise<ProjectCreationConfirmResponse> => {
     return http.post<ProjectCreationConfirmResponse>('/blank_projects', payload);
@@ -109,6 +115,9 @@ export const workspaceApi = {
   },
   deleteFlowStep: async (projectId: number, flowId: number, stepId: number) => {
     return http.delete<any>(`/projects/${projectId}/flows/${flowId}/steps/${stepId}`);
+  },
+  reorderFlowSteps: async (projectId: number, flowId: number, stepIds: number[]) => {
+    return http.put<any>(`/projects/${projectId}/flows/${flowId}/steps/reorder`, { step_ids: stepIds });
   },
   updateScope: async (projectId: number, featureId: number, payload: { status: string; reason: string; positive_summary?: string | null; negative_summary?: string | null }) => {
     return http.put<any>(`/projects/${projectId}/features/${featureId}/scope`, payload);
@@ -232,11 +241,20 @@ export const workspaceApi = {
   listIssues: async (projectId: number, stage: string): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/issues`, { stage });
   },
-  resolveIssue: async (projectId: number, payload: { issue_code: string; target: any | null; metadata?: any }): Promise<any> => {
+  updateIssueStatus: async (projectId: number, issueId: string, status: string): Promise<any> => {
+    return http.put<any>(`/projects/${projectId}/issues/status`, {
+      issue_id: issueId,
+      status,
+    });
+  },
+  resolveIssue: async (projectId: number, payload: { issue_id?: string; issue_code: string; stage?: string; target: any | null; metadata?: any }): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/issues/resolve`, payload);
   },
   getNextSuggestion: async (projectId: number, stage: string): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/next-suggestion`, { stage });
+  },
+  rediagnoseNextSuggestion: async (projectId: number, stage: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/next-suggestion/rediagnose`, { stage });
   },
   startNextSuggestion: async (projectId: number, payload: { stage: string; suggestion_code: string; target?: any | null; query?: string | null }): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/next-suggestion/start`, payload);
@@ -269,5 +287,38 @@ export const workspaceApi = {
   },
   rejectChoice: async (projectId: number, choiceId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`);
+  },
+  skipKano: async (projectId: number): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/scope/skip_kano`);
+  },
+  resetKano: async (projectId: number): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/scope/reset_kano`);
+  },
+  prepareShadowDraft: async (projectId: number): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts`);
+  },
+  getShadowDraft: async (projectId: number, draftId: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`);
+  },
+  discardShadowDraft: async (projectId: number, draftId: string): Promise<any> => {
+    return http.delete<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`);
+  },
+  commitShadowDraft: async (projectId: number, draftId: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}/commit`);
+  },
+  regenerateShadowDraft: async (projectId: number, draftId: string, feedback?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}/regenerate`, {
+      user_feedback: feedback,
+    });
+  },
+  // Issue Repair Drafts (P2)
+  confirmRepairDraft: async (projectId, draftId) => {
+    return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/confirm`);
+  },
+  discardRepairDraft: async (projectId, draftId) => {
+    return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/discard`);
+  },
+  regenerateRepairDraft: async (projectId, draftId) => {
+    return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/regenerate`);
   },
 };

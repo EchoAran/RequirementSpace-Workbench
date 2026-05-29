@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, defaultload
 
-from backend.database.model import ProjectModel, FeatureModel, ScenarioModel, BusinessObjectModel, FlowModel, FlowStepModel
+from backend.database.model import ProjectModel, FeatureModel, ScenarioModel, BusinessObjectModel, FlowModel, FlowStepModel, PerceptionJobModel
 from backend.api.schemas.project_schema import (
     ProjectListItemResponse,
     ProjectDetailResponse,
@@ -55,7 +55,7 @@ class ProjectService:
 
             # 3. Determine status (e.g. "待确认缺口" if any feature scope is deferred, else "设计中")
             has_deferred = any(
-                f.scope.status == "暂缓"
+                f.scope.status == "postponed"
                 for f in p.features
                 if f.scope is not None
             )
@@ -104,11 +104,22 @@ class ProjectService:
         # 1. Map Perception Slot
         perception_slot = None
         if p.perception_slot:
-            perception_slot = PerceptionSlotDetail(
-                perception_slot_id=p.perception_slot.id,
-                perception_kind=p.perception_slot.perception_kind,
-                perception_description=p.perception_slot.description,
+            slot_job = await session.get(
+                PerceptionJobModel,
+                p.perception_slot.id,
             )
+            slot_stage = slot_job.stage if slot_job is not None else None
+
+            if self._is_stage_visible(
+                stage=slot_stage,
+                unlocked_stages=p.unlocked_stages,
+            ):
+                perception_slot = PerceptionSlotDetail(
+                    perception_slot_id=p.perception_slot.id,
+                    perception_kind=p.perception_slot.perception_kind,
+                    perception_description=p.perception_slot.description,
+                    stage=slot_stage,
+                )
 
         # 2. Map Actors
         actors_list = [
@@ -146,6 +157,8 @@ class ProjectService:
                         if f.scope.negative_picture is not None
                         else None
                     ),
+                    kano_category=f.scope.kano_category,
+                    kano_category_name=f.scope.kano_category_name,
                 )
 
             # Map Scenarios
@@ -211,6 +224,7 @@ class ProjectService:
                     step_name=st.name,
                     step_description=st.description,
                     step_type=st.step_type,
+                    position=st.position,
                     actor_ids=[a.id for a in st.actors],
                     input_business_object_ids=[bo.id for bo in st.input_business_objects],
                     output_business_object_ids=[bo.id for bo in st.output_business_objects],
@@ -228,6 +242,8 @@ class ProjectService:
                 )
             )
 
+        unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
+
         return ProjectDetailResponse(
             project_id=p.id,
             project_name=p.name,
@@ -238,7 +254,30 @@ class ProjectService:
             features=features_list,
             business_objects=business_objects_list,
             flows=flows_list,
+            kano_status=p.kano_status,
+            unlocked_stages=unlocked_list,
         )
+
+    async def unlock_stage(self, project_id: int, stage: str, session: AsyncSession) -> dict:
+        stmt = select(ProjectModel).where(ProjectModel.id == project_id)
+        result = await session.execute(stmt)
+        p = result.scalar_one_or_none()
+        if p is None:
+            raise ValueError("project_not_found")
+
+        unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
+        stage_clean = stage.strip().lower()
+        if stage_clean not in unlocked_list:
+            unlocked_list.append(stage_clean)
+            p.unlocked_stages = ",".join(unlocked_list)
+            await session.commit()
+
+        return {
+            "project_id": project_id,
+            "stage": stage_clean,
+            "message": "stage_unlocked",
+            "unlocked_stages": unlocked_list
+        }
 
     async def delete_project(self, project_id: int, session: AsyncSession) -> dict:
         stmt = select(ProjectModel).where(ProjectModel.id == project_id)
@@ -250,6 +289,48 @@ class ProjectService:
         await session.delete(p)
         await session.commit()
         return {"project_id": project_id, "message": "project_deleted"}
+
+    async def delete_perception_slot(self, project_id: int, session: AsyncSession) -> dict:
+        stmt = (
+            select(ProjectModel)
+            .where(ProjectModel.id == project_id)
+            .options(selectinload(ProjectModel.perception_slot))
+        )
+        result = await session.execute(stmt)
+        p = result.scalar_one_or_none()
+        if p is None:
+            raise ValueError("project_not_found")
+
+        if p.perception_slot is not None:
+            await session.delete(p.perception_slot)
+            await session.commit()
+
+        return {"project_id": project_id, "message": "perception_slot_deleted"}
+
+    @staticmethod
+    def _is_stage_visible(
+        stage: str | None,
+        unlocked_stages: str,
+    ) -> bool:
+        if stage is None:
+            return True
+
+        unlocked = {
+            item.strip()
+            for item in (unlocked_stages or "").split(",")
+            if item.strip()
+        }
+
+        if stage == "what":
+            return True
+        if stage == "how":
+            return "what" in unlocked
+        if stage == "scope":
+            return "how" in unlocked
+        if stage == "preview":
+            return "scope" in unlocked
+
+        return False
 
     async def update_project(self, project_id: int, name: str, description: str, session: AsyncSession) -> dict:
         stmt = select(ProjectModel).where(ProjectModel.id == project_id)

@@ -10,6 +10,27 @@ from backend.core.detectors.issue_solvers.open_panel_issue_solver import (
 from backend.schemas import IssueResolution, IssueTarget
 
 
+# Set of all known issue codes for quick lookup
+KNOWN_ISSUE_CODES: set[str] = {
+    "ACTOR_WITHOUT_FEATURE",
+    "LEAF_FEATURE_WITHOUT_ACTOR",
+    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO",
+    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS",
+    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA",
+    "DUPLICATE_SCENARIO_NAME",
+    "LEAF_FEATURE_WITHOUT_FLOW",
+    "FLOW_WITHOUT_FEATURE",
+    "FLOW_WITHOUT_STEPS",
+    "ACTOR_ACTION_STEP_WITHOUT_ACTOR",
+    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
+    "UNREACHABLE_FLOW_STEP",
+    "BUSINESS_OBJECT_WITHOUT_USAGE",
+    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES",
+    "LEAF_FEATURE_WITHOUT_SCOPE",
+    "SCOPE_WITHOUT_REASON",
+}
+
+
 class IssueSolverRegistry:
     def __init__(self):
         open_panel_solver = OpenPanelIssueSolver()
@@ -44,10 +65,24 @@ class IssueSolverRegistry:
         metadata: dict,
         session,
     ) -> IssueResolution:
+        """Resolve an issue by dispatching to the registered solver.
+
+        Returns an IssueResolution. For unknown issue codes, returns an
+        unsupported resolution instead of raising.
+        """
         solver = self._solvers.get(issue_code)
 
         if solver is None:
-            raise ValueError("unsupported_issue_code")
+            return IssueResolution(
+                issueCode=issue_code,
+                resolutionType="unsupported",
+                title="暂不支持自动处理",
+                description=f"当前系统暂不支持自动处理「{issue_code}」类型的问题。",
+                action={
+                    "kind": "manual_action",
+                    "payload": {},
+                },
+            )
 
         return await solver.resolve(
             project_id=project_id,
@@ -56,3 +91,22 @@ class IssueSolverRegistry:
             metadata=metadata,
             session=session,
         )
+
+    def get_stage_for_code(self, issue_code: str) -> str | None:
+        """Infer the stage for a given issue code.
+
+        Returns None if the code is unknown.
+        """
+        solver = self._solvers.get(issue_code)
+        if solver is None:
+            return None
+
+        if isinstance(solver, GenerationDraftIssueSolver):
+            draft_type = solver.get_draft_type(issue_code)
+            return {
+                "scenario_generation": "what",
+                "acceptance_criteria_generation": "what",
+                "scope_generation": "scope",
+            }.get(draft_type)
+
+        return None

@@ -3,6 +3,9 @@ from sqlalchemy import select
 from fastapi import BackgroundTasks
 
 from backend.api.services.perception_job_service import PerceptionJobService
+from backend.api.services.perception_job_invalidation_service import (
+    mark_perception_jobs_stale,
+)
 from backend.core.suggestions import (
     HowSuggestionPolicy,
     ScopeSuggestionPolicy,
@@ -28,6 +31,16 @@ class NextSuggestionService:
         background_tasks: BackgroundTasks | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
+
+        if not await self._is_stage_visible(project_id, stage, session):
+            return {
+                "project_id": project_id,
+                "stage": stage,
+                "suggestion": self._build_locked_stage_suggestion(
+                    project_id=project_id,
+                    stage=stage,
+                ).to_dict(),
+            }
 
         policy = self._policies.get(stage)
 
@@ -81,6 +94,42 @@ class NextSuggestionService:
             "suggestion": suggestion,
         }
 
+    async def rediagnose_next_suggestion(
+        self,
+        project_id: int,
+        stage: str,
+        session,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> dict:
+        stage = self._normalize_stage(stage)
+        await self._ensure_project_exists(project_id, session)
+
+        if not await self._is_stage_visible(project_id, stage, session):
+            return {
+                "project_id": project_id,
+                "stage": stage,
+                "suggestion": self._build_locked_stage_suggestion(
+                    project_id=project_id,
+                    stage=stage,
+                ).to_dict(),
+            }
+
+        # A manual "rediagnose" must not reuse a previous AI perception slot.
+        # Clear the current stage cache first; normal next-suggestion reads can
+        # still reuse cache through get_next_suggestion().
+        await mark_perception_jobs_stale(
+            project_id=project_id,
+            stages={stage},
+            session=session,
+        )
+
+        return await self.get_next_suggestion(
+            project_id=project_id,
+            stage=stage,
+            session=session,
+            background_tasks=background_tasks,
+        )
+
     async def start_next_suggestion(
         self,
         project_id: int,
@@ -92,6 +141,9 @@ class NextSuggestionService:
     ) -> dict:
         stage = self._normalize_stage(stage)
         await self._ensure_project_exists(project_id, session)
+
+        if not await self._is_stage_visible(project_id, stage, session):
+            raise ValueError("stage_not_unlocked")
 
         action = self._build_start_action(
             project_id=project_id,
@@ -132,6 +184,75 @@ class NextSuggestionService:
 
         if project_result.scalar_one_or_none() is None:
             raise ValueError("project_not_found")
+
+    @classmethod
+    async def _is_stage_visible(
+        cls,
+        project_id: int,
+        stage: str,
+        session,
+    ) -> bool:
+        from backend.database.model import ProjectModel
+
+        project_result = await session.execute(
+            select(ProjectModel.unlocked_stages).where(
+                ProjectModel.id == project_id,
+            )
+        )
+        unlocked_text = project_result.scalar_one_or_none()
+
+        if unlocked_text is None:
+            raise ValueError("project_not_found")
+
+        return cls._is_stage_unlocked_for_detection(
+            stage=stage,
+            unlocked_stages=unlocked_text,
+        )
+
+    @staticmethod
+    def _is_stage_unlocked_for_detection(
+        stage: str,
+        unlocked_stages: str,
+    ) -> bool:
+        unlocked = {
+            item.strip()
+            for item in (unlocked_stages or "").split(",")
+            if item.strip()
+        }
+
+        if stage == "what":
+            return True
+        if stage == "how":
+            return "what" in unlocked
+        if stage == "scope":
+            return "how" in unlocked
+        if stage == "preview":
+            return "scope" in unlocked
+
+        return False
+
+    @staticmethod
+    def _build_locked_stage_suggestion(
+        project_id: int,
+        stage: str,
+    ) -> NextSuggestion:
+        previous_stage = {
+            "how": "what",
+            "scope": "how",
+            "preview": "scope",
+        }.get(stage, "what")
+
+        return NextSuggestion(
+            sourceType="predefined",
+            code="STAGE_LOCKED",
+            title="阶段尚未解锁",
+            description="请先完成并确认上一阶段，再进行当前阶段的感知与建议。",
+            status="blocked",
+            action={
+                "kind": "navigate",
+                "route": f"/projects/{project_id}/{previous_stage}",
+            },
+        )
 
     @staticmethod
     def _build_start_action(
@@ -220,6 +341,17 @@ class NextSuggestionService:
                 "route": f"/projects/{project_id}/{route_stage}",
                 "panel": "perception_slot",
                 "payload": target,
+            }
+
+        if suggestion_code == "BIND_ACTORS_TO_FEATURE":
+            feature_id = target.get("id") if target else None
+            return {
+                "kind": "open_panel",
+                "route": f"/projects/{project_id}/what",
+                "panel": "feature",
+                "payload": {
+                    "feature_id": feature_id,
+                },
             }
 
         raise ValueError("unsupported_suggestion_code")

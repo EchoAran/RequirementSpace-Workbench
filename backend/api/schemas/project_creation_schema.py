@@ -15,6 +15,7 @@ class GeneratedActorPreview(BaseModel):
     actor_description: str
 
 class GeneratedFeaturePreview(BaseModel):
+    feature_number: str | None = None
     feature_name: str
     feature_description: str
     actor_names: list[str] = []

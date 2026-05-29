@@ -10,6 +10,12 @@ export interface IssueCardProps {
   onIgnore: (issue: Issue) => void;
 }
 
+const severityText: Record<Issue['severity'], string> = {
+  high: '高风险',
+  medium: '需处理',
+  low: '提示',
+};
+
 export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSlot, onIgnore }) => {
   const ir = useWorkspaceStore((state) => state.ir);
 
@@ -37,7 +43,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
                   : 'bg-slate-50 text-slate-600',
             )}
           >
-            {issue.severity} 严重度
+            {severityText[issue.severity]}
           </span>
         </div>
         <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">{issue.description}</p>
@@ -62,16 +68,16 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
             e.stopPropagation();
             onCreateSlot(issue);
           }}
-          className="flex-1 py-1.5 text-[11px] font-bold bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-colors shadow-sm"
+          className="flex-1 py-1.5 text-xs font-bold bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-colors shadow-sm"
         >
-          创建 Slot
+          AI 处理
         </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
             onIgnore(issue);
           }}
-          className="flex-1 py-1.5 text-[11px] font-bold border border-slate-200 text-slate-600 rounded-md bg-white hover:bg-slate-50 transition-colors shadow-sm"
+          className="flex-1 py-1.5 text-xs font-bold border border-slate-200 text-slate-600 rounded-md bg-white hover:bg-slate-50 transition-colors shadow-sm"
         >
           忽略
         </button>

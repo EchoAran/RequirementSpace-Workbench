@@ -107,6 +107,7 @@ class SkillBackedProjectCreationService(ProjectCreationService):
 
         feature_previews_for_response = [
             {
+                "feature_number": feature["feature_number"],
                 "feature_name": feature["feature_name"],
                 "feature_description": feature["feature_description"],
                 "actor_names": [
@@ -123,4 +124,3 @@ class SkillBackedProjectCreationService(ProjectCreationService):
             feature_previews_for_draft,
             feature_previews_for_response,
         )
-

@@ -23,121 +23,15 @@ import {
   FlowStepType,
   BaseNode,
   WorkspaceListItem,
+  PendingManualAction,
 } from '@/core/schema';
 import { workspaceApi } from '@/lib/api';
-import { buildPageHealth } from '@/core/selectors';
+import { buildPageHealth, detectIssues, detectStageIssues } from '@/core/selectors';
 
-export type WorkspacePage = '/' | '/what' | '/flow' | '/scope' | '/preview' | '/overview';
 
-// -------------------------------------------------------------
-// Dynamic Static-Analysis Rules-based Issue Detector
-// -------------------------------------------------------------
-export const detectIssues = (space: RequirementSpace | null): Issue[] => {
-  if (!space) return [];
-  const issues: Issue[] = [];
+export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview';
 
-  const actors = space.actors || [];
-  const features = space.features || [];
-  const businessObjects = space.businessObjects || [];
-  const flows = space.flows || [];
 
-  // 1. Roles without features
-  for (const actor of actors) {
-    const isUsed = features.some((f) => (f.actorIds || []).includes(actor.actorId));
-    if (!isUsed) {
-      issues.push({
-        id: `rule_actor_unlinked_${actor.actorId}`,
-        title: `参与者角色未关联任何功能`,
-        description: `参与者 "${actor.actorName}" 目前在系统架构中没有被任何功能节点引用，请为其添加相应功能，或删除该闲置角色。`,
-        severity: 'medium',
-        status: 'open',
-        relatedNodeIds: [actor.actorId.toString()],
-        suggestedProjection: 'role',
-        category: 'rule_gap',
-      });
-    }
-  }
-
-  // 2. Features without roles
-  for (const feature of features) {
-    if ((feature.actorIds || []).length === 0) {
-      issues.push({
-        id: `rule_feature_no_actor_${feature.featureId}`,
-        title: `功能节点未关联任何角色`,
-        description: `功能 "${feature.featureName}" 目前未指定任何参与者（执行人），请在该功能的右侧面板中绑定执行角色。`,
-        severity: 'high',
-        status: 'open',
-        relatedNodeIds: [feature.featureId.toString()],
-        suggestedProjection: 'goal',
-        category: 'rule_gap',
-      });
-    }
-
-    // 3. Leaf features with empty scenarios
-    const isLeaf = (feature.childrenIds || []).length === 0;
-    if (isLeaf && (feature.scenarios || []).length === 0) {
-      issues.push({
-        id: `rule_feature_no_scenarios_${feature.featureId}`,
-        title: `叶子功能未定义验收场景`,
-        description: `功能节点 "${feature.featureName}" 作为叶子业务节点，尚未描述任何典型成功场景（User Story），可能导致需求不够具象化。`,
-        severity: 'medium',
-        status: 'open',
-        relatedNodeIds: [feature.featureId.toString()],
-        suggestedProjection: 'goal',
-        category: 'rule_gap',
-      });
-    }
-
-    // 4. Scenarios without AC
-    for (const sc of feature.scenarios || []) {
-      if ((sc.acceptanceCriteria || []).length === 0) {
-        issues.push({
-          id: `rule_scenario_no_ac_${sc.scenarioId}`,
-          title: `成功场景缺少验收标准`,
-          description: `功能 "${feature.featureName}" 下的场景 "${sc.scenarioName}" 缺少对应的成功标准 (AC)，开发与测试人员将无法验证功能终态。`,
-          severity: 'high',
-          status: 'open',
-          relatedNodeIds: [feature.featureId.toString()],
-          suggestedProjection: 'goal',
-          category: 'rule_gap',
-        });
-      }
-    }
-  }
-
-  // 5. Business objects without attributes
-  for (const bo of businessObjects) {
-    if ((bo.businessObjectAttributes || []).length === 0) {
-      issues.push({
-        id: `rule_bo_no_attrs_${bo.businessObjectId}`,
-        title: `业务对象缺少字段属性定义`,
-        description: `数据实体 "${bo.businessObjectName}" 没有包含任何具体字段属性，建议在其下添加代表业务字段的属性（如 ID、名称、状态等）。`,
-        severity: 'medium',
-        status: 'open',
-        relatedNodeIds: [bo.businessObjectId.toString()],
-        suggestedProjection: 'data',
-        category: 'rule_gap',
-      });
-    }
-  }
-
-  // 6. Flows without steps
-  for (const flow of flows) {
-    if ((flow.flowSteps || []).length === 0) {
-      issues.push({
-        id: `rule_flow_no_steps_${flow.flowId}`,
-        title: `业务流程未定义任何步骤`,
-        description: `业务流 "${flow.flowName}" 属于空壳流程，没有任何流转的执行步骤，请为其配置用户/系统步骤。`,
-        severity: 'high',
-        status: 'open',
-        relatedNodeIds: [flow.flowId.toString()],
-        suggestedProjection: 'system',
-      });
-    }
-  }
-
-  return issues;
-};
 
 // -------------------------------------------------------------
 // Unified Normalization Helper for Backend Data Synchronization
@@ -150,7 +44,7 @@ const mapBackendIssueToCompatible = (issue: any): Issue => {
   } else if (stage === 'how') {
     suggestedProjection = 'system';
   } else if (stage === 'scope') {
-    suggestedProjection = 'goal';
+    suggestedProjection = 'data';
   }
 
   const relatedNodeIds: string[] = [];
@@ -162,10 +56,18 @@ const mapBackendIssueToCompatible = (issue: any): Issue => {
     id: issue.issueId || issue.id,
     title: issue.title,
     description: issue.description,
-    severity: (issue.severity?.toLowerCase() === 'high' ? 'high' : issue.severity?.toLowerCase() === 'medium' ? 'medium' : 'low') as any,
+    severity: (
+      issue.severity?.toLowerCase() === 'high' || issue.severity?.toLowerCase() === 'blocking'
+        ? 'high'
+        : issue.severity?.toLowerCase() === 'medium' || issue.severity?.toLowerCase() === 'warning'
+        ? 'medium'
+        : 'low'
+    ) as any,
     status: 'open',
     relatedNodeIds,
     suggestedProjection,
+    stage,
+    domain: issue.domain || issue.metadata?.domain,
     category: issue.code,
     backendIssueCode: issue.code,
     backendTarget: issue.target,
@@ -179,6 +81,9 @@ const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
     slotId: cg.slotId ? cg.slotId.toString() : '',
     status: cg.status as any,
     selectionMode: cg.selectionMode as any,
+    sourceType: cg.sourceType,
+    issueCode: cg.issueCode,
+    issueId: cg.issueId,
     choices: (cg.choices || []).map((c: any) => ({
       id: c.id.toString(),
       title: c.title,
@@ -190,6 +95,7 @@ const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
   };
 };
 
+const resolutionType = (res: any): string | undefined => res.resolutionType || res.resolution_type;
 const mapResolutionDraftType = (draftType?: string): 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' => {
   if (draftType === 'scenario_generation' || draftType === 'scenario') return 'scenario';
   if (draftType === 'acceptance_criteria_generation' || draftType === 'acceptance_criteria' || draftType === 'ac') return 'ac';
@@ -226,8 +132,22 @@ const getFriendlyErrorMessage = (rawError: string): string => {
   }
 };
 
-const loadBackendIssues = async (projectId: number): Promise<Issue[]> => {
-  const stages = ['what', 'how', 'scope', 'preview'];
+const getVisibleIssueStages = (unlockedStages?: string[]): Array<'what' | 'how' | 'scope'> => {
+  const unlocked = new Set(unlockedStages || []);
+  const stages: Array<'what' | 'how' | 'scope'> = ['what'];
+
+  if (unlocked.has('what')) {
+    stages.push('how');
+  }
+  if (unlocked.has('how')) {
+    stages.push('scope');
+  }
+
+  return stages;
+};
+
+const loadBackendIssues = async (projectId: number, unlockedStages?: string[]): Promise<Issue[]> => {
+  const stages = getVisibleIssueStages(unlockedStages);
   const results = await Promise.allSettled(
     stages.map(stage => workspaceApi.listIssues(projectId, stage))
   );
@@ -247,8 +167,9 @@ const loadBackendIssues = async (projectId: number): Promise<Issue[]> => {
 
 export const normalizeRequirementSpace = (
   space: RequirementSpace | null,
-  backendIssues?: Issue[],
-  backendChoiceGroups?: Record<string, ChoiceGroup>
+  backendIssues?: Issue[] | null,
+  backendChoiceGroups?: Record<string, ChoiceGroup>,
+  backendIssuesLoaded?: boolean
 ): RequirementSpace | null => {
   console.log('normalizeRequirementSpace called with space:', space?.projectName, 'has_space:', !!space);
   if (!space) return null;
@@ -259,6 +180,7 @@ export const normalizeRequirementSpace = (
   const businessObjects = space.businessObjects || [];
   const flows = space.flows || [];
   const perceptionSlot = space.perceptionSlot || null;
+  const visibleIssueStages = new Set(getVisibleIssueStages(space.unlockedStages));
 
   // 2. Prepare nodes dictionary
   const nodes: Record<string, any> = {};
@@ -403,7 +325,7 @@ export const normalizeRequirementSpace = (
   // Triggers links: from screen to flow step
   flows.forEach(fl => {
     (fl.flowSteps || []).forEach(st => {
-      const boIds = [...(st.inputBusinessObjectIds || []), ...(st.outputBusinessObjectIds || [])];
+      const boIds = [...new Set([...(st.inputBusinessObjectIds || []), ...(st.outputBusinessObjectIds || [])])];
       boIds.forEach(boId => {
         const screenId = `screen_${boId}`;
         linksList.push({
@@ -416,17 +338,22 @@ export const normalizeRequirementSpace = (
     });
   });
 
+  const dedupedLinksList = Array.from(
+    new Map(linksList.map((link) => [link.id, link])).values()
+  );
+
   // 5. Detect and index issues
-  const issuesList = backendIssues && backendIssues.length > 0
-    ? backendIssues
-    : detectIssues({
-        ...space,
-        actors,
-        features,
-        businessObjects,
-        flows,
-        perceptionSlot
-      });
+  const normalizedSpaceForRules = {
+    ...space,
+    actors,
+    features,
+    businessObjects,
+    flows,
+    perceptionSlot
+  };
+  const issuesList = backendIssuesLoaded && backendIssues
+    ? backendIssues.filter((issue) => !issue.stage || visibleIssueStages.has(issue.stage as any))
+    : getVisibleIssueStages(space.unlockedStages).flatMap((stage) => detectStageIssues(normalizedSpaceForRules, stage));
   const issuesRecord: Record<string, any> = {};
   issuesList.forEach(i => {
     issuesRecord[i.id] = i;
@@ -490,7 +417,7 @@ export const normalizeRequirementSpace = (
     flows,
     perceptionSlot,
     nodes,
-    links: linksList,
+    links: dedupedLinksList,
     issues: issuesRecord,
     slots: slotsRecord,
     choiceGroups: choiceGroupsRecord,
@@ -510,6 +437,10 @@ export const normalizeRequirementSpace = (
 // Helper for generating IDs
 const makeIntId = () => Math.floor(1000 + Math.random() * 9000);
 
+const isSlotFillingDraft = (draft: any | null | undefined) => (
+  draft?.perceptionJobId !== undefined || draft?.perception_job_id !== undefined
+);
+
 export interface WorkspaceState {
   currentSystemView: 'home' | 'onboarding' | 'workspace';
   setSystemView: (view: 'home' | 'onboarding' | 'workspace') => void;
@@ -527,20 +458,27 @@ export interface WorkspaceState {
 
   ir: RequirementSpace | null; // Unified project space matching state.ir for backwards compatibility
   backendIssues: Issue[];
+  backendIssuesLoaded: boolean;
   backendChoiceGroups: Record<string, ChoiceGroup>;
   isDiagnosing: boolean;
   nextSuggestions: Record<string, any>;
 
   // Draft Generative States
   activeDraft: any | null;
-  activeDraftType: 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | null;
+  activeDraftType: 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
   isGenerating: boolean;
 
   highlightTarget: string | null;
   setHighlightTarget: (id: string | null) => void;
+  pendingManualAction: PendingManualAction | null;
+  setPendingManualAction: (action: PendingManualAction | null) => void;
   isLoading: boolean;
   error: string | null;
+  setError: (error: string | null) => void;
+  boDeletionError: string | null;
+  setBoDeletionError: (error: string | null) => void;
   lastActionMessage: string | null;
+  lastIssueResolution: any | null;
   workspaces: WorkspaceListItem[];
 
   // Project Lifecycles
@@ -628,9 +566,12 @@ export interface WorkspaceState {
   }) => Promise<void>;
   updateFlowStep: (flowId: number, stepId: number, updates: Partial<FlowStepNode>) => Promise<void>;
   deleteFlowStep: (flowId: number, stepId: number) => Promise<void>;
+  reorderFlowSteps: (flowId: number, stepIds: number[]) => Promise<void>;
 
   // Scope
   updateScope: (featureId: number, updates: Partial<ScopeNode>) => Promise<void>;
+  skipKano: () => Promise<void>;
+  resetKano: () => Promise<void>;
   
   // PerceptionSlot
   clearPerceptionSlot: () => Promise<void>;
@@ -640,9 +581,13 @@ export interface WorkspaceState {
   acceptChoice: (choiceId: string) => Promise<void>;
   rejectChoice: (choiceId: string) => Promise<void>;
   createSlotFromIssue: (issueId: string) => Promise<string | null>;
+  resolveIssue: (issueId: string) => Promise<string | null>;
+  confirmRepairDraft: (draftId: string) => Promise<any>;
+  discardRepairDraft: (draftId: string) => Promise<void>;
+  regenerateRepairDraft: (draftId: string) => Promise<void>;
   setNodeStatus: (nodeId: string, status: NodeStatus) => Promise<void>;
   setScopeStatus: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
-  runDiagnosis: (scope: any) => Promise<void>;
+  runDiagnosis: (scope?: any) => Promise<void>;
   executeNextSuggestion: (stage: string) => Promise<void>;
   rewrite: (scope: any, instruction: string) => Promise<void>;
   explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
@@ -657,6 +602,15 @@ export interface WorkspaceState {
   loadAuditLogs: (projectId: number) => Promise<void>;
   getImpactPreview: (featureId: number, nextStatus: string) => Promise<any>;
   addChoiceToGroup: (choiceGroupId: string, payload: any) => Promise<void>;
+
+  // P5 Shadow Preview Draft Actions
+  activeShadowDraft: any | null;
+  prepareShadowDraft: () => Promise<any>;
+  getShadowDraft: (draftId: string) => Promise<any>;
+  discardShadowDraft: (draftId: string) => Promise<void>;
+  commitShadowDraft: (draftId: string) => Promise<void>;
+  regenerateShadowDraft: (draftId: string, feedback?: string) => Promise<any>;
+  unlockStageGate: (stage: string) => Promise<void>;
 }
 
 const findSelectedObjectInIr = (ir: RequirementSpace | null, selectedId: string | number | null): any => {
@@ -726,7 +680,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         if (next && 'ir' in next && next.ir !== undefined) {
           const issuesToUse = next.backendIssues || state.backendIssues || [];
           const choiceGroupsToUse = next.backendChoiceGroups || state.backendChoiceGroups || {};
-          next.ir = normalizeRequirementSpace(next.ir, issuesToUse, choiceGroupsToUse);
+          const loadedToUse = next.backendIssuesLoaded !== undefined ? next.backendIssuesLoaded : state.backendIssuesLoaded;
+          next.ir = normalizeRequirementSpace(next.ir, issuesToUse, choiceGroupsToUse, loadedToUse);
         }
         return next;
       }, replace);
@@ -734,7 +689,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (update && 'ir' in update && update.ir !== undefined) {
         const issuesToUse = update.backendIssues || get()?.backendIssues || [];
         const choiceGroupsToUse = update.backendChoiceGroups || get()?.backendChoiceGroups || {};
-        update.ir = normalizeRequirementSpace(update.ir, issuesToUse, choiceGroupsToUse);
+        const loadedToUse = update.backendIssuesLoaded !== undefined ? update.backendIssuesLoaded : get()?.backendIssuesLoaded;
+        update.ir = normalizeRequirementSpace(update.ir, issuesToUse, choiceGroupsToUse, loadedToUse);
       }
       (rawSet as any)(update, replace);
     }
@@ -742,10 +698,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   return {
     currentSystemView: 'home',
-  setSystemView: (view) => set({ currentSystemView: view }),
+  setSystemView: (view) => set({ currentSystemView: view, activePage: view === 'workspace' ? get().activePage : '/overview' }),
   initialPrompt: '',
 
-  activePage: '/',
+  activePage: '/overview',
   setActivePage: (page) => set({ activePage: page }),
 
   selectedObjectId: null,
@@ -769,6 +725,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   ir: null,
   backendIssues: [],
+  backendIssuesLoaded: false,
   backendChoiceGroups: {},
   auditLogs: [],
   lastImpactPreview: null,
@@ -782,9 +739,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   highlightTarget: null,
   setHighlightTarget: (id) => set({ highlightTarget: id }),
+  pendingManualAction: null,
+  setPendingManualAction: (action) => set({ pendingManualAction: action }),
   isLoading: false,
   error: null,
+  setError: (err) => set({ error: err }),
+  boDeletionError: null,
+  setBoDeletionError: (err) => set({ boDeletionError: err }),
   lastActionMessage: null,
+  lastIssueResolution: null,
   workspaces: [],
 
   loadWorkspaces: async () => {
@@ -803,10 +766,37 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const list = await workspaceApi.list();
       if (list.length > 0) {
         const space = await workspaceApi.getById(list[0].id);
+        const projectId = space.projectId;
+
+        let issues: Issue[] = [];
+        let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
+
+        issues = await loadBackendIssues(projectId, space.unlockedStages);
+        try {
+          const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
+          groups.forEach((cg: any) => {
+            const compatible = mapBackendChoiceGroupToCompatible(cg);
+            choiceGroupsRecord[compatible.id] = compatible;
+          });
+        } catch (cgErr) {
+          console.warn('Failed to load choice groups in openExistingProject:', cgErr);
+        }
+        await get().loadAuditLogs(projectId);
+
         set({
           currentSystemView: 'workspace',
+          activePage: '/overview',
           initialPrompt: space.userRequirements,
+          backendIssues: issues,
+          backendIssuesLoaded: true,
+          backendChoiceGroups: choiceGroupsRecord,
           ir: space,
+          selectedObject: null,
+          selectedObjectId: null,
+          selectedNodeId: null,
+          selectedSlotId: null,
+          highlightTarget: null,
+          pendingManualAction: null,
           isLoading: false
         });
       } else {
@@ -826,7 +816,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       let issues: Issue[] = [];
       let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
       
-      issues = await loadBackendIssues(projectId);
+      issues = await loadBackendIssues(projectId, space.unlockedStages);
       try {
         const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
         groups.forEach((cg: any) => {
@@ -840,10 +830,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
       set({
         currentSystemView: 'workspace',
+        activePage: '/overview',
         initialPrompt: space.userRequirements,
         backendIssues: issues,
+        backendIssuesLoaded: true,
         backendChoiceGroups: choiceGroupsRecord,
         ir: space,
+        selectedObject: null,
+        selectedObjectId: null,
+        selectedNodeId: null,
+        selectedSlotId: null,
+        highlightTarget: null,
+        pendingManualAction: null,
         isLoading: false
       });
     } catch (err) {
@@ -860,7 +858,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       let issues: Issue[] = [];
       let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
       
-      issues = await loadBackendIssues(id);
+      issues = await loadBackendIssues(id, space.unlockedStages);
       try {
         const groups = await workspaceApi.listChoiceGroups(id, 'open');
         groups.forEach((cg: any) => {
@@ -874,6 +872,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
       set((s) => ({
         backendIssues: issues,
+        backendIssuesLoaded: true,
         backendChoiceGroups: choiceGroupsRecord,
         ir: space,
         selectedObject: findSelectedObjectInIr(space, s.selectedObjectId)
@@ -883,14 +882,36 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  unlockStageGate: async (stage: string) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      await workspaceApi.unlockStage(projectId, stage);
+      await get().refreshWorkspace();
+      set({ isLoading: false });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '解锁阶段失败', isLoading: false });
+    }
+  },
+
   exitWorkspace: () => {
     set({
       currentSystemView: 'home',
+      activePage: '/overview',
       ir: null,
       selectedObject: null,
       selectedObjectId: null,
+      selectedNodeId: null,
+      selectedSlotId: null,
+      highlightTarget: null,
+      pendingManualAction: null,
       activeDraft: null,
       activeDraftType: null,
+      backendIssues: [],
+      backendIssuesLoaded: false,
+      backendChoiceGroups: {},
+      auditLogs: [],
       error: null,
       lastActionMessage: null
     });
@@ -987,6 +1008,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         activeDraft: null,
         activeDraftType: null,
         currentSystemView: 'workspace',
+        activePage: '/overview',
+        selectedObject: null,
+        selectedObjectId: null,
+        selectedNodeId: null,
+        selectedSlotId: null,
+        highlightTarget: null,
+        pendingManualAction: null,
         isLoading: false,
         lastActionMessage: '项目 AI 建模框架已确认，祝您建模愉快！'
       });
@@ -1040,6 +1068,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({
         ir: space,
         currentSystemView: 'workspace',
+        activePage: '/overview',
+        selectedObject: null,
+        selectedObjectId: null,
+        selectedNodeId: null,
+        selectedSlotId: null,
+        highlightTarget: null,
+        pendingManualAction: null,
         isLoading: false,
         lastActionMessage: '已初始化空白工作区，开始您的敏捷设计吧！'
       });
@@ -1190,7 +1225,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draftId = draft.draftId || draft.draft_id;
     set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的意见重新推演流程与业务对象，请稍候...' });
     try {
-      const updated = await workspaceApi.regenerateFlowGenerationDraft(draftId, feedback);
+      const updated = isSlotFillingDraft(draft)
+        ? await workspaceApi.regenerateSlotFillingDraft(draftId, feedback)
+        : await workspaceApi.regenerateFlowGenerationDraft(draftId, feedback);
       set({ activeDraft: updated, activeDraftType: 'flow', isGenerating: false, lastActionMessage: '已根据意见重新生成流程与业务对象草稿。' });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '重新生成流程失败';
@@ -1210,7 +1247,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (!draftId) return;
     set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳流程与业务对象草稿，请稍候...' });
     try {
-      await workspaceApi.confirmFlowGenerationDraft(draftId);
+      if (isSlotFillingDraft(draft)) {
+        await workspaceApi.confirmSlotFillingDraft(draftId);
+      } else {
+        await workspaceApi.confirmFlowGenerationDraft(draftId);
+      }
       await get().refreshWorkspace();
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '业务流程与业务对象已应用。' });
     } catch (err) {
@@ -1453,6 +1494,36 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  skipKano: async () => {
+    const ir = get().ir;
+    if (!ir || !ir.projectId) return;
+    set({ isLoading: true, error: null, lastActionMessage: '正在跳过 Kano 分析并解锁导航...' });
+    try {
+      await workspaceApi.skipKano(ir.projectId);
+      await get().refreshWorkspace();
+      set({ isLoading: false, lastActionMessage: '已跳过 Kano 分析，阶段导航已解锁。' });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '跳过 Kano 分析失败';
+      const friendlyMsg = getFriendlyErrorMessage(errMsg);
+      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isLoading: false });
+    }
+  },
+
+  resetKano: async () => {
+    const ir = get().ir;
+    if (!ir || !ir.projectId) return;
+    set({ isLoading: true, error: null, lastActionMessage: '正在重置 Kano 分析，清理 AI 建议...' });
+    try {
+      await workspaceApi.resetKano(ir.projectId);
+      await get().refreshWorkspace();
+      set({ isLoading: false, lastActionMessage: 'Kano 分析已重置，手工交付决策已保留。' });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '重置 Kano 分析失败';
+      const friendlyMsg = getFriendlyErrorMessage(errMsg);
+      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isLoading: false });
+    }
+  },
+
   // -------------------------------------------------------------
   // Manual CRUD Actions
   // -------------------------------------------------------------
@@ -1504,11 +1575,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   // Features Tree CRUD
   addFeature: async (name, description, parentId) => {
     const pId = withWorkspaceId(get());
+    let finalParentId = parentId;
+    if (parentId === null) {
+      const dbRoot = get().ir?.features?.find((f: any) => f.parentId === null);
+      if (dbRoot) {
+        finalParentId = dbRoot.featureId;
+      }
+    }
     try {
       await workspaceApi.createFeature(pId, {
         name,
         description,
-        parent_id: parentId
+        parent_id: finalParentId
       });
       await get().refreshWorkspace();
       set({ lastActionMessage: `已创建功能节点：${name}` });
@@ -1519,11 +1597,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   updateFeature: async (featureId, updates) => {
     const pId = withWorkspaceId(get());
+    const original = get().ir?.features?.find((f: any) => f.featureId === featureId);
     try {
       await workspaceApi.updateFeature(pId, featureId, {
-        name: updates.featureName,
-        description: updates.featureDescription,
-        actor_ids: updates.actorIds
+        name: updates.featureName !== undefined ? updates.featureName : original?.featureName,
+        description: updates.featureDescription !== undefined ? updates.featureDescription : original?.featureDescription,
+        actor_ids: updates.actorIds !== undefined ? updates.actorIds : original?.actorIds
       });
       await get().refreshWorkspace();
       set({ lastActionMessage: '功能节点属性更新成功。' });
@@ -1665,6 +1744,19 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   deleteBusinessObject: async (id) => {
     const pId = withWorkspaceId(get());
+    const ir = get().ir;
+    const flows = ir?.flows || [];
+    const isReferenced = flows.some(flow =>
+      (flow.flowSteps || []).some(step =>
+        (step.inputBusinessObjectIds || []).includes(id) ||
+        (step.outputBusinessObjectIds || []).includes(id)
+      )
+    );
+    if (isReferenced) {
+      set({ boDeletionError: '无法删除该数据实体：因为某些流程步骤（How阶段）正将其作为输入或输出实体引用。请先在相应的步骤面板中取消勾选关联。' });
+      return;
+    }
+
     try {
       await workspaceApi.deleteBusinessObject(pId, id);
       await get().refreshWorkspace();
@@ -1673,11 +1765,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         return {
           selectedObjectId: isSelected ? null : s.selectedObjectId,
           selectedObject: isSelected ? null : s.selectedObject,
-          lastActionMessage: '业务数据对象已被完全抹除。'
+          lastActionMessage: '业务数据对象已被完全抹除。',
+          boDeletionError: null
         };
       });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : '删除业务数据对象失败' });
+      const errMsg = err instanceof Error ? err.message : '';
+      if (errMsg.includes('business_object_in_use')) {
+        set({ boDeletionError: '无法删除该数据实体：该数据实体正被某些流程步骤（How阶段）作为输入或输出对象引用。请先在相应的步骤面板中取消勾选关联，再进行删除。' });
+      } else {
+        set({ error: errMsg || '删除业务数据对象失败' });
+      }
     }
   },
 
@@ -1848,6 +1946,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  reorderFlowSteps: async (flowId, stepIds) => {
+    const pId = withWorkspaceId(get());
+    try {
+      await workspaceApi.reorderFlowSteps(pId, flowId, stepIds);
+      await get().refreshWorkspace();
+      set({ lastActionMessage: '线性步骤排序及拓扑链路同步成功。' });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重新排列步骤顺序失败' });
+    }
+  },
+
   // Scope (Kano) CRUD
   updateScope: async (featureId, updates) => {
     const pId = withWorkspaceId(get());
@@ -1867,13 +1976,30 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // PerceptionSlot
   clearPerceptionSlot: async () => {
-    const space = get().ir;
-    if (!space) return;
-    const updated = {
-      ...space,
-      perceptionSlot: null
-    };
-    set({ ir: updated, lastActionMessage: '已忽略/隐藏当前 AI 感知引导。' });
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      await workspaceApi.deletePerceptionSlot(projectId);
+      await get().refreshWorkspace();
+      set((s) => ({
+        isLoading: false,
+        selectedSlotId: null,
+        selectedObjectId:
+          s.selectedObject?.kind === 'perception_slot' || s.selectedObject?.perceptionSlotId
+            ? null
+            : s.selectedObjectId,
+        selectedObject:
+          s.selectedObject?.kind === 'perception_slot' || s.selectedObject?.perceptionSlotId
+            ? null
+            : s.selectedObject,
+        lastActionMessage: '已忽略并删除当前待处理卡点。'
+      }));
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '删除待处理卡点失败';
+      const friendlyMsg = getFriendlyErrorMessage(errMsg);
+      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isLoading: false });
+    }
   },
 
   openSlot: (slotId) => {
@@ -1893,12 +2019,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     set({ isGenerating: true, error: null, lastActionMessage: 'AI 正在展开感知槽并生成补全草稿，请稍候...' });
     try {
       let fillerKind: 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | null = null;
-      const kindText = slot.perceptionKind;
-      if (kindText === '角色结点') fillerKind = 'actor';
-      else if (kindText === '功能模块结点' || kindText === '功能叶子结点') fillerKind = 'feature';
-      else if (kindText === '流程主结点') fillerKind = 'flow';
-      else if (kindText === '场景结点') fillerKind = 'scenario';
-      else if (kindText === '成功标准结点') fillerKind = 'ac';
+      const kindText = slot.perceptionKind ? slot.perceptionKind.toUpperCase() : '';
+      if (kindText === '角色结点' || kindText === 'ACTOR') fillerKind = 'actor';
+      else if (kindText === '功能模块结点' || kindText === '功能叶子结点' || kindText === 'FEATURE') fillerKind = 'feature';
+      else if (kindText === '流程主结点' || kindText === 'FLOW') fillerKind = 'flow';
+      else if (kindText === '场景结点' || kindText === 'SCENARIO') fillerKind = 'scenario';
+      else if (kindText === '成功标准结点' || kindText === 'ACCEPTANCE_CRITERION' || kindText === 'AC' || kindText === 'ac') fillerKind = 'ac';
 
       if (!fillerKind) {
         throw new Error('未知的槽感知类型，无法展开。');
@@ -1955,31 +2081,111 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     set({ isLoading: true, error: null });
     try {
       const res = await workspaceApi.resolveIssue(projectId, {
+        issue_id: issue.id,
         issue_code: issue.backendIssueCode || issue.category || '',
+        stage: issue.stage,
         target: issue.backendTarget || null,
         metadata: issue.backendMetadata || {}
       });
 
-      await get().refreshWorkspace();
-
-      if (res.draftId || res.draft_id) {
-        set({
-          activeDraft: res.draft,
-          activeDraftType: mapResolutionDraftType(res.action?.draftType || res.action?.draft_type),
-          lastActionMessage: `已触发处理：${res.title}`
-        });
+      if (resolutionType(res) === 'already_resolved') {
+        await get().refreshWorkspace();
+        set({ isLoading: false, lastActionMessage: '该问题已解决。' });
+        return null;
       }
 
+      if (resolutionType(res) === 'open_panel' || resolutionType(res) === 'manual_action' || resolutionType(res) === 'unsupported') {
+        set({ isLoading: false, lastActionMessage: res.title || '请手动处理该问题。', lastIssueResolution: res });
+        return null;
+      }
+
+      if (resolutionType(res) === 'repair_draft') {
+        set({ activeDraft: res.draft || res, activeDraftType: 'repair', lastActionMessage: `已生成修复建议：${res.title}`, isLoading: false });
+        return null;
+      }
+
+      if (resolutionType(res) === 'choice_group') {
+        await get().refreshWorkspace();
+        set({ isLoading: false, lastActionMessage: '已加入方案决策队列，请选择处理方案。' });
+        return null;
+      }
+
+      await get().refreshWorkspace();
+      if (res.draftId || res.draft_id) {
+        set({ activeDraft: res.draft, activeDraftType: mapResolutionDraftType(res.action?.draftType || res.action?.draft_type), lastActionMessage: `已触发处理：${res.title}` });
+      }
       set({ isLoading: false });
-      
       if (res.action?.payload?.perception_job_id) {
         return res.action.payload.perception_job_id.toString();
       }
       const slot = get().ir?.perceptionSlot;
       return slot ? slot.perceptionSlotId.toString() : null;
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : '处理 Issue 失败', isLoading: false });
+      const msg = (err as any)?.detail || (err instanceof Error ? err.message : '处理 Issue 失败');
+      set({ error: msg, lastActionMessage: msg, isLoading: false });
       return null;
+    }
+  },
+  resolveIssue: async (issueId) => {
+    return get().createSlotFromIssue(issueId);
+  },
+  confirmRepairDraft: async (draftId) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      const res: any = await workspaceApi.confirmRepairDraft(projectId, draftId);
+      await get().refreshWorkspace();
+      if (res && (res.status === 'stale' || res.status === 'invalid')) {
+        const msg = res.status === 'stale' ? '修复草稿已过期，请重新生成。' : '修复草稿已失效，数据已变化。';
+        set({ isLoading: false, lastActionMessage: msg, error: msg });
+        return res;
+      }
+      set({
+        isLoading: false,
+        lastActionMessage: '修复已应用。',
+        activeDraft: null,
+        activeDraftType: null,
+      });
+      const rIds = res.resolvedIssueIds || res.resolved_issue_ids;
+      if (res && rIds && rIds.length > 0) {
+        set({ lastActionMessage: `已解决 ${rIds.length} 个问题。` });
+      }
+      return res;
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '应用修复失败');
+      set({ error: msg, lastActionMessage: msg, isLoading: false });
+      return null;
+    }
+  },
+  discardRepairDraft: async (draftId) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      await workspaceApi.discardRepairDraft(projectId, draftId);
+      await get().refreshWorkspace();
+      set({ isLoading: false, lastActionMessage: '已丢弃修复草稿。', activeDraft: null, activeDraftType: null });
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '丢弃修复失败');
+      set({ error: msg, lastActionMessage: msg, isLoading: false });
+    }
+  },
+  regenerateRepairDraft: async (draftId) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      const res = await workspaceApi.regenerateRepairDraft(projectId, draftId);
+      await get().refreshWorkspace();
+      set({
+        isLoading: false,
+        activeDraft: res,
+        activeDraftType: 'repair',
+        lastActionMessage: '已重新生成修复建议。',
+      });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重新生成修复失败', isLoading: false });
     }
   },
   setNodeStatus: async () => {},
@@ -2001,7 +2207,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
     set({ isDiagnosing: true, error: null });
     try {
-      let res = await workspaceApi.getNextSuggestion(projectId, stage);
+      let res = await workspaceApi.rediagnoseNextSuggestion(projectId, stage);
       set((s) => ({
         nextSuggestions: {
           ...s.nextSuggestions,
@@ -2044,6 +2250,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           ? `诊断完成！最新建议：“${res.suggestion.title}”。` 
           : '诊断完成！当前模块设计非常规范，暂无建议。'
       });
+      await get().refreshWorkspace();
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : '诊断失败',
@@ -2075,6 +2282,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
             const perceptionJobId = action.payload?.perception_job_id;
             if (perceptionJobId) {
               await get().expandSlot(perceptionJobId.toString());
+            }
+          } else if (action.panel === 'feature' && action.payload?.feature_id) {
+            const featId = action.payload.feature_id.toString();
+            const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
+            if (featObj) {
+              get().setSelectedObject(featObj);
             }
           }
         }
@@ -2191,10 +2404,114 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   createIssue: async () => {},
-  updateIssueAttributes: async () => {},
+  updateIssueAttributes: async (issueId, updates) => {
+    const current = get();
+    const projectId = current.ir?.projectId;
+
+    if (projectId && updates?.status && ['open', 'ignored', 'resolved'].includes(updates.status)) {
+      try {
+        await workspaceApi.updateIssueStatus(projectId, issueId, updates.status);
+      } catch (err) {
+        set({
+          error: err instanceof Error ? err.message : '更新 Issue 状态失败',
+        });
+        throw err;
+      }
+    }
+
+    const currentIssues = current.backendIssues || [];
+    const nextIssues = currentIssues.map((issue) =>
+      issue.id === issueId ? { ...issue, ...updates } : issue
+    );
+
+    const nextSelectedObject =
+      current.selectedObject && (current.selectedObject as any).id === issueId
+        ? { ...(current.selectedObject as any), ...updates }
+        : current.selectedObject;
+
+    set({
+      backendIssues: nextIssues,
+      backendIssuesLoaded: current.backendIssuesLoaded,
+      ir: current.ir,
+      selectedObject: nextSelectedObject,
+      lastActionMessage:
+        updates?.status === 'ignored'
+          ? '已忽略该 Issue。'
+          : updates?.status === 'resolved'
+            ? '已更新该 Issue 状态。'
+            : '已更新 Issue 属性。'
+    });
+  },
   updateChoiceAttributes: async () => {},
   addChoiceToGroup: async () => {},
-  };
+
+  // P5 Shadow Preview Draft Actions
+  activeShadowDraft: null,
+
+  prepareShadowDraft: async () => {
+    const projectId = withWorkspaceId(get());
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.prepareShadowDraft(projectId);
+      set({ activeShadowDraft: res, isLoading: false });
+      return res;
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  getShadowDraft: async (draftId: string) => {
+    const projectId = withWorkspaceId(get());
+    try {
+      const res = await workspaceApi.getShadowDraft(projectId, draftId);
+      set({ activeShadowDraft: res });
+      return res;
+    } catch (err) {
+      console.warn('Failed to fetch shadow draft:', err);
+      throw err;
+    }
+  },
+
+  discardShadowDraft: async (draftId: string) => {
+    const projectId = withWorkspaceId(get());
+    set({ isLoading: true });
+    try {
+      await workspaceApi.discardShadowDraft(projectId, draftId);
+      set({ activeShadowDraft: null, isLoading: false });
+      await get().refreshWorkspace();
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  commitShadowDraft: async (draftId: string) => {
+    const projectId = withWorkspaceId(get());
+    set({ isLoading: true });
+    try {
+      await workspaceApi.commitShadowDraft(projectId, draftId);
+      set({ activeShadowDraft: null, isLoading: false });
+      await get().refreshWorkspace();
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  regenerateShadowDraft: async (draftId: string, feedback?: string) => {
+    const projectId = withWorkspaceId(get());
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.regenerateShadowDraft(projectId, draftId, feedback);
+      set({ activeShadowDraft: res, isLoading: false });
+      return res;
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+};
 });
 
 // Backward compatibility selectors for components

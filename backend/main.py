@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
 import logging
 import os
+import socket
+
+# Set a global default socket timeout of 5.0 seconds to prevent any connection or SSL handshake from hanging.
+socket.setdefaulttimeout(5.0)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

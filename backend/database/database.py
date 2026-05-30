@@ -42,7 +42,7 @@ if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"
         DATABASE_URL,
         echo=False,
         future=True,
-        connect_args={"ssl": True}
+        connect_args={"ssl": True, "timeout": 5}
     )
 else:
     DATABASE_URL = raw_db_url

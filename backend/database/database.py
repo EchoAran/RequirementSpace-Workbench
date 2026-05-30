@@ -35,9 +35,10 @@ if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"
     # Use dummy scheme http to let urlparse extract netloc correctly
     parsed = urllib.parse.urlparse(f"http://{rest}")
     
-    # Strip 'sslmode' as asyncpg does not support it and throws TypeError
+    # Strip 'sslmode' and 'channel_binding' as asyncpg does not support them and throws TypeError
     query_params = urllib.parse.parse_qs(parsed.query)
     query_params.pop("sslmode", None)
+    query_params.pop("channel_binding", None)
     new_query = urllib.parse.urlencode(query_params, doseq=True)
     
     DATABASE_URL = f"{scheme}://{parsed.netloc}{parsed.path}"

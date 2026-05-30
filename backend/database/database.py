@@ -61,14 +61,17 @@ else:
 
 @event.listens_for(Engine, "connect")
 def enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
-    # Only run PRAGMAs on sqlite connections
-    try:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.close()
-    except Exception:
-        pass
+    # Only run SQLite PRAGMAs on real sqlite connections
+    conn_module = type(dbapi_connection).__module__.lower()
+    conn_class = type(dbapi_connection).__name__.lower()
+    if "sqlite" in conn_module or "sqlite" in conn_class:
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
+        except Exception:
+            pass
 
 
 AsyncSessionLocal = async_sessionmaker(

@@ -18,14 +18,39 @@ except ImportError:
 
 
 import os
+import urllib.parse
 
 raw_db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
-if raw_db_url.startswith("postgresql://"):
-    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://")
-elif raw_db_url.startswith("postgres://"):
-    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+asyncpg://")
+
+if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"):
+    # Translate scheme to postgresql+asyncpg
+    scheme = "postgresql+asyncpg"
+    rest = raw_db_url.split("://", 1)[1]
+    # Use dummy scheme http to let urlparse extract netloc correctly
+    parsed = urllib.parse.urlparse(f"http://{rest}")
+    
+    # Strip 'sslmode' as asyncpg does not support it and throws TypeError
+    query_params = urllib.parse.parse_qs(parsed.query)
+    query_params.pop("sslmode", None)
+    new_query = urllib.parse.urlencode(query_params, doseq=True)
+    
+    DATABASE_URL = f"{scheme}://{parsed.netloc}{parsed.path}"
+    if new_query:
+        DATABASE_URL += f"?{new_query}"
+        
+    engine: AsyncEngine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        future=True,
+        connect_args={"ssl": True}
+    )
 else:
     DATABASE_URL = raw_db_url
+    engine: AsyncEngine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        future=True,
+    )
 
 
 @event.listens_for(Engine, "connect")
@@ -38,13 +63,6 @@ def enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
         cursor.close()
     except Exception:
         pass
-
-
-engine: AsyncEngine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    future=True,
-)
 
 
 AsyncSessionLocal = async_sessionmaker(

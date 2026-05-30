@@ -23,6 +23,8 @@ class ActorsGenerator(BaseGenerator[ActorsGeneratorInput]):
             query=feedback,
             print_log=False,
         )
+        if not response:
+            raise ValueError("LLM returned an empty response. Please check backend server logs for the detailed LLM connection or settings error.")
         return json.loads(response)
 
 if __name__ == "__main__":

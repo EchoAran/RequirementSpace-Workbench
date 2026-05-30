@@ -1,10 +1,13 @@
 import asyncio
 import os
+import logging
 from pathlib import Path
 from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 def load_llm_config() -> dict[str, str] | None:
@@ -84,6 +87,7 @@ class LLMHandler:
         query = query or ""
 
         if not self._validate_settings():
+            logger.error("[LLM ERROR] The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
             self._log(
                 print_log,
                 "The LLM settings are incomplete, making it impossible to call the large model.",
@@ -120,6 +124,7 @@ class LLMHandler:
         Designed for InterviewStrategy where conversation history needs to be preserved.
         """
         if not self._validate_settings():
+            logger.error("[LLM ERROR] The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
             self._log(print_log, "The LLM settings are incomplete, making it impossible to call the large model.")
             return None
 
@@ -168,6 +173,7 @@ class LLMHandler:
 
                 if response.status_code != 200:
                     last_error_text = f"{response.status_code} - {response.text}"
+                    logger.error(f"[LLM ERROR] Attempt {attempt} failed: {last_error_text}")
                     self._log(print_log, f"The LLM API call failed: {last_error_text}")
                     await self._sleep_before_retry(attempt, attempts, base_delay)
                     continue
@@ -177,6 +183,7 @@ class LLMHandler:
 
                 if content is None:
                     last_error_text = f"LLM response format exception: {result}"
+                    logger.error(f"[LLM ERROR] Attempt {attempt} returned invalid format: {last_error_text}")
                     self._log(print_log, last_error_text)
                     await self._sleep_before_retry(attempt, attempts, base_delay)
                     continue
@@ -188,18 +195,22 @@ class LLMHandler:
 
             except httpx.ConnectError as exc:
                 last_error_text = str(exc)
+                logger.error(f"[LLM ERROR] Connection failed on attempt {attempt}: {last_error_text}")
                 self._log(print_log, f"The LLM API connection failed: {last_error_text}")
 
             except httpx.TimeoutException as exc:
                 last_error_text = str(exc)
+                logger.error(f"[LLM ERROR] Request timed out on attempt {attempt}: {last_error_text}")
                 self._log(print_log, f"The LLM API request timed out: {last_error_text}")
 
             except Exception as exc:
                 last_error_text = f"{exc} ({type(exc).__name__})"
+                logger.exception(f"[LLM ERROR] Unexpected error on attempt {attempt}: {last_error_text}")
                 self._log(print_log, f"An error occurred when invoking the LLM service: {last_error_text}")
 
             await self._sleep_before_retry(attempt, attempts, base_delay)
 
+        logger.error(f"[LLM ERROR] All {attempts} attempts failed. Last error: {last_error_text}")
         self._log(print_log, str(last_error_text))
         return None
 

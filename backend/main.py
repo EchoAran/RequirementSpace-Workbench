@@ -153,6 +153,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("[GLOBAL EXCEPTION] Unhandled error caught by global handler:")
+    
+    # Get request origin to echo it back in CORS headers
+    origin = request.headers.get("origin", "*")
+    if origins and "*" not in origins and origin not in origins:
+        origin = origins[0] if origins else "*"
+        
+    response = JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "error_type": type(exc).__name__,
+            "traceback": traceback.format_exc(),
+            "message": "An unhandled exception occurred in the backend."
+        }
+    )
+    
+    # Force inject CORS headers to bypass browser blocks on 500 errors
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true" if allow_credentials else "false"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 
 @app.get("/api/health")
 async def health_check():

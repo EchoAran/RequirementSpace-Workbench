@@ -136,7 +136,8 @@ app = FastAPI(
 # CORS 跨域配置
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_str:
-    origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+    # 自动剔除末尾的斜杠，防止由于格式不一致导致浏览器 CORS 拦截
+    origins = [origin.strip().rstrip("/") for origin in allowed_origins_str.split(",") if origin.strip()]
 else:
     origins = ["*"]
 

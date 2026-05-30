@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes.project_creation_routes import (
     router as project_creation_router,
@@ -118,6 +120,25 @@ async def lifespan(fast_api: FastAPI):
 app = FastAPI(
     title="Requirement Space Workbench API",
     lifespan=lifespan  # 绑定生命周期
+)
+
+# CORS 跨域配置
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
+if allowed_origins_str:
+    origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+else:
+    origins = ["*"]
+
+allow_credentials = True
+if "*" in origins:
+    allow_credentials = False
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

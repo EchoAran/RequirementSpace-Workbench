@@ -168,7 +168,11 @@ Vite 会把前端发往 `/api` 的请求代理到：
 
 - http://127.0.0.1:8000
 
-因此前端代码不需要配置后端 URL，也不需要在浏览器侧处理 CORS。
+因此在本地开发环境下，前端代码会默认使用相对路径 `/api` 调用接口，不需要在浏览器侧配置 CORS。
+
+> 💡 **本地与云端部署版的区别**：
+> - **本地开发**：前端不设置 `VITE_API_URL` 环境变量，API 请求自动使用默认值 `/api` 并通过 Vite 代理转发。
+> - **云端部署**：前端打包时可以通过 `VITE_API_URL` 环境变量指定后端 API 服务的公网 URL。此时，前端请求将直接发送至指定的后端，需要后端配置跨域（CORS）。
 
 ## 常用脚本
 
@@ -310,6 +314,42 @@ Preview 阶段会基于当前需求空间生成可查看的原型预览。Shadow
 - 忽略本地 SQLite 数据库和 journal 文件
 - 忽略前端依赖和构建输出
 - 不忽略 `docs/`，因为设计记录、实施计划和项目文档应该可以被版本控制
+## 云端与生产环境部署 (前后端分离方案)
+
+如果你想将项目部署到生产环境（例如：前端部署在 **Vercel**，后端部署在支持持久化磁盘的平台如 **Render** / **Railway** 或 **自建 VPS**），可以使用以下配置进行单仓库多目录部署：
+
+### 1. 前端部署 (Vercel)
+
+1. 在 Vercel 中导入本 Git 仓库。
+2. 在项目设置中，将 **Root Directory (根目录)** 设置为 `frontend`。
+3. 构建配置保留默认：
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+4. 添加环境变量：
+   - `VITE_API_URL`：设置你的后端 API 公网 URL，例如 `https://your-backend-api.onrender.com`（注意末尾不要加 `/api` 或 `/`）。
+
+### 2. 后端部署 (Render / Railway / VPS)
+
+由于后端使用 SQLite 文件数据库，为了保证数据不丢失，请部署在**支持挂载持久化磁盘**的服务上。
+
+1. **基本配置**：
+   - 运行环境：Python 3.10+
+   - 构建命令 (Build Command)：
+     ```bash
+     pip install -r requirements.txt
+     ```
+   - 启动命令 (Start Command)：
+     ```bash
+     uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+     ```
+2. **挂载磁盘 (Persistent Disk)**：
+   - 在平台挂载一块持久化云盘（例如挂载在 `/data` 路径）。
+   - 设置环境变量 `DATABASE_URL` 为 `sqlite+aiosqlite:////data/requirement_space.db`。这样 SQLite 数据库就会安全地存储在持久化盘中。
+3. **安全配置 (CORS)**：
+   - 设置环境变量 `ALLOWED_ORIGINS`，值为你的 Vercel 前端域名，以逗号分隔，例如：`https://your-frontend.vercel.app`。
+   - 如果不设置 `ALLOWED_ORIGINS`，后端会默认拒绝除本地环境外的跨域请求（如果包含 `*` 且支持 credentials，浏览器也会报错，配置了正确的源有利于提升安全性）。
+
+---
 
 ## 常见问题
 

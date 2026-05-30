@@ -184,6 +184,89 @@ async def global_exception_handler(request: Request, exc: Exception):
     return response
 
 
+@app.get("/api/llm_test")
+async def llm_test():
+    import socket
+    import httpx
+    import os
+    import traceback
+    from urllib.parse import urlparse
+    
+    diagnostic_info = {}
+    
+    # 1. Read configuration
+    api_url = os.getenv("LLM_API_URL", "").strip().rstrip("/")
+    api_key = os.getenv("LLM_API_KEY", "").strip()
+    model = os.getenv("LLM_MODEL_NAME", "").strip()
+    temp = os.getenv("LLM_TEMPERATURE", "").strip()
+    
+    diagnostic_info["config"] = {
+        "api_url": api_url,
+        "api_key_configured": bool(api_key),
+        "api_key_preview": f"{api_key[:6]}...{api_key[-6:]}" if len(api_key) > 12 else "too_short",
+        "model_name": model,
+        "temperature": temp
+    }
+    
+    # 2. DNS Resolution Test
+    try:
+        domain = urlparse(api_url).netloc
+        if ":" in domain:
+            domain = domain.split(":", 1)[0]
+        
+        diagnostic_info["dns_host"] = domain
+        ips = socket.gethostbyname_ex(domain)
+        diagnostic_info["dns_ips"] = ips[2]
+        diagnostic_info["dns_status"] = "success"
+    except Exception as e:
+        diagnostic_info["dns_status"] = "failed"
+        diagnostic_info["dns_error"] = str(e)
+        
+    # 3. HTTP connection test to main URL
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(api_url)
+        diagnostic_info["root_conn_status"] = "success"
+        diagnostic_info["root_conn_code"] = res.status_code
+        diagnostic_info["root_conn_headers"] = dict(res.headers)
+        diagnostic_info["root_conn_body_preview"] = res.text[:500]
+    except Exception as e:
+        diagnostic_info["root_conn_status"] = "failed"
+        diagnostic_info["root_conn_error"] = f"{e} ({type(e).__name__})"
+        diagnostic_info["root_conn_traceback"] = traceback.format_exc()
+        
+    # 4. Chat Completions Mock Call Test
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        req_data = {
+            "model": model,
+            "messages": [
+                {"role": "user", "content": "ping"}
+            ],
+            "temperature": float(temp) if temp else 0.0
+        }
+        
+        completions_url = f"{api_url}/v1/chat/completions"
+        diagnostic_info["completions_url"] = completions_url
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(completions_url, json=req_data, headers=headers)
+            
+        diagnostic_info["chat_status"] = "success"
+        diagnostic_info["chat_code"] = res.status_code
+        diagnostic_info["chat_headers"] = dict(res.headers)
+        diagnostic_info["chat_body"] = res.text
+    except Exception as e:
+        diagnostic_info["chat_status"] = "failed"
+        diagnostic_info["chat_error"] = f"{e} ({type(e).__name__})"
+        diagnostic_info["chat_traceback"] = traceback.format_exc()
+        
+    return diagnostic_info
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "message": "Requirement Space Workbench API is running"}

@@ -17,7 +17,9 @@ except ImportError:
     from model import Base
 
 
-DATABASE_URL = "sqlite+aiosqlite:///./requirement_space.db"
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
 
 
 @event.listens_for(Engine, "connect")
@@ -50,10 +52,23 @@ def run_upgrade() -> None:
     from alembic import command
 
     base_dir = Path(__file__).resolve().parents[2]
-    db_path = base_dir / "requirement_space.db"
+    db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
+    if "sqlite+aiosqlite:///" in db_url:
+        db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
+        if db_path_str.startswith("/") or ":" in db_path_str:
+            db_path = Path(db_path_str)
+        else:
+            db_path = base_dir / db_path_str
+    else:
+        db_path = base_dir / "requirement_space.db"
+
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
+    
+    # Convert sqlite+aiosqlite:// to sqlite:// for Alembic sync engine
+    alembic_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
 
     # Always run upgrade — Alembic only applies pending migrations.
     # If the DB is already at head, this is a safe no-op.

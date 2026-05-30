@@ -15,6 +15,17 @@ if db_url:
     db_url = db_url.strip("'\" ")
     if "-pooler" in db_url:
         db_url = db_url.replace("-pooler", "")
+        
+    # Strip 'sslmode' and 'channel_binding' query parameters as psycopg2 does not support them
+    if "?" in db_url:
+        import urllib.parse
+        base_part, query_part = db_url.split("?", 1)
+        params = urllib.parse.parse_qs(query_part)
+        params.pop("sslmode", None)
+        params.pop("channel_binding", None)
+        new_query = urllib.parse.urlencode(params, doseq=True)
+        db_url = f"{base_part}?{new_query}" if new_query else base_part
+        
     if db_url.startswith("sqlite+aiosqlite://"):
         sync_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
     elif db_url.startswith("postgresql+asyncpg://"):

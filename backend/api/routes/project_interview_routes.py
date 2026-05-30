@@ -26,7 +26,7 @@ def _get_service() -> ProjectInterviewService:
 
 
 class InterviewChatRequest(BaseModel):
-    messages: list[dict] = Field(..., min_length=1)
+    messages: list[dict] = Field(default_factory=list)
 
 
 class InterviewChatResponse(BaseModel):

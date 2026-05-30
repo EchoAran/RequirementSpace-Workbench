@@ -106,7 +106,14 @@ logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(fast_api: FastAPI):
-    await init_db()
+    try:
+        logger.info("Starting database initialization...")
+        await init_db()
+        logger.info("Database initialization completed successfully.")
+    except Exception as e:
+        logger.exception("CRITICAL: Database initialization failed during lifespan startup!")
+        raise e
+
     logger.info(
         "RequirementSpace generation backend: %s; scope service: %s.%s",
         service_registry.generation_backend,

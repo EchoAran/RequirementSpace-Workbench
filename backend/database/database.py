@@ -20,7 +20,7 @@ except ImportError:
 import os
 import urllib.parse
 
-raw_db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
+raw_db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
 
 if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"):
     # Translate scheme to postgresql+asyncpg
@@ -80,7 +80,7 @@ def run_upgrade() -> None:
     from alembic import command
 
     base_dir = Path(__file__).resolve().parents[2]
-    db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
+    db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
     
     is_sqlite = "sqlite" in db_url
     db_path = None

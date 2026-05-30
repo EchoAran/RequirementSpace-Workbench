@@ -12,6 +12,7 @@ config = context.config
 import os
 db_url = os.getenv("DATABASE_URL")
 if db_url:
+    db_url = db_url.strip("'\" ")
     if db_url.startswith("sqlite+aiosqlite://"):
         sync_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
     elif db_url.startswith("postgresql+asyncpg://"):

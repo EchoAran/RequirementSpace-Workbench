@@ -79,13 +79,28 @@ def run_upgrade() -> None:
     from alembic.config import Config
     from alembic import command
 
+    print(">>> [DATABASE UPGRADE] Starting run_upgrade()...", flush=True)
     base_dir = Path(__file__).resolve().parents[2]
     db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
     
+    # Obfuscate password in URL for safe logging
+    safe_url = db_url
+    if "@" in db_url:
+        try:
+            parts = db_url.split("@", 1)
+            scheme_and_user = parts[0].split("://", 1)
+            if ":" in scheme_and_user[1]:
+                scheme_and_user[1] = scheme_and_user[1].split(":", 1)[0] + ":****"
+            safe_url = f"{scheme_and_user[0]}://{scheme_and_user[1]}@{parts[1]}"
+        except Exception:
+            safe_url = "[Obfuscated URL due to parsing exception]"
+    print(f">>> [DATABASE UPGRADE] Resolved DATABASE_URL: {safe_url}", flush=True)
+
     is_sqlite = "sqlite" in db_url
     db_path = None
 
     if is_sqlite:
+        print(">>> [DATABASE UPGRADE] Database engine detected: SQLite", flush=True)
         if "sqlite+aiosqlite:///" in db_url:
             db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
             if db_path_str.startswith("/") or ":" in db_path_str:
@@ -94,6 +109,8 @@ def run_upgrade() -> None:
                 db_path = base_dir / db_path_str
         else:
             db_path = base_dir / "requirement_space.db"
+    else:
+        print(">>> [DATABASE UPGRADE] Database engine detected: PostgreSQL", flush=True)
 
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
@@ -112,13 +129,30 @@ def run_upgrade() -> None:
         alembic_url = db_url
         
     alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
+    
+    safe_alembic_url = alembic_url
+    if "@" in alembic_url:
+        try:
+            parts = alembic_url.split("@", 1)
+            scheme_and_user = parts[0].split("://", 1)
+            if ":" in scheme_and_user[1]:
+                scheme_and_user[1] = scheme_and_user[1].split(":", 1)[0] + ":****"
+            safe_alembic_url = f"{scheme_and_user[0]}://{scheme_and_user[1]}@{parts[1]}"
+        except Exception:
+            safe_alembic_url = "[Obfuscated Alembic URL]"
+    print(f">>> [DATABASE UPGRADE] Configured Alembic sync URL: {safe_alembic_url}", flush=True)
 
-    # Always run upgrade — Alembic only applies pending migrations.
-    # If the DB is already at head, this is a safe no-op.
-    command.upgrade(alembic_cfg, "head")
+    print(">>> [DATABASE UPGRADE] Triggering command.upgrade(alembic_cfg, 'head')...", flush=True)
+    try:
+        command.upgrade(alembic_cfg, "head")
+        print(">>> [DATABASE UPGRADE] command.upgrade(...) completed successfully!", flush=True)
+    except Exception as e:
+        print(f">>> [DATABASE UPGRADE] command.upgrade(...) FAILED: {str(e)}", flush=True)
+        raise e
 
     # Only run SQLite-specific repairs if using SQLite
     if is_sqlite and db_path and db_path.exists():
+        print(">>> [DATABASE UPGRADE] Running SQLite-specific repairs...", flush=True)
         # Repair case: if a migration was previously "stamp"ed without running its
         # DDL (old behaviour), the alembic_version says "up to date" but the table
         # is missing.  Detect and fix.
@@ -136,8 +170,9 @@ def run_upgrade() -> None:
                 sync_engine.dispose()
             cursor.close()
             conn.close()
-        except Exception:
-            pass
+            print(">>> [DATABASE UPGRADE] SQLite table repair check completed.", flush=True)
+        except Exception as ex:
+            print(f">>> [DATABASE UPGRADE] SQLite table repair failed (non-fatal): {str(ex)}", flush=True)
 
         # Data migration: Convert legacy Chinese scope status to canonical English keys
         try:
@@ -149,8 +184,9 @@ def run_upgrade() -> None:
             conn.commit()
             cursor.close()
             conn.close()
-        except Exception:
-            pass
+            print(">>> [DATABASE UPGRADE] SQLite data migration completed.", flush=True)
+        except Exception as ex:
+            print(f">>> [DATABASE UPGRADE] SQLite data migration failed (non-fatal): {str(ex)}", flush=True)
 
 
 async def init_db() -> None:

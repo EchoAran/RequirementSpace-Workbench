@@ -22,7 +22,7 @@ class SkillBackedLLMJsonClient:
         content = await self._llm_handler.call_llm(
             prompt=prompt,
             query="",
-            print_log=False,
+            print_log=True,
             response_format={"type": "json_object"},
         )
         if content is None:

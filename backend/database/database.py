@@ -90,6 +90,19 @@ def run_upgrade() -> None:
     db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
     if "-pooler" in db_url:
         db_url = db_url.replace("-pooler", "")
+        
+    # Inspect and print existing tables for debugging migrations
+    print(">>> [DATABASE UPGRADE] Inspecting database tables...", flush=True)
+    try:
+        from sqlalchemy import create_engine, inspect
+        sync_url = db_url.replace("sqlite+aiosqlite://", "sqlite://").replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
+        temp_engine = create_engine(sync_url, connect_args={"connect_timeout": 5} if "sqlite" not in sync_url else {})
+        inspector = inspect(temp_engine)
+        tables = inspector.get_table_names()
+        print(f">>> [DATABASE UPGRADE] Existing tables in database: {tables}", flush=True)
+        temp_engine.dispose()
+    except Exception as ex:
+        print(f">>> [DATABASE UPGRADE] Failed to inspect database tables: {str(ex)}", flush=True)
     
     # Obfuscate password in URL for safe logging
     safe_url = db_url

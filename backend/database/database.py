@@ -156,6 +156,8 @@ def run_upgrade() -> None:
         print(">>> [DATABASE UPGRADE] command.upgrade(...) completed successfully!", flush=True)
     except Exception as e:
         print(f">>> [DATABASE UPGRADE] command.upgrade(...) FAILED: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
         raise e
 
     # Only run SQLite-specific repairs if using SQLite

@@ -26,6 +26,12 @@ if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"
     # Translate scheme to postgresql+asyncpg
     scheme = "postgresql+asyncpg"
     rest = raw_db_url.split("://", 1)[1]
+    
+    # Automatically strip '-pooler' from Neon connection strings to avoid transaction pooler errors on Alembic migrations
+    if "-pooler" in rest:
+        rest = rest.replace("-pooler", "")
+        print(">>> [DATABASE CONNECTION] Automatically stripped '-pooler' from Neon host to bypass Transaction Pooling migration limits.", flush=True)
+        
     # Use dummy scheme http to let urlparse extract netloc correctly
     parsed = urllib.parse.urlparse(f"http://{rest}")
     
@@ -82,6 +88,8 @@ def run_upgrade() -> None:
     print(">>> [DATABASE UPGRADE] Starting run_upgrade()...", flush=True)
     base_dir = Path(__file__).resolve().parents[2]
     db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
+    if "-pooler" in db_url:
+        db_url = db_url.replace("-pooler", "")
     
     # Obfuscate password in URL for safe logging
     safe_url = db_url

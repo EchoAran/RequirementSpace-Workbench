@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from backend.database.model import ActorModel, AuditLogModel
+from backend.database.model import ActorModel, AuditLogModel, ConfirmationStatus
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
 )
@@ -26,11 +26,13 @@ class ActorService:
         project_id: int,
         req: ActorCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> ActorResponse:
         actor = ActorModel(
             project_id=project_id,
             name=req.name,
             description=req.description,
+            confirmation_status=confirmation_status,
         )
         session.add(actor)
         await session.flush()
@@ -56,6 +58,7 @@ class ActorService:
             actor_id=actor.id,
             name=actor.name,
             description=actor.description,
+            confirmation_status=actor.confirmation_status,
         )
 
     async def update_actor(
@@ -104,6 +107,7 @@ class ActorService:
             actor_id=actor.id,
             name=actor.name,
             description=actor.description,
+            confirmation_status=actor.confirmation_status,
         )
 
     async def delete_actor(

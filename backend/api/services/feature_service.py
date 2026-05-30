@@ -5,6 +5,7 @@ from backend.database.model import (
     FeatureRelationModel,
     ActorModel,
     AuditLogModel,
+    ConfirmationStatus,
 )
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
@@ -49,6 +50,7 @@ class FeatureService:
         project_id: int,
         req: FeatureCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> FeatureResponse:
         # If parent_id is provided, verify parent exists
         if req.parent_id is not None:
@@ -65,6 +67,7 @@ class FeatureService:
             project_id=project_id,
             name=req.name,
             description=req.description,
+            confirmation_status=confirmation_status,
         )
         session.add(feature)
         await session.flush()
@@ -131,6 +134,7 @@ class FeatureService:
             ),
             child_ids=[rel.child_feature_id for rel in loaded.child_relations],
             actor_ids=[actor.id for actor in loaded.actors],
+            confirmation_status=loaded.confirmation_status,
         )
 
     async def update_feature(
@@ -212,6 +216,7 @@ class FeatureService:
             ),
             child_ids=[rel.child_feature_id for rel in feature.child_relations],
             actor_ids=[actor.id for actor in feature.actors],
+            confirmation_status=feature.confirmation_status,
         )
 
     async def delete_feature(

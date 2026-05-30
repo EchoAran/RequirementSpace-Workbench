@@ -82,6 +82,7 @@ export interface ScopeNode {
   scopeId: number;
   scopeStatus: ScopeStatus;
   reason: string;
+  confirmationStatus?: NodeStatus;
   positiveSummary: string | null;
   negativeSummary: string | null;
   positivePictureBase64: string | null;
@@ -137,6 +138,7 @@ export interface BusinessObjectNode {
   businessObjectId: number;
   businessObjectName: string;
   businessObjectDescription: string;
+  confirmationStatus?: NodeStatus;
   businessObjectAttributes: BusinessObjectAttributeNode[];
 
   // Compatibility properties for legacy components
@@ -172,6 +174,7 @@ export interface FlowNode {
   flowId: number;
   flowName: string;
   flowDescription: string;
+  confirmationStatus?: NodeStatus;
   featureIds: number[];
   flowSteps: FlowStepNode[];
 
@@ -381,12 +384,20 @@ export interface Choice {
   // Compatibility properties for legacy components
   patch?: GraphPatch;
   impactPreview?: any;
+  choiceGroupId?: string;
+  payload?: any;
+  draftType?: string;
+  applyMode?: string;
+  preview?: any;
+  comparisonSummary?: string;
+  score?: any;
+  error?: any;
 }
 
 export interface ChoiceGroup {
   id: string;
   slotId: string;
-  status: 'open' | 'resolved';
+  status: 'open' | 'resolved' | 'stale' | 'discarded' | 'failed';
   choices: Choice[];
   sourceType?: string;
   issueCode?: string;
@@ -394,6 +405,12 @@ export interface ChoiceGroup {
 
   // Compatibility properties for legacy components
   selectionMode?: 'single' | 'multiple';
+  generationType?: string;
+  target?: any;
+  candidateCount?: number;
+  successCount?: number;
+  failureCount?: number;
+  statusDetail?: any;
 }
 
 export type NodeStatus = 'confirmed' | 'needs_confirmation' | 'ai_assumption';
@@ -419,6 +436,19 @@ export const NodeStatusToText: Record<string, string> = {
   needs_confirmation: '待确认',
   ai_assumption: 'AI 推测',
   excluded: '已排除',
+};
+
+/**
+ * 节点类型 → 目标页面路由映射，用于概览页假设账本点击导航
+ */
+export const NodeKindToRoute: Record<string, (projectId: number) => string> = {
+  actor: (id) => `/projects/${id}/what`,
+  feature: (id) => `/projects/${id}/what`,
+  scenario: (id) => `/projects/${id}/what`,
+  acceptance_criterion: (id) => `/projects/${id}/what`,
+  scope: (id) => `/projects/${id}/scope`,
+  business_object: (id) => `/projects/${id}/flow`,
+  flow: (id) => `/projects/${id}/flow`,
 };
 
 export const ScopeStatusToText: Record<string, string> = {
@@ -461,6 +491,7 @@ export interface WorkspaceListItem {
   idea: string;
   description?: string;
   updatedAt: string;
+  statusCode?: 'not_started' | 'needs_attention' | 'has_issues' | 'scope_pending' | 'in_progress' | 'converged';
   status: string;
   issueCount: number;
   nodeCount: number;
@@ -483,8 +514,11 @@ export interface ProjectCreationDraft {
 }
 
 export interface ProjectCreationConfirmResponse {
+  projectId?: number;
   project_id: number;
+  projectName?: string;
   project_name: string;
+  projectDescription?: string;
   project_description: string;
   message: string;
 }
@@ -492,4 +526,83 @@ export interface ProjectCreationConfirmResponse {
 export interface ProjectCreationDiscardResponse {
   draft_id: string;
   message: string;
+}
+
+// Phase 2: Project Creation Choice Group types
+export interface ProjectCreationChoiceItem {
+  id: string;
+  title: string;
+  rationale: string;
+  status: 'candidate' | 'accepted' | 'rejected' | 'failed' | 'discarded';
+  draftType: string;
+  applyMode: string;
+  payload: any;
+  preview: {
+    project_name?: string;
+    project_description?: string;
+    actor_count?: number;
+    actors?: string[];
+    feature_count?: number;
+    features?: string[];
+  };
+  score?: any;
+  comparisonSummary?: string;
+  error?: { error_type: string; message: string };
+}
+
+export interface ProjectCreationChoiceGroup {
+  id: string;
+  status: 'open' | 'resolved' | 'discarded' | 'failed';
+  generationType: string;
+  userRequirements: string;
+  candidateCount?: number;
+  successCount?: number;
+  failureCount?: number;
+  statusDetail?: any;
+  contextHash?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  resolvedProjectId?: number;
+  choices: ProjectCreationChoiceItem[];
+}
+
+export interface ProjectCreationChoiceGroupDeferResponse {
+  projectId?: number;
+  project_id?: number;
+  projectName?: string;
+  project_name?: string;
+  projectDescription?: string;
+  project_description?: string;
+  choiceGroup?: GenerationChoiceGroup;
+  choice_group?: GenerationChoiceGroup;
+  message: string;
+}
+
+// Phase 3: Generic generation choice group (actor, scenario, etc.)
+export interface GenerationChoiceGroup {
+  id: number | string;
+  projectId: number;
+  status: string;
+  generationType?: string;
+  target?: any;
+  candidateCount?: number;
+  successCount?: number;
+  failureCount?: number;
+  statusDetail?: any;
+  choices: GenerationChoiceItem[];
+}
+
+export interface GenerationChoiceItem {
+  id: number | string;
+  title: string;
+  rationale: string;
+  status: string;
+  draftType?: string;
+  applyMode?: string;
+  payload?: any;
+  preview?: any;
+  patch?: any;
+  comparisonSummary?: string;
+  score?: any;
+  error?: any;
 }

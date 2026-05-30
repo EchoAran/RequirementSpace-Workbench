@@ -1,7 +1,7 @@
 import asyncio
 from uuid import uuid4
 import re
-from sqlalchemy import insert
+from sqlalchemy import delete, insert
 
 from backend.core.generators.actors_generator import (
     ActorsGenerator,
@@ -16,6 +16,7 @@ from backend.core.generators.features_generator import (
     FeaturesGeneratorInput,
 )
 from backend.schemas import ActorNode
+from backend.database.model import ConfirmationStatus
 
 
 class ProjectCreationService:
@@ -436,45 +437,120 @@ class ProjectCreationService:
 
         session.add(project)
         await session.flush()
+        await self._apply_project_creation_draft_to_project(
+            project=project,
+            draft=draft,
+            session=session,
+            replace_existing=False,
+        )
+        return project
+
+    async def _apply_project_creation_draft_to_existing_project(
+        self,
+        project_id: int,
+        draft: dict,
+        session,
+    ):
+        from backend.database.model import ProjectModel
+
+        project = await session.get(ProjectModel, project_id)
+        if project is None:
+            raise ValueError("project_not_found")
+
+        await self._apply_project_creation_draft_to_project(
+            project=project,
+            draft=draft,
+            session=session,
+            replace_existing=True,
+        )
+        return project
+
+    async def _apply_project_creation_draft_to_project(
+        self,
+        project,
+        draft: dict,
+        session,
+        replace_existing: bool,
+    ) -> None:
+        from backend.database.model import (
+            ActorModel,
+            BusinessObjectModel,
+            FeatureModel,
+            FeatureRelationModel,
+            FlowModel,
+            GherkinSpecModel,
+            PrototypePreviewModel,
+            ScenarioModel,
+            feature_actor_table,
+        )
+
+        project_preview = draft["project_preview"]
+        project.name = project_preview["project_name"]
+        project.description = project_preview["project_description"]
+        project.user_requirements = draft["user_requirements"]
+        await session.flush()
+
+        if replace_existing:
+            await session.execute(
+                delete(PrototypePreviewModel).where(
+                    PrototypePreviewModel.project_id == project.id
+                )
+            )
+            await session.execute(
+                delete(FlowModel).where(FlowModel.project_id == project.id)
+            )
+            await session.execute(
+                delete(BusinessObjectModel).where(
+                    BusinessObjectModel.project_id == project.id
+                )
+            )
+            await session.execute(
+                delete(ScenarioModel).where(ScenarioModel.project_id == project.id)
+            )
+            await session.execute(
+                delete(GherkinSpecModel).where(
+                    GherkinSpecModel.project_id == project.id
+                )
+            )
+            await session.execute(
+                delete(FeatureModel).where(FeatureModel.project_id == project.id)
+            )
+            await session.execute(
+                delete(ActorModel).where(ActorModel.project_id == project.id)
+            )
+            await session.flush()
 
         actor_number_to_model = {}
-
         for actor in draft["actors"]:
             model = ActorModel(
                 project_id=project.id,
                 name=actor["actor_name"],
                 description=actor["actor_description"],
+                confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
             )
-
             session.add(model)
             actor_number_to_model[actor["actor_number"]] = model
 
         await session.flush()
 
         feature_number_to_model = {}
-
         for feature in draft["features"]:
             model = FeatureModel(
                 project_id=project.id,
                 name=feature["feature_name"],
                 description=feature["feature_description"],
+                confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
             )
-
             session.add(model)
             feature_number_to_model[feature["feature_number"]] = model
 
         await session.flush()
 
         feature_actor_rows = []
-
         for feature in draft["features"]:
-            feature_model = feature_number_to_model[
-                feature["feature_number"]
-            ]
-
+            feature_model = feature_number_to_model[feature["feature_number"]]
             for actor_number in feature.get("actor_numbers", []):
                 actor_model = actor_number_to_model[actor_number]
-
                 feature_actor_rows.append(
                     {
                         "feature_id": feature_model.id,
@@ -483,32 +559,20 @@ class ProjectCreationService:
                 )
 
         if feature_actor_rows:
-            await session.execute(
-                insert(feature_actor_table),
-                feature_actor_rows,
-            )
+            await session.execute(insert(feature_actor_table), feature_actor_rows)
 
         for feature in draft["features"]:
             feature_number = feature["feature_number"]
-
-            parent_number = self._get_parent_feature_number(
-                feature_number
-            )
-
+            parent_number = self._get_parent_feature_number(feature_number)
             if parent_number is None:
                 continue
 
-            parent_model = feature_number_to_model[parent_number]
-            child_model = feature_number_to_model[feature_number]
-
-            relation = FeatureRelationModel(
-                parent_feature_id=parent_model.id,
-                child_feature_id=child_model.id,
-                position=self._get_feature_position(feature_number),
+            session.add(
+                FeatureRelationModel(
+                    parent_feature_id=feature_number_to_model[parent_number].id,
+                    child_feature_id=feature_number_to_model[feature_number].id,
+                    position=self._get_feature_position(feature_number),
+                )
             )
 
-            session.add(relation)
-
         await session.flush()
-
-        return project

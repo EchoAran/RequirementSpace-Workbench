@@ -101,6 +101,10 @@ from backend.api.schemas.choice_schema import (
     ChoiceGroupResponse,
     ProjectChoiceGroupsResponse,
     ChoiceActionResponse,
+    # Phase 1: generation choice schema
+    GenerationChoiceGroupCreateRequest,
+    GenerationCandidateError,
+    GenerationAcceptRequest,
 )
 from backend.api.schemas.audit_schema import (
     AuditLogResponse,
@@ -109,7 +113,15 @@ from backend.api.schemas.audit_schema import (
     UserRequirementsResponse,
     DraftRegenerateRequest,
 )
+from backend.api.schemas.project_creation_choice_schema import (
+    ProjectCreationChoiceGroupCreateRequest,
+    ProjectCreationChoiceGroupResponse,
+    ProjectCreationChoiceItem,
+    ProjectCreationChoiceAcceptResponse,
+    ProjectCreationChoiceGroupDiscardResponse,
+)
 from backend.api.schemas.project_schema import (
+    ConfirmationStatusEnum,
     ProjectListItemResponse,
     ProjectDeleteResponse,
     ProjectDetailResponse,
@@ -118,6 +130,24 @@ from backend.api.schemas.prototype_generation_schema import (
     PrototypePreviewGenerateRequest,
     PrototypePreviewNotFoundResponse,
     PrototypePreviewResponse,
+)
+from backend.api.schemas.ai_explain_schema import (
+    ExplainRequest,
+    ExplainResponse,
+    ExplainContextSummary,
+    ExplainScope,
+)
+from backend.api.schemas.ai_add_session_schema import (
+    AIAddSessionCreateRequest,
+    AIAddSessionResponse,
+    AIAddMessageRequest,
+    AIAddMessageResponse,
+    AIAddMessageItem,
+    AIAddSessionMessagesResponse,
+    AIAddGenerateDraftResponse,
+    AIAddConfirmDraftResponse,
+    AIAddDiscardDraftResponse,
+    AIAddSessionErrorResponse,
 )
 
 __all__ = [
@@ -198,15 +228,38 @@ __all__ = [
     "ChoiceGroupResponse",
     "ProjectChoiceGroupsResponse",
     "ChoiceActionResponse",
+    "GenerationChoiceGroupCreateRequest",
+    "GenerationCandidateError",
+    "GenerationAcceptRequest",
     "AuditLogResponse",
     "UserRequirementsUpdateRequest",
     "UserRequirementsRefineRequest",
     "UserRequirementsResponse",
     "DraftRegenerateRequest",
+    "ConfirmationStatusEnum",
     "ProjectListItemResponse",
     "ProjectDeleteResponse",
     "ProjectDetailResponse",
+    "ProjectCreationChoiceGroupCreateRequest",
+    "ProjectCreationChoiceGroupResponse",
+    "ProjectCreationChoiceItem",
+    "ProjectCreationChoiceAcceptResponse",
+    "ProjectCreationChoiceGroupDiscardResponse",
     "PrototypePreviewGenerateRequest",
     "PrototypePreviewNotFoundResponse",
     "PrototypePreviewResponse",
+    "AIAddSessionCreateRequest",
+    "AIAddSessionResponse",
+    "AIAddMessageRequest",
+    "AIAddMessageResponse",
+    "AIAddMessageItem",
+    "AIAddSessionMessagesResponse",
+    "AIAddGenerateDraftResponse",
+    "AIAddConfirmDraftResponse",
+    "AIAddDiscardDraftResponse",
+    "AIAddSessionErrorResponse",
+    "ExplainRequest",
+    "ExplainResponse",
+    "ExplainContextSummary",
+    "ExplainScope",
 ]

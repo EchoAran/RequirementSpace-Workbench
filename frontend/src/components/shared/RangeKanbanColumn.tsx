@@ -79,8 +79,9 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
           const isOverridden = originalAiRec && originalAiRec !== currentColumnLabel;
 
           return (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
+              id={`scope-${item.id}`}
               onClick={() => onItemClick(item)}
               draggable={true}
               onDragStart={(e) => {

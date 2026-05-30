@@ -6,6 +6,7 @@ from backend.database.model import (
     FeatureModel,
     ActorModel,
     AuditLogModel,
+    ConfirmationStatus,
 )
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
@@ -26,6 +27,7 @@ class ScenarioService:
         project_id: int,
         req: ScenarioCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> ScenarioResponse:
         # Verify feature exists in the project
         feature_res = await session.execute(
@@ -53,6 +55,7 @@ class ScenarioService:
             actor_id=req.actor_id,
             name=req.name,
             content=req.content,
+            confirmation_status=confirmation_status,
         )
         session.add(scenario)
         await session.flush()
@@ -81,6 +84,7 @@ class ScenarioService:
             name=scenario.name,
             content=scenario.content,
             acceptance_criteria=[],
+            confirmation_status=scenario.confirmation_status,
         )
 
     async def update_scenario(
@@ -193,6 +197,7 @@ class ScenarioService:
         scenario_id: int,
         req: ACCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> ACResponse:
         # Verify scenario exists and belongs to project
         scenario_res = await session.execute(
@@ -218,6 +223,7 @@ class ScenarioService:
             scenario_id=scenario_id,
             position=position,
             content=req.content,
+            confirmation_status=confirmation_status,
         )
         session.add(ac)
         await session.flush()

@@ -16,7 +16,7 @@ from backend.api.services.preview_shadow_convergence_service import (
     build_project_snapshot,
     calculate_stable_snapshot_hash,
 )
-from backend.api.services.prototype_generation_service import PrototypeGenerationService
+from backend.api.services.service_registry import prototype_generation_service
 from backend.database.database import get_session
 from backend.database.model import PreviewShadowDraftModel, ProjectModel
 
@@ -26,7 +26,6 @@ router = APIRouter(
 )
 
 convergence_service = PreviewShadowConvergenceService()
-prototype_generation_service = PrototypeGenerationService()
 
 
 @router.post("", response_model=PreviewShadowDraftResponse)
@@ -160,6 +159,77 @@ async def prepare_shadow_draft(
     )
 
 
+@router.get("/active", response_model=PreviewShadowDraftResponse)
+async def get_active_shadow_draft(
+    project_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Get the current active shadow draft for the project if one exists.
+    Returns status=idle if no active draft exists.
+    """
+    project = await session.get(ProjectModel, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+    # 1. Evaluate stage gates
+    gates = await convergence_service.gate_evaluator.evaluate_gates(project_id, session)
+    unready_gates = []
+    if not gates["what"]:
+        unready_gates.append("what")
+    if not gates["how"]:
+        unready_gates.append("how")
+    if not gates["scope"]:
+        unready_gates.append("scope")
+
+    # Build base snapshot and hash to match active draft
+    base_snapshot = await build_project_snapshot(project_id, session)
+    current_hash = calculate_stable_snapshot_hash(base_snapshot)
+
+    # 2. Check for active draft matching current snapshot hash
+    existing_res = await session.execute(
+        select(PreviewShadowDraftModel)
+        .where(
+            PreviewShadowDraftModel.project_id == project_id,
+            PreviewShadowDraftModel.status.in_(["generating", "ready", "failed"]),
+            PreviewShadowDraftModel.base_snapshot_hash == current_hash,
+        )
+        .order_by(PreviewShadowDraftModel.created_at.desc())
+        .limit(1)
+    )
+    existing_draft = existing_res.scalar_one_or_none()
+
+    if existing_draft is not None:
+        preview_response = None
+        if existing_draft.prototype_preview_json:
+            preview_response = PrototypePreviewResponse(**existing_draft.prototype_preview_json)
+        
+        patch = existing_draft.patch_json or {}
+        shadow_summary = {
+            "actors": len(patch.get("actors_added", [])),
+            "features": len(patch.get("features_added", [])),
+            "flows": len(patch.get("flows_added", [])),
+            "scopes": len(patch.get("scopes_added", [])),
+        }
+
+        return PreviewShadowDraftResponse(
+            source="shadow_project",
+            draft_id=existing_draft.draft_id,
+            status=existing_draft.status,
+            unready_gates=unready_gates,
+            shadow_summary=shadow_summary,
+            prototype_preview=preview_response,
+            shadow_snapshot_json=existing_draft.shadow_snapshot_json,
+            error_message=existing_draft.error_message,
+        )
+
+    return PreviewShadowDraftResponse(
+        source="shadow_project",
+        status="idle",
+        unready_gates=unready_gates,
+    )
+
+
 @router.get("/{draft_id}", response_model=PreviewShadowDraftResponse)
 async def get_shadow_draft(
     project_id: int,
@@ -273,7 +343,13 @@ async def regenerate_shadow_draft(
     if not draft:
         raise HTTPException(status_code=404, detail="shadow_draft_not_found")
 
-    # Mark existing draft as regenerating
+    # 1. Re-build and update to the latest database snapshot and hash
+    base_snapshot = await build_project_snapshot(project_id, session)
+    current_hash = calculate_stable_snapshot_hash(base_snapshot)
+
+    # Mark existing draft as regenerating with latest baseline snapshot
+    draft.base_snapshot_json = base_snapshot
+    draft.base_snapshot_hash = current_hash
     draft.status = "generating"
     draft.error_message = f"Regenerating draft with feedback: {request.user_feedback or ''}"
     await session.commit()

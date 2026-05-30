@@ -580,6 +580,7 @@ class ScopeGenerationService:
                     reason=item["reason"],
                     kano_category=item.get("kano_category"),
                     kano_category_name=item.get("kano_category_name"),
+                    confirmation_status='ai_assumption',
                 )
                 session.add(scope_model)
                 continue

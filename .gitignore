@@ -32,6 +32,8 @@ requirement_space.db
 *.db-journal
 *.sqlite
 *.sqlite3
+requirement_space.db-shm
+requirement_space.db-wal
 
 # Frontend dependencies and generated output
 node_modules/
@@ -57,4 +59,9 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
+# dev documents
 docs/
+
+# test
+backend/tests/
+pytest.ini

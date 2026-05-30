@@ -3,6 +3,7 @@ from backend.database.model import (
     ScopeModel,
     FeatureModel,
     AuditLogModel,
+    ConfirmationStatus,
 )
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
@@ -21,6 +22,7 @@ class ScopeService:
         feature_id: int,
         req: ScopeUpdateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.AI_ASSUMPTION.value,
     ) -> ScopeResponse:
         # Verify feature belongs to project
         feature_res = await session.execute(
@@ -55,6 +57,7 @@ class ScopeService:
                 reason=req.reason,
                 positive_summary=req.positive_summary,
                 negative_summary=req.negative_summary,
+                confirmation_status=confirmation_status,
             )
             session.add(scope)
         else:

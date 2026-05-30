@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, MessageCircle } from 'lucide-react';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
+import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
+import { ProjectInterviewDialog } from '@/components/shared/ProjectInterviewDialog';
 import { useNavigate } from 'react-router-dom';
 import { buildProjectRoute } from '@/core/selectors';
 
@@ -17,25 +19,33 @@ export function ProjectOnboarding() {
     isLoading,
     isGenerating,
     error,
+
+    // Phase 2: Choice Group Onboarding
+    activeChoiceGroup,
+    choiceGroupGenerationProgress,
+    isGeneratingChoices,
+    createOnboardingChoiceGroup,
+    acceptOnboardingChoice,
+    discardOnboardingChoiceGroup,
+    deferOnboardingChoiceGroup,
   } = useWorkspaceStore();
   const navigate = useNavigate();
 
   const [prompt, setPrompt] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [isInterviewOpen, setIsInterviewOpen] = useState(false);
 
-  const isWorking = isLoading || isGenerating;
+  const isWorking = isLoading || isGenerating || isGeneratingChoices;
 
-  const handleGenerate = async () => {
+  const handleGenerateChoiceGroup = async () => {
     if (!prompt.trim()) return;
-    await startAIOnboarding(prompt.trim(), name.trim() || undefined, description.trim() || undefined);
+    await createOnboardingChoiceGroup(prompt.trim(), 2);
   };
 
   const handleCreateBlank = async () => {
     if (!prompt.trim()) return;
-    const finalName = name.trim() || '未命名需求空间';
-    const finalDesc = description.trim() || '由用户手动初始化的空白需求空间项目。';
-    await createBlankWorkspace(finalName, finalDesc, prompt.trim());
+    await createBlankWorkspace(name.trim(), description.trim(), prompt.trim());
     const state = useWorkspaceStore.getState();
     if (state.currentSystemView === 'workspace' && state.ir) {
       navigate(buildProjectRoute(state.ir.projectId, '/overview'));
@@ -46,6 +56,26 @@ export function ProjectOnboarding() {
     await confirmAIOnboarding();
     const state = useWorkspaceStore.getState();
     if (state.currentSystemView === 'workspace' && state.ir) {
+      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    }
+  };
+
+  const handleAcceptChoice = async (choiceId: string) => {
+    await acceptOnboardingChoice(choiceId);
+    const state = useWorkspaceStore.getState();
+    if (state.currentSystemView === 'workspace' && state.ir) {
+      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    }
+  };
+
+  const handleDiscardChoiceGroup = async () => {
+    await discardOnboardingChoiceGroup();
+  };
+
+  const handleDeferChoiceGroup = async () => {
+    const projectId = await deferOnboardingChoiceGroup();
+    const state = useWorkspaceStore.getState();
+    if (projectId && state.currentSystemView === 'workspace' && state.ir) {
       navigate(buildProjectRoute(state.ir.projectId, '/overview'));
     }
   };
@@ -69,7 +99,7 @@ export function ProjectOnboarding() {
         </div>
 
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden relative">
-          {isWorking && (
+          {isWorking && !isGeneratingChoices && (
             <div className="absolute inset-0 bg-white/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
               <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
               <p className="font-bold text-slate-800 text-base">正在处理项目草稿...</p>
@@ -124,6 +154,14 @@ export function ProjectOnboarding() {
           <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-3">
             <button
               type="button"
+              onClick={() => setIsInterviewOpen(true)}
+              className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-6 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+            >
+              <MessageCircle className="w-4 h-4 mr-1.5" />
+              先简单聊聊
+            </button>
+            <button
+              type="button"
               onClick={handleCreateBlank}
               disabled={!prompt.trim() || isWorking}
               className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl border border-slate-200 bg-white px-6 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
@@ -132,11 +170,11 @@ export function ProjectOnboarding() {
             </button>
             <div className="relative group">
               <div className="pointer-events-none absolute bottom-full right-0 mb-2 w-56 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-relaxed text-slate-600 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0">
-                先生成草稿预览，确认后再进入工作区。
+                先生成 2 套完整方案草稿，选择最合适的进入工作区。
               </div>
               <button
                 type="button"
-                onClick={handleGenerate}
+                onClick={handleGenerateChoiceGroup}
                 disabled={!prompt.trim() || isWorking}
                 className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition-colors hover:bg-indigo-700 disabled:opacity-50"
               >
@@ -144,9 +182,26 @@ export function ProjectOnboarding() {
               </button>
             </div>
           </div>
+
+          <ProjectInterviewDialog
+            isOpen={isInterviewOpen}
+            onClose={() => setIsInterviewOpen(false)}
+          />
         </div>
       </div>
 
+      {/* Choice Group Preview Modal (multi-candidate) */}
+      <ChoiceGroupPreviewModal
+        group={activeChoiceGroup}
+        isWorking={isWorking}
+        isGeneratingChoices={isGeneratingChoices}
+        generationProgress={choiceGroupGenerationProgress}
+        onAccept={handleAcceptChoice}
+        onDiscard={handleDiscardChoiceGroup}
+        onDefer={handleDeferChoiceGroup}
+      />
+
+      {/* Fallback: old single-draft modal (kept for compatibility) */}
       <DraftPreviewModal
         draft={activeDraftType === 'project' ? activeDraft : null}
         draftType={activeDraftType === 'project' ? activeDraftType : null}

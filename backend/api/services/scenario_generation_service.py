@@ -562,6 +562,7 @@ class ScenarioGenerationService:
                 actor_id=item["actor_id"],
                 name=item["scenario_name"],
                 content=item["scenario_content"],
+                confirmation_status='ai_assumption',
             )
 
             session.add(scenario)

@@ -17,6 +17,11 @@ from backend.api.schemas.project_schema import (
     FlowStepDetail,
     FlowDetail,
 )
+from backend.core.detectors import (
+    HowIssueDetector,
+    ScopeIssueDetector,
+    WhatIssueDetector,
+)
 from backend.services.binary_conversion_service import BinaryConversionService
 
 class ProjectService:
@@ -25,7 +30,9 @@ class ProjectService:
         stmt = (
             select(ProjectModel)
             .options(
+                selectinload(ProjectModel.perception_slot),
                 selectinload(ProjectModel.actors),
+                selectinload(ProjectModel.features).selectinload(FeatureModel.child_relations),
                 selectinload(ProjectModel.features).selectinload(FeatureModel.scope),
                 selectinload(ProjectModel.scenarios).selectinload(ScenarioModel.acceptance_criteria),
                 selectinload(ProjectModel.business_objects).selectinload(BusinessObjectModel.attributes),
@@ -50,16 +57,14 @@ class ProjectService:
                 + sum(len(fl.steps) for fl in p.flows)
             )
 
-            # 2. Under P1, issue_count is stubbed to 0 (P4 will connect to actual IssueService)
-            issue_count = 0
-
-            # 3. Determine status (e.g. "待确认缺口" if any feature scope is deferred, else "设计中")
-            has_deferred = any(
-                f.scope.status == "postponed"
-                for f in p.features
-                if f.scope is not None
+            issue_count = await self._count_visible_open_issues(
+                project=p,
+                session=session,
             )
-            status = "待确认缺口" if has_deferred else "设计中"
+            status_code, status = self._derive_project_status(
+                project=p,
+                issue_count=issue_count,
+            )
 
             response.append(
                 ProjectListItemResponse(
@@ -69,12 +74,119 @@ class ProjectService:
                     idea=p.user_requirements,
                     description=p.description,
                     updated_at=p.updated_at,
+                    status_code=status_code,
                     status=status,
                     issue_count=issue_count,
                     node_count=node_count,
                 )
             )
         return response
+
+    async def _count_visible_open_issues(
+        self,
+        project: ProjectModel,
+        session: AsyncSession,
+    ) -> int:
+        hidden_issue_ids = await self._load_hidden_issue_ids(
+            project.id,
+            session,
+        )
+        issue_count = 0
+
+        for stage in self._get_visible_issue_stages(project.unlocked_stages):
+            detector = self._get_issue_detectors().get(stage)
+            if detector is None:
+                continue
+
+            issues = await detector.detect(
+                project_id=project.id,
+                session=session,
+            )
+            issue_count += sum(
+                1
+                for issue in issues
+                if issue.issueId not in hidden_issue_ids
+            )
+
+        return issue_count
+
+    def _derive_project_status(
+        self,
+        project: ProjectModel,
+        issue_count: int,
+    ) -> tuple[str, str]:
+        features = project.features or []
+        leaf_features = [
+            feature
+            for feature in features
+            if not (feature.child_relations or [])
+        ]
+        has_any_content = any(
+            (
+                project.actors,
+                features,
+                project.scenarios,
+                project.business_objects,
+                project.flows,
+            )
+        )
+        has_scope_pending = bool(leaf_features) and any(
+            feature.scope is None
+            or not (feature.scope.status or "").strip()
+            for feature in leaf_features
+        )
+        is_scope_ready = bool(leaf_features) and all(
+            feature.scope is not None and (feature.scope.status or "").strip()
+            for feature in leaf_features
+        )
+        has_modeling_backbone = bool(project.actors) and bool(features) and bool(project.flows)
+
+        if not has_any_content:
+            return "not_started", "未开始"
+
+        if project.perception_slot is not None:
+            return "needs_attention", "待处理卡点"
+
+        if issue_count > 0:
+            return "has_issues", "存在待处理问题"
+
+        if has_modeling_backbone and has_scope_pending:
+            return "scope_pending", "范围待确认"
+
+        if has_modeling_backbone and (is_scope_ready or not leaf_features):
+            return "converged", "已基本收敛"
+
+        return "in_progress", "建模中"
+
+    def _get_visible_issue_stages(self, unlocked_stages: str) -> list[str]:
+        visible_stages: list[str] = []
+        for stage in ("what", "how", "scope"):
+            if self._is_stage_visible(stage, unlocked_stages):
+                visible_stages.append(stage)
+        return visible_stages
+
+    @staticmethod
+    def _get_issue_detectors():
+        return {
+            "what": WhatIssueDetector(),
+            "how": HowIssueDetector(),
+            "scope": ScopeIssueDetector(),
+        }
+
+    @staticmethod
+    async def _load_hidden_issue_ids(
+        project_id: int,
+        session: AsyncSession,
+    ) -> set[str]:
+        from backend.database.model import IssueOverrideModel
+
+        result = await session.execute(
+            select(IssueOverrideModel.issue_id).where(
+                IssueOverrideModel.project_id == project_id,
+                IssueOverrideModel.status.in_(("ignored", "resolved")),
+            )
+        )
+        return {issue_id for issue_id in result.scalars().all() if issue_id}
 
     async def get_project_detail(self, project_id: int, session: AsyncSession) -> ProjectDetailResponse:
         stmt = (
@@ -127,6 +239,7 @@ class ProjectService:
                 actor_id=a.id,
                 actor_name=a.name,
                 actor_description=a.description,
+                confirmation_status=a.confirmation_status,
             )
             for a in p.actors
         ]
@@ -159,6 +272,7 @@ class ProjectService:
                     ),
                     kano_category=f.scope.kano_category,
                     kano_category_name=f.scope.kano_category_name,
+                    confirmation_status=f.scope.confirmation_status,
                 )
 
             # Map Scenarios
@@ -168,6 +282,7 @@ class ProjectService:
                     AcceptanceCriterionDetail(
                         criterion_id=ac.id,
                         criterion_content=ac.content,
+                        confirmation_status=ac.confirmation_status,
                     )
                     for ac in sc.acceptance_criteria
                 ]
@@ -179,6 +294,7 @@ class ProjectService:
                         feature_id=sc.feature_id,
                         actor_id=sc.actor_id,
                         acceptance_criteria=criteria,
+                        confirmation_status=sc.confirmation_status,
                     )
                 )
 
@@ -192,6 +308,7 @@ class ProjectService:
                     children_ids=[rel.child_feature_id for rel in f.child_relations],
                     scenarios=scenarios,
                     scope=scope,
+                    confirmation_status=f.confirmation_status,
                 )
             )
 
@@ -211,6 +328,7 @@ class ProjectService:
                     )
                     for attr in bo.attributes
                 ],
+                confirmation_status=bo.confirmation_status,
             )
             for bo in p.business_objects
         ]
@@ -239,6 +357,7 @@ class ProjectService:
                     flow_description=fl.description,
                     feature_ids=[f.id for f in fl.features],
                     flow_steps=steps,
+                    confirmation_status=fl.confirmation_status,
                 )
             )
 

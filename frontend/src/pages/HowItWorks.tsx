@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, HelpCircle, Folder } from 'lucide-react';
-import { FlowStepTypeToText } from '@/core/schema';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, Folder } from 'lucide-react';
 import { buildProjectRoute, buildStepDetail, buildSystemProjection, getStageIssues, projectionPath } from '@/core/selectors';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
+import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import {
   useWorkspaceStore,
   selectSelectedObject,
@@ -95,6 +96,7 @@ const getFeaturePath = (featureId: number, features: any[]): string => {
 
 export function HowItWorks() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     highlightTarget,
     setSelectedObject,
@@ -131,7 +133,32 @@ export function HowItWorks() {
   const [flowFeedback, setFlowFeedback] = useState('');
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
 
+  // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (!highlight) return;
+    const [kind, ...idParts] = highlight.split('-');
+    const id = parseInt(idParts.join('-'), 10);
+    if (isNaN(id)) return;
+    navigate(location.pathname, { replace: true });
 
+    setTimeout(() => {
+      const el = document.getElementById(`${kind}-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl'), 3000);
+      }
+      if (kind === 'flow') {
+        const flow = ir?.flows?.find((f: any) => f.flowId === id);
+        if (flow) setSelectedObject(flow);
+      } else if (kind === 'business_object') {
+        const bo = ir?.businessObjects?.find((b: any) => b.businessObjectId === id);
+        if (bo) setSelectedObject(bo);
+      }
+    }, 200);
+  }, [location.search]);
 
   const handleManualAction = (slot: any) => {
     if (slot.kind === 'generative_perception_slot') {
@@ -196,6 +223,9 @@ export function HowItWorks() {
   const [newFlowDesc, setNewFlowDesc] = useState('');
   const [newFlowFeatureIds, setNewFlowFeatureIds] = useState<number[]>([]);
 
+  const [aiDialogTarget, setAiDialogTarget] = useState<{ targetType: AIAddTargetType; anchor?: Record<string, any> } | null>(null);
+  const isAIDialogOpen = aiDialogTarget !== null;
+
   const [isAddStepModalOpen, setIsAddStepModalOpen] = useState(false);
   const [activeFlowIdForNewStep, setActiveFlowIdForNewStep] = useState<number | null>(null);
   const [newStepName, setNewStepName] = useState('');
@@ -209,6 +239,85 @@ export function HowItWorks() {
   const [customStepPositions, setCustomStepPositions] = useState<Record<number, { x: number; y: number }>>({});
   const [activeDragStepId, setActiveDragStepId] = useState<number | null>(null);
   const [stepDragStart, setStepDragStart] = useState<{ mouseX: number; mouseY: number; initialX: number; initialY: number } | null>(null);
+
+  const getStepTypeMeta = (stepType: 'actorAction' | 'systemAction' | 'judgment') => {
+    if (stepType === 'judgment') {
+      return {
+        label: '分支结点',
+        badgeClass: 'bg-amber-50 border-amber-200 text-amber-800',
+        numberClass: 'bg-amber-500 text-white',
+        cardClass: 'border-amber-300/90 bg-amber-50/70 hover:border-amber-400 border-dashed',
+        selectedClass: 'border-amber-400 shadow-lg shadow-amber-100/70',
+        shapeClass: 'rounded-[24px]',
+        clipPath: undefined,
+        titleClass: 'group-hover:text-amber-700',
+        actorToneClass: 'text-amber-700',
+        showActor: false,
+        descriptionClampClass: 'line-clamp-1',
+        ioVisibleCount: 1,
+      } as const;
+    }
+
+    if (stepType === 'systemAction') {
+      return {
+        label: '系统动作',
+        badgeClass: 'bg-sky-50 border-sky-200 text-sky-800',
+        numberClass: 'bg-sky-500 text-white',
+        cardClass: 'border-sky-200 bg-sky-50/45 hover:border-sky-400',
+        selectedClass: 'ring-2 ring-sky-500 border-transparent shadow-lg shadow-sky-100/70',
+        shapeClass: 'rounded-[28px]',
+        clipPath: undefined,
+        titleClass: 'group-hover:text-sky-700',
+        actorToneClass: 'text-sky-700',
+        showActor: false,
+        descriptionClampClass: 'line-clamp-1',
+        ioVisibleCount: 1,
+      } as const;
+    }
+
+    return {
+      label: '用户动作',
+      badgeClass: 'bg-indigo-50 border-indigo-200 text-indigo-800',
+      numberClass: 'bg-indigo-600 text-white',
+      cardClass: 'border-slate-200 bg-white hover:border-indigo-400',
+      selectedClass: 'ring-2 ring-indigo-500 border-transparent shadow-lg shadow-indigo-100/50',
+      shapeClass: 'rounded-2xl',
+      clipPath: undefined,
+      titleClass: 'group-hover:text-indigo-600',
+      actorToneClass: 'text-slate-500',
+      showActor: true,
+      descriptionClampClass: 'line-clamp-2',
+      ioVisibleCount: 2,
+    } as const;
+  };
+
+  const renderIoTokens = (items: string[], tone: 'input' | 'output', visibleCount = 2) => {
+    const visibleItems = items.slice(0, visibleCount);
+    const hiddenCount = Math.max(0, items.length - visibleItems.length);
+    const tokenClass =
+      tone === 'input'
+        ? 'border-slate-200 bg-slate-100 text-slate-700'
+        : 'border-emerald-100 bg-emerald-50 text-emerald-700';
+
+    return (
+      <>
+        {visibleItems.map((item) => (
+          <span
+            key={`${tone}-${item}`}
+            className={`min-w-0 max-w-[92px] truncate rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${tokenClass}`}
+            title={item}
+          >
+            {item}
+          </span>
+        ))}
+        {hiddenCount > 0 && (
+          <span className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+            +{hiddenCount}
+          </span>
+        )}
+      </>
+    );
+  };
 
   const handleMouseDown = (flowId: number, e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -485,11 +594,23 @@ export function HowItWorks() {
                         手动组建业务流程
                       </div>
                     </div>
+                    <div className="relative group">
+                      <button
+                        onClick={() => setAiDialogTarget({ targetType: 'flow' })}
+                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
+                        aria-label="AI 对话添加流程"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+                        AI 对话添加流程
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={generateFlowsAndObjects}
+                    onClick={() => void generateFlowsAndObjects()}
                     disabled={isGenerating || isLoading}
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
@@ -522,12 +643,14 @@ export function HowItWorks() {
                   const featNames = (flow.featureIds || [])
                     .map(fid => (ir.features || []).find(f => f.featureId === fid)?.featureName)
                     .filter(Boolean) as string[];
+                  const flowStatus = flow.confirmationStatus || flow.status || 'ai_assumption';
 
                   const isCollapsed = collapsedFlows[flow.flowId] === true;
 
                   return (
                     <div
                       key={flow.flowId}
+                      id={`flow-${flow.flowId}`}
                       onClick={() => setSelectedObject(flow)}
                       className={`rounded-2xl border p-6 bg-slate-50/50 shadow-sm cursor-pointer transition-all ${
                         selectedObject?.id === flow.flowId.toString() || selectedObject?.flowId === flow.flowId
@@ -538,9 +661,12 @@ export function HowItWorks() {
                       <div className={`flex flex-col gap-4 w-full ${isCollapsed ? '' : 'mb-6 pb-4 border-b border-slate-200/60'}`}>
                         <div className="space-y-3 min-w-0">
                           <div className="flex items-center justify-between gap-3">
-                            <h3 className="font-extrabold text-slate-800 text-base flex items-center gap-2 min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
                               <Workflow className="w-5 h-5 text-indigo-600 shrink-0" />
-                              <span className="truncate">{flow.flowName}</span>
+                              <h3 className="min-w-0 font-extrabold text-base text-slate-800">
+                                <span className="block truncate">{flow.flowName}</span>
+                              </h3>
+                              <StatusBadge status={flowStatus} className="scale-90 origin-left shrink-0" />
                               {!isCollapsed && (
                                 <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                                   <div className="relative group">
@@ -578,7 +704,7 @@ export function HowItWorks() {
                                   </div>
                                 </div>
                               )}
-                            </h3>
+                            </div>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -666,12 +792,6 @@ export function HowItWorks() {
                               onMouseUp={handleMouseUpOrLeave}
                               onMouseLeave={handleMouseUpOrLeave}
                             >
-                              {/* Drag Help Tip */}
-                              <div className="absolute top-4 left-4 z-30 bg-slate-900/60 backdrop-blur-sm px-2.5 py-1 rounded-lg text-[10px] font-extrabold text-white flex items-center gap-1.5 pointer-events-none select-none shadow-sm">
-                                <HelpCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span>按住鼠标左键可平移画布，按住节点卡片可自由拖拽位置</span>
-                              </div>
-
                               {/* Floating Glassmorphic Zoom/Pan Toolbar */}
                               <div className="absolute bottom-4 right-4 z-30 flex items-center gap-1 bg-white/90 backdrop-blur-md border border-slate-200/80 p-1.5 rounded-xl shadow-md" onClick={e => e.stopPropagation()}>
                                 <button
@@ -831,18 +951,12 @@ export function HowItWorks() {
                                   const pos = customStepPositions[step.stepId] || positions[step.stepId];
                                   if (!pos) return null;
 
-                                  const stepDetail = buildStepDetail(ir, step.id);
+                                  const stepDetail = buildStepDetail(ir, step.stepId);
                                   const stepActors = (step.actorIds || [])
                                     .map(aid => (ir.actors || []).find(a => a.actorId === aid)?.actorName)
                                     .filter(Boolean);
-
-                                  const stepTypeName = FlowStepTypeToText[step.stepType] || '动作';
-
-                                  const stepBadgeStyle = step.stepType === 'judgment'
-                                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                                    : step.stepType === 'systemAction'
-                                      ? 'bg-blue-50 border-blue-200 text-blue-800'
-                                      : 'bg-indigo-50 border-indigo-200 text-indigo-800';
+                                  const stepMeta = getStepTypeMeta(step.stepType);
+                                  const ioVisibleCount = stepMeta.ioVisibleCount;
 
                                   const isSelected = selectedObject?.id === step.stepId.toString() || selectedObject?.stepId === step.stepId;
 
@@ -855,16 +969,17 @@ export function HowItWorks() {
                                         setSelectedObject(step);
                                         setHighlightTarget(step.stepId.toString());
                                       }}
-                                      className={`absolute w-[260px] h-[130px] border p-3.5 rounded-2xl shadow-sm hover:shadow-md flex flex-col justify-between bg-white cursor-pointer group z-20 interactive-node-card ${
+                                      className={`absolute w-[260px] h-[148px] overflow-hidden border p-3.5 shadow-sm hover:shadow-md flex flex-col justify-between cursor-pointer group z-20 interactive-node-card ${
                                         activeDragStepId === step.stepId ? '' : 'transition-all duration-150'
-                                      } ${
+                                      } ${stepMeta.shapeClass} ${
                                         isSelected
-                                          ? 'ring-2 ring-indigo-500 border-transparent shadow-lg shadow-indigo-100/50 scale-[1.02]'
-                                          : 'border-slate-200 hover:border-indigo-400'
+                                          ? `${stepMeta.cardClass} ${stepMeta.selectedClass} scale-[1.02]`
+                                          : stepMeta.cardClass
                                       }`}
                                       style={{
                                         left: `${pos.x}px`,
                                         top: `${pos.y}px`,
+                                        clipPath: stepMeta.clipPath,
                                       }}
                                     >
                                       <div className="flex justify-between items-center leading-none mb-1">
@@ -882,32 +997,52 @@ export function HowItWorks() {
                                           >
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>
-                                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 border rounded-md uppercase tracking-wide ${stepBadgeStyle}`}>
-                                            {stepTypeName}
+                                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 border rounded-md tracking-wide ${stepMeta.badgeClass}`}>
+                                            {stepMeta.label}
                                           </span>
                                         </div>
                                       </div>
 
-                                      <div className="min-w-0 flex-1 my-1">
-                                        <h4 className="font-extrabold text-slate-800 text-xs truncate group-hover:text-indigo-600 transition-colors leading-tight mb-0.5">{step.stepName}</h4>
-                                        <div className="text-[10px] text-slate-400 truncate font-semibold">
-                                          <span className="flex items-center gap-1"><User className="w-3 h-3 text-slate-400 shrink-0" /> {stepActors.length > 0 ? stepActors.join(', ') : '系统自动'}</span>
+                                      <div className="min-w-0 flex-1 my-1 space-y-1">
+                                        <div className="flex items-start gap-2">
+                                          <span className={`mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-extrabold ${stepMeta.numberClass}`}>
+                                            {idx + 1}
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <h4 className={`font-extrabold text-slate-800 text-xs truncate transition-colors leading-tight ${stepMeta.titleClass}`}>{step.stepName}</h4>
+                                            {stepMeta.showActor && (
+                                              <div className={`mt-1 text-[10px] truncate font-semibold ${stepMeta.actorToneClass}`}>
+                                                <span className="flex items-center gap-1">
+                                                  <User className="w-3 h-3 text-slate-400 shrink-0" />
+                                                  {stepActors.length > 0 ? stepActors.join(', ') : '待绑定角色'}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
+                                        {!stepMeta.showActor && step.stepDescription && (
+                                          <p className={`${stepMeta.descriptionClampClass} text-[10px] leading-relaxed text-slate-500`}>
+                                            {step.stepDescription}
+                                          </p>
+                                        )}
                                       </div>
 
-                                      {/* Inputs & Outputs */}
                                       {(stepDetail.inputs.length > 0 || stepDetail.outputs.length > 0) && (
-                                        <div className="flex gap-1.5 text-[10px] mt-1 border-t border-slate-100/80 pt-1.5 overflow-hidden">
+                                        <div className="mt-1 space-y-1 border-t border-slate-100/80 pt-2">
                                           {stepDetail.inputs.length > 0 && (
-                                            <div className="truncate flex-1 max-w-[50%]">
-                                              <span className="text-slate-400 font-extrabold mr-1">In:</span>
-                                              <span className="text-slate-600 font-semibold">{stepDetail.inputs.join(', ')}</span>
+                                            <div className="flex items-start gap-1.5">
+                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-slate-400">输入</span>
+                                              <div className="min-w-0 flex flex-1 flex-nowrap gap-1 overflow-hidden">
+                                                {renderIoTokens(stepDetail.inputs, 'input', ioVisibleCount)}
+                                              </div>
                                             </div>
                                           )}
                                           {stepDetail.outputs.length > 0 && (
-                                            <div className="truncate flex-1 max-w-[50%]">
-                                              <span className="text-emerald-500 font-extrabold mr-1">Out:</span>
-                                              <span className="text-emerald-700 font-semibold">{stepDetail.outputs.join(', ')}</span>
+                                            <div className="flex items-start gap-1.5">
+                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-emerald-500">输出</span>
+                                              <div className="min-w-0 flex flex-1 flex-nowrap gap-1 overflow-hidden">
+                                                {renderIoTokens(stepDetail.outputs, 'output', ioVisibleCount)}
+                                              </div>
                                             </div>
                                           )}
                                         </div>
@@ -923,18 +1058,11 @@ export function HowItWorks() {
                           return (
                             <div className="flex items-center overflow-x-auto gap-4 py-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                               {steps.map((step, idx) => {
-                                const stepDetail = buildStepDetail(ir, step.id);
+                                const stepDetail = buildStepDetail(ir, step.stepId);
                                 const stepActors = (step.actorIds || [])
                                   .map(aid => (ir.actors || []).find(a => a.actorId === aid)?.actorName)
                                   .filter(Boolean);
-
-                                const stepTypeName = FlowStepTypeToText[step.stepType] || '动作';
-
-                                const stepBadgeStyle = step.stepType === 'judgment'
-                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                  : step.stepType === 'systemAction'
-                                    ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                    : 'bg-indigo-100 text-indigo-800 border-indigo-200';
+                                const stepMeta = getStepTypeMeta(step.stepType);
 
                                 const isSelected = selectedObject?.id === step.stepId.toString() || selectedObject?.stepId === step.stepId;
 
@@ -946,19 +1074,20 @@ export function HowItWorks() {
                                         setSelectedObject(step);
                                         setHighlightTarget(step.stepId.toString());
                                       }}
-                                      className={`w-[260px] border p-4 rounded-xl shadow-sm transition-all flex flex-col gap-3 cursor-pointer bg-white ${
+                                      className={`w-[260px] border p-4 shadow-sm transition-all flex flex-col gap-3 cursor-pointer group ${stepMeta.shapeClass} ${
                                         isSelected
-                                          ? 'ring-2 ring-indigo-500 border-transparent shadow-md'
-                                          : 'border-slate-200 hover:border-indigo-300'
+                                          ? `${stepMeta.cardClass} ${stepMeta.selectedClass}`
+                                          : stepMeta.cardClass
                                       }`}
+                                      style={{ clipPath: stepMeta.clipPath }}
                                     >
                                       <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-1.5">
-                                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">
+                                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${stepMeta.numberClass}`}>
                                             {idx + 1}
                                           </span>
-                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 border rounded ${stepBadgeStyle}`}>
-                                            {stepTypeName}
+                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 border rounded ${stepMeta.badgeClass}`}>
+                                            {stepMeta.label}
                                           </span>
                                         </div>
 
@@ -979,10 +1108,15 @@ export function HowItWorks() {
                                       </div>
 
                                       <div>
-                                        <h4 className="font-bold text-slate-800 text-sm mb-1 truncate">{step.stepName}</h4>
-                                        <span className="text-[10px] font-bold text-indigo-600 uppercase">
-                                          <span className="flex items-center gap-1">参与者: <User className="w-3 h-3 text-slate-400 shrink-0" /> {stepActors.length > 0 ? stepActors.join(', ') : '系统自动'}</span>
-                                        </span>
+                                        <h4 className={`font-bold text-slate-800 text-sm mb-1 truncate transition-colors ${stepMeta.titleClass}`}>{step.stepName}</h4>
+                                        {stepMeta.showActor && (
+                                          <span className="text-[10px] font-bold text-indigo-600">
+                                            <span className="flex items-center gap-1">
+                                              <User className="w-3 h-3 text-slate-400 shrink-0" />
+                                              {stepActors.length > 0 ? stepActors.join(', ') : '待绑定角色'}
+                                            </span>
+                                          </span>
+                                        )}
                                       </div>
 
                                       <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
@@ -995,21 +1129,13 @@ export function HowItWorks() {
                                           {stepDetail.inputs.length > 0 && (
                                             <div className="flex flex-wrap gap-1 items-center">
                                               <span className="text-[10px] text-slate-400 font-bold shrink-0">输入:</span>
-                                              {stepDetail.inputs.map(inp => (
-                                                <span key={inp} className="text-[10px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                                                  {inp}
-                                                </span>
-                                              ))}
+                                              {renderIoTokens(stepDetail.inputs, 'input')}
                                             </div>
                                           )}
                                           {stepDetail.outputs.length > 0 && (
                                             <div className="flex flex-wrap gap-1 items-center">
                                               <span className="text-[10px] text-slate-500 font-bold shrink-0">输出:</span>
-                                              {stepDetail.outputs.map(out => (
-                                                <span key={out} className="text-[10px] bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded text-emerald-700 font-medium">
-                                                  {out}
-                                                </span>
-                                              ))}
+                                              {renderIoTokens(stepDetail.outputs, 'output')}
                                             </div>
                                           )}
                                         </div>
@@ -1046,6 +1172,13 @@ export function HowItWorks() {
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      onClick={() => setAiDialogTarget({ targetType: 'business_object' })}
+                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
+                      title="AI 对话添加业务对象"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </button>
                   </h3>
                 </div>
               </div>
@@ -1058,14 +1191,16 @@ export function HowItWorks() {
                   {businessObjects.map((object) => {
                     const relatedSteps = system.getRelatedStepsForObject(object.id || object.businessObjectId) as any[];
                     const stateChanges = relatedSteps
-                      .flatMap((step: any) => buildStepDetail(ir, step.id).stateChanges)
+                      .flatMap((step: any) => buildStepDetail(ir, step.stepId).stateChanges)
                       .filter((value, index, array) => array.indexOf(value) === index);
+                    const objectStatus = object.confirmationStatus || object.status || 'ai_assumption';
 
                     const isSelected = selectedObject?.businessObjectId === object.businessObjectId || selectedObject?.id === object.id?.toString();
 
                     return (
                       <div
                         key={object.businessObjectId || object.id}
+                        id={`business_object-${object.businessObjectId || object.id}`}
                         onClick={() => setSelectedObject(object)}
                         className={`bg-white rounded-xl p-5 border transition-all cursor-pointer flex flex-col gap-4 group relative ${
                           isSelected
@@ -1080,9 +1215,7 @@ export function HowItWorks() {
                               {(object.businessObjectAttributes || []).length} 个字段属性
                             </span>
                           </div>
-                          <span className="text-[10px] bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-lg font-bold shrink-0 leading-none">
-                            数据实体
-                          </span>
+                          <StatusBadge status={objectStatus} className="scale-90 origin-right shrink-0" />
                         </div>
                         <div className="text-xs text-slate-500 leading-relaxed line-clamp-3">
                           {object.businessObjectDescription || object.description || '暂无业务对象描述说明。'}
@@ -1558,6 +1691,19 @@ export function HowItWorks() {
           </div>
         </div>
       )}
+
+      <AIAddObjectDialog
+        isOpen={isAIDialogOpen}
+        onClose={() => setAiDialogTarget(null)}
+        projectId={ir?.projectId ?? 0}
+        targetType={aiDialogTarget?.targetType ?? 'actor'}
+        anchor={aiDialogTarget?.anchor}
+        onConfirm={async () => {
+          setAiDialogTarget(null);
+          const { refreshWorkspace } = useWorkspaceStore.getState();
+          await refreshWorkspace();
+        }}
+      />
 
       <ConfirmTransitionModal
         isOpen={isTransitionModalOpen}

@@ -492,11 +492,11 @@ export function DraftPreviewModal({
                     <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3">
                       {(item.positive_picture_base64 || item.positivePictureBase64) && (
                         <div className="space-y-1">
-                          <span className="text-[10px] text-indigo-600 font-bold block text-center">正向收益曲线</span>
+                          <span className="text-[10px] text-indigo-600 font-bold block text-center">有该功能时的体验影响图</span>
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
                             <img
                               src={`data:image/png;base64,${item.positive_picture_base64 || item.positivePictureBase64}`}
-                              alt="Positive Distribution"
+                              alt="有该功能时的体验影响图"
                               className="max-h-full max-w-full object-contain"
                             />
                           </div>
@@ -504,11 +504,11 @@ export function DraftPreviewModal({
                       )}
                       {(item.negative_picture_base64 || item.negativePictureBase64) && (
                         <div className="space-y-1">
-                          <span className="text-[10px] text-slate-500 font-bold block text-center">负向风险曲线</span>
+                          <span className="text-[10px] text-slate-500 font-bold block text-center">缺少该功能时的体验影响图</span>
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
                             <img
                               src={`data:image/png;base64,${item.negative_picture_base64 || item.negativePictureBase64}`}
-                              alt="Negative Distribution"
+                              alt="缺少该功能时的体验影响图"
                               className="max-h-full max-w-full object-contain"
                             />
                           </div>

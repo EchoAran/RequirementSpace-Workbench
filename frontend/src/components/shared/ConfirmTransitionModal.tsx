@@ -61,7 +61,7 @@ export function ConfirmTransitionModal({
               恭喜！当前 <b>{currentStageName}</b> 阶段的基础硬性建模规则已全部满足！
             </p>
             <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100/60 font-medium">
-              为了保障系统需求模型的深度与严谨度，我们强烈建议您先运行一次 <b>AI 智能诊断</b>，以自动发掘、定位并补齐隐藏在业务逻辑背后的隐性数据与角色缺口。您也可以选择强行直接进入下一阶段。
+              为了保障系统需求模型的深度与严谨度，我们强烈建议您先运行一次 <b>AI 智能诊断</b>，以自动发掘、定位并补齐隐藏在业务逻辑背后的隐性数据与角色缺口。您也可以选择直接进入下一阶段。
             </p>
           </div>
 
@@ -105,7 +105,7 @@ export function ConfirmTransitionModal({
               </div>
               <div className="space-y-1.5 flex-1 pr-4">
                 <h4 className="font-extrabold text-slate-900 text-xs tracking-wide flex items-center gap-1.5">
-                  直接强行进入下一阶段
+                  直接进入下一阶段
                 </h4>
                 <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
                   绕过 AI 辅助智能审查环节，直接永久解锁当前阶段并跳转推进至 <b>{nextStageName}</b> 规划设计。

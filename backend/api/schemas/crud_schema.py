@@ -18,6 +18,7 @@ class ActorResponse(BaseModel):
     actor_id: int
     name: str
     description: str
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -45,6 +46,7 @@ class FeatureResponse(BaseModel):
     parent_id: int | None = None
     child_ids: list[int] = []
     actor_ids: list[int] = []
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -67,6 +69,7 @@ class ACResponse(BaseModel):
     scenario_id: int
     content: str
     position: int
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -94,6 +97,7 @@ class ScenarioResponse(BaseModel):
     name: str
     content: str
     acceptance_criteria: list[ACResponse] = []
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -146,6 +150,7 @@ class BOResponse(BaseModel):
     name: str
     description: str
     attributes: list[BOAttributeResponse] = []
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -215,6 +220,7 @@ class FlowResponse(BaseModel):
     description: str
     feature_ids: list[int] = []
     steps: list[FlowStepResponse] = []
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True
@@ -241,6 +247,7 @@ class ScopeResponse(BaseModel):
     negative_picture_base64: str | None = None
     kano_category: str | None = None
     kano_category_name: str | None = None
+    confirmation_status: str | None = None
 
     class Config:
         from_attributes = True

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CheckSquare,
+  ChevronDown,
   ExternalLink,
   Eye,
   FileDown,
@@ -12,6 +13,10 @@ import {
   Folder,
   Workflow,
   BookOpen,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
@@ -68,6 +73,7 @@ export function Preview() {
   const selectedObject = useWorkspaceStore(selectSelectedObject);
 
   const activeShadowDraft = useWorkspaceStore((state) => state.activeShadowDraft);
+  const getActiveShadowDraft = useWorkspaceStore((state) => state.getActiveShadowDraft);
   const prepareShadowDraft = useWorkspaceStore((state) => state.prepareShadowDraft);
   const getShadowDraft = useWorkspaceStore((state) => state.getShadowDraft);
   const discardShadowDraft = useWorkspaceStore((state) => state.discardShadowDraft);
@@ -76,6 +82,7 @@ export function Preview() {
 
   const [activeRoleIndex, setActiveRoleIndex] = useState(0);
   const [exportState, setExportState] = useState<'idle' | 'exporting' | 'success'>('idle');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [prototype, setPrototype] = useState<PrototypePreview | null>(null);
   const [prototypeState, setPrototypeState] = useState<PrototypeState>('idle');
   const [prototypeError, setPrototypeError] = useState<string | null>(null);
@@ -85,8 +92,15 @@ export function Preview() {
   const [feedbackText, setFeedbackText] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isDraftInitializing, setIsDraftInitializing] = useState(true);
+  const [hasRequestedShadowPreview, setHasRequestedShadowPreview] = useState(false);
+  const [isPostCommitCompiling, setIsPostCommitCompiling] = useState(false);
+  
+  // Custom states for smart loading modal overlay and animated progress bar
+  const [smoothProgress, setSmoothProgress] = useState(0);
+  const [progressSubtitle, setProgressSubtitle] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Auto trigger shadow draft preparation on load
+  // On page entry, only load existing preview state. Do not auto-trigger shadow convergence.
   useEffect(() => {
     let cancelled = false;
     const projectId = ir?.projectId;
@@ -95,24 +109,60 @@ export function Preview() {
       return;
     }
 
-    setIsDraftInitializing(true);
-    prepareShadowDraft()
-      .then(() => {
-        if (!cancelled) {
-          setIsDraftInitializing(false);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to prepare shadow preview:', err);
-        if (!cancelled) {
-          setIsDraftInitializing(false);
-        }
-      });
+    const isRealWhatComplete = (ir?.actors || []).length > 0 && (ir?.features || []).length > 0;
+    const isRealHowComplete = (ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0;
+    const isRealScopeComplete = (ir?.features || []).some((feature) => feature.scope !== null);
+    const isRealPreviewReady = isRealWhatComplete && isRealHowComplete && isRealScopeComplete;
+
+    if (isRealPreviewReady) {
+      useWorkspaceStore.setState({ activeShadowDraft: null });
+      setIsDraftInitializing(true);
+      workspaceApi.getLatestPrototypePreview(projectId)
+        .then((res) => {
+          if (!cancelled) {
+            if (res && !('detail' in res)) {
+              setPrototype(res);
+              setPrototypeState('ready');
+              setPrototypeError(null);
+            } else {
+              setPrototype(null);
+              setPrototypeState('idle');
+            }
+            setIsDraftInitializing(false);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load latest prototype preview:', err);
+          if (!cancelled) {
+            setPrototype(null);
+            setPrototypeState('idle');
+            setIsDraftInitializing(false);
+          }
+        });
+    } else {
+      // Unconverged: only hydrate existing active shadow draft, do not auto spawn a new one
+      setIsDraftInitializing(true);
+      getActiveShadowDraft()
+        .then((draft) => {
+          if (!cancelled) {
+            if (draft?.status === 'failed') {
+              setHasRequestedShadowPreview(false);
+            }
+            setIsDraftInitializing(false);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to check active shadow draft:', err);
+          if (!cancelled) {
+            setIsDraftInitializing(false);
+          }
+        });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [ir?.projectId]);
+  }, [ir?.projectId, ir?.actors?.length, ir?.features?.length, ir?.flows?.length, ir?.businessObjects?.length]);
 
   // Unified Polling Driver for activeShadowDraft when status is generating
   useEffect(() => {
@@ -143,8 +193,79 @@ export function Preview() {
     };
   }, [activeShadowDraft?.status, activeShadowDraft?.draftId]);
 
+  // Smooth animated progress bar simulation
+  useEffect(() => {
+    const isGenerating = activeShadowDraft?.status === 'generating';
+    const isLoading = prototypeState === 'loading';
+    if (!isGenerating && !isLoading) {
+      if (activeShadowDraft?.status === 'failed' && hasRequestedShadowPreview) {
+        setProgressSubtitle('❌ 影子原型推演失败！已为您捕获关键日志信息。');
+        setIsModalOpen(true); // Keep modal open to show traceback!
+        return;
+      }
+      if (smoothProgress > 0 && smoothProgress < 100) {
+        setSmoothProgress(100);
+        setProgressSubtitle('🪄 影子原型推演成功！正在加载预览...');
+        const t = setTimeout(() => {
+          setIsModalOpen(false);
+          setSmoothProgress(0);
+        }, 800);
+        return () => clearTimeout(t);
+      }
+      setIsModalOpen(false);
+      return;
+    }
+
+    if (!hasRequestedShadowPreview) {
+      setIsModalOpen(false);
+      return;
+    }
+
+    setIsModalOpen(true);
+    
+    // Determine unready gates to initialize start percentage
+    const unreadyGates = activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || [];
+    let startProgress = 0;
+    if (unreadyGates.length > 0) {
+      if (!unreadyGates.includes('what')) {
+        startProgress = 35;
+      }
+      if (!unreadyGates.includes('what') && !unreadyGates.includes('how')) {
+        startProgress = 70;
+      }
+    } else {
+      startProgress = 90;
+    }
+
+    setSmoothProgress(startProgress);
+
+    const interval = setInterval(() => {
+      setSmoothProgress((prev) => {
+        if (prev < 35) {
+          setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计资产（角色树、功能特征树、典型故事场景及 AC）...');
+          return prev + 0.5; // Smoothly goes to 35%
+        } else if (prev < 70) {
+          setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+          return prev + 0.4; // Smoothly goes to 70%
+        } else if (prev < 90) {
+          setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+          return prev + 0.3; // Smoothly goes to 90%
+        } else if (prev < 98) {
+          setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+          return prev + 0.1; // Slows down to 98%
+        } else {
+          return 98; // Wait at 98%
+        }
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, hasRequestedShadowPreview]);
+
   // Set prototype state and values based on activeShadowDraft
   useEffect(() => {
+    if (isPostCommitCompiling) return;
+
     if (!activeShadowDraft) {
       setPrototype(null);
       setPrototypeState('idle');
@@ -174,7 +295,55 @@ export function Preview() {
         setPrototypeState('idle');
       }
     }
-  }, [activeShadowDraft]);
+  }, [activeShadowDraft, isPostCommitCompiling]);
+
+  // Polling driver for real prototype after committing shadow draft
+  useEffect(() => {
+    if (!isPostCommitCompiling || !ir?.projectId) return;
+
+    let cancelled = false;
+    let pollCount = 0;
+    const maxPolls = 20; // Polling up to 60 seconds (20 * 3s)
+
+    const poll = () => {
+      if (cancelled) return;
+      workspaceApi.getLatestPrototypePreview(ir.projectId)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !('detail' in res)) {
+            setPrototype(res);
+            setPrototypeState('ready');
+            setPrototypeError(null);
+            setIsPostCommitCompiling(false);
+          } else {
+            pollCount++;
+            if (pollCount >= maxPolls) {
+              setIsPostCommitCompiling(false);
+              setPrototypeState('idle');
+            } else {
+              setTimeout(poll, 3000);
+            }
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          pollCount++;
+          if (pollCount >= maxPolls) {
+            setIsPostCommitCompiling(false);
+            setPrototypeState('idle');
+          } else {
+            setTimeout(poll, 3000);
+          }
+        });
+    };
+
+    setPrototypeState('loading');
+    poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPostCommitCompiling, ir?.projectId]);
 
   // Dynamic substitution of ir with virtual requirement space during shadow ready status
   const spaceToUse = useMemo(() => {
@@ -382,6 +551,7 @@ export function Preview() {
   const handleRegenerate = async () => {
     if (!activeShadowDraft?.draftId) return;
     try {
+      setHasRequestedShadowPreview(true);
       await regenerateShadowDraft(activeShadowDraft.draftId, feedbackText);
       setFeedbackText('');
       showToast('影子草稿已发起重新推演，请耐心等待。');
@@ -406,9 +576,11 @@ export function Preview() {
     if (!activeShadowDraft?.draftId) return;
     if (!window.confirm('采纳后，影子沙盒中的所有 AI 补充对象（包括角色、叶子功能、场景、验收标准、时序步骤、Kano交付范围等）将一次性事务性写入正式项目中，以完全闭环所有设计。确定采纳吗？')) return;
     try {
+      setIsPostCommitCompiling(true); // Trigger compiling overlay in prototype pane
       await commitShadowDraft(activeShadowDraft.draftId);
       showToast('🎉 影子沙盒已成功合并！所有规约已闭环并生成正式 prototype。');
     } catch (err) {
+      setIsPostCommitCompiling(false);
       if (err instanceof Error && err.message.includes('shadow_draft_conflict')) {
         showToast('❌ 合并冲突：在影子草稿推演期间，该项目的真实规约已被其他修改更改，请刷新后重新推演。');
       } else {
@@ -422,6 +594,11 @@ export function Preview() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const shouldShowReadinessGate =
+    !isPreviewReady &&
+    !hasRequestedShadowPreview &&
+    (activeShadowDraft?.source !== 'shadow_project' || activeShadowDraft?.status === 'failed');
+
   if (isDraftInitializing) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[85vh] w-full">
@@ -433,7 +610,7 @@ export function Preview() {
     );
   }
 
-  if (!isPreviewReady && activeShadowDraft?.source !== 'shadow_project') {
+  if (shouldShowReadinessGate) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[85vh] w-full">
         <div className="max-w-2xl w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl space-y-8 animate-in fade-in duration-300">
@@ -467,6 +644,28 @@ export function Preview() {
               onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/scope'))}
             />
           </div>
+
+          <div className="border-t border-slate-100 pt-6 flex flex-col items-center justify-center">
+            <button
+              onClick={() => {
+                setHasRequestedShadowPreview(true);
+                setIsDraftInitializing(true);
+                prepareShadowDraft()
+                  .then(() => {
+                    setIsDraftInitializing(false);
+                  })
+                  .catch((err) => {
+                    console.error('Failed to prepare shadow preview:', err);
+                    setIsDraftInitializing(false);
+                    showToast('智能推演启动失败，请检查网络或后端服务。');
+                  });
+              }}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 active:bg-slate-950"
+            >
+              <Sparkles className="h-4 w-4 shrink-0 text-white/85" />
+              <span>智能推演并预览影子原型</span>
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -496,17 +695,57 @@ export function Preview() {
                 一键在线审查在需求阶段推演生成的交互式角色原型，或导出标准需求规格书与全套需求工程资产。
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <ExportButton label="导出 Markdown 需求规格书" onClick={() => void handleExport('markdown')} disabled={exportState === 'exporting'} />
-              <ExportButton label="导出标准 JSON 资产" onClick={() => void handleExport('json')} disabled={exportState === 'exporting'} />
+            <div className="relative flex items-center">
               <button
-                onClick={() => void exportAuditLog()}
+                type="button"
+                onClick={() => setIsExportMenuOpen((prev) => !prev)}
                 disabled={exportState === 'exporting'}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition-colors bg-white flex items-center gap-1.5 shadow-sm disabled:opacity-60 font-semibold"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
               >
-                <CheckSquare className="w-3.5 h-3.5 text-sky-500" />
-                导出操作审计日志
+                <FileDown className="h-3.5 w-3.5 text-indigo-500" />
+                导出资产
+                <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
+              {isExportMenuOpen && (
+                <div className="absolute right-0 top-[calc(100%+10px)] z-20 min-w-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      void handleExport('markdown');
+                    }}
+                    disabled={exportState === 'exporting'}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <FileDown className="h-3.5 w-3.5 text-indigo-500" />
+                    导出 Markdown 需求规格书
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      void handleExport('json');
+                    }}
+                    disabled={exportState === 'exporting'}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <FileDown className="h-3.5 w-3.5 text-indigo-500" />
+                    导出标准 JSON 资产
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      void exportAuditLog();
+                    }}
+                    disabled={exportState === 'exporting'}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5 text-sky-500" />
+                    导出操作审计日志
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
@@ -658,25 +897,30 @@ export function Preview() {
                       <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-slate-50 space-y-4">
                         <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-650 animate-spin" />
                         <h4 className="text-xs font-black text-slate-800 tracking-wide select-none">
-                          <span className="flex items-center gap-1.5 justify-center"><Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" /> AI 正在推演影子沙盒与界面原型...</span>
+                          <span className="flex items-center gap-1.5 justify-center">
+                            <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" /> 
+                            {isPostCommitCompiling 
+                              ? '🎉 采纳合并成功！AI 正在后台组装正式高保真原型...' 
+                              : 'AI 正在推演影子沙盒与界面原型...'}
+                          </span>
                         </h4>
                         <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">
-                          检测到部分规约尚未收敛（有未满足的What/How/Scope阶段硬规则）。
-                          系统正在影子收敛推演算法下，自动为您编排补充结构缺漏并生成全套高保真可运行原型，请稍候。
+                          {isPostCommitCompiling
+                            ? '正在将影子沙盒的补充资产完整闭环并转换为您的正式高保真网页原型。该过程大约需要 10 至 30 秒，请稍候，系统将自动加载...'
+                            : '检测到部分规约尚未收敛（有未满足的What/How/Scope阶段硬规则）。系统正在影子收敛推演算法下，自动为您编排补充结构缺漏并生成全套高保真可运行原型，请稍候。'}
                         </p>
                       </div>
                     ) : prototypeState === 'error' ? (
                       <PrototypePlaceholder label={prototypeError || '原型推演拼装失败，请保证特征树与流程完整性。'} tone="error" />
                     ) : prototype ? (
-                      <iframe
+                       <iframe
                         key={prototype.shadowDraftId || prototype.prototypeId}
                         title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} prototype`}
                         srcDoc={prototypeSrcDoc}
-                        sandbox="allow-scripts"
                         className="w-full h-full border-0 bg-white"
                       />
                     ) : (
-                      <PrototypePlaceholder label="当前项目还没有原型。影子草稿加载中..." />
+                      <PrototypePlaceholder label="当前项目还没有原型。请点击右上角【智能生成原型】来生成。" />
                     )}
                   </div>
                 </div>
@@ -795,122 +1039,269 @@ export function Preview() {
           )}
 
           {/* End-to-End Business Flow Chronological Timelines */}
-          <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative w-full">
-            <div className="mb-6 border-b border-slate-100 pb-4">
-              <h3 className="text-base font-extrabold text-slate-900">业务流时序图</h3>
-            </div>
-            
-            {/* Flow Switcher Tabs */}
-            <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-100 pb-4">
-              {flows.map((flow) => (
-                <button
-                  key={flow.flowId}
-                  type="button"
-                  onClick={() => setSelectedFlowId(flow.flowId)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                    selectedFlowId === flow.flowId 
-                      ? 'bg-slate-900 text-white shadow-indigo-100' 
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
-                  }`}
-                >
-                  🌊 {flow.flowName}
-                </button>
-              ))}
-            </div>
-
-            {/* Switchable flow chronological view */}
-            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl flex flex-col min-h-[360px] p-6 shadow-inner">
-              <div className="p-4 bg-white border border-slate-200 rounded-t-2xl flex items-center justify-between shrink-0 mb-6 shadow-sm">
-                <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                  正在审阅业务流时序：{activeFlow?.flowName}
-                </h4>
+          {flows.length > 0 && (
+            <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative w-full">
+              <div className="mb-6 border-b border-slate-100 pb-4">
+                <h3 className="text-base font-extrabold text-slate-900">业务流时序图</h3>
               </div>
               
-              <div className="flex-1 w-full max-w-3xl mx-auto">
-                {activeFlowSteps.length === 0 ? (
-                  <div className="text-center py-20 text-xs text-slate-400 italic">
-                    当前业务流程暂无任何步骤定义。
-                  </div>
-                ) : (
-                  <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 py-2">
-                    {activeFlowSteps.map((step, idx) => {
-                      const stepDetail = buildStepDetail(spaceToUse as any, step.stepId);
-                      const performerId = (step.actorIds || [])[0];
-                      const performer = (spaceToUse?.actors || []).find((a) => a.actorId === performerId);
-                      const actorName = performer ? performer.actorName : '系统自动';
-
-                      const nextSteps = (step.nextStepIds || [])
-                        .map((nid) => activeFlowSteps.find((s) => s.stepId === nid)?.stepName)
-                        .filter(Boolean) as string[];
-
-                      const stepSlots: any[] = [];
-                      if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionJobId === step.stepId) {
-                        stepSlots.push({
-                          id: spaceToUse.perceptionSlot.perceptionSlotId.toString(),
-                          title: spaceToUse.perceptionSlot.perceptionKind,
-                          choiceCount: 0,
-                          status: 'empty'
-                        });
-                      }
-
-                      const isActive = selectedObject?.id === step.stepId.toString() || (highlightTarget !== null && highlightTarget.toString() === step.stepId.toString());
-
-                      return (
-                        <div key={step.stepId} className="relative">
-                          {/* Timeline dot */}
-                          <div className={`absolute -left-[44px] top-4 w-7 h-7 rounded-full border-4 flex items-center justify-center text-[10px] font-black transition-all ${
-                            isActive
-                              ? 'bg-indigo-600 border-indigo-200 text-white shadow-md shadow-indigo-600/20'
-                              : 'bg-white border-indigo-100 text-slate-400'
-                          }`}>
-                            {idx + 1}
-                          </div>
-
-                          <FlowStepCard
-                            name={step.stepName}
-                            type={step.stepType === 'actorAction' ? '用户动作' : step.stepType === 'systemAction' ? '系统动作' : '条件分支'}
-                            actor={actorName}
-                            status={step.status || 'confirmed'}
-                            inputs={stepDetail.inputs}
-                            outputs={stepDetail.outputs}
-                            rules={stepDetail.rules}
-                            stateChanges={stepDetail.stateChanges}
-                            relatedPages={stepDetail.relatedPages}
-                            relatedIssueCount={stepDetail.relatedIssueIds.length}
-                            relatedChoiceCount={stepDetail.relatedChoiceIds.length}
-                            nextSteps={nextSteps.length > 0 ? nextSteps : undefined}
-                            exceptionSteps={undefined}
-                            slots={stepSlots}
-                            active={isActive}
-                            onClick={() => {
-                              setSelectedObject({
-                                ...step,
-                                id: step.stepId.toString(),
-                                title: step.stepName,
-                                description: step.stepDescription,
-                                status: step.status || 'confirmed',
-                                kind: 'flow_step'
-                              });
-                              setHighlightTarget(step.stepId.toString());
-                            }}
-                            onSlotClick={(slotId) => {
-                              if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionSlotId.toString() === slotId) {
-                                setSelectedObject(spaceToUse.perceptionSlot);
-                              }
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              {/* Flow Switcher Tabs */}
+              <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-100 pb-4">
+                {flows.map((flow) => (
+                  <button
+                    key={flow.flowId}
+                    type="button"
+                    onClick={() => setSelectedFlowId(flow.flowId)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                      selectedFlowId === flow.flowId 
+                        ? 'bg-slate-900 text-white shadow-indigo-100' 
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
+                    }`}
+                  >
+                    🌊 {flow.flowName}
+                  </button>
+                ))}
               </div>
-            </div>
-          </section>
+
+              {/* Switchable flow chronological view */}
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl flex flex-col min-h-[360px] p-6 shadow-inner">
+                <div className="p-4 bg-white border border-slate-200 rounded-t-2xl flex items-center justify-between shrink-0 mb-6 shadow-sm">
+                  <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    正在审阅业务流时序：{activeFlow?.flowName}
+                  </h4>
+                </div>
+                
+                <div className="flex-1 w-full max-w-3xl mx-auto">
+                  {activeFlowSteps.length === 0 ? (
+                    <div className="text-center py-20 text-xs text-slate-400 italic">
+                      当前业务流程暂无任何步骤定义。
+                    </div>
+                  ) : (
+                    <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 py-2">
+                      {activeFlowSteps.map((step, idx) => {
+                        const stepDetail = buildStepDetail(spaceToUse as any, step.stepId);
+                        const performerId = (step.actorIds || [])[0];
+                        const performer = (spaceToUse?.actors || []).find((a) => a.actorId === performerId);
+                        const actorName = performer ? performer.actorName : '系统自动';
+
+                        const nextSteps = (step.nextStepIds || [])
+                          .map((nid) => activeFlowSteps.find((s) => s.stepId === nid)?.stepName)
+                          .filter(Boolean) as string[];
+
+                        const stepSlots: any[] = [];
+                        if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionJobId === step.stepId) {
+                          stepSlots.push({
+                            id: spaceToUse.perceptionSlot.perceptionSlotId.toString(),
+                            title: spaceToUse.perceptionSlot.perceptionKind,
+                            choiceCount: 0,
+                            status: 'empty'
+                          });
+                        }
+
+                        const isActive = selectedObject?.id === step.stepId.toString() || (highlightTarget !== null && highlightTarget.toString() === step.stepId.toString());
+
+                        return (
+                          <div key={step.stepId} className="relative">
+                            {/* Timeline dot */}
+                            <div className={`absolute -left-[44px] top-4 w-7 h-7 rounded-full border-4 flex items-center justify-center text-[10px] font-black transition-all ${
+                              isActive
+                                ? 'bg-indigo-600 border-indigo-200 text-white shadow-md shadow-indigo-600/20'
+                                : 'bg-white border-indigo-100 text-slate-400'
+                            }`}>
+                              {idx + 1}
+                            </div>
+
+                            <FlowStepCard
+                              name={step.stepName}
+                              type={step.stepType === 'actorAction' ? '用户动作' : step.stepType === 'systemAction' ? '系统动作' : '条件分支'}
+                              actor={actorName}
+                              status={step.status || 'confirmed'}
+                              inputs={stepDetail.inputs}
+                              outputs={stepDetail.outputs}
+                              rules={stepDetail.rules}
+                              stateChanges={stepDetail.stateChanges}
+                              relatedPages={stepDetail.relatedPages}
+                              relatedIssueCount={stepDetail.relatedIssueIds.length}
+                              relatedChoiceCount={stepDetail.relatedChoiceIds.length}
+                              nextSteps={nextSteps.length > 0 ? nextSteps : undefined}
+                              exceptionSteps={undefined}
+                              slots={stepSlots}
+                              active={isActive}
+                              onClick={() => {
+                                setSelectedObject({
+                                  ...step,
+                                  id: step.stepId.toString(),
+                                  title: step.stepName,
+                                  description: step.stepDescription,
+                                  status: step.status || 'confirmed',
+                                  kind: 'flow_step'
+                                });
+                                setHighlightTarget(step.stepId.toString());
+                              }}
+                              onSlotClick={(slotId) => {
+                                if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionSlotId.toString() === slotId) {
+                                  setSelectedObject(spaceToUse.perceptionSlot);
+                                }
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
         </div>
       </div>
+
+      {/* Smart Loading Modal Overlay with Animated Progress Bar */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-[520px] max-w-full mx-4 bg-white/95 border border-slate-200/80 rounded-3xl p-8 shadow-2xl flex flex-col items-center select-none relative animate-in zoom-in-95 duration-300">
+            
+            {/* Header Glowing Sparkle */}
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mb-5 shadow-inner">
+              {activeShadowDraft?.status === 'failed' ? (
+                <XCircle className="w-8 h-8 text-rose-500 animate-bounce" />
+              ) : smoothProgress === 100 ? (
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 scale-110 transition-transform duration-500" />
+              ) : (
+                <Sparkles className="w-8 h-8 text-indigo-600 animate-pulse" />
+              )}
+            </div>
+
+            {/* Title */}
+            <h3 className="text-sm font-black text-slate-800 tracking-wide text-center leading-none mb-2">
+              {activeShadowDraft?.status === 'failed' ? (
+                <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> 智能推演异常断裂</span>
+              ) : smoothProgress === 100 ? (
+                <span className="text-emerald-600 font-extrabold">🪄 影子原型推演成功</span>
+              ) : (
+                <span className="text-slate-800">🪄 AI 正在智能推演影子沙盒...</span>
+              )}
+            </h3>
+
+            {/* Subtitle */}
+            <p className={`text-xs text-center max-w-sm px-4 leading-relaxed font-semibold transition-all duration-300 min-h-[36px] ${
+              activeShadowDraft?.status === 'failed' ? 'text-rose-500' : 'text-slate-500'
+            }`}>
+              {progressSubtitle}
+            </p>
+
+            {/* Progress Bar Container */}
+            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-8 mt-4 border border-slate-200/50">
+              <div 
+                className={`h-full transition-all duration-300 ease-out ${
+                  activeShadowDraft?.status === 'failed' 
+                    ? 'bg-rose-500' 
+                    : smoothProgress === 100 
+                      ? 'bg-emerald-500' 
+                      : 'bg-indigo-600'
+                }`}
+                style={{ width: `${smoothProgress}%` }}
+              />
+            </div>
+
+            {/* Sub-steps Checklist */}
+            <div className="w-full space-y-3 bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6">
+              {[
+                { label: '步骤一：What 阶段智能推演（角色与功能补齐）', checkKey: 'what', threshold: 35 },
+                { label: '步骤二：How 阶段智能推演（流程图与数据实体）', checkKey: 'how', threshold: 70 },
+                { label: '步骤三：Scope 阶段智能评估（Kano 商业划分）', checkKey: 'scope', threshold: 90 },
+                { label: '步骤四：影子沙盒装配与高保真界面原型生成', checkKey: 'all', threshold: 100 }
+              ].map((step, idx) => {
+                const isFailed = activeShadowDraft?.status === 'failed';
+                const isStepFinished = 
+                  step.checkKey === 'all' 
+                    ? (smoothProgress === 100)
+                    : (!(activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || []).includes(step.checkKey) && smoothProgress >= step.threshold);
+                
+                const isStepActive = 
+                  !isFailed && !isStepFinished && (
+                    idx === 0 
+                      ? (smoothProgress < 35)
+                      : idx === 1
+                        ? (smoothProgress >= 35 && smoothProgress < 70)
+                        : idx === 2
+                          ? (smoothProgress >= 70 && smoothProgress < 90)
+                          : (smoothProgress >= 90 && smoothProgress < 100)
+                  );
+
+                const isStepFailed = isFailed && isStepActive;
+
+                return (
+                  <div key={idx} className="flex items-center justify-between text-[11px] font-bold">
+                    <span className={`transition-colors ${
+                      isStepFinished ? 'text-slate-400 font-medium' : isStepActive ? 'text-indigo-600' : 'text-slate-500'
+                    }`}>
+                      {step.label}
+                    </span>
+                    <div className="flex items-center">
+                      {isStepFailed ? (
+                        <XCircle className="w-4 h-4 text-rose-500 animate-pulse" />
+                      ) : isStepFinished ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-50" />
+                      ) : isStepActive ? (
+                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+                      ) : (
+                        <div className="w-3.5 h-3.5 rounded-full border border-slate-300 bg-white" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Error message collapsible container (collapsible terminal box) */}
+            {activeShadowDraft?.status === 'failed' && (
+              <div className="w-full flex flex-col mb-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md">
+                <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" /> 后端感知推演异常日志 Traceback
+                  </span>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(activeShadowDraft.errorMessage || '');
+                      showToast('日志已复制到剪切板。');
+                    }}
+                    className="text-[9px] bg-slate-800 border border-slate-700 text-slate-300 font-bold px-2 py-0.5 rounded hover:bg-slate-700 hover:text-white transition-colors"
+                  >
+                    复制日志
+                  </button>
+                </div>
+                <div className="p-4 max-h-[160px] overflow-y-auto font-mono text-[10px] text-rose-400/90 leading-relaxed scrollbar-thin select-text text-left">
+                  {activeShadowDraft.errorMessage || '未知异常，请检查后端感知层PerceptionJob日志。'}
+                </div>
+              </div>
+            )}
+
+            {/* Action Button (Dismiss on fail) */}
+            {activeShadowDraft?.status === 'failed' && (
+              <button
+                onClick={() => {
+                  discardShadowDraft(activeShadowDraft.draftId)
+                    .then(() => {
+                      setIsModalOpen(false);
+                      setSmoothProgress(0);
+                    })
+                    .catch(() => {
+                      setIsModalOpen(false);
+                      setSmoothProgress(0);
+                    });
+                }}
+                className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black transition-all active:scale-[0.98] shadow-md flex items-center justify-center gap-1.5"
+              >
+                关闭并重置影子方案
+              </button>
+            )}
+
+          </div>
+        </div>
+      )}
 
       <RightObjectPanel />
     </div>
@@ -960,33 +1351,12 @@ function ReadinessCard({
   );
 }
 
-function ExportButton({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition-colors bg-white flex items-center gap-1.5 shadow-sm disabled:opacity-60 font-semibold"
-    >
-      <FileDown className="w-3.5 h-3.5 text-indigo-500" />
-      {label}
-    </button>
-  );
-}
-
 function composePrototypeSrcDoc(prototype: PrototypePreview | PrototypePage) {
   const css = prototype.css ? `<style>${prototype.css}</style>` : '';
   const javascript = prototype.javascript
     ? `<script>${prototype.javascript.replace(/<\/script/gi, '<\\/script')}</script>`
     : '';
-  let html = prototype.html || '<!doctype html><html><head></head><body></body></html>';
+  let html = sanitizePrototypeHtml(prototype.html || '<!doctype html><html><head></head><body></body></html>');
 
   if (css) {
     html = html.includes('</head>')
@@ -1001,6 +1371,12 @@ function composePrototypeSrcDoc(prototype: PrototypePreview | PrototypePage) {
   }
 
   return html;
+}
+
+function sanitizePrototypeHtml(html: string) {
+  return html
+    .replace(/<script[^>]+src=["'](?:\.\/)?script\.js["'][^>]*>\s*<\/script>/gi, '')
+    .replace(/<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?:\.\/)?style\.css["'][^>]*>/gi, '');
 }
 
 function downloadFile(filename: string, content: string, type: string) {

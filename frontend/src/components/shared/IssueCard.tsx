@@ -18,6 +18,9 @@ const severityText: Record<Issue['severity'], string> = {
 
 export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSlot, onIgnore }) => {
   const ir = useWorkspaceStore((state) => state.ir);
+  const relatedNodeTitles = issue.relatedNodeIds
+    .map((nodeId) => ir?.nodes[nodeId]?.title)
+    .filter((title): title is string => Boolean(title));
 
   return (
     <div
@@ -48,14 +51,14 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
         </div>
         <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">{issue.description}</p>
 
-        {issue.relatedNodeIds.length > 0 && (
+        {relatedNodeTitles.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {issue.relatedNodeIds.map((nodeId) => (
+            {relatedNodeTitles.map((title) => (
               <span
-                key={nodeId}
+                key={title}
                 className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 font-medium"
               >
-                {ir?.nodes[nodeId]?.title || nodeId}
+                {title}
               </span>
             ))}
           </div>

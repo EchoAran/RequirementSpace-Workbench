@@ -4,6 +4,9 @@ import {
   ProjectCreationDraft,
   ProjectCreationConfirmResponse,
   ProjectCreationDiscardResponse,
+  ProjectCreationChoiceGroup,
+  ProjectCreationChoiceItem,
+  ProjectCreationChoiceGroupDeferResponse,
 } from '@/core/schema';
 import { http } from './http';
 
@@ -28,6 +31,33 @@ export const workspaceApi = {
   },
   unlockStage: async (projectId: number, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
+  },
+  /** 更新任意节点的确认状态（ai_assumption / needs_confirmation / confirmed） */
+  updateNodeConfirmationStatus: async (
+    projectId: number,
+    nodeKind: string,
+    nodeId: number,
+    confirmationStatus: string,
+  ): Promise<void> => {
+    await http.patch(`/projects/${projectId}/node-status`, {
+      node_kind: nodeKind,
+      node_id: nodeId,
+      confirmation_status: confirmationStatus,
+    });
+  },
+  /** 批量更新一组节点的确认状态 */
+  batchUpdateNodeConfirmationStatus: async (
+    projectId: number,
+    nodes: Array<{ node_kind: string; node_id: number; confirmation_status?: string }>,
+    confirmationStatus: string,
+  ): Promise<any> => {
+    return http.patch<any>(`/projects/${projectId}/node-status/batch`, {
+      nodes: nodes.map((node) => ({
+        ...node,
+        confirmation_status: node.confirmation_status || confirmationStatus,
+      })),
+      confirmation_status: confirmationStatus,
+    });
   },
   createBlankProject: async (payload: { user_requirements: string; project_name?: string; project_description?: string }): Promise<ProjectCreationConfirmResponse> => {
     return http.post<ProjectCreationConfirmResponse>('/blank_projects', payload);
@@ -279,20 +309,48 @@ export const workspaceApi = {
       user_feedback: feedback,
     });
   },
+  // Phase 3: Generation choice group (actor, scenario, etc.)
+  createGenerationChoiceGroup: async (payload: {
+    project_id: number;
+    generation_type: string;
+    target?: any;
+    candidate_count?: number;
+    user_feedback?: string | null;
+  }): Promise<any> => {
+    return http.post<any>('/generation_choice_groups', payload);
+  },
+
+  // Phase 3: Discard a project-level choice group
+  discardChoiceGroup: async (projectId: number, groupId: number): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/discard`);
+  },
+
   listChoiceGroups: async (projectId: number, status?: string): Promise<any[]> => {
     return http.get<any[]>(`/projects/${projectId}/choice_groups`, { status });
   },
-  acceptChoice: async (projectId: number, choiceId: number): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`);
+  acceptChoice: async (projectId: number, choiceId: number, force = false): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`, { force });
   },
   rejectChoice: async (projectId: number, choiceId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`);
+  },
+  // Phase 5b: Regenerate choice group or single choice
+  regenerateChoiceGroup: async (projectId: number, groupId: number, feedback?: string): Promise<any> => {
+    const query = feedback ? `?feedback=${encodeURIComponent(feedback)}` : '';
+    return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/regenerate${query}`);
+  },
+  regenerateChoice: async (projectId: number, choiceId: number, feedback?: string): Promise<any> => {
+    const query = feedback ? `?feedback=${encodeURIComponent(feedback)}` : '';
+    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/regenerate${query}`);
   },
   skipKano: async (projectId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/scope/skip_kano`);
   },
   resetKano: async (projectId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/scope/reset_kano`);
+  },
+  getActiveShadowDraft: async (projectId: number): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/active`);
   },
   prepareShadowDraft: async (projectId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/preview-shadow-drafts`);
@@ -311,6 +369,63 @@ export const workspaceApi = {
       user_feedback: feedback,
     });
   },
+  // AI Conversational Add Session (Phase 3)
+  createAIAddSession: async (payload: {
+    project_id: number;
+    target_type: string;
+    anchor?: Record<string, any>;
+  }): Promise<any> => {
+    return http.post<any>('/ai_add_sessions', payload);
+  },
+  getAIAddSession: async (sessionId: number): Promise<any> => {
+    return http.get<any>(`/ai_add_sessions/${sessionId}`);
+  },
+  getAIAddSessionMessages: async (sessionId: number): Promise<any> => {
+    return http.get<any>(`/ai_add_sessions/${sessionId}/messages`);
+  },
+  sendAIAddSessionMessage: async (sessionId: number, content: string): Promise<any> => {
+    return http.post<any>(`/ai_add_sessions/${sessionId}/messages`, { content });
+  },
+  generateAIAddObjectDraft: async (sessionId: number): Promise<any> => {
+    return http.post<any>(`/ai_add_sessions/${sessionId}/generate_draft`);
+  },
+  confirmAIAddObjectDraft: async (draftId: string): Promise<any> => {
+    return http.post<any>(`/ai_object_generation_drafts/${draftId}/confirm`);
+  },
+  discardAIAddObjectDraft: async (draftId: string): Promise<any> => {
+    return http.delete<any>(`/ai_object_generation_drafts/${draftId}`);
+  },
+
+  // AI Edit session helper
+  createAIEditSession: async (projectId: number, targetId: number, targetType: string): Promise<any> => {
+    return http.post<any>('/ai_add_sessions', {
+      project_id: projectId,
+      target_type: `edit_${targetType}`,
+      anchor: { target_id: targetId, target_type: targetType },
+    });
+  },
+
+  // Project Interview
+  interviewChat: async (messages: { role: string; content: string }[]): Promise<any> => {
+    return http.post<any>('/project_interview/chat', { messages });
+  },
+  completeInterview: async (name: string, description: string, userRequirements: string): Promise<any> => {
+    return http.post<any>('/project_interview/complete', {
+      name,
+      description,
+      user_requirements: userRequirements,
+    });
+  },
+
+  // AI Explain (Q&A)
+  explainAI: async (projectId: number, scope: any, question: string): Promise<any> => {
+    return http.post<any>('/ai/explain', {
+      project_id: projectId,
+      scope,
+      question,
+    });
+  },
+
   // Issue Repair Drafts (P2)
   confirmRepairDraft: async (projectId, draftId) => {
     return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/confirm`);
@@ -320,5 +435,42 @@ export const workspaceApi = {
   },
   regenerateRepairDraft: async (projectId, draftId) => {
     return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/regenerate`);
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 2: Project Creation Choice Group API
+  // ═══════════════════════════════════════════════════════════════
+  createProjectCreationChoiceGroup: async (payload: {
+    user_requirements: string;
+    candidate_count?: number;
+    user_feedback?: string;
+  }): Promise<ProjectCreationChoiceGroup> => {
+    return http.post<ProjectCreationChoiceGroup>('/project_creation_choice_groups', payload);
+  },
+
+  getProjectCreationChoiceGroup: async (groupId: string): Promise<ProjectCreationChoiceGroup> => {
+    return http.get<ProjectCreationChoiceGroup>(`/project_creation_choice_groups/${groupId}`);
+  },
+
+  listOpenProjectCreationChoiceGroups: async (): Promise<ProjectCreationChoiceGroup[]> => {
+    return http.get<ProjectCreationChoiceGroup[]>('/project_creation_choice_groups', { status: 'open' });
+  },
+
+  acceptProjectCreationChoice: async (groupId: string, choiceId: string): Promise<ProjectCreationConfirmResponse> => {
+    return http.post<ProjectCreationConfirmResponse>(
+      `/project_creation_choice_groups/${groupId}/choices/${choiceId}/accept`
+    );
+  },
+
+  discardProjectCreationChoiceGroup: async (groupId: string): Promise<{ message: string; group_id: string }> => {
+    return http.post<{ message: string; group_id: string }>(
+      `/project_creation_choice_groups/${groupId}/discard`
+    );
+  },
+
+  deferProjectCreationChoiceGroup: async (groupId: string): Promise<ProjectCreationChoiceGroupDeferResponse> => {
+    return http.post<ProjectCreationChoiceGroupDeferResponse>(
+      `/project_creation_choice_groups/${groupId}/defer`
+    );
   },
 };

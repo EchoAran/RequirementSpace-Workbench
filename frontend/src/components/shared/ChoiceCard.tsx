@@ -6,19 +6,45 @@ import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 export interface ChoiceCardProps {
   choice: Choice;
   onAccept: (choice: Choice) => void;
+  onPreview?: (choice: Choice) => void;
   onRewrite: (choice: Choice) => void;
   onReject: (choice: Choice) => void;
 }
 
-export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onRewrite, onReject }) => {
+export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPreview, onRewrite, onReject }) => {
   const ir = useWorkspaceStore((state) => state.ir);
 
   const nodeCount = choice.patch?.addNodes?.length || 0;
   const linkCount = choice.patch?.addLinks?.length || 0;
   const impact = choice.impactPreview;
+  const isPreviewEnabled = typeof onPreview === 'function';
+
+  const handlePreview = () => {
+    if (onPreview) {
+      onPreview(choice);
+    }
+  };
+
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isPreviewEnabled) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handlePreview();
+    }
+  };
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 relative overflow-hidden flex flex-col justify-between h-full hover:shadow-md transition-shadow">
+    <div
+      role={isPreviewEnabled ? 'button' : undefined}
+      tabIndex={isPreviewEnabled ? 0 : undefined}
+      onClick={isPreviewEnabled ? handlePreview : undefined}
+      onKeyDown={handleCardKeyDown}
+      className={`bg-blue-50 border border-blue-200 rounded-2xl p-4 relative overflow-hidden flex flex-col justify-between h-full transition-[border-color,box-shadow] ${
+        isPreviewEnabled
+          ? 'cursor-pointer hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2'
+          : 'hover:shadow-md'
+      }`}
+    >
       <div className="absolute top-0 right-0 px-2 py-1 bg-blue-500 text-white text-[10px] font-bold tracking-wider">
         Choice
       </div>
@@ -100,19 +126,28 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onRewr
 
       <div className="flex items-center gap-2 pt-4 mt-auto">
         <button
-          onClick={() => onAccept(choice)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAccept(choice);
+          }}
           className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
         >
-          查看 / 采纳
+          采纳
         </button>
         <button
-          onClick={() => onRewrite(choice)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRewrite(choice);
+          }}
           className="px-4 py-1.5 bg-white text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-lg border border-blue-200 transition-colors shadow-sm"
         >
           改写
         </button>
         <button
-          onClick={() => onReject(choice)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReject(choice);
+          }}
           className="px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 text-xs font-medium rounded-lg transition-colors"
         >
           拒绝

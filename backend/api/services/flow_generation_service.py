@@ -541,6 +541,7 @@ class FlowGenerationService:
                 description=item[
                     "business_object_description"
                 ],
+                confirmation_status='ai_assumption',
             )
             session.add(model)
             business_object_number_to_model[
@@ -598,6 +599,7 @@ class FlowGenerationService:
                 project_id=project_id,
                 name=flow["flow_name"],
                 description=flow["flow_description"],
+                confirmation_status='ai_assumption',
             )
             session.add(flow_model)
             await session.flush()

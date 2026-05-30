@@ -28,6 +28,12 @@ import {
 import { workspaceApi } from '@/lib/api';
 import { buildPageHealth, detectIssues, detectStageIssues } from '@/core/selectors';
 
+const getConfirmationStatus = (value: unknown): NodeStatus => {
+  return value === 'confirmed' || value === 'needs_confirmation' || value === 'ai_assumption'
+    ? value
+    : 'ai_assumption';
+};
+
 
 export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview';
 
@@ -78,19 +84,33 @@ const mapBackendIssueToCompatible = (issue: any): Issue => {
 const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
   return {
     id: cg.id.toString(),
-    slotId: cg.slotId ? cg.slotId.toString() : '',
+    slotId: (cg.slotId ?? cg.slot_id) ? String(cg.slotId ?? cg.slot_id) : '',
     status: cg.status as any,
-    selectionMode: cg.selectionMode as any,
-    sourceType: cg.sourceType,
-    issueCode: cg.issueCode,
-    issueId: cg.issueId,
+    selectionMode: (cg.selectionMode ?? cg.selection_mode) as any,
+    sourceType: cg.sourceType ?? cg.source_type,
+    issueCode: cg.issueCode ?? cg.issue_code,
+    issueId: cg.issueId ?? cg.issue_id,
+    generationType: cg.generationType ?? cg.generation_type,
+    target: cg.target,
+    candidateCount: cg.candidateCount ?? cg.candidate_count,
+    successCount: cg.successCount ?? cg.success_count,
+    failureCount: cg.failureCount ?? cg.failure_count,
+    statusDetail: cg.statusDetail ?? cg.status_detail,
     choices: (cg.choices || []).map((c: any) => ({
       id: c.id.toString(),
+      choiceGroupId: String(c.choiceGroupId ?? c.choice_group_id ?? cg.id),
       title: c.title,
       rationale: c.rationale,
       status: c.status as any,
       patch: c.patch,
-      impactPreview: c.impactPreview
+      impactPreview: c.impactPreview ?? c.impact_preview,
+      payload: c.payload,
+      draftType: c.draftType ?? c.draft_type,
+      applyMode: c.applyMode ?? c.apply_mode,
+      preview: c.preview,
+      comparisonSummary: c.comparisonSummary ?? c.comparison_summary,
+      score: c.score,
+      error: c.error,
     }))
   };
 };
@@ -193,7 +213,7 @@ export const normalizeRequirementSpace = (
       id,
       title: a.actorName,
       description: a.actorDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((a as any).confirmationStatus),
       scopeStatus: 'in_scope'
     };
   });
@@ -206,7 +226,7 @@ export const normalizeRequirementSpace = (
       id,
       title: f.featureName,
       description: f.featureDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((f as any).confirmationStatus),
       scopeStatus: f.scope?.scopeStatus || 'in_scope'
     };
     
@@ -218,7 +238,7 @@ export const normalizeRequirementSpace = (
         id: sid,
         title: s.scenarioName,
         description: s.scenarioContent,
-        status: 'confirmed',
+        status: getConfirmationStatus((s as any).confirmationStatus),
         scopeStatus: 'in_scope'
       };
       
@@ -230,7 +250,7 @@ export const normalizeRequirementSpace = (
           id: acid,
           title: '验收标准',
           description: ac.criterionContent,
-          status: 'confirmed',
+          status: getConfirmationStatus((ac as any).confirmationStatus),
           scopeStatus: 'in_scope'
         };
       });
@@ -245,7 +265,7 @@ export const normalizeRequirementSpace = (
       id,
       title: b.businessObjectName,
       description: b.businessObjectDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((b as any).confirmationStatus),
       scopeStatus: 'in_scope'
     };
     
@@ -271,7 +291,7 @@ export const normalizeRequirementSpace = (
       id,
       title: fl.flowName,
       description: fl.flowDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((fl as any).confirmationStatus),
       scopeStatus: 'in_scope'
     };
     
@@ -377,7 +397,7 @@ export const normalizeRequirementSpace = (
     id: a.actorId.toString(),
     title: a.actorName,
     description: a.actorDescription,
-    status: 'confirmed',
+    status: getConfirmationStatus((a as any).confirmationStatus),
     scopeStatus: 'in_scope'
   }));
 
@@ -441,6 +461,95 @@ const isSlotFillingDraft = (draft: any | null | undefined) => (
   draft?.perceptionJobId !== undefined || draft?.perception_job_id !== undefined
 );
 
+const generationTypeLabelMap: Record<string, string> = {
+  actor: '参与者',
+  feature: '功能树',
+  flow: '流程与对象',
+  scenario: '场景',
+  acceptance_criteria: '验收标准',
+  scope: '范围分析',
+  project_creation: '项目草稿',
+};
+
+const getGenerationTypeLabel = (generationType?: string) => (
+  generationTypeLabelMap[generationType || ''] || generationType || '候选方案'
+);
+
+const normalizeConflictTarget = (target?: any) => {
+  if (!target || typeof target !== 'object') return null;
+  const entries = Object.entries(target)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]): [string, string | string[]] => {
+      if (Array.isArray(value)) {
+        return [key, [...value].map(item => String(item)).sort()];
+      }
+      return [key, String(value)];
+    })
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return JSON.stringify(Object.fromEntries(entries));
+};
+
+const isGenerationTargetMatch = (existingTarget?: any, requestedTarget?: any) => {
+  if (!requestedTarget) return true;
+  return normalizeConflictTarget(existingTarget) === normalizeConflictTarget(requestedTarget);
+};
+
+const findConflictingChoiceGroup = (
+  choiceGroups: Record<string, ChoiceGroup>,
+  generationType: string,
+  target?: any,
+) => {
+  return Object.values(choiceGroups).find((group) => {
+    if (!group) return false;
+    if (group.status !== 'open' && group.status !== 'stale') return false;
+    if ((group.generationType || '') !== generationType) return false;
+    return isGenerationTargetMatch(group.target, target);
+  }) || null;
+};
+
+const GENERATION_CONFLICT_PENDING_ERROR = 'generation_choice_conflict_pending';
+
+type PendingGenerationConflict =
+  | {
+      action: 'generateActors';
+      generationType: 'actor';
+      existingGroupId: string;
+      existingGroupLabel: string;
+    }
+  | {
+      action: 'generateFeatures';
+      generationType: 'feature';
+      existingGroupId: string;
+      existingGroupLabel: string;
+    }
+  | {
+      action: 'generateFlowsAndObjects';
+      generationType: 'flow';
+      existingGroupId: string;
+      existingGroupLabel: string;
+    }
+  | {
+      action: 'generateScope';
+      generationType: 'scope';
+      existingGroupId: string;
+      existingGroupLabel: string;
+    }
+  | {
+      action: 'generateScenarios';
+      generationType: 'scenario';
+      existingGroupId: string;
+      existingGroupLabel: string;
+      featureIds?: number[] | number;
+    }
+  | {
+      action: 'generateAcceptanceCriteria';
+      generationType: 'acceptance_criteria';
+      existingGroupId: string;
+      existingGroupLabel: string;
+      scenarioIds?: number[];
+    };
+
 export interface WorkspaceState {
   currentSystemView: 'home' | 'onboarding' | 'workspace';
   setSystemView: (view: 'home' | 'onboarding' | 'workspace') => void;
@@ -497,28 +606,59 @@ export interface WorkspaceState {
   discardAIOnboarding: () => Promise<void>;
   createBlankWorkspace: (name: string, description: string, prompt: string) => Promise<void>;
 
+  // Phase 2: Choice Group Onboarding
+  activeChoiceGroup: any | null;
+  choiceGroupGenerationProgress: {
+    totalCandidates: number;
+    completedCandidates: number;
+    candidateStatuses: Record<number, 'pending' | 'generating' | 'complete' | 'failed'>;
+  } | null;
+  isGeneratingChoices: boolean;
+  openOnboardingChoiceGroups: any[];
+  pendingGenerationConflict: PendingGenerationConflict | null;
+  createOnboardingChoiceGroup: (userRequirements: string, candidateCount?: number) => Promise<void>;
+  acceptOnboardingChoice: (choiceId: string) => Promise<void>;
+  discardOnboardingChoiceGroup: () => Promise<void>;
+  deferOnboardingChoiceGroup: () => Promise<number | null>;
+  loadOpenOnboardingChoiceGroups: () => Promise<void>;
+  recoverOnboardingChoiceGroup: (groupId: string) => Promise<void>;
+  dismissPendingGenerationConflict: () => void;
+  confirmPendingGenerationConflict: () => Promise<void>;
+
+  // Phase 3: In-project Generation Choice Group (actor, scenario, etc.)
+  createGenerationChoiceGroup: (params: {
+    projectId: number;
+    generationType: string;
+    target?: any;
+    candidateCount?: number;
+    userFeedback?: string;
+    forceReplace?: boolean;
+    conflictAction?: PendingGenerationConflict['action'];
+    conflictArgs?: Record<string, any>;
+  }) => Promise<any>;
+
   // AI Generators per phase
-  generateActors: () => Promise<void>;
+  generateActors: (forceReplace?: boolean) => Promise<void>;
   regenerateActors: (feedback?: string) => Promise<void>;
   confirmActors: () => Promise<void>;
   
-  generateFeatures: () => Promise<void>;
+  generateFeatures: (forceReplace?: boolean) => Promise<void>;
   regenerateFeatures: (feedback?: string) => Promise<void>;
   confirmFeatures: () => Promise<void>;
   
-  generateFlowsAndObjects: () => Promise<void>;
+  generateFlowsAndObjects: (forceReplace?: boolean) => Promise<void>;
   regenerateFlowsAndObjects: (feedback?: string) => Promise<void>;
   confirmFlowsAndObjects: () => Promise<void>;
   
-  generateScenarios: (featureIds?: number[] | number) => Promise<void>;
+  generateScenarios: (featureIds?: number[] | number, forceReplace?: boolean) => Promise<void>;
   regenerateScenarios: (feedback?: string) => Promise<void>;
   confirmScenarios: (generateAc: boolean) => Promise<void>;
   
-  generateAcceptanceCriteria: (scenarioIds?: number[]) => Promise<void>;
+  generateAcceptanceCriteria: (scenarioIds?: number[], forceReplace?: boolean) => Promise<void>;
   regenerateAcceptanceCriteria: (feedback?: string) => Promise<void>;
   confirmAcceptanceCriteria: () => Promise<void>;
   
-  generateScope: () => Promise<void>;
+  generateScope: (forceReplace?: boolean) => Promise<void>;
   regenerateScope: (feedback?: string) => Promise<void>;
   confirmScope: () => Promise<void>;
   
@@ -578,14 +718,19 @@ export interface WorkspaceState {
 
   openSlot: (slotId: string) => void;
   expandSlot: (slotId: string) => Promise<void>;
-  acceptChoice: (choiceId: string) => Promise<void>;
+  acceptChoice: (choiceId: string, force?: boolean) => Promise<void>;
   rejectChoice: (choiceId: string) => Promise<void>;
+  discardChoiceGroup: (groupId: number) => Promise<void>;
+  activeStaleChoice: { projectId: number; choiceId: number; staleReason: string } | null;
+  clearStaleChoice: () => void;
+  regenerateChoiceGroup: (groupId: number, feedback?: string) => Promise<void>;
+  regenerateChoice: (choiceId: number, feedback?: string) => Promise<void>;
   createSlotFromIssue: (issueId: string) => Promise<string | null>;
   resolveIssue: (issueId: string) => Promise<string | null>;
   confirmRepairDraft: (draftId: string) => Promise<any>;
   discardRepairDraft: (draftId: string) => Promise<void>;
   regenerateRepairDraft: (draftId: string) => Promise<void>;
-  setNodeStatus: (nodeId: string, status: NodeStatus) => Promise<void>;
+  setNodeStatus: (nodeId: string, nodeKind: string, status: NodeStatus) => Promise<void>;
   setScopeStatus: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
   runDiagnosis: (scope?: any) => Promise<void>;
   executeNextSuggestion: (stage: string) => Promise<void>;
@@ -605,6 +750,7 @@ export interface WorkspaceState {
 
   // P5 Shadow Preview Draft Actions
   activeShadowDraft: any | null;
+  getActiveShadowDraft: () => Promise<any>;
   prepareShadowDraft: () => Promise<any>;
   getShadowDraft: (draftId: string) => Promise<any>;
   discardShadowDraft: (draftId: string) => Promise<void>;
@@ -613,9 +759,43 @@ export interface WorkspaceState {
   unlockStageGate: (stage: string) => Promise<void>;
 }
 
-const findSelectedObjectInIr = (ir: RequirementSpace | null, selectedId: string | number | null): any => {
+const buildSelectedScopeObject = (feature: any) => {
+  if (!feature) return null;
+  return {
+    kind: 'scope' as const,
+    id: feature.featureId?.toString?.() || null,
+    featureId: feature.featureId,
+    featureName: feature.featureName || '',
+    featureDescription: feature.featureDescription || '',
+    parentId: feature.parentId ?? null,
+    scopeId: feature.scope?.scopeId,
+    title: feature.featureName || '',
+    description: feature.featureDescription || '',
+    status: feature.scope?.confirmationStatus || 'ai_assumption',
+    confirmationStatus: feature.scope?.confirmationStatus || 'ai_assumption',
+    scopeStatus: feature.scope?.scopeStatus,
+    scope: feature.scope || null,
+  };
+};
+
+const findSelectedObjectInIr = (
+  ir: RequirementSpace | null,
+  selectedId: string | number | null,
+  previousSelectedObject?: any | null,
+): any => {
   if (!ir || !selectedId) return null;
   const numId = typeof selectedId === 'string' ? parseInt(selectedId, 10) : selectedId;
+
+  if (previousSelectedObject?.kind === 'scope') {
+    const scopeFeature = ir.features?.find(
+      (feature: any) =>
+        feature.scope?.scopeId === numId ||
+        feature.featureId === previousSelectedObject.featureId,
+    );
+    if (scopeFeature) {
+      return buildSelectedScopeObject(scopeFeature);
+    }
+  }
 
   // Search Slots
   if (ir.slots && ir.slots[selectedId.toString()]) {
@@ -696,6 +876,29 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   };
 
+  const syncChoiceGroupToWorkspace = (group: any, state: WorkspaceState) => {
+    const compatible = mapBackendChoiceGroupToCompatible(group);
+    const nextChoiceGroups = {
+      ...state.backendChoiceGroups,
+      [compatible.id]: compatible,
+    };
+
+    return {
+      backendChoiceGroups: nextChoiceGroups,
+      ir: state.ir,
+      activeChoiceGroup: group,
+    };
+  };
+
+  const removeChoiceGroupFromWorkspace = (groupId: string, state: WorkspaceState) => {
+    const nextChoiceGroups = { ...state.backendChoiceGroups };
+    delete nextChoiceGroups[groupId];
+    return {
+      backendChoiceGroups: nextChoiceGroups,
+      ir: state.ir,
+    };
+  };
+
   return {
     currentSystemView: 'home',
   setSystemView: (view) => set({ currentSystemView: view, activePage: view === 'workspace' ? get().activePage : '/overview' }),
@@ -711,12 +914,25 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ selectedObjectId: null, selectedObject: null, selectedNodeId: null });
       return;
     }
-    const id = obj.actorId || obj.featureId || obj.scenarioId || obj.criterionId || obj.businessObjectId || obj.businessObjectAttributeId || obj.flowId || obj.stepId || obj.id;
+    const id =
+      (obj.kind === 'scope' ? (obj.scopeId || obj.id || obj.featureId) : undefined) ||
+      obj.actorId ||
+      obj.featureId ||
+      obj.scenarioId ||
+      obj.criterionId ||
+      obj.businessObjectId ||
+      obj.businessObjectAttributeId ||
+      obj.flowId ||
+      obj.stepId ||
+      obj.id;
     set({
       selectedObjectId: id || null,
       selectedObject: obj,
       selectedNodeId: id || null
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('workspace:selected-object', { detail: { id } }));
+    }
   },
 
   selectedNodeId: null,
@@ -736,6 +952,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   activeDraft: null,
   activeDraftType: null,
   isGenerating: false,
+
+  // Phase 2: Choice Group Onboarding
+  activeChoiceGroup: null,
+  choiceGroupGenerationProgress: null,
+  isGeneratingChoices: false,
+  openOnboardingChoiceGroups: [],
+  pendingGenerationConflict: null,
+  activeStaleChoice: null,
 
   highlightTarget: null,
   setHighlightTarget: (id) => set({ highlightTarget: id }),
@@ -875,7 +1099,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         backendIssuesLoaded: true,
         backendChoiceGroups: choiceGroupsRecord,
         ir: space,
-        selectedObject: findSelectedObjectInIr(space, s.selectedObjectId)
+        selectedObject: findSelectedObjectInIr(space, s.selectedObjectId, s.selectedObject)
       }));
     } catch (err) {
       set({ error: err instanceof Error ? err.message : '同步数据失败' });
@@ -1056,6 +1280,254 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  // ══════════════════════════════════════════════════════════
+  // Phase 2: Choice Group Onboarding Actions
+  // ══════════════════════════════════════════════════════════
+
+  createOnboardingChoiceGroup: async (userRequirements, candidateCount) => {
+    set({
+      isGeneratingChoices: true,
+      error: null,
+      lastActionMessage: 'AI 正在为您生成多套项目方案...',
+      choiceGroupGenerationProgress: null,
+    });
+    try {
+      // Simulate progress polling while the backend generates
+      const group = await workspaceApi.createProjectCreationChoiceGroup({
+        user_requirements: userRequirements,
+        candidate_count: candidateCount || 2,
+      });
+      set({
+        activeChoiceGroup: group,
+        isGeneratingChoices: false,
+        choiceGroupGenerationProgress: null,
+        activeDraft: null,
+        activeDraftType: null,
+        lastActionMessage: group.status === 'failed'
+          ? '方案生成失败，请重试'
+          : `已生成 ${group.successCount || 0} 套完整项目方案`,
+      });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : '生成项目方案失败',
+        isGeneratingChoices: false,
+        choiceGroupGenerationProgress: null,
+      });
+    }
+  },
+
+  acceptOnboardingChoice: async (choiceId) => {
+    const group = get().activeChoiceGroup;
+    if (!group) return;
+    set({ isLoading: true, error: null });
+    try {
+      const res = await workspaceApi.acceptProjectCreationChoice(group.id, choiceId);
+      const projectId = res.projectId ?? res.project_id;
+      if (!projectId) {
+        throw new Error('project_id_missing');
+      }
+      const space = await workspaceApi.getById(projectId);
+      set({
+        ir: space,
+        activeChoiceGroup: null,
+        activeDraft: null,
+        activeDraftType: null,
+        currentSystemView: 'workspace',
+        activePage: '/overview',
+        selectedObject: null,
+        selectedObjectId: null,
+        selectedNodeId: null,
+        isLoading: false,
+        lastActionMessage: '项目已创建！祝您建模愉快！',
+      });
+      // Reload open groups since this one is resolved
+      get().loadOpenOnboardingChoiceGroups();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '采纳方案失败', isLoading: false });
+    }
+  },
+
+  discardOnboardingChoiceGroup: async () => {
+    const group = get().activeChoiceGroup;
+    if (!group) return;
+    try {
+      await workspaceApi.discardProjectCreationChoiceGroup(group.id);
+      set({
+        activeChoiceGroup: null,
+        currentSystemView: 'onboarding',
+        lastActionMessage: '已丢弃方案组',
+      });
+      get().loadOpenOnboardingChoiceGroups();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '丢弃方案失败' });
+    }
+  },
+
+  deferOnboardingChoiceGroup: async () => {
+    const group = get().activeChoiceGroup;
+    if (!group) return null;
+    set({ isLoading: true, error: null });
+    try {
+      const res = await workspaceApi.deferProjectCreationChoiceGroup(group.id);
+      const projectId = res.projectId ?? res.project_id;
+      if (!projectId) {
+        throw new Error('project_id_missing');
+      }
+      await get().openWorkspace(String(projectId));
+      set({
+        activeChoiceGroup: null,
+        isLoading: false,
+        lastActionMessage: '已创建空白项目，并保留待采纳的项目草稿方案。',
+      });
+      void get().loadOpenOnboardingChoiceGroups();
+      return Number(projectId);
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : '稍后处理失败',
+        isLoading: false,
+      });
+      return null;
+    }
+  },
+
+  loadOpenOnboardingChoiceGroups: async () => {
+    try {
+      const groups = await workspaceApi.listOpenProjectCreationChoiceGroups();
+      set({ openOnboardingChoiceGroups: groups });
+    } catch {
+      // Silently fail — this is a background refresh
+    }
+  },
+
+  recoverOnboardingChoiceGroup: async (groupId) => {
+    try {
+      const group = await workspaceApi.getProjectCreationChoiceGroup(groupId);
+      if (group && group.status === 'open') {
+        set({ activeChoiceGroup: group, currentSystemView: 'onboarding' });
+      }
+    } catch {
+      set({ error: '无法恢复项目草稿，它可能已失效' });
+    }
+  },
+
+  dismissPendingGenerationConflict: () => {
+    set({ pendingGenerationConflict: null });
+  },
+
+  confirmPendingGenerationConflict: async () => {
+    const conflict = get().pendingGenerationConflict;
+    if (!conflict) return;
+
+    set({ pendingGenerationConflict: null });
+
+    if (conflict.action === 'generateActors') {
+      await get().generateActors(true);
+      return;
+    }
+    if (conflict.action === 'generateFeatures') {
+      await get().generateFeatures(true);
+      return;
+    }
+    if (conflict.action === 'generateFlowsAndObjects') {
+      await get().generateFlowsAndObjects(true);
+      return;
+    }
+    if (conflict.action === 'generateScope') {
+      await get().generateScope(true);
+      return;
+    }
+    if (conflict.action === 'generateScenarios') {
+      await get().generateScenarios(conflict.featureIds, true);
+      return;
+    }
+    if (conflict.action === 'generateAcceptanceCriteria') {
+      await get().generateAcceptanceCriteria(conflict.scenarioIds, true);
+    }
+  },
+
+  // ══════════════════════════════════════════════════════════
+  // Phase 3: In-project Generation Choice Group
+  // ══════════════════════════════════════════════════════════
+
+  createGenerationChoiceGroup: async (params) => {
+    const {
+      projectId,
+      generationType,
+      target,
+      candidateCount,
+      userFeedback,
+      forceReplace,
+      conflictAction,
+      conflictArgs,
+    } = params;
+    // 前端开关: VITE_GENERATION_CHOICE_GROUP_ENABLED=false 时跳过 choice group
+    if (import.meta.env.VITE_GENERATION_CHOICE_GROUP_ENABLED === 'false') {
+      set({ isGeneratingChoices: false, isGenerating: false });
+      throw new Error('choice_group_disabled');
+    }
+
+    const conflictingGroup = findConflictingChoiceGroup(get().backendChoiceGroups, generationType, target);
+    if (conflictingGroup && !forceReplace) {
+      set({
+        pendingGenerationConflict: {
+          action: conflictAction || 'generateFeatures',
+          generationType: generationType as PendingGenerationConflict['generationType'],
+          existingGroupId: conflictingGroup.id,
+          existingGroupLabel: getGenerationTypeLabel(generationType),
+          ...(conflictArgs || {}),
+        } as PendingGenerationConflict,
+        error: null,
+      });
+      throw new Error(GENERATION_CONFLICT_PENDING_ERROR);
+    }
+
+    set({
+      isGeneratingChoices: true,
+      error: null,
+      lastActionMessage: `正在生成 ${generationType} 候选方案...`,
+    });
+    try {
+      if (conflictingGroup && forceReplace) {
+        await workspaceApi.discardChoiceGroup(projectId, Number(conflictingGroup.id));
+        set((state) => ({
+          ...removeChoiceGroupFromWorkspace(conflictingGroup.id, state),
+          pendingGenerationConflict: null,
+          activeChoiceGroup:
+            state.activeChoiceGroup && String(state.activeChoiceGroup.id) === conflictingGroup.id
+              ? null
+              : state.activeChoiceGroup,
+        }));
+      }
+
+      const group = await workspaceApi.createGenerationChoiceGroup({
+        project_id: projectId,
+        generation_type: generationType,
+        target: target || null,
+        candidate_count: candidateCount || 2,
+        user_feedback: userFeedback || null,
+      });
+      set((state) => ({
+        ...syncChoiceGroupToWorkspace(group, state),
+        isGeneratingChoices: false,
+        activeDraft: null,
+        activeDraftType: null,
+        pendingGenerationConflict: null,
+        lastActionMessage: `已生成 ${group.successCount || group.success_count || 0} 套候选方案`,
+      }));
+      return group;
+    } catch (err) {
+      if (err instanceof Error && err.message === GENERATION_CONFLICT_PENDING_ERROR) {
+        set({ isGeneratingChoices: false });
+        return null;
+      }
+      set({
+        error: err instanceof Error ? err.message : '生成候选方案失败',
+        isGeneratingChoices: false,
+      });
+      return null;
+    }
+  },
+
   createBlankWorkspace: async (name, description, prompt) => {
     set({ isLoading: true, error: null });
     try {
@@ -1064,7 +1536,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         project_name: name,
         project_description: description
       });
-      const space = await workspaceApi.getById(res.project_id);
+      const projectId = res.projectId ?? res.project_id;
+      if (!projectId) {
+        throw new Error('project_id_missing');
+      }
+      const space = await workspaceApi.getById(projectId);
       set({
         ir: space,
         currentSystemView: 'workspace',
@@ -1084,16 +1560,27 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   // AI Generators per phase
-  generateActors: async () => {
+  generateActors: async (forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据项目需求精炼并生成核心角色列表，请稍候...' });
     try {
+      const group = await get().createGenerationChoiceGroup({
+        projectId: pId,
+        generationType: 'actor',
+        candidateCount: 2,
+        forceReplace,
+        conflictAction: 'generateActors',
+      });
+      if (group || get().pendingGenerationConflict) return;
+    } catch (_err) {
+      if (get().pendingGenerationConflict) return;
+    }
+    try {
+      // Fallback: old single-draft flow
       const draft = await workspaceApi.createActorGenerationDraft(pId);
-      set({ activeDraft: draft, activeDraftType: 'actor', isGenerating: false, lastActionMessage: '🤖 AI 推荐的角色列表已生成！已展示在顶部推荐 Banner 中，您可按需调整或一键采纳。' });
+      set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessage: '🤖 AI 推荐的角色列表已生成！' });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成角色失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -1145,16 +1632,28 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateFeatures: async () => {
+  generateFeatures: async (forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据项目原始需求推演并分解核心功能特征树，请稍候...' });
+    try {
+      const group = await get().createGenerationChoiceGroup({
+        projectId: pId,
+        generationType: 'feature',
+        candidateCount: 2,
+        forceReplace,
+        conflictAction: 'generateFeatures',
+      });
+      if (group || get().pendingGenerationConflict) return;
+    } catch (_err) {
+      if (get().pendingGenerationConflict) return;
+    }
     try {
       const draft = await workspaceApi.createFeatureGenerationDraft(pId);
-      set({ activeDraft: draft, activeDraftType: 'feature', isGenerating: false, lastActionMessage: '🤖 AI 推荐的核心功能架构树已生成！已展示在顶部推荐 Banner 中，可调整节点后合并。' });
+      set({ activeDraft: draft, activeDraftType: 'feature', isGenerating: false, isGeneratingChoices: false,
+        lastActionMessage: '🤖 AI 推荐的核心功能架构树已生成！',
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成功能树失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -1206,16 +1705,28 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateFlowsAndObjects: async () => {
+  generateFlowsAndObjects: async (forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在智能推演核心业务流程、泳道步骤及数据实体属性模型，请稍候...' });
+    try {
+      const group = await get().createGenerationChoiceGroup({
+        projectId: pId,
+        generationType: 'flow',
+        candidateCount: 2,
+        forceReplace,
+        conflictAction: 'generateFlowsAndObjects',
+      });
+      if (group || get().pendingGenerationConflict) return;
+    } catch (_err) {
+      if (get().pendingGenerationConflict) return;
+    }
     try {
       const draft = await workspaceApi.createFlowGenerationDraft(pId);
-      set({ activeDraft: draft, activeDraftType: 'flow', isGenerating: false, lastActionMessage: '🤖 AI 推荐的核心泳道步骤与核心数据对象已生成！已在顶部提供详细列表预览。' });
+      set({ activeDraft: draft, activeDraftType: 'flow', isGenerating: false, isGeneratingChoices: false,
+        lastActionMessage: '🤖 AI 推荐的核心泳道步骤与核心数据对象已生成！',
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成流程失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -1265,9 +1776,36 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateScenarios: async (featureIds) => {
+  generateScenarios: async (featureIds, forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在智能推演具体功能节点在业务场景下的典型成功场景与验收标准 (AC)，此过程调用深层业务逻辑，可能需要一些时间，请稍候...' });
+    // Determine mode: single/pair → choice group, full/batch → keep draft
+    const isSingleTarget = !Array.isArray(featureIds) ||
+      (Array.isArray(featureIds) && featureIds.length === 1);
+    const targetFeatureId = isSingleTarget
+      ? (Array.isArray(featureIds) ? featureIds[0] : featureIds)
+      : null;
+
+    if (isSingleTarget && targetFeatureId) {
+      // Phase 3: single/pair → choice group path
+      try {
+        const group = await get().createGenerationChoiceGroup({
+          projectId: pId,
+          generationType: 'scenario',
+          target: { generation_mode: 'single', feature_id: targetFeatureId },
+          candidateCount: 2,
+          forceReplace,
+          conflictAction: 'generateScenarios',
+          conflictArgs: { featureIds },
+        });
+        if (group || get().pendingGenerationConflict) return;
+      } catch (_err) {
+        if (get().pendingGenerationConflict) return;
+        // Fall through to draft fallback
+      }
+    }
+
+    // ── Fallback / full / batch: old draft path ──────────────
+    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在智能推演具体功能节点在业务场景下的典型成功场景...' });
     try {
       if (Array.isArray(featureIds)) {
         if (featureIds.length === 0) {
@@ -1277,7 +1815,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds[0]);
           set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互和AC验收条件。' });
         } else {
-          // Batch concurrent requests
           const drafts = await Promise.all(
             featureIds.map(fId => workspaceApi.createScenarioGenerationDraft(pId, fId))
           );
@@ -1288,7 +1825,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
             generation_mode: 'batch',
             draftIds,
             scenarios: combinedScenarios,
-            draft_id: draftIds[0], // fallback compatibility
+            draft_id: draftIds[0],
           };
           set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: `🤖 AI 智能场景推演成功！针对选定的 ${featureIds.length} 个功能模块共生成了 ${combinedScenarios.length} 个场景，已在上方提供预览。` });
         }
@@ -1298,8 +1835,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成成功场景失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -1360,16 +1896,34 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateAcceptanceCriteria: async (scenarioIds) => {
+  generateAcceptanceCriteria: async (scenarioIds, forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在智能推演该场景的具体验收标准 (Acceptance Criteria - AC) 条目，请稍候...' });
+    const isSingleTarget = Array.isArray(scenarioIds) && scenarioIds.length === 1;
+    if (isSingleTarget) {
+      try {
+        const group = await get().createGenerationChoiceGroup({
+          projectId: pId,
+          generationType: 'acceptance_criteria',
+          target: { generation_mode: 'single', scenario_ids: scenarioIds },
+          candidateCount: 2,
+          forceReplace,
+          conflictAction: 'generateAcceptanceCriteria',
+          conflictArgs: { scenarioIds },
+        });
+        if (group || get().pendingGenerationConflict) return;
+      } catch (_err) {
+        if (get().pendingGenerationConflict) return;
+        /* fall through */
+      }
+    }
     try {
       const draft = await workspaceApi.createAcceptanceCriteriaGenerationDraft(pId, scenarioIds);
-      set({ activeDraft: draft, activeDraftType: 'ac', isGenerating: false, lastActionMessage: '🤖 AI 推荐的验收标准 (AC) 已精细推演成功！已在上方提供完整验收检查清单列表。' });
+      set({ activeDraft: draft, activeDraftType: 'ac', isGenerating: false, isGeneratingChoices: false,
+        lastActionMessage: '🤖 AI 推荐的验收标准 (AC) 已精细推演成功！',
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成验收标准失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -1421,16 +1975,28 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateScope: async () => {
+  generateScope: async (forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在对项目中的所有功能节点进行深层的 Kano 模型范围归类与推荐分析，请稍候...' });
+    try {
+      const group = await get().createGenerationChoiceGroup({
+        projectId: pId,
+        generationType: 'scope',
+        candidateCount: 2,
+        forceReplace,
+        conflictAction: 'generateScope',
+      });
+      if (group || get().pendingGenerationConflict) return;
+    } catch (_err) {
+      if (get().pendingGenerationConflict) return;
+    }
     try {
       const draft = await workspaceApi.createScopeGenerationDraft(pId);
-      set({ activeDraft: draft, activeDraftType: 'scope', isGenerating: false, lastActionMessage: '🤖 AI Kano 范围与发布优先级分析推演成功！已在上方提供完整功能卡片范围归档预览。' });
+      set({ activeDraft: draft, activeDraftType: 'scope', isGenerating: false, isGeneratingChoices: false,
+        lastActionMessage: '🤖 AI Kano 范围与发布优先级分析推演成功！',
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成范围分析失败';
-      const friendlyMsg = getFriendlyErrorMessage(errMsg);
-      set({ error: friendlyMsg, lastActionMessage: friendlyMsg, isGenerating: false });
+      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
 
@@ -2044,19 +2610,61 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     }
   },
-  acceptChoice: async (choiceId) => {
+  acceptChoice: async (choiceId, force) => {
     const projectId = get().ir?.projectId;
     if (!projectId) return;
     const choiceIdNum = parseInt(choiceId, 10);
     if (isNaN(choiceIdNum)) return;
     set({ isLoading: true, error: null });
     try {
-      await workspaceApi.acceptChoice(projectId, choiceIdNum);
+      const result = await workspaceApi.acceptChoice(projectId, choiceIdNum, force || false);
+      // Handle stale response (UX-5)
+      if (result?.is_stale) {
+        set({ activeStaleChoice: { projectId, choiceId: choiceIdNum, staleReason: result.stale_reason }, isLoading: false });
+        return;
+      }
+      // Accept succeeded → refresh workspace & close modal
       await get().refreshWorkspace();
-      set({ selectedObject: null, selectedObjectId: null, isLoading: false, lastActionMessage: '已成功采纳并应用该设计决策提案。' });
+      set({
+        activeChoiceGroup: null,
+        activeStaleChoice: null,
+        selectedObject: null,
+        selectedObjectId: null,
+        isLoading: false,
+        lastActionMessage: '已成功采纳并应用该设计决策提案。',
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : '采纳决策失败', isLoading: false });
     }
+  },
+  regenerateChoiceGroup: async (groupId, feedback) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isGeneratingChoices: true, error: null, lastActionMessage: '正在重新生成候选方案...' });
+    try {
+      const newGroup = await workspaceApi.regenerateChoiceGroup(projectId, groupId, feedback);
+      set({ activeChoiceGroup: newGroup, isGeneratingChoices: false, activeDraft: null, activeDraftType: null,
+        lastActionMessage: '已重新生成候选方案组',
+      });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重新生成失败', isGeneratingChoices: false });
+    }
+  },
+  regenerateChoice: async (choiceId, feedback) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isGeneratingChoices: true, error: null, lastActionMessage: '正在重新生成候选方案...' });
+    try {
+      const updatedGroup = await workspaceApi.regenerateChoice(projectId, choiceId, feedback);
+      set({ activeChoiceGroup: updatedGroup, isGeneratingChoices: false,
+        lastActionMessage: '已重新生成候选方案',
+      });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重新生成失败', isGeneratingChoices: false });
+    }
+  },
+  clearStaleChoice: () => {
+    set({ activeStaleChoice: null });
   },
   rejectChoice: async (choiceId) => {
     const projectId = get().ir?.projectId;
@@ -2072,6 +2680,20 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ error: err instanceof Error ? err.message : '拒绝决策失败', isLoading: false });
     }
   },
+
+  discardChoiceGroup: async (groupId) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isLoading: true, error: null });
+    try {
+      await workspaceApi.discardChoiceGroup(projectId, groupId);
+      set({ activeChoiceGroup: null, isLoading: false, lastActionMessage: '已丢弃候选方案组。' });
+      await get().refreshWorkspace();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '丢弃方案组失败', isLoading: false });
+    }
+  },
+
   createSlotFromIssue: async (issueId) => {
     const projectId = get().ir?.projectId;
     if (!projectId) return null;
@@ -2188,7 +2810,16 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ error: err instanceof Error ? err.message : '重新生成修复失败', isLoading: false });
     }
   },
-  setNodeStatus: async () => {},
+  setNodeStatus: async (nodeId: string, nodeKind: string, status: NodeStatus) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    try {
+      await workspaceApi.updateNodeConfirmationStatus(projectId, nodeKind, parseInt(nodeId, 10), status);
+      await get().refreshWorkspace();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '更新节点状态失败' });
+    }
+  },
   setScopeStatus: async (nodeId, scopeStatus) => {
     const featId = parseInt(nodeId, 10);
     if (!isNaN(featId)) {
@@ -2447,6 +3078,23 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // P5 Shadow Preview Draft Actions
   activeShadowDraft: null,
+
+  getActiveShadowDraft: async () => {
+    const projectId = withWorkspaceId(get());
+    try {
+      const res = await workspaceApi.getActiveShadowDraft(projectId);
+      if (res && res.status !== 'idle') {
+        set({ activeShadowDraft: res });
+      } else {
+        set({ activeShadowDraft: null });
+      }
+      return res;
+    } catch (err) {
+      console.warn('Failed to fetch active shadow draft:', err);
+      set({ activeShadowDraft: null });
+      throw err;
+    }
+  },
 
   prepareShadowDraft: async () => {
     const projectId = withWorkspaceId(get());

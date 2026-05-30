@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { AppWindow, ArrowRight, Clock, Edit, Plus, Trash2 } from 'lucide-react';
+import { AppWindow, ArrowRight, Clock, Edit, Plus, Trash2, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { buildProjectRoute } from '@/core/selectors';
+import { workspaceApi } from '@/lib/api';
 
 export function Home() {
   const {
@@ -12,6 +13,11 @@ export function Home() {
     error,
     updateProject,
     deleteProject,
+    // Phase 2: onboarding recovery
+    openOnboardingChoiceGroups,
+    loadOpenOnboardingChoiceGroups,
+    recoverOnboardingChoiceGroup,
+    discardOnboardingChoiceGroup,
   } = useWorkspaceStore();
   const navigate = useNavigate();
 
@@ -21,7 +27,31 @@ export function Home() {
 
   useEffect(() => {
     void loadWorkspaces();
-  }, [loadWorkspaces]);
+    // Load open onboarding choice groups for recovery banner (UX-4)
+    void loadOpenOnboardingChoiceGroups();
+  }, [loadWorkspaces, loadOpenOnboardingChoiceGroups]);
+
+  const handleRecoverGroup = async (groupId: string) => {
+    await recoverOnboardingChoiceGroup(groupId);
+    navigate('/onboarding');
+  };
+
+  const handleDiscardGroup = async (groupId: string) => {
+    try {
+      await workspaceApi.discardProjectCreationChoiceGroup(groupId);
+      await loadOpenOnboardingChoiceGroups();
+    } catch { /* silently fail */ }
+  };
+
+  // Format timestamp (createdAt is a float Unix timestamp)
+  const formatGroupTime = (ts?: number) => {
+    if (!ts) return '';
+    const diffMs = Date.now() - ts * 1000;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return '刚刚生成';
+    if (mins < 60) return `${mins} 分钟前`;
+    return `${Math.floor(mins / 60)} 小时前`;
+  };
 
   const sorted = useMemo(() => {
     return [...workspaces].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
@@ -41,12 +71,17 @@ export function Home() {
 
   const renderStatus = (p: any) => {
     const status = p.status || '项目';
+    const statusCode = p.statusCode;
     const tone =
-      status.includes('Issue') || status.includes('待确认')
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : status.includes('设计') || status.includes('进行')
-          ? 'bg-sky-50 text-sky-700 border-sky-200'
-          : 'bg-slate-100 text-slate-600 border-slate-200';
+      statusCode === 'needs_attention'
+        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        : statusCode === 'has_issues' || statusCode === 'scope_pending'
+          ? 'bg-amber-50 text-amber-700 border-amber-200'
+          : statusCode === 'in_progress'
+            ? 'bg-sky-50 text-sky-700 border-sky-200'
+            : statusCode === 'converged'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-slate-100 text-slate-600 border-slate-200';
 
     return (
       <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${tone}`}>
@@ -93,6 +128,44 @@ export function Home() {
             通过自然语言智能解析、全自动泳道流程生成、高准度系统一致性诊断，全闭环交付直观、可交互的产品高保真原型。
           </p>
         </div>
+
+        {/* Phase 2: Onboarding recovery banner (UX-4) */}
+        {openOnboardingChoiceGroups.length > 0 && (
+          <div className="mb-4 shrink-0 animate-in fade-in slide-in-from-top-4 duration-500">
+            {openOnboardingChoiceGroups.map((g: any) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between p-4 rounded-2xl bg-indigo-50 border border-indigo-100"
+              >
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-5 h-5 text-indigo-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-indigo-900">
+                      您有 1 个未选择的项目草稿
+                    </p>
+                    <p className="text-xs text-indigo-600 mt-0.5">
+                      {g.userRequirements?.slice(0, 60)} — {formatGroupTime(g.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => handleRecoverGroup(g.id)}
+                    className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
+                  >
+                    继续处理
+                  </button>
+                  <button
+                    onClick={() => handleDiscardGroup(g.id)}
+                    className="h-9 px-4 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition-colors"
+                  >
+                    丢弃
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Dashboard Main Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full min-h-0 flex-1 overflow-hidden">

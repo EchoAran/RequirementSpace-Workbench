@@ -7,6 +7,7 @@ from backend.database.model import (
     ActorModel,
     BusinessObjectModel,
     AuditLogModel,
+    ConfirmationStatus,
     flow_feature_table,
     flow_step_actor_table,
     flow_step_input_business_object_table,
@@ -33,11 +34,13 @@ class FlowService:
         project_id: int,
         req: FlowCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> FlowResponse:
         flow = FlowModel(
             project_id=project_id,
             name=req.name,
             description=req.description,
+            confirmation_status=confirmation_status,
         )
         session.add(flow)
         await session.flush()
@@ -88,6 +91,7 @@ class FlowService:
             description=flow.description,
             feature_ids=req.feature_ids or [],
             steps=[],
+            confirmation_status=flow.confirmation_status,
         )
 
     async def update_flow(

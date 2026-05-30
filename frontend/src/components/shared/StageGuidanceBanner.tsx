@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronUp, LocateFixed, RefreshCw, Sparkles, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronUp, LocateFixed, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Issue, PerceptionSlot } from '@/core/schema';
 import { cn } from '@/lib/utils';
 
@@ -39,23 +39,22 @@ export function StageGuidanceBanner({
   isWorking = false,
 }: StageGuidanceBannerProps) {
   const openIssues = issues.filter((issue) => issue.status === 'open');
-  const [expanded, setExpanded] = useState(openIssues.length > 0);
+  const [expanded, setExpanded] = useState(false);
   const hideSlotActions = slot?.kind === 'how_onboarding';
   const isPerceptionSlot = slot?.kind === 'generative_perception_slot';
   const isStageTransitionSuggestion = slot?.kind === 'stage_gate_transition_confirm';
   const hasAiDiagnoseAction = Boolean(slot?.actions?.ai?.label?.includes('诊断'));
-  const showReDiagnoseButton = Boolean(onReDiagnose && !hideSlotActions && (!slot || !hasAiDiagnoseAction));
+  const showReDiagnoseButton = Boolean(
+    onReDiagnose && !hideSlotActions && (!slot || isPerceptionSlot) && (!slot || !hasAiDiagnoseAction)
+  );
 
   if (!slot && openIssues.length === 0 && onReDiagnose) {
     return (
       <div className="rounded-lg border border-emerald-100 border-l-4 border-l-emerald-500 bg-emerald-50/40 p-3">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-100/70 text-emerald-700">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
+          <div className="min-w-0">
             <p className="text-xs font-semibold leading-relaxed text-slate-600">
-              当前阶段暂未发现待处理 Issue，可以继续完善或重新诊断。
+              当前阶段暂未发现待处理 Issue，可以继续完善当前内容，或重新发起诊断。
             </p>
           </div>
           <button
@@ -86,30 +85,20 @@ export function StageGuidanceBanner({
       <div className="flex flex-col gap-4">
         {slot && (
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div
+            <div className="min-w-0 space-y-1">
+              <span
                 className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
-                  slot.blocking ? 'bg-rose-100 text-rose-700' : 'bg-indigo-50 text-indigo-700',
+                  'inline-flex rounded border px-2 py-0.5 text-[10px] font-black',
+                  slot.blocking
+                    ? 'border-rose-200 bg-rose-50 text-rose-800'
+                    : 'border-indigo-200 bg-indigo-50 text-indigo-800',
                 )}
               >
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <span
-                  className={cn(
-                    'inline-flex rounded border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide',
-                    slot.blocking
-                      ? 'border-rose-200 bg-rose-50 text-rose-800'
-                      : 'border-indigo-200 bg-indigo-50 text-indigo-800',
-                  )}
-                >
-                  {slot.blocking ? '待处理卡点' : '行动建议'}
-                </span>
-                <p className="text-xs font-semibold leading-relaxed text-slate-700">
-                  {slot.description}
-                </p>
-              </div>
+                下一步建议
+              </span>
+              <p className="text-xs font-semibold leading-relaxed text-slate-700">
+                {slot.description}
+              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-2 self-end md:self-center">
@@ -138,7 +127,7 @@ export function StageGuidanceBanner({
                   {slot.actions.ai.label}
                 </button>
               )}
-              {!hideSlotActions && slot.actions?.manual && onManualAction && (
+              {!hideSlotActions && (isPerceptionSlot || isStageTransitionSuggestion) && slot.actions?.manual && onManualAction && (
                 <button
                   type="button"
                   onClick={() => onManualAction(slot)}
@@ -146,11 +135,7 @@ export function StageGuidanceBanner({
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
                 >
                   {isPerceptionSlot ? <X className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                  {isPerceptionSlot
-                    ? '忽略'
-                    : isStageTransitionSuggestion
-                      ? '进入下一阶段'
-                      : slot.actions.manual.label}
+                  {isPerceptionSlot ? '忽略' : '进入下一阶段'}
                 </button>
               )}
             </div>
@@ -164,15 +149,12 @@ export function StageGuidanceBanner({
               onClick={() => setExpanded((value) => !value)}
               className="flex w-full items-center justify-between gap-3 text-left"
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <AlertTriangle className={cn('h-4 w-4 shrink-0', isBlocking ? 'text-rose-600' : 'text-amber-600')} />
-                <div className="min-w-0">
-                  <div className="text-sm font-black text-slate-900">
-                    仍有 {openIssues.length} 个 Issue 待处理
-                  </div>
-                  <div className="truncate text-xs text-slate-500">
-                    {openIssues[0]?.title}
-                  </div>
+              <div className="min-w-0">
+                <div className="text-sm font-black text-slate-900">
+                  仍有 {openIssues.length} 个 Issue 待处理
+                </div>
+                <div className="truncate text-xs text-slate-500">
+                  {openIssues[0]?.title}
                 </div>
               </div>
               {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}

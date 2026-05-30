@@ -4,6 +4,7 @@ from backend.database.model import (
     BusinessObjectModel,
     BusinessObjectAttributeModel,
     AuditLogModel,
+    ConfirmationStatus,
     flow_step_input_business_object_table,
     flow_step_output_business_object_table,
 )
@@ -26,11 +27,13 @@ class BusinessObjectService:
         project_id: int,
         req: BOCreateRequest,
         session,
+        confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> BOResponse:
         bo = BusinessObjectModel(
             project_id=project_id,
             name=req.name,
             description=req.description,
+            confirmation_status=confirmation_status,
         )
         session.add(bo)
         await session.flush()
@@ -57,6 +60,7 @@ class BusinessObjectService:
             name=bo.name,
             description=bo.description,
             attributes=[],
+            confirmation_status=bo.confirmation_status,
         )
 
     async def update_bo(

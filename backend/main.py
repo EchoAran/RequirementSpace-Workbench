@@ -6,6 +6,9 @@ from fastapi import FastAPI
 from backend.api.routes.project_creation_routes import (
     router as project_creation_router,
 )
+from backend.api.routes.project_creation_choice_routes import (
+    router as project_creation_choice_router,
+)
 from backend.api.routes.blank_project_routes import (
     router as blank_project_router,
 )
@@ -78,6 +81,19 @@ from backend.api.routes.project_scope_routes import (
 from backend.api.routes.preview_shadow_routes import (
     router as preview_shadow_router,
 )
+from backend.api.routes.ai_add_session_routes import (
+    router as ai_add_session_router,
+    draft_router as ai_object_generation_draft_router,
+)
+from backend.api.routes.ai_explain_routes import (
+    router as ai_explain_router,
+)
+from backend.api.routes.project_interview_routes import (
+    router as project_interview_router,
+)
+from backend.api.routes.node_status_routes import (
+    router as node_status_router,
+)
 
 from backend.database.database import init_db
 from backend.api.services import service_registry
@@ -112,6 +128,7 @@ async def health_check():
 
 # 注册路由
 app.include_router(project_creation_router)
+app.include_router(project_creation_choice_router)
 app.include_router(blank_project_router)
 app.include_router(actor_generation_router)
 app.include_router(feature_generation_router)
@@ -136,4 +153,9 @@ app.include_router(project_requirements_router)
 app.include_router(project_router)
 app.include_router(prototype_generation_router)
 app.include_router(preview_shadow_router)
+app.include_router(ai_add_session_router)
+app.include_router(ai_object_generation_draft_router)
+app.include_router(ai_explain_router)
+app.include_router(project_interview_router)
+app.include_router(node_status_router)
 

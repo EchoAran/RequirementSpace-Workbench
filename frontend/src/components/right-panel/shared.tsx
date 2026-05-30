@@ -108,19 +108,22 @@ export function SelectField({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="block space-y-1.5">
       <div className="text-xs text-slate-500 font-medium">{label}</div>
       <select
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 bg-white"
+        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 bg-white disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

@@ -6,3 +6,11 @@ from backend.core.generators.scenarios_generator import ScenariosGenerator, Scen
 from backend.core.generators.acceptance_criteria_generator import AcceptanceCriteriaGenerator, AcceptanceCriteriaGeneratorInput
 from backend.core.generators.scopes_generator import ScopesGenerator, ScopesGeneratorInput
 from backend.core.generators.prototype_generator import PrototypeGenerator, PrototypeGeneratorInput
+from backend.core.generators.single_object import (
+    SingleObjectGeneratorInput,
+    BaseSingleObjectGenerator,
+    SingleActorGenerator,
+    SingleFeatureGenerator,
+    SingleFlowGenerator,
+    SingleBusinessObjectGenerator,
+)

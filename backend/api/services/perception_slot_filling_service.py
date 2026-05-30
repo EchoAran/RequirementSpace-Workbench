@@ -1622,6 +1622,7 @@ class PerceptionSlotFillingService:
                     project_id=draft["project_id"],
                     name=item["actor_name"],
                     description=item["actor_description"],
+                    confirmation_status='ai_assumption',
                 )
             )
 
@@ -1651,6 +1652,7 @@ class PerceptionSlotFillingService:
                 project_id=draft["project_id"],
                 name=item["feature_name"],
                 description=item["feature_description"],
+                confirmation_status='ai_assumption',
             )
             session.add(model)
             temporary_id_to_model[item["temporary_feature_id"]] = model
@@ -1717,6 +1719,7 @@ class PerceptionSlotFillingService:
                     actor_id=item["actor_id"],
                     name=item["scenario_name"],
                     content=item["scenario_content"],
+                    confirmation_status='ai_assumption',
                 )
             )
 
@@ -1772,6 +1775,7 @@ class PerceptionSlotFillingService:
                         scenario_id=scenario_id,
                         position=next_position,
                         content=criterion,
+                        confirmation_status='ai_assumption',
                     )
                 )
                 acceptance_criterion_count += 1
@@ -1820,6 +1824,7 @@ class PerceptionSlotFillingService:
                 project_id=project_id,
                 name=item["business_object_name"],
                 description=item["business_object_description"],
+                confirmation_status='ai_assumption',
             )
             session.add(model)
             await session.flush()
@@ -1863,6 +1868,7 @@ class PerceptionSlotFillingService:
                 project_id=project_id,
                 name=flow["flow_name"],
                 description=flow["flow_description"],
+                confirmation_status='ai_assumption',
             )
             session.add(flow_model)
             await session.flush()

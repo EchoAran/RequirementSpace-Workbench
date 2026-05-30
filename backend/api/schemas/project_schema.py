@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -9,6 +10,11 @@ class CamelModel(BaseModel):
         from_attributes=True
     )
 
+class ConfirmationStatusEnum(str, Enum):
+    ai_assumption = "ai_assumption"
+    needs_confirmation = "needs_confirmation"
+    confirmed = "confirmed"
+
 class ProjectListItemResponse(CamelModel):
     id: str
     project_id: int
@@ -16,6 +22,7 @@ class ProjectListItemResponse(CamelModel):
     idea: str
     description: str
     updated_at: datetime
+    status_code: str
     status: str
     issue_count: int
     node_count: int
@@ -53,6 +60,7 @@ class ActorDetail(CamelModel):
     actor_id: int
     actor_name: str
     actor_description: str
+    confirmation_status: str | None = None
 
 class ScopeDetail(CamelModel):
     kind: str = "scope"
@@ -65,11 +73,13 @@ class ScopeDetail(CamelModel):
     negative_picture_base64: str | None = None
     kano_category: str | None = None
     kano_category_name: str | None = None
+    confirmation_status: str | None = None
 
 class AcceptanceCriterionDetail(CamelModel):
     kind: str = "acceptance_criterion"
     criterion_id: int
     criterion_content: str
+    confirmation_status: str | None = None
 
 class ScenarioDetail(CamelModel):
     kind: str = "scenario"
@@ -79,6 +89,7 @@ class ScenarioDetail(CamelModel):
     feature_id: int
     actor_id: int
     acceptance_criteria: list[AcceptanceCriterionDetail] = []
+    confirmation_status: str | None = None
 
 class FeatureDetail(CamelModel):
     kind: str = "feature"
@@ -90,6 +101,7 @@ class FeatureDetail(CamelModel):
     children_ids: list[int] = []
     scenarios: list[ScenarioDetail] = []
     scope: ScopeDetail | None = None
+    confirmation_status: str | None = None
 
 class BusinessObjectAttributeDetail(CamelModel):
     kind: str = "business_object_attribute"
@@ -105,6 +117,7 @@ class BusinessObjectDetail(CamelModel):
     business_object_name: str
     business_object_description: str
     business_object_attributes: list[BusinessObjectAttributeDetail] = []
+    confirmation_status: str | None = None
 
 class FlowStepDetail(CamelModel):
     kind: str = "flow_step"
@@ -125,6 +138,7 @@ class FlowDetail(CamelModel):
     flow_description: str
     feature_ids: list[int] = []
     flow_steps: list[FlowStepDetail] = []
+    confirmation_status: str | None = None
 
 class ProjectDetailResponse(CamelModel):
     kind: str = "requirement_space"

@@ -204,6 +204,7 @@ class ActorGenerationService:
                     project_id=project_id,
                     name=item["actor_name"],
                     description=item["actor_description"],
+                    confirmation_status='ai_assumption',
                 )
             )
 

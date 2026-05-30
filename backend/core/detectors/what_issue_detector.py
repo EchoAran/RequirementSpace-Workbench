@@ -96,12 +96,19 @@ class WhatIssueDetector(BaseIssueDetector):
             for scenario in context.scenarios
         }
 
+        actor_name_map = {
+            actor.actor_id: actor.name
+            for actor in context.actors
+        }
+
         issues: list[Issue] = []
 
         for feature in context.leaf_features:
             for actor_id in feature.actor_ids:
                 if (feature.feature_id, actor_id) in scenario_pair_set:
                     continue
+
+                actor_name = actor_name_map.get(actor_id, str(actor_id))
 
                 issues.append(
                     Issue(
@@ -110,7 +117,7 @@ class WhatIssueDetector(BaseIssueDetector):
                         severity=IssueSeverity.WARNING,
                         title="功能与参与者组合缺少场景",
                         description=(
-                            f"功能“{feature.name}”与参与者 {actor_id} "
+                            f"功能“{feature.name}”与参与者“{actor_name}”"
                             "还没有对应场景。"
                         ),
                         target=IssueTarget(
@@ -140,6 +147,11 @@ class WhatIssueDetector(BaseIssueDetector):
             for feature in context.features
         }
 
+        actor_name_map = {
+            actor.actor_id: actor.name
+            for actor in context.actors
+        }
+
         issues: list[Issue] = []
 
         for scenario in context.scenarios:
@@ -147,6 +159,8 @@ class WhatIssueDetector(BaseIssueDetector):
 
             if scenario.actor_id in actor_ids:
                 continue
+
+            actor_name = actor_name_map.get(scenario.actor_id, str(scenario.actor_id))
 
             issues.append(
                 Issue(
@@ -156,7 +170,7 @@ class WhatIssueDetector(BaseIssueDetector):
                     title="场景参与者与功能关联不一致",
                     description=(
                         f"场景“{scenario.name}”引用的参与者 "
-                        f"{scenario.actor_id} 未关联到该功能。"
+                        f"“{actor_name}”未关联到该功能。"
                     ),
                     target=IssueTarget(
                         targetType="scenario",
@@ -207,6 +221,15 @@ class WhatIssueDetector(BaseIssueDetector):
             )
             group_map.setdefault(key, []).append(scenario.scenario_id)
 
+        actor_name_map = {
+            actor.actor_id: actor.name
+            for actor in context.actors
+        }
+        feature_name_map = {
+            feature.feature_id: feature.name
+            for feature in context.features
+        }
+
         issues: list[Issue] = []
 
         for (feature_id, actor_id, scenario_name), scenario_ids in (
@@ -215,6 +238,9 @@ class WhatIssueDetector(BaseIssueDetector):
             if not scenario_name or len(scenario_ids) <= 1:
                 continue
 
+            feature_name = feature_name_map.get(feature_id, str(feature_id))
+            actor_name = actor_name_map.get(actor_id, str(actor_id))
+
             issues.append(
                 Issue(
                     code="DUPLICATE_SCENARIO_NAME",
@@ -222,7 +248,7 @@ class WhatIssueDetector(BaseIssueDetector):
                     severity=IssueSeverity.INFO,
                     title="场景名称重复",
                     description=(
-                        f"功能 {feature_id} 与参与者 {actor_id} 下存在"
+                        f"功能“{feature_name}”与参与者“{actor_name}”下存在"
                         f"重复场景名称“{scenario_name}”。"
                     ),
                     target=IssueTarget(

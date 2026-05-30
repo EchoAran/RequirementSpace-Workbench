@@ -1,11 +1,13 @@
 import { useState, type MouseEvent, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Sparkles, Check, X, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
+import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
+import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
 import { 
   useWorkspaceStore, 
   selectActors, 
@@ -20,6 +22,7 @@ import {
 
 export function WhatToDo() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { 
     setSelectedObject, highlightTarget, selectedObject, ir, setHighlightTarget,
     pendingManualAction, setPendingManualAction,
@@ -29,6 +32,9 @@ export function WhatToDo() {
     generateAcceptanceCriteria, regenerateAcceptanceCriteria, confirmAcceptanceCriteria,
     discardDraft, activeDraft, activeDraftType, isGenerating, isLoading, isDiagnosing,
     addActor, addFeature, lastActionMessage,
+    // Phase 3: Choice group
+    activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress,
+    acceptChoice, discardChoiceGroup, deferOnboardingChoiceGroup,
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
     deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate,
     confirmRepairDraft,
@@ -53,6 +59,8 @@ export function WhatToDo() {
   const [isAddActorModalOpen, setIsAddActorModalOpen] = useState(false);
   const [newActorName, setNewActorName] = useState('');
   const [newActorDesc, setNewActorDesc] = useState('');
+  const [aiDialogTarget, setAiDialogTarget] = useState<{ targetType: AIAddTargetType; anchor?: Record<string, any> } | null>(null);
+  const isAIDialogOpen = aiDialogTarget !== null;
 
   const [isAddFeatureModalOpen, setIsAddFeatureModalOpen] = useState(false);
   const [newFeatureName, setNewFeatureName] = useState('');
@@ -193,6 +201,43 @@ export function WhatToDo() {
       return () => clearTimeout(timer);
     }
   }, [highlightTarget]);
+
+  // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (!highlight) return;
+    const [kind, ...idParts] = highlight.split('-');
+    const id = parseInt(idParts.join('-'), 10);
+    if (isNaN(id)) return;
+    // 清除 URL 参数，防止刷新后重复高亮
+    navigate(location.pathname, { replace: true });
+
+    setTimeout(() => {
+      // 尝试查找对应的 DOM 元素并滚动到可视区域
+      const el = document.getElementById(`${kind}-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl'), 3000);
+      }
+      // 根据节点类型选中对应对象
+      if (kind === 'actor') {
+        const actor = actors.find((a: any) => a.actorId === id);
+        if (actor) setSelectedObject(actor);
+      } else if (kind === 'feature') {
+        setHighlightTarget(id.toString());
+      } else if (kind === 'scenario') {
+        const feat = ir?.features?.find((f: any) => f.scenarios?.some((s: any) => s.scenarioId === id));
+        if (feat) setHighlightTarget(feat.featureId.toString());
+      } else if (kind === 'acceptance_criterion') {
+        const feat = ir?.features?.find((f: any) =>
+          f.scenarios?.some((s: any) => s.acceptanceCriteria?.some((a: any) => a.criterionId === id))
+        );
+        if (feat) setHighlightTarget(feat.featureId.toString());
+      }
+    }, 200);
+  }, [location.search]);
 
   // Initialize actor select inside modal when opened
   useEffect(() => {
@@ -544,9 +589,16 @@ export function WhatToDo() {
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      onClick={() => setAiDialogTarget({ targetType: 'actor' })}
+                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
+                      title="AI 对话添加参与者"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </button>
                   </h3>
                   <button
-                    onClick={generateActors}
+                    onClick={() => void generateActors()}
                     disabled={isGenerating || isLoading}
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
@@ -561,8 +613,9 @@ export function WhatToDo() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {actors.map(actor => (
-                      <div 
-                        key={actor.id} 
+                      <div
+                        key={actor.id}
+                        id={`actor-${actor.actorId}`}
                         onClick={() => setSelectedObject(actor)}
                         className={`bg-white rounded-xl p-4 border transition-all cursor-pointer flex flex-col gap-3 ${selectedObject?.id === actor.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300 hover:shadow-sm shadow-inner bg-slate-50/20'}`}
                       >
@@ -633,7 +686,7 @@ export function WhatToDo() {
                   </h3>
                   <div className="flex gap-2">
                     <button
-                      onClick={generateFeatures}
+                      onClick={() => void generateFeatures()}
                       disabled={isGenerating || isLoading}
                       className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                     >
@@ -681,6 +734,16 @@ export function WhatToDo() {
                         title="添加一级模块功能结点"
                       >
                         <Plus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAiDialogTarget({ targetType: 'feature_branch', anchor: { parent_feature_id: null } });
+                        }}
+                        className="p-1 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg text-slate-400 hover:text-amber-600 transition-all flex items-center justify-center"
+                        title="AI 对话添加功能模块"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -736,6 +799,16 @@ export function WhatToDo() {
                                   title="为此模块直接添加子功能结点"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAiDialogTarget({ targetType: 'feature_leaf', anchor: { parent_feature_id: cap.featureId } });
+                                  }}
+                                  className="p-1 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg text-slate-400 hover:text-amber-600 transition-all flex items-center justify-center"
+                                  title="AI 对话为此模块添加功能点"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
                                 </button>
                                 <StatusBadge status={cap.status} />
                               </div>
@@ -1401,6 +1474,37 @@ export function WhatToDo() {
           return undefined;
         }}
         confirmLabel={activeDraftType === 'scenario' ? '确认并生成验收标准' : '确认采纳'}
+      />
+
+      {/* Phase 3: Choice group preview modal (actor/scenario) */}
+      <ChoiceGroupPreviewModal
+        group={activeChoiceGroup}
+        isWorking={isGeneratingChoices || isLoading}
+        isGeneratingChoices={isGeneratingChoices}
+        generationProgress={choiceGroupGenerationProgress}
+        onAccept={async (choiceId) => {
+          await acceptChoice(choiceId);
+        }}
+        onDiscard={async () => {
+          if (activeChoiceGroup) {
+            await discardChoiceGroup(activeChoiceGroup.id);
+          }
+        }}
+        onDefer={deferOnboardingChoiceGroup}
+      />
+
+      <AIAddObjectDialog
+        isOpen={isAIDialogOpen}
+        onClose={() => setAiDialogTarget(null)}
+        projectId={ir?.projectId ?? 0}
+        targetType={aiDialogTarget?.targetType ?? 'actor'}
+        anchor={aiDialogTarget?.anchor}
+        onConfirm={async () => {
+          setAiDialogTarget(null);
+          // Refresh workspace data after confirm
+          const { refreshWorkspace } = useWorkspaceStore.getState();
+          await refreshWorkspace();
+        }}
       />
 
       <ConfirmTransitionModal

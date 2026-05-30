@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { RangeKanbanColumn } from '@/components/shared/RangeKanbanColumn';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ImpactPreview, ImpactGroup } from '@/components/shared/ImpactPreview';
@@ -23,6 +23,7 @@ const SCOPE_COLUMNS = [
 
 export function ScopeAndDelivery() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { 
     selectedObject, highlightTarget, setHighlightTarget,
     setSelectedObject, ir, updateScope, addFeature,
@@ -34,6 +35,30 @@ export function ScopeAndDelivery() {
   } = useWorkspaceStore();
   
   const [scopeFeedback, setScopeFeedback] = useState('');
+
+  // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (!highlight) return;
+    const [kind, ...idParts] = highlight.split('-');
+    const id = parseInt(idParts.join('-'), 10);
+    if (isNaN(id)) return;
+    navigate(location.pathname, { replace: true });
+
+    setTimeout(() => {
+      const el = document.getElementById(`${kind}-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400', 'ring-offset-2', 'rounded-xl'), 3000);
+      }
+      if (kind === 'scope') {
+        const scopeItem = ir?.features?.find((feature: any) => feature.scope?.scopeId === id);
+        if (scopeItem) setSelectedObject(buildScopeSelectionObject(scopeItem));
+      }
+    }, 200);
+  }, [location.search]);
 
   const pageHealth = selectPageHealth({ ir } as any, '/scope');
 
@@ -70,6 +95,32 @@ export function ScopeAndDelivery() {
   const [pendingMoveLabel, setPendingMoveLabel] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isImpactLoading, setIsImpactLoading] = useState(false);
+
+  const buildScopeSelectionObject = (item: any) => {
+    if (!item) return null;
+    const featureId = item.featureId ?? parseInt(item.id, 10);
+    if (isNaN(featureId)) return item;
+
+    const feature = ir?.features?.find((candidate: any) => candidate.featureId === featureId);
+    const scope = feature?.scope || item.scope || null;
+
+    return {
+      kind: 'scope' as const,
+      id: featureId.toString(),
+      featureId,
+      featureName: feature?.featureName || item.featureName || item.title || '',
+      featureDescription: feature?.featureDescription || item.featureDescription || item.description || '',
+      parentId: feature?.parentId ?? item.parentId ?? null,
+      scopeId: scope?.scopeId,
+      title: feature?.featureName || item.title || '',
+      description: feature?.featureDescription || item.description || '',
+      status: scope?.confirmationStatus || item.confirmationStatus || item.status || 'ai_assumption',
+      confirmationStatus: scope?.confirmationStatus || item.confirmationStatus || item.status || 'ai_assumption',
+      scopeStatus: scope?.scopeStatus || item.scopeStatus,
+      parentModuleName: item.parentModuleName,
+      scope: scope || item.scope || null,
+    };
+  };
 
   // Group items based on our four-column status mapping
   const grouped = ir ? groupScopeItems(ir) : { inScope: [], deferred: [], excluded: [], undecided: [] };
@@ -160,7 +211,7 @@ export function ScopeAndDelivery() {
       if (scopeStatus !== 'current') {
         await updateScope(created.featureId, { scopeStatus: scopeStatus as any });
       }
-      setSelectedObject(created);
+      setSelectedObject(buildScopeSelectionObject(created));
     }
   };
 
@@ -344,7 +395,7 @@ export function ScopeAndDelivery() {
                   {(!ir?.kanoStatus || ir.kanoStatus === 'missing' || ir.kanoStatus === 'failed') && (
                     <>
                       <button
-                        onClick={generateScope}
+                        onClick={() => void generateScope()}
                         disabled={isWorking}
                         className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                       >
@@ -400,7 +451,7 @@ export function ScopeAndDelivery() {
                   moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
-                  onItemClick={(item) => setSelectedObject(item)}
+                  onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
                 />
                 <RangeKanbanColumn 
@@ -410,7 +461,7 @@ export function ScopeAndDelivery() {
                   moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
-                  onItemClick={(item) => setSelectedObject(item)}
+                  onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
                   onAddItem={createScopeItem}
                 />
@@ -421,7 +472,7 @@ export function ScopeAndDelivery() {
                   moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
-                  onItemClick={(item) => setSelectedObject(item)}
+                  onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
                   onAddItem={createScopeItem}
                 />
@@ -432,7 +483,7 @@ export function ScopeAndDelivery() {
                   moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
-                  onItemClick={(item) => setSelectedObject(item)}
+                  onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
                   onAddItem={createScopeItem}
                 />

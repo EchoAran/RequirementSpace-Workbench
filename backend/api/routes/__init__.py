@@ -55,10 +55,21 @@ from backend.api.routes.choice_routes import (
 from backend.api.routes.project_requirements_routes import (
     router as project_requirements_router,
 )
+from backend.api.routes.ai_add_session_routes import (
+    router as ai_add_session_router,
+    draft_router as ai_object_generation_draft_router,
+)
+from backend.api.routes.node_status_routes import (
+    router as node_status_router,
+)
+from backend.api.routes.project_creation_choice_routes import (
+    router as project_creation_choice_router,
+)
 
 __all__ = [
     "choice_router",
     "project_creation_router",
+    "project_creation_choice_router",
     "blank_project_router",
     "actor_generation_router",
     "feature_generation_router",
@@ -76,5 +87,8 @@ __all__ = [
     "flow_router",
     "scope_router",
     "project_requirements_router",
+    "ai_add_session_router",
+    "ai_object_generation_draft_router",
+    "node_status_router",
 ]
 

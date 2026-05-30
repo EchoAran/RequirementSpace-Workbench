@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate, Outlet, useParams } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { ScopedAIBar } from './components/shared/ScopedAIBar';
+import { GenerationConflictDialog } from './components/shared/GenerationConflictDialog';
 import { Overview } from './pages/Overview';
 import { WhatToDo } from './pages/WhatToDo';
 import { HowItWorks } from './pages/HowItWorks';
@@ -183,6 +184,23 @@ function GlobalTaskStatus() {
   );
 }
 
+function GlobalGenerationConflictDialog() {
+  const pendingGenerationConflict = useWorkspaceStore((s) => s.pendingGenerationConflict);
+  const dismissPendingGenerationConflict = useWorkspaceStore((s) => s.dismissPendingGenerationConflict);
+  const confirmPendingGenerationConflict = useWorkspaceStore((s) => s.confirmPendingGenerationConflict);
+  const isGeneratingChoices = useWorkspaceStore((s) => s.isGeneratingChoices);
+
+  return (
+    <GenerationConflictDialog
+      isOpen={!!pendingGenerationConflict}
+      generationLabel={pendingGenerationConflict?.existingGroupLabel || '候选'}
+      isWorking={isGeneratingChoices}
+      onClose={dismissPendingGenerationConflict}
+      onConfirm={() => void confirmPendingGenerationConflict()}
+    />
+  );
+}
+
 function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage: 'flow' | 'scope' }) {
   const ir = useWorkspaceStore((s) => s.ir);
   const setError = useWorkspaceStore((s) => s.setError);
@@ -262,6 +280,7 @@ export function App() {
         <Route path="/preview" element={<LegacyWorkspaceRedirect page="/preview" />} />
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
+      <GlobalGenerationConflictDialog />
       <GlobalTaskStatus />
       <GlobalToast />
     </BrowserRouter>

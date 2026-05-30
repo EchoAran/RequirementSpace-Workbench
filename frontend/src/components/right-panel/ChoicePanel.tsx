@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { Choice, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ActionButton, ActionRow, ImpactSummary, PanelShell, PatchSummary, Section, TextField } from './shared';
+import { ChoicePreviewRenderer } from '@/components/shared/ChoicePreviewRenderer';
 
 export function ChoicePanel({ choice, ir }: { choice: Choice; ir: RequirementSpaceIR }) {
   const { acceptChoice, rejectChoice, rewrite } = useWorkspaceStore();
   const [instruction, setInstruction] = useState('');
+  const isDraftPayload = (choice as any).applyMode === 'draft_payload';
+  const draftType = (choice as any).draftType;
 
   return (
     <PanelShell title={choice.title} subtitle="Choice">
@@ -15,13 +18,27 @@ export function ChoicePanel({ choice, ir }: { choice: Choice; ir: RequirementSpa
         </div>
       </Section>
 
-      <Section title="Patch 摘要">
-        <PatchSummary patch={choice.patch} />
-      </Section>
-
-      <Section title="Impact Preview">
-        <ImpactSummary ir={ir} impact={choice.impactPreview} />
-      </Section>
+      {/* Phase 5b: draft_payload type choices show typed preview instead of patch */}
+      {isDraftPayload && draftType ? (
+        <Section title={`预览 (${draftType})`}>
+          <div className="rounded-xl border border-slate-200 p-3">
+            <ChoicePreviewRenderer
+              draftType={draftType}
+              preview={(choice as any).preview}
+              payload={(choice as any).payload}
+            />
+          </div>
+        </Section>
+      ) : (
+        <>
+          <Section title="Patch 摘要">
+            <PatchSummary patch={choice.patch} />
+          </Section>
+          <Section title="Impact Preview">
+            <ImpactSummary ir={ir} impact={choice.impactPreview} />
+          </Section>
+        </>
+      )}
 
       <Section title="改写">
         <TextField label="改写指令" value={instruction} onChange={setInstruction} multiline />

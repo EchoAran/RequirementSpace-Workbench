@@ -49,6 +49,9 @@ export function NodePanel({ node: rawNode, ir }: { node: RequirementNode; ir: Re
     setDescription(node.description || '');
   }, [node.id, node.title, node.description]);
 
+  // 兼容两种字段名：selectAllNodes 映射的 status 和原始 API 返回的 confirmationStatus
+  const displayStatus = node.status || node.confirmationStatus || 'ai_assumption';
+
   const saveCore = async () => {
     await updateNodeAttributes(node.id, { title, description } as any);
   };
@@ -60,7 +63,7 @@ export function NodePanel({ node: rawNode, ir }: { node: RequirementNode; ir: Re
       <Section title="状态与交付范围">
         <div className="flex flex-wrap gap-2 mb-3">
           <Badge>
-            {statusOptions.find(o => o.value === node.status)?.label || node.status}
+            {statusOptions.find(o => o.value === displayStatus)?.label || displayStatus}
           </Badge>
           {node.scopeStatus ? (
             <Badge>
@@ -73,9 +76,9 @@ export function NodePanel({ node: rawNode, ir }: { node: RequirementNode; ir: Re
         </div>
         <SelectField
           label="节点审查状态"
-          value={node.status}
+          value={displayStatus}
           options={statusOptions}
-          onChange={(value) => void setNodeStatus(node.id, value as any)}
+          onChange={(value) => void setNodeStatus(node.id, node.kind, value as any)}
         />
         <SelectField
           label="本期交付范围"

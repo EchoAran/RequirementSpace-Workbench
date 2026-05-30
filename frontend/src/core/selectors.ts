@@ -25,16 +25,22 @@ import type {
   PageHealth,
 } from '@/core/schema';
 
+const getConfirmationStatus = (value: unknown): NodeStatus => {
+  return value === 'confirmed' || value === 'needs_confirmation' || value === 'ai_assumption'
+    ? value
+    : 'ai_assumption';
+};
+
 export const selectAllNodes = (space: RequirementSpace | null): any[] => {
   if (!space) return [];
   const list: any[] = [];
-  (space.actors || []).forEach(a => list.push({ ...a, id: a.actorId.toString(), title: a.actorName, description: a.actorDescription, status: 'confirmed', scopeStatus: 'in_scope' }));
-  (space.features || []).forEach(f => list.push({ ...f, id: f.featureId.toString(), title: f.featureName, description: f.featureDescription, status: 'confirmed', scopeStatus: f.scope?.scopeStatus || 'in_scope' }));
-  (space.businessObjects || []).forEach(b => list.push({ ...b, id: b.businessObjectId.toString(), title: b.businessObjectName, description: b.businessObjectDescription, status: 'confirmed', scopeStatus: 'in_scope' }));
+  (space.actors || []).forEach(a => list.push({ ...a, id: a.actorId.toString(), title: a.actorName, description: a.actorDescription, status: getConfirmationStatus((a as any).confirmationStatus), scopeStatus: 'in_scope' }));
+  (space.features || []).forEach(f => list.push({ ...f, id: f.featureId.toString(), title: f.featureName, description: f.featureDescription, status: getConfirmationStatus((f as any).confirmationStatus), scopeStatus: f.scope?.scopeStatus || 'in_scope' }));
+  (space.businessObjects || []).forEach(b => list.push({ ...b, id: b.businessObjectId.toString(), title: b.businessObjectName, description: b.businessObjectDescription, status: getConfirmationStatus((b as any).confirmationStatus), scopeStatus: 'in_scope' }));
   (space.flows || []).forEach(fl => {
-    list.push({ ...fl, id: fl.flowId.toString(), title: fl.flowName, description: fl.flowDescription, status: 'confirmed', scopeStatus: 'in_scope' });
+    list.push({ ...fl, id: fl.flowId.toString(), title: fl.flowName, description: fl.flowDescription, status: getConfirmationStatus((fl as any).confirmationStatus), scopeStatus: 'in_scope' });
     (fl.flowSteps || []).forEach(st => {
-      list.push({ ...st, id: st.stepId.toString(), title: st.stepName, description: st.stepDescription, status: 'confirmed', scopeStatus: 'in_scope' });
+      list.push({ ...st, id: st.stepId.toString(), title: st.stepName, description: st.stepDescription, status: getConfirmationStatus((st as any).confirmationStatus), scopeStatus: 'in_scope' });
     });
   });
   return list;
@@ -490,7 +496,7 @@ export const buildSinglePerceptionSlot = (
         blocking: true,
         kind: 'generative_perception_slot',
         perceptionKind: space.perceptionSlot.perceptionKind,
-        description: `🤖 AI 建议补充：${space.perceptionSlot.perceptionDescription || ''}`,
+        description: `建议补充以下内容：${space.perceptionSlot.perceptionDescription || ''}`,
         actions: {
           manual: {
             label: '手动补充',
@@ -517,7 +523,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'what',
       blocking: true,
       kind: 'missing_actor',
-      description: '🔍 系统检测到尚未创建任何系统参与者角色，请立即添加角色。',
+      description: '当前还没有系统参与者角色，请先补充角色定义。',
       actions: {
         manual: { label: '添加角色', targetRoute: '/what', focusMode: 'modal' },
         ai: { label: 'AI 生成角色', endpoint: '/api/actor_generation_drafts' }
@@ -532,7 +538,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'what',
       blocking: true,
       kind: 'missing_feature',
-      description: '🔍 系统检测到尚未创建任何核心能力结点，请开始勾勒系统功能树。',
+      description: '当前还没有核心能力结点，请先梳理业务功能树。',
       actions: {
         manual: { label: '添加功能', targetRoute: '/what' },
         ai: { label: 'AI 推演功能树', endpoint: '/api/feature_generation_drafts' }
@@ -548,7 +554,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'what',
       blocking: true,
       kind: 'missing_feature_actor_binding',
-      description: '🔍 系统检测到存在功能结点尚未指定任何执行角色，请补充绑定。',
+      description: '存在功能结点尚未绑定执行角色，请补充角色关联。',
       targetKind: 'feature',
       targetId: badFeat?.featureId,
       actions: {
@@ -570,7 +576,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'what',
       blocking: true,
       kind: 'missing_scenario',
-      description: '🔍 部分叶子业务结点尚未编写成功典型验收场景（User Story），请补充。',
+      description: '部分叶子业务结点还没有成功典型场景，请补充对应的 User Story。',
       targetKind: 'feature',
       targetId: badFeat?.featureId,
       actions: {
@@ -593,7 +599,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'what',
       blocking: true,
       kind: 'missing_acceptance_criteria',
-      description: '🔍 存在典型验收场景缺少验收标准(AC)，开发人员将无法验证完成状态，请补充。',
+      description: '存在典型验收场景缺少验收标准（AC），请补充可验证的完成条件。',
       targetKind: 'feature',
       targetId: badFeat?.featureId,
       actions: {
@@ -615,7 +621,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'how',
       blocking: true,
       kind: 'missing_flow',
-      description: '🔍 业务运作模型缺少核心业务主流程，请添加代表系统流转的业务流程模型。',
+      description: '当前缺少核心业务主流程，请补充代表系统流转的业务流程模型。',
       actions: {
         manual: { label: '创建业务流程', targetRoute: '/flow' },
         ai: { label: 'AI 一键生成流程', endpoint: '/api/flow_generation_drafts' }
@@ -630,7 +636,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'how',
       blocking: true,
       kind: 'invalid_flow_topology',
-      description: '🔍 检测到业务流程步骤尚未编排或步骤顺序链路损坏，请检查步骤拓扑结构。',
+      description: '检测到业务流程步骤尚未编排完整，或步骤顺序链路存在问题，请检查拓扑结构。',
       actions: {
         manual: { label: '编排步骤', targetRoute: '/flow' }
       }
@@ -645,7 +651,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'how',
       blocking: true,
       kind: 'missing_business_object_attribute',
-      description: '🔍 数据实体尚未定义任何业务字段属性，数据模型不完整，建议补充。',
+      description: '存在数据实体尚未定义业务字段属性，请补充数据模型。',
       targetKind: 'business_object',
       targetId: bo?.businessObjectId,
       actions: {
@@ -667,7 +673,7 @@ export const buildSinglePerceptionSlot = (
       stage: 'scope',
       blocking: true,
       kind: 'missing_scope_decision',
-      description: '🔍 部分业务叶子功能尚未制定交付计划，请将其指派给当前迭代或进行暂缓。',
+      description: '部分业务叶子功能尚未制定交付计划，请完成范围划分。',
       targetKind: 'feature',
       targetId: badFeat?.featureId,
       actions: {
@@ -679,17 +685,17 @@ export const buildSinglePerceptionSlot = (
   // 10. missing_kano_analysis / kano_failed_retry
   if (hasGap('missing_kano_analysis', 'kano_analysis') || hasGap('kano_failed_retry', 'kano_analysis')) {
     const kStatus = space.kanoStatus || 'missing';
-    let desc = '🔍 交付范围尚未进行 Kano 需求属性归类分析，请完成此分析或跳过。';
+    let desc = '交付范围尚未完成分析，请先生成范围划分建议。';
     let aiLabel = 'AI 自动划分范围';
     
     if (kStatus === 'generating') {
-      desc = '🤖 AI 正在对系统功能卡片进行 Kano 模型分类分析并推演交付安排，请耐心等待...';
+      desc = 'AI 正在分析系统功能卡片并推演交付安排，请稍候。';
       aiLabel = 'AI 正在划分范围';
     } else if (kStatus === 'draft_ready') {
-      desc = '🎨 AI 已生成 Kano 分析与交付建议草稿！请在下方核对并确认发布计划。';
+      desc = 'AI 已生成范围划分建议草稿，请在下方核对并确认发布计划。';
       aiLabel = 'AI 自动划分范围';
     } else if (kStatus === 'failed') {
-      desc = '❌ Kano 需求分类分析生成超时或失败。您可以重新发起评估，或直接跳过以进行纯手工范围划分。';
+      desc = '范围划分建议生成失败，请重新发起 AI 划分。';
       aiLabel = 'AI 自动划分范围';
     }
 
@@ -712,7 +718,7 @@ export const buildSinglePerceptionSlot = (
       stage: stage,
       blocking: true,
       kind: 'stage_gate_transition_confirm',
-      description: `🌳 ${stage === 'what' ? 'What' : 'How'} 阶段基础建模规则已满足。建议运行 AI 智能诊断以检查潜在缺口，或申请解锁进入下一阶段。`,
+      description: `${stage === 'what' ? 'What' : 'How'} 阶段基础建模规则已满足。建议先运行 AI 智能诊断检查潜在缺口，再决定是否进入下一阶段。`,
       actions: {
         manual: {
           label: '申请进入下一阶段',
@@ -1049,6 +1055,45 @@ export type OverviewModel = {
   recentAuditOperations: any[];
 };
 
+const choiceGroupTypeLabelMap: Record<string, string> = {
+  actor: '参与者',
+  scenario: '场景',
+  feature: '功能树',
+  flow: '流程',
+  scope: '范围分析',
+  acceptance_criteria: '验收标准',
+  project_creation: '项目草稿',
+};
+
+const getChoiceGroupDecisionLabel = (choiceGroup: any) => {
+  const rawType = choiceGroup.generationType || choiceGroup.generation_type || choiceGroup.sourceType || choiceGroup.source_type;
+  return choiceGroupTypeLabelMap[rawType] || null;
+};
+
+const getChoiceGroupDecisionDescription = (choiceGroup: any) => {
+  const comparisonSummary =
+    choiceGroup.statusDetail?.comparisonSummary ||
+    choiceGroup.statusDetail?.comparison_summary;
+  if (comparisonSummary) {
+    return comparisonSummary;
+  }
+
+  const label = getChoiceGroupDecisionLabel(choiceGroup);
+  const candidateCount = (choiceGroup.choices || []).filter((choice: any) => choice.status === 'candidate').length
+    || choiceGroup.successCount
+    || choiceGroup.success_count
+    || choiceGroup.candidateCount
+    || choiceGroup.candidate_count
+    || choiceGroup.choices?.length
+    || 0;
+
+  if (label) {
+    return `AI 已生成 ${candidateCount} 个${label}候选方案，点击查看差异后再决定是否采纳。`;
+  }
+
+  return `AI 已生成 ${candidateCount} 个候选方案，点击查看差异后再决定是否采纳。`;
+};
+
 export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: any[] = []): OverviewModel => {
   const readiness = buildReadiness(space);
   if (!space) {
@@ -1080,19 +1125,59 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
   if (space.choiceGroups) {
     Object.values(space.choiceGroups).forEach((cg: any) => {
       if (cg.status === 'open') {
-        const choicesCount = cg.choices?.length || 0;
+        const label = getChoiceGroupDecisionLabel(cg);
         dq.push({
           id: cg.id,
           kind: 'choiceGroup' as const,
-          title: `方案决策：${cg.title || 'AI 智能推演落地决策'}`,
-          description: `针对系统设计缝隙，AI 生成了 ${choicesCount} 个可选的联动落地方案，请采纳。`,
+          title: label ? `${label}方案决策` : `方案决策：方案组 #${cg.id}`,
+          description: getChoiceGroupDecisionDescription(cg),
           original: cg,
         });
       }
     });
   }
 
-  const nodes = space.nodes || {};
+  // 构建 AI 假设账本：扫描所有实体，收集 confirmationStatus === 'ai_assumption' 的节点
+  const ledger: any[] = [];
+  const pushLedger = (kind: string, id: number, title: string, source: string, status: string) => {
+    if (status === 'ai_assumption') {
+      ledger.push({
+        kind,
+        id: `${kind}-${id}`,
+        nodeId: id,
+        title,
+        source,
+        status,
+      });
+    }
+  };
+  (space.actors || []).forEach((a: any) =>
+    pushLedger('actor', a.actorId, a.actorName, a.actorDescription, a.confirmationStatus)
+  );
+  (space.features || []).forEach((f: any) => {
+    pushLedger('feature', f.featureId, f.featureName, f.featureDescription, f.confirmationStatus);
+    if (f.scope?.scopeId) {
+      pushLedger(
+        'scope',
+        f.scope.scopeId,
+        f.featureName,
+        f.scope.reason || f.featureDescription || '交付范围决策待确认',
+        f.scope.confirmationStatus,
+      );
+    }
+    (f.scenarios || []).forEach((s: any) => {
+      pushLedger('scenario', s.scenarioId, s.scenarioName, s.scenarioContent, s.confirmationStatus);
+      (s.acceptanceCriteria || []).forEach((ac: any) => {
+        pushLedger('acceptance_criterion', ac.criterionId, ac.criterionContent?.slice(0, 80), ac.criterionContent, ac.confirmationStatus);
+      });
+    });
+  });
+  (space.businessObjects || []).forEach((b: any) => {
+    pushLedger('business_object', b.businessObjectId, b.businessObjectName, b.businessObjectDescription, b.confirmationStatus);
+  });
+  (space.flows || []).forEach((fl: any) =>
+    pushLedger('flow', fl.flowId, fl.flowName, fl.flowDescription, fl.confirmationStatus)
+  );
 
   const choicesCompatible = (space as any).choicesCompatible || [];
   const recentChoices = choicesCompatible.filter((c: any) => c.status === 'candidate').slice(0, 3);
@@ -1115,7 +1200,7 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
     openChoiceGroupsCount,
     openSlotsCount,
 
-    aiAssumptionLedger: Object.values(nodes).filter((n: any) => n.status === 'ai_assumption'),
+    aiAssumptionLedger: ledger,
     recentAuditOperations: auditLogs.slice(0, 5),
   };
 };
@@ -1293,7 +1378,7 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
       id: b.businessObjectId.toString(),
       title: b.businessObjectName,
       description: b.businessObjectDescription,
-      status: 'confirmed'
+      status: getConfirmationStatus((b as any).confirmationStatus),
     })),
     getRelatedStepsForObject,
   };
@@ -1362,7 +1447,7 @@ export const getRootCapabilities = (space: RequirementSpace | null): any[] => {
       id: f.featureId.toString(),
       title: f.featureName,
       description: f.featureDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((f as any).confirmationStatus),
       scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
       kind: 'feature'
     }));
@@ -1378,7 +1463,7 @@ export const getChildCapabilities = (space: RequirementSpace | null, capId: stri
       id: f.featureId.toString(),
       title: f.featureName,
       description: f.featureDescription,
-      status: 'confirmed',
+      status: getConfirmationStatus((f as any).confirmationStatus),
       scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
       kind: 'feature'
     }));
@@ -1395,7 +1480,7 @@ export const getTasksForCapability = (space: RequirementSpace | null, capId: str
     id: s.scenarioId.toString(),
     title: s.scenarioName,
     outcome: s.scenarioContent,
-    status: 'confirmed',
+    status: getConfirmationStatus((s as any).confirmationStatus),
     actorId: s.actorId.toString(),
     scopeStatus: 'in_scope'
   }));
@@ -1454,23 +1539,31 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
     const hasScope = f.scope && f.scope.scopeStatus;
     const normStatus = hasScope ? normalizeScopeStatus(f.scope.scopeStatus) : undefined;
     const isDecisionMissing = !hasScope;
+    const scopeConfirmationStatus = (f.scope as any)?.confirmationStatus || 'ai_assumption';
 
     return {
+      kind: 'scope' as const,
       id: f.featureId.toString(),
+      featureId: f.featureId,
+      featureName: f.featureName,
+      featureDescription: f.featureDescription,
       title: f.featureName,
       description: f.featureDescription,
-      status: 'confirmed',
+      status: scopeConfirmationStatus,
+      confirmationStatus: scopeConfirmationStatus,
       scopeStatus: normStatus,
       isDecisionMissing,
       parentModuleName: parentModule ? parentModule.featureName : '未分组模块',
       scope: f.scope ? {
         ...f.scope,
+        confirmationStatus: scopeConfirmationStatus,
         scopeStatus: normStatus
       } : {
         kind: 'scope' as const,
-        scopeId: Math.floor(1000 + Math.random() * 9000),
+        scopeId: undefined as any,
         scopeStatus: normStatus as any,
         reason: '',
+        confirmationStatus: 'ai_assumption' as const,
         positiveSummary: null,
         negativeSummary: null,
         positivePictureBase64: null,

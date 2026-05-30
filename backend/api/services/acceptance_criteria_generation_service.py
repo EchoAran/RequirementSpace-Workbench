@@ -577,6 +577,7 @@ class AcceptanceCriteriaGenerationService:
                         scenario_id=item["scenario_id"],
                         position=position,
                         content=criterion,
+                        confirmation_status='ai_assumption',
                     )
                 )
                 acceptance_criterion_count += 1

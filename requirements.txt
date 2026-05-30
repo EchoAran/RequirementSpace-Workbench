@@ -13,10 +13,12 @@ httpx==0.28.1
 openai>=1.56.0,<2.0
 python-dotenv==1.2.2
 
-# Requirement modeling and skill adapters
+# Requirement IR serialization (legacy generators)
 dataclasses-json==0.6.7
 inflection==0.5.1
+
+# Chart rendering (Kano analysis)
 matplotlib==3.9.4
 
-# Cross-platform timezone data
-tzdata==2026.2
+# Windows zoneinfo support (used implicitly by zoneinfo.ZoneInfo)
+tzdata

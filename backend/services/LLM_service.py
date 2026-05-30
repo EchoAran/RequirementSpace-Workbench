@@ -90,10 +90,6 @@ class LLMHandler:
             )
             return None
 
-        attempts = 3
-        base_delay = 0.8
-        last_error_text: str | None = None
-
         try:
             request_data = self._build_request_data(prompt, query)
         except ValueError as exc:
@@ -103,14 +99,66 @@ class LLMHandler:
         if response_format is not None:
             request_data["response_format"] = response_format
 
+        return await self._call_api(
+            request_data=request_data,
+            print_log=print_log,
+            prompt_label=prompt,
+            query_label=query,
+        )
+
+    async def call_chat(
+        self,
+        messages: list[dict],
+        print_log: bool = True,
+        response_format: dict | None = None,
+    ) -> Optional[str]:
+        """
+        Multi-turn chat LLM call.
+        Accepts a full list of messages (system + user + assistant history)
+        instead of the single prompt+query pattern used by call_llm.
+
+        Designed for InterviewStrategy where conversation history needs to be preserved.
+        """
+        if not self._validate_settings():
+            self._log(print_log, "The LLM settings are incomplete, making it impossible to call the large model.")
+            return None
+
+        request_data = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": float(self.temperature),
+        }
+
+        if response_format is not None:
+            request_data["response_format"] = response_format
+
+        return await self._call_api(
+            request_data=request_data,
+            print_log=print_log,
+            prompt_label=messages[0]["content"] if messages else "",
+            query_label=messages[-1]["content"] if messages else "",
+        )
+
+    async def _call_api(
+        self,
+        request_data: dict,
+        print_log: bool,
+        prompt_label: str,
+        query_label: str,
+    ) -> Optional[str]:
+        """Shared HTTP call + retry logic for call_llm and call_chat."""
+        attempts = 3
+        base_delay = 0.8
+        last_error_text: str | None = None
+
         headers = self._build_headers()
         url = f"{self.api_url}/v1/chat/completions"
 
         for attempt in range(1, attempts + 1):
-            self._log(print_log, f"\n[PROMPT] LLM call attempt {attempt} with prompt:\n{prompt}")
+            self._log(print_log, f"\n[PROMPT] LLM call attempt {attempt}:\n{prompt_label[:200]}")
 
-            if query.strip():
-                self._log(print_log, f"\n[QUERY] LLM call attempt {attempt} with query:\n{query}")
+            if query_label.strip():
+                self._log(print_log, f"\n[QUERY] LLM call attempt {attempt}:\n{query_label[:200]}")
 
             self._log(print_log, f"\n{'---' * 40}")
 

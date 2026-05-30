@@ -119,6 +119,9 @@ export const http = {
   put: <T>(url: string, body?: any, options?: RequestOptions) =>
     request<T>(url, { method: 'PUT', body, ...options }),
 
+  patch: <T>(url: string, body?: any, options?: RequestOptions) =>
+    request<T>(url, { method: 'PATCH', body, ...options }),
+
   delete: <T>(url: string, options?: RequestOptions) =>
     request<T>(url, { method: 'DELETE', ...options }),
 };

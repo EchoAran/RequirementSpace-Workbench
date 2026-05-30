@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import enum
 
 from sqlalchemy import (
     DateTime,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     LargeBinary,
+    Boolean,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -40,6 +42,15 @@ class TimestampMixin:
         onupdate=beijing_now,
         nullable=False,
     )
+
+class ConfirmationStatus(str, enum.Enum):
+    """标记对象的确认状态：AI生成、待确认、已确认"""
+    AI_ASSUMPTION = "ai_assumption"
+    NEEDS_CONFIRMATION = "needs_confirmation"
+    CONFIRMED = "confirmed"
+
+# 显式映射供 Alembic 和 schema 层引用
+CONFIRMATION_STATUS_VALUES = [s.value for s in ConfirmationStatus]
 
 feature_actor_table = Table(
     "feature_actor",
@@ -203,6 +214,10 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    ai_add_sessions: Mapped[list["AIAddSessionModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class PerceptionSlotModel(TimestampMixin, Base):
@@ -278,6 +293,13 @@ class ActorModel(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="actors")
     features: Mapped[list[FeatureModel]] = relationship(
@@ -359,6 +381,13 @@ class FeatureModel(TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     project: Mapped["ProjectModel"] = relationship(
         back_populates="features",
@@ -434,6 +463,13 @@ class ScopeModel(TimestampMixin, Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     kano_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
     kano_category_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed（与 scope.status 范围决策正交）
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     feature: Mapped["FeatureModel"] = relationship(
         back_populates="scope",
@@ -457,6 +493,13 @@ class ScenarioAcceptanceCriterionModel(TimestampMixin, Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     scenario: Mapped["ScenarioModel"] = relationship(
         back_populates="acceptance_criteria",
@@ -572,6 +615,13 @@ class ScenarioModel(TimestampMixin, Base):
         Integer,
         nullable=True,
     )
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="scenarios")
     feature: Mapped[FeatureModel] = relationship(back_populates="scenarios")
@@ -599,6 +649,13 @@ class BusinessObjectModel(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="business_objects")
     attributes: Mapped[list[BusinessObjectAttributeModel]] = relationship(
@@ -647,6 +704,13 @@ class FlowModel(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="flows")
     features: Mapped[list[FeatureModel]] = relationship(
@@ -732,6 +796,32 @@ class ChoiceGroupModel(TimestampMixin, Base):
     target: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
 
+    # Phase 1: choice group 扩展，支持 AI 生成任务的元信息
+    generation_type: Mapped[str | None] = mapped_column(
+        String(80), nullable=True, default=None,
+        comment="候选生成类型: actor, scenario, feature, project_creation 等"
+    )
+    origin_endpoint: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, default=None,
+        comment="触发此 choice group 的 API endpoint"
+    )
+    candidate_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+        comment="请求的候选总数"
+    )
+    success_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+        comment="成功生成的候选数"
+    )
+    failure_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+        comment="失败的候选数"
+    )
+    status_detail: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="扩展状态信息: 错误汇总、候选失败详情、跨候选差异摘要等"
+    )
+
     project: Mapped[ProjectModel] = relationship(back_populates="choice_groups")
     choices: Mapped[list[ChoiceModel]] = relationship(
         back_populates="choice_group",
@@ -753,6 +843,36 @@ class ChoiceModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), default="candidate", nullable=False)
     patch: Mapped[dict] = mapped_column(JSON, nullable=False)
     impact_preview: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Phase 1: generation choice 扩展字段
+    payload: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="候选草稿的完整 payload（非 patch 型生成结果）"
+    )
+    draft_type: Mapped[str | None] = mapped_column(
+        String(80), nullable=True, default=None,
+        comment="候选类型: actor, scenario, feature, project_creation 等"
+    )
+    apply_mode: Mapped[str] = mapped_column(
+        String(50), default="patch", nullable=False,
+        comment="采纳模式: patch 沿用 issue repair, draft_payload 用 payload 写入"
+    )
+    preview: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="前端展示用摘要，避免 UI 直接理解所有 payload 细节"
+    )
+    score: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="模型自评: completeness, risk, novelty, fit 等"
+    )
+    validation_report: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="采纳前校验结果"
+    )
+    error: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+        comment="候选生成失败时的错误信息。失败候选可保留 error 但 status 为 failed"
+    )
 
     choice_group: Mapped[ChoiceGroupModel] = relationship(back_populates="choices")
 
@@ -868,3 +988,47 @@ class IssueOverrideModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ignored")
 
     project: Mapped[ProjectModel] = relationship(back_populates="issue_overrides")
+
+
+class AIAddSessionModel(TimestampMixin, Base):
+    __tablename__ = "ai_add_sessions"
+    __table_args__ = (
+        Index("ix_ai_add_sessions_project_id", "project_id"),
+        Index("ix_ai_add_sessions_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    anchor_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    summary_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ready_to_generate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    project: Mapped[ProjectModel] = relationship(back_populates="ai_add_sessions")
+    messages: Mapped[list["AIAddMessageModel"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+
+class AIAddMessageModel(TimestampMixin, Base):
+    __tablename__ = "ai_add_messages"
+    __table_args__ = (
+        Index("ix_ai_add_messages_session_id", "session_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_add_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    extra: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+
+    session: Mapped[AIAddSessionModel] = relationship(back_populates="messages")

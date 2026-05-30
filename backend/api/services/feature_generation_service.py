@@ -343,6 +343,7 @@ class FeatureGenerationService:
                 project_id=project_id,
                 name=feature["feature_name"],
                 description=feature["feature_description"],
+                confirmation_status='ai_assumption',
             )
 
             session.add(model)

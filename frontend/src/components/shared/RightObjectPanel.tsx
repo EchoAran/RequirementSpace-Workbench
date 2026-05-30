@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Choice, ChoiceGroup, Issue, RequirementSpaceIR, RequirementSlot } from '@/core/schema';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Choice, ChoiceGroup, Issue, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPanel } from '../right-panel/ChoiceGroupPanel';
 import { ChoicePanel } from '../right-panel/ChoicePanel';
@@ -7,6 +7,7 @@ import { IssuePanel } from '../right-panel/IssuePanel';
 import { NodePanel } from '../right-panel/NodePanel';
 import { PanelShell, Section, TextField, SelectField, ActionRow, ActionButton } from '../right-panel/shared';
 import { SlotPanel } from '../right-panel/SlotPanel';
+import { StatusBadge } from './StatusBadge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { normalizeScopeStatus } from '@/core/selectors';
 
@@ -58,6 +59,66 @@ class PanelErrorBoundary extends React.Component<
 
     return this.props.children;
   }
+}
+
+// 确认状态选项
+const CONFIRMATION_STATUS_OPTIONS = [
+  { value: 'confirmed', label: '已确认' },
+  { value: 'needs_confirmation', label: '待确认' },
+  { value: 'ai_assumption', label: 'AI 推测' },
+];
+
+const SCOPE_DECISION_OPTIONS = [
+  { value: '', label: '未交付决策' },
+  { value: 'current', label: '本期包含' },
+  { value: 'postponed', label: '暂缓处理' },
+  { value: 'exclude', label: '已排除' },
+];
+
+// 通用确认状态编辑区块
+function ConfirmationStatusSection({
+  nodeKind,
+  selectedObject,
+  fallbackStatus = 'confirmed',
+  disabled = false,
+  value,
+  onChange,
+}: {
+  nodeKind: string;
+  selectedObject: any;
+  fallbackStatus?: string;
+  disabled?: boolean;
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  const setNodeStatus = useWorkspaceStore((state) => state.setNodeStatus);
+  const displayStatus = value ?? selectedObject.confirmationStatus ?? fallbackStatus;
+
+  const handleChange = useCallback((nextValue: string) => {
+    if (disabled) return;
+    if (onChange) {
+      onChange(nextValue);
+      return;
+    }
+    const nodeId = selectedObject.actorId ?? selectedObject.featureId ?? selectedObject.scenarioId
+      ?? selectedObject.criterionId ?? selectedObject.businessObjectId ?? selectedObject.flowId
+      ?? selectedObject.scopeId;
+    if (nodeId != null) {
+      void setNodeStatus(nodeId.toString(), nodeKind, nextValue as NodeStatus);
+    }
+  }, [disabled, nodeKind, onChange, selectedObject, setNodeStatus]);
+
+  return (
+    <Section title="节点审查状态">
+      <SelectField
+        label="确认状态"
+        value={displayStatus}
+        options={CONFIRMATION_STATUS_OPTIONS}
+        onChange={handleChange}
+        disabled={disabled}
+      />
+    </Section>
+  );
 }
 
 // 0. Dedicated Project Panel
@@ -114,6 +175,7 @@ function ActorObjectPanel({ selectedObject }: { selectedObject: any }) {
 
   return (
     <PanelShell title={actorName} subtitle="参与者">
+      <ConfirmationStatusSection nodeKind="actor" selectedObject={selectedObject} />
       <Section title="参与者基本属性">
         <TextField label="参与者名称" value={actorName} onChange={setActorName} />
         <TextField label="职责说明 / 描述" value={actorDesc} onChange={setActorDesc} multiline />
@@ -277,6 +339,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
         </Section>
       )}
 
+      <ConfirmationStatusSection nodeKind="feature" selectedObject={selectedObject} />
       <Section title="功能结点基本属性">
         <TextField label="功能名称" value={featName} onChange={setFeatName} />
         <TextField label="描述说明" value={featDesc} onChange={setFeatDesc} multiline />
@@ -370,6 +433,111 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
   );
 }
 
+function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
+  const ir = useWorkspaceStore((state) => state.ir);
+  const updateScope = useWorkspaceStore((state) => state.updateScope);
+  const setNodeStatus = useWorkspaceStore((state) => state.setNodeStatus);
+
+  const featureId = selectedObject.featureId ?? parseInt(selectedObject.id || '', 10);
+  const feature = useMemo(() => {
+    if (!ir?.features || Number.isNaN(featureId)) return null;
+    return ir.features.find((item: any) => item.featureId === featureId) || null;
+  }, [featureId, ir]);
+
+  const scope = feature?.scope || selectedObject.scope || null;
+  const scopeId = scope?.scopeId ?? selectedObject.scopeId;
+  const featureName = feature?.featureName || selectedObject.featureName || selectedObject.title || '未命名功能';
+  const confirmationStatus = scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption';
+  const initialScopeStatus = scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '';
+
+  const [scopeStatus, setScopeStatus] = useState(initialScopeStatus);
+  const [draftConfirmationStatus, setDraftConfirmationStatus] = useState(confirmationStatus);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setScopeStatus(scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '');
+    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption');
+  }, [scope?.scopeStatus, scope?.confirmationStatus, scopeId, featureId, selectedObject.confirmationStatus, selectedObject.status]);
+
+  const handleSave = async () => {
+    if (!featureId || !scopeStatus || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await updateScope(featureId, {
+        scopeStatus: scopeStatus as any,
+        reason: scope?.reason || '',
+        positiveSummary: scope?.positiveSummary || null,
+        negativeSummary: scope?.negativeSummary || null,
+      });
+
+      const latestFeature = useWorkspaceStore.getState().ir?.features?.find((item: any) => item.featureId === featureId);
+      const latestScopeId = latestFeature?.scope?.scopeId;
+      const latestConfirmationStatus = latestFeature?.scope?.confirmationStatus || 'ai_assumption';
+
+      if (
+        latestScopeId &&
+        draftConfirmationStatus !== latestConfirmationStatus
+      ) {
+        await setNodeStatus(latestScopeId.toString(), 'scope', draftConfirmationStatus as NodeStatus);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReset = () => {
+    setScopeStatus(scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '');
+    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption');
+  };
+
+  return (
+    <PanelShell title={featureName} subtitle="交付范围 / 叶子功能决策">
+      <Section title="状态与交付范围">
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge status={draftConfirmationStatus} />
+          <span className="inline-flex px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
+            {scopeStatus
+              ? SCOPE_DECISION_OPTIONS.find((option) => option.value === scopeStatus)?.label || scopeStatus
+              : '未交付决策'}
+          </span>
+        </div>
+      </Section>
+
+      <ConfirmationStatusSection
+        nodeKind="scope"
+        selectedObject={{ ...selectedObject, scopeId, confirmationStatus: draftConfirmationStatus }}
+        fallbackStatus="ai_assumption"
+        disabled={!scopeId || isSaving}
+        value={draftConfirmationStatus}
+        onChange={setDraftConfirmationStatus}
+      />
+
+      <Section title="交付范围决策">
+        <SelectField
+          label="本期交付范围"
+          value={scopeStatus}
+          options={SCOPE_DECISION_OPTIONS}
+          onChange={setScopeStatus}
+        />
+        {!scopeId && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 leading-relaxed">
+            当前功能尚未生成独立的范围记录。首次选择交付范围后，会自动创建该 `scope` 记录，并默认标记为 `AI 推测`。
+          </div>
+        )}
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()}>
+            {isSaving ? '保存中...' : '保存更改'}
+          </ActionButton>
+          <ActionButton variant="secondary" onClick={handleReset}>
+            重置修改
+          </ActionButton>
+        </ActionRow>
+      </Section>
+    </PanelShell>
+  );
+}
+
 // 3. Dedicated Business Object Panel
 function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
   const updateBusinessObject = useWorkspaceStore((state) => state.updateBusinessObject);
@@ -398,6 +566,7 @@ function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
         </ActionRow>
       </Section>
 
+      <ConfirmationStatusSection nodeKind="business_object" selectedObject={selectedObject} />
       <Section title="数据字段及属性定义">
         {(selectedObject.businessObjectAttributes || []).length === 0 ? (
           <div className="text-xs text-slate-400 italic">该实体暂未定义任何数据字段属性。</div>
@@ -606,6 +775,7 @@ function FlowObjectPanel({ selectedObject }: { selectedObject: any }) {
 
   return (
     <PanelShell title={flowName} subtitle="业务流程">
+      <ConfirmationStatusSection nodeKind="flow" selectedObject={selectedObject} />
       <Section title="流程基本属性">
         <TextField label="流程名称" value={flowName} onChange={setFlowName} />
         <TextField label="流程场景描述" value={flowDesc} onChange={setFlowDesc} multiline />
@@ -652,6 +822,7 @@ function ScenarioObjectPanel({ selectedObject }: { selectedObject: any }) {
         </ActionRow>
       </Section>
 
+      <ConfirmationStatusSection nodeKind="scenario" selectedObject={selectedObject} />
       <Section title="系统交付验收标准">
         {(selectedObject.acceptanceCriteria || []).length === 0 ? (
           <div className="text-xs text-slate-400 italic">该场景暂无关联的交付验收标准。</div>
@@ -707,6 +878,7 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
 
   return (
     <PanelShell title={`验收标准 #${selectedObject.criterionId}`} subtitle="交付验收标准">
+      <ConfirmationStatusSection nodeKind="acceptance_criterion" selectedObject={selectedObject} />
       <Section title="验收标准详细说明">
         <TextField label="交付验收标准具体内容" value={acContent} onChange={setAcContent} multiline />
         {parent ? (
@@ -732,10 +904,7 @@ export function RightObjectPanel() {
     const saved = localStorage.getItem('right-panel-width');
     return saved ? parseInt(saved, 10) : 360;
   });
-  const [collapsed, setCollapsed] = useState(() => {
-    const saved = localStorage.getItem('right-panel-collapsed');
-    return saved === 'true';
-  });
+  const [collapsed, setCollapsed] = useState(true);
 
   const [isResizing, setIsResizing] = useState(false);
 
@@ -747,14 +916,15 @@ export function RightObjectPanel() {
 
   const handleCollapsedChange = (newCollapsed: boolean) => {
     setCollapsed(newCollapsed);
-    localStorage.setItem('right-panel-collapsed', newCollapsed.toString());
   };
 
   useEffect(() => {
-    if (selectedObject) {
+    const handleSelectedObject = () => {
       handleCollapsedChange(false);
-    }
-  }, [selectedObject]);
+    };
+    window.addEventListener('workspace:selected-object', handleSelectedObject);
+    return () => window.removeEventListener('workspace:selected-object', handleSelectedObject);
+  }, []);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -808,6 +978,9 @@ export function RightObjectPanel() {
     }
     if (kind === 'feature') {
       return <FeatureObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'scope') {
+      return <ScopeObjectPanel selectedObject={selectedObject} />;
     }
     if (kind === 'scenario') {
       return <ScenarioObjectPanel selectedObject={selectedObject} />;

@@ -74,6 +74,7 @@ class GraphPatchEngine:
                     project_id=project_id,
                     name=name,
                     description=description,
+                    confirmation_status='ai_assumption',
                 )
                 session.add(actor)
                 await session.flush()
@@ -87,6 +88,7 @@ class GraphPatchEngine:
                     project_id=project_id,
                     name=name,
                     description=description,
+                    confirmation_status='ai_assumption',
                 )
                 session.add(feature)
                 await session.flush()
@@ -132,6 +134,7 @@ class GraphPatchEngine:
                     actor_id=actor_id,
                     name=name,
                     content=content,
+                    confirmation_status='ai_assumption',
                 )
                 session.add(scenario)
                 await session.flush()
@@ -145,6 +148,7 @@ class GraphPatchEngine:
                     project_id=project_id,
                     name=name,
                     description=description,
+                    confirmation_status='ai_assumption',
                 )
                 session.add(bo)
                 await session.flush()
@@ -158,6 +162,7 @@ class GraphPatchEngine:
                     project_id=project_id,
                     name=name,
                     description=description,
+                    confirmation_status='ai_assumption',
                 )
                 session.add(flow)
                 await session.flush()

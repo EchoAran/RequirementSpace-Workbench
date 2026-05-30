@@ -12,7 +12,16 @@ config = context.config
 import os
 db_url = os.getenv("DATABASE_URL")
 if db_url:
-    sync_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    if db_url.startswith("sqlite+aiosqlite://"):
+        sync_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    elif db_url.startswith("postgresql+asyncpg://"):
+        sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    elif db_url.startswith("postgresql://"):
+        sync_url = db_url
+    elif db_url.startswith("postgres://"):
+        sync_url = db_url.replace("postgres://", "postgresql://")
+    else:
+        sync_url = db_url
     config.set_main_option("sqlalchemy.url", sync_url)
 
 # Interpret the config file for Python logging.

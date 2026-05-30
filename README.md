@@ -328,26 +328,40 @@ Preview 阶段会基于当前需求空间生成可查看的原型预览。Shadow
 4. 添加环境变量：
    - `VITE_API_URL`：设置你的后端 API 公网 URL，例如 `https://your-backend-api.onrender.com`（注意末尾不要加 `/api` 或 `/`）。
 
-### 2. 后端部署 (Render / Railway / VPS)
+### 2. 后端部署 (Render / 免费云数据库方案 - 推荐 ⭐⭐⭐)
 
-由于后端使用 SQLite 文件数据库，为了保证数据不丢失，请部署在**支持挂载持久化磁盘**的服务上。
+由于本项目已进行**跨数据库多引擎适配**，你可以在云端使用 100% 免费的 **Neon/Supabase PostgreSQL** 作为生产数据库，本地开发继续使用 **SQLite**，互不干扰！
 
-1. **基本配置**：
-   - 运行环境：Python 3.10+
-   - 构建命令 (Build Command)：
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - 启动命令 (Start Command)：
-     ```bash
-     uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-     ```
+#### 2.1 创建免费云端 PostgreSQL 数据库
+1. 访问 [Neon.tech](https://neon.tech/) 并注册账号。
+2. 创建一个新项目，获取以 `postgresql://` 或 `postgres://` 开头的数据库连接字符串（Connection String）。
+3. 复制该连接串备用。
+
+#### 2.2 在 Render 部署 Web Service
+1. 登录 Render 控制台，新建一个 **Web Service**（不要创建成 Static Site）。
+2. 配置参数：
+   - **Root Directory**：保持为空（`.`）
+   - **Runtime**：选择 `Python`
+   - **Build Command**：`pip install -r requirements.txt`
+   - **Start Command**：`uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+3. 配置环境变量 (Environment Variables)：
+   - **`DATABASE_URL`**：填写你在 2.1 步中复制的 PostgreSQL 云端连接串。
+     *(注：代码会自动将该连接串翻译成 SQLAlchemy 异步驱动所需的 `postgresql+asyncpg://` 格式，无需手动修改前缀。)*
+   - **`ALLOWED_ORIGINS`**：填写你的 Vercel 前端公网域名（以逗号分隔，例如 `https://your-app.vercel.app`），以开启跨域支持。
+   - **`REQUIREMENTSPACE_GENERATION_BACKEND`**：建议写 `skill`。
+   - **大模型相关密钥**：将本地 `.env` 中的 `LLM_API_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME`、`LLM_TEMPERATURE` 等配置添加进来。
+
+---
+
+### 3. 后端部署 (支持挂载磁盘的付费方案 - 沿用 SQLite)
+
+如果你更希望在云端继续沿用 SQLite 文件数据库，你必须在部署平台购买**持久化云盘 (Persistent Disk)**（Render 免费层不支持，需升级为 Paid 实例）：
+
+1. **基本配置**：同上述 Render 的基本配置（Python 运行环境、Build/Start 命令）。
 2. **挂载磁盘 (Persistent Disk)**：
-   - 在平台挂载一块持久化云盘（例如挂载在 `/data` 路径）。
-   - 设置环境变量 `DATABASE_URL` 为 `sqlite+aiosqlite:////data/requirement_space.db`。这样 SQLite 数据库就会安全地存储在持久化盘中。
-3. **安全配置 (CORS)**：
-   - 设置环境变量 `ALLOWED_ORIGINS`，值为你的 Vercel 前端域名，以逗号分隔，例如：`https://your-frontend.vercel.app`。
-   - 如果不设置 `ALLOWED_ORIGINS`，后端会默认拒绝除本地环境外的跨域请求（如果包含 `*` 且支持 credentials，浏览器也会报错，配置了正确的源有利于提升安全性）。
+   - 在平台挂载一块持久化云盘，挂载路径设为 `/data`。
+   - 设置环境变量 `DATABASE_URL` 为 `sqlite+aiosqlite:////data/requirement_space.db`。这样 SQLite 数据库就会安全地存储在持久化盘中，即使重启也不会丢失数据。
+3. **跨域配置**：设置 `ALLOWED_ORIGINS` 为你的 Vercel 前端域名。
 
 ---
 

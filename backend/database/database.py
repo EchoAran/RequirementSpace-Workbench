@@ -19,15 +19,25 @@ except ImportError:
 
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
+raw_db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
+if raw_db_url.startswith("postgresql://"):
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://")
+elif raw_db_url.startswith("postgres://"):
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+asyncpg://")
+else:
+    DATABASE_URL = raw_db_url
 
 
 @event.listens_for(Engine, "connect")
 def enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.close()
+    # Only run PRAGMAs on sqlite connections
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
+    except Exception:
+        pass
 
 
 engine: AsyncEngine = create_async_engine(
@@ -53,31 +63,47 @@ def run_upgrade() -> None:
 
     base_dir = Path(__file__).resolve().parents[2]
     db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db")
-    if "sqlite+aiosqlite:///" in db_url:
-        db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
-        if db_path_str.startswith("/") or ":" in db_path_str:
-            db_path = Path(db_path_str)
+    
+    is_sqlite = "sqlite" in db_url
+    db_path = None
+
+    if is_sqlite:
+        if "sqlite+aiosqlite:///" in db_url:
+            db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
+            if db_path_str.startswith("/") or ":" in db_path_str:
+                db_path = Path(db_path_str)
+            else:
+                db_path = base_dir / db_path_str
         else:
-            db_path = base_dir / db_path_str
-    else:
-        db_path = base_dir / "requirement_space.db"
+            db_path = base_dir / "requirement_space.db"
 
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
     
-    # Convert sqlite+aiosqlite:// to sqlite:// for Alembic sync engine
-    alembic_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    # Convert async engine URL to sync engine URL for Alembic sync migrations
+    if db_url.startswith("sqlite+aiosqlite://"):
+        alembic_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    elif db_url.startswith("postgresql+asyncpg://"):
+        alembic_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    elif db_url.startswith("postgresql://"):
+        alembic_url = db_url
+    elif db_url.startswith("postgres://"):
+        alembic_url = db_url.replace("postgres://", "postgresql://")
+    else:
+        alembic_url = db_url
+        
     alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
 
     # Always run upgrade — Alembic only applies pending migrations.
     # If the DB is already at head, this is a safe no-op.
     command.upgrade(alembic_cfg, "head")
 
-    # Repair case: if a migration was previously "stamp"ed without running its
-    # DDL (old behaviour), the alembic_version says "up to date" but the table
-    # is missing.  Detect and fix.
-    if db_path.exists():
+    # Only run SQLite-specific repairs if using SQLite
+    if is_sqlite and db_path and db_path.exists():
+        # Repair case: if a migration was previously "stamp"ed without running its
+        # DDL (old behaviour), the alembic_version says "up to date" but the table
+        # is missing.  Detect and fix.
         try:
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
@@ -95,8 +121,7 @@ def run_upgrade() -> None:
         except Exception:
             pass
 
-    # Data migration: Convert legacy Chinese scope status to canonical English keys
-    if db_path.exists():
+        # Data migration: Convert legacy Chinese scope status to canonical English keys
         try:
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()

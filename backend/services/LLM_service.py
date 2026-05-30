@@ -168,7 +168,7 @@ class LLMHandler:
             self._log(print_log, f"\n{'---' * 40}")
 
             try:
-                async with httpx.AsyncClient(timeout=100.0) as client:
+                async with httpx.AsyncClient(timeout=100.0, trust_env=False) as client:
                     response = await client.post(url, json=request_data, headers=headers)
 
                 if response.status_code != 200:

@@ -224,7 +224,7 @@ async def llm_test():
         
     # 3. HTTP connection test to main URL
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
             res = await client.get(api_url)
         diagnostic_info["root_conn_status"] = "success"
         diagnostic_info["root_conn_code"] = res.status_code
@@ -252,7 +252,7 @@ async def llm_test():
         completions_url = f"{api_url}/v1/chat/completions"
         diagnostic_info["completions_url"] = completions_url
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             res = await client.post(completions_url, json=req_data, headers=headers)
             
         diagnostic_info["chat_status"] = "success"

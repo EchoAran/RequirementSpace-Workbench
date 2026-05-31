@@ -232,12 +232,13 @@ class FlowService:
             raise ValueError("actor_ids_cannot_be_empty_for_actor_action")
 
         pos_res = await session.execute(
-            select(func.count(FlowStepModel.id)).where(
+            select(func.max(FlowStepModel.position)).where(
                 FlowStepModel.flow_id == flow_id
             )
         )
+        max_pos = pos_res.scalar()
         # Position starts at 1
-        position = (pos_res.scalar() or 0) + 1
+        position = 1 if max_pos is None else max_pos + 1
 
         step = FlowStepModel(
             flow_id=flow_id,

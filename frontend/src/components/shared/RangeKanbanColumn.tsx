@@ -6,7 +6,7 @@ interface DragItem {
   id: string;
   title: string;
   kind?: string;
-  status: string;
+  status?: string;
   scopeStatus?: string;
   parentModuleName?: string;
   scope?: {
@@ -58,6 +58,9 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
         setIsDragOver(false);
         const itemId = e.dataTransfer.getData('itemId');
         const source = e.dataTransfer.getData('sourceColumn');
+        if (columnKey === 'undecided' && source && source !== 'undecided') {
+          return;
+        }
         if (itemId && source !== columnKey) {
           onMoveItem(itemId, columnKey);
         }
@@ -137,7 +140,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
               
               <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 items-center justify-between">
                 <div className="w-full flex justify-between items-center">
-                  <StatusBadge status={item.status} /> 
+                  {item.status ? <StatusBadge status={item.status} /> : <span />}
                   {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind] || item.kind}</span>}
                 </div>
               </div>

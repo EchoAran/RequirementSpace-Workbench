@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, X, Zap } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface ConfirmTransitionModalProps {
   isOpen: boolean;
@@ -35,14 +35,8 @@ export function ConfirmTransitionModal({
         {/* Header */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-sky-50/50">
           <div className="flex items-center gap-3">
-            <span className="p-2 bg-indigo-100/80 text-indigo-700 rounded-2xl shrink-0">
-              <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
-            </span>
             <div>
-              <h3 className="text-base font-black text-slate-900 tracking-wide">申请解锁进入下一阶段</h3>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5 font-mono">
-                Transition Gate Confirmation
-              </p>
+              <h3 className="text-base font-black text-slate-900 tracking-wide">确认进入下一个阶段</h3>
             </div>
           </div>
           <button 
@@ -55,7 +49,7 @@ export function ConfirmTransitionModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-6 pb-10 overflow-y-auto space-y-6">
           <div className="space-y-2 text-left">
             <p className="text-xs text-slate-600 leading-relaxed font-semibold">
               恭喜！当前 <b>{currentStageName}</b> 阶段的基础硬性建模规则已全部满足！
@@ -76,18 +70,12 @@ export function ConfirmTransitionModal({
               }`}
             >
               <div className="absolute top-3 right-4 bg-indigo-600 text-white font-extrabold text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm select-none font-mono">
-                💡 强烈推荐
-              </div>
-              <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl shrink-0">
-                <Sparkles className="w-5 h-5" />
+                推荐
               </div>
               <div className="space-y-1.5 flex-1 pr-12">
                 <h4 className="font-extrabold text-slate-900 text-xs tracking-wide">
-                  启动 AI 智能诊断并补齐 (推荐)
+                  启动 AI智能诊断
                 </h4>
-                <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
-                  AI 诊断感知器将自动针对系统参与者、功能树及场景标准进行全景推演，补充潜在的关联与逻辑槽位，让需求完美收敛。
-                </p>
               </div>
             </div>
 
@@ -100,39 +88,13 @@ export function ConfirmTransitionModal({
                   : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-slate-50/50 hover:shadow-sm'
               }`}
             >
-              <div className="p-2.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl shrink-0">
-                <Zap className="w-5 h-5" />
-              </div>
               <div className="space-y-1.5 flex-1 pr-4">
                 <h4 className="font-extrabold text-slate-900 text-xs tracking-wide flex items-center gap-1.5">
                   直接进入下一阶段
                 </h4>
-                <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
-                  绕过 AI 辅助智能审查环节，直接永久解锁当前阶段并跳转推进至 <b>{nextStageName}</b> 规划设计。
-                </p>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 pt-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-          <button
-            onClick={onClose}
-            disabled={isWorking}
-            className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50"
-          >
-            暂不进入，留在当前
-          </button>
-          
-          <button
-            onClick={!isWorking ? onAIDiagnose : undefined}
-            disabled={isWorking}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            运行 AI 智能诊断
-          </button>
         </div>
       </div>
     </div>

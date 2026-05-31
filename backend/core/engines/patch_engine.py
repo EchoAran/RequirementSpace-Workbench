@@ -101,11 +101,12 @@ class GraphPatchEngine:
                     parent_id = resolve_id(parent_id_val, "feature")
                     # Check position
                     pos_result = await session.execute(
-                        select(func.count(FeatureRelationModel.id)).where(
+                        select(func.max(FeatureRelationModel.position)).where(
                             FeatureRelationModel.parent_feature_id == parent_id
                         )
                     )
-                    position = pos_result.scalar() or 0
+                    max_pos = pos_result.scalar()
+                    position = 0 if max_pos is None else max_pos + 1
 
                     relation = FeatureRelationModel(
                         parent_feature_id=parent_id,

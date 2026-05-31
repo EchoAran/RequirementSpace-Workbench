@@ -213,11 +213,12 @@ class ScenarioService:
             position = req.position
         else:
             pos_result = await session.execute(
-                select(func.count(ScenarioAcceptanceCriterionModel.id)).where(
+                select(func.max(ScenarioAcceptanceCriterionModel.position)).where(
                     ScenarioAcceptanceCriterionModel.scenario_id == scenario_id
                 )
             )
-            position = pos_result.scalar() or 0
+            max_pos = pos_result.scalar()
+            position = 0 if max_pos is None else max_pos + 1
 
         ac = ScenarioAcceptanceCriterionModel(
             scenario_id=scenario_id,

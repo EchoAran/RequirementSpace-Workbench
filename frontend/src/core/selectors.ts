@@ -1539,7 +1539,7 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
     const hasScope = f.scope && f.scope.scopeStatus;
     const normStatus = hasScope ? normalizeScopeStatus(f.scope.scopeStatus) : undefined;
     const isDecisionMissing = !hasScope;
-    const scopeConfirmationStatus = (f.scope as any)?.confirmationStatus || 'ai_assumption';
+    const scopeConfirmationStatus = (f.scope as any)?.confirmationStatus;
 
     return {
       kind: 'scope' as const,
@@ -1563,7 +1563,7 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
         scopeId: undefined as any,
         scopeStatus: normStatus as any,
         reason: '',
-        confirmationStatus: 'ai_assumption' as const,
+        confirmationStatus: undefined,
         positiveSummary: null,
         negativeSummary: null,
         positivePictureBase64: null,

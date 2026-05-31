@@ -13,6 +13,8 @@ import {
   selectSelectedObject,
   selectPageHealth,
 } from '@/store/useWorkspaceStore';
+import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
+
 
 // Cycle-safe dynamic grid positioning algorithm for DAG visualization
 const computeStepPositions = (steps: any[]) => {
@@ -127,6 +129,11 @@ export function HowItWorks() {
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
+    activeChoiceGroup,
+    isGeneratingChoices,
+    choiceGroupGenerationProgress,
+    acceptChoice,
+    discardChoiceGroup,
     clearPerceptionSlot,
   } = useWorkspaceStore();
 
@@ -1719,6 +1726,22 @@ export function HowItWorks() {
           await unlockStageGate('how');
           navigate(buildProjectRoute(ir?.projectId, '/scope'));
         }}
+      />
+
+      <ChoiceGroupPreviewModal
+        group={activeChoiceGroup}
+        isWorking={isGeneratingChoices || isLoading}
+        isGeneratingChoices={isGeneratingChoices}
+        generationProgress={choiceGroupGenerationProgress}
+        onAccept={async (choiceId) => {
+          await acceptChoice(choiceId);
+        }}
+        onDiscard={async () => {
+          if (activeChoiceGroup) {
+            await discardChoiceGroup(activeChoiceGroup.id);
+          }
+        }}
+        onDefer={() => {}}
       />
 
       <RightObjectPanel />

@@ -1,9 +1,10 @@
-import { useState, type MouseEvent, useEffect } from 'react';
+import { useState, type MouseEvent, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Sparkles, Check, X, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
+import { GherkinVisualRenderer, GherkinVisualEditor } from '@/components/shared/GherkinVisualizer';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
@@ -19,6 +20,251 @@ import {
   getChildCapabilities,
   getRootCapabilities,
 } from '@/core/selectors';
+
+interface AcInlineEditorProps {
+  initialContent: string;
+  onSave: (newContent: string) => void | Promise<void>;
+  onCancel: () => void;
+}
+
+function AcInlineEditor({ initialContent, onSave, onCancel }: AcInlineEditorProps) {
+  const [content, setContent] = useState(initialContent);
+
+  return (
+    <div className="border border-indigo-100 rounded-2xl p-4 bg-indigo-50/5 space-y-4 shadow-sm animate-in fade-in duration-200">
+      <div className="bg-slate-100/80 p-1 rounded-xl flex gap-1 border border-slate-200/50 shadow-inner max-w-[10rem] select-none">
+        <button
+          type="button"
+          className="grow text-[10px] font-extrabold py-1.5 px-2.5 rounded-lg transition-all flex items-center justify-center bg-white text-indigo-600 shadow-sm border border-slate-200/20"
+        >
+          结构化编辑
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-100/80 p-3 shadow-inner">
+        <GherkinVisualEditor
+          initialText={content}
+          onChange={setContent}
+        />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 text-[10px] font-bold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            await onSave(content);
+          }}
+          className="px-3.5 py-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
+        >
+          确认保存
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface UserStoryParsed {
+  role: string;
+  action: string;
+  benefit: string;
+}
+
+function parseUserStory(content: string): UserStoryParsed {
+  if (!content) {
+    return { role: '', action: '', benefit: '' };
+  }
+
+  const cnRegex = /作为\s*([^，,]+)[，,]\s*(?:我想要|我想|要)\s*([^，,]+)[，,]\s*(?:以便于|以便|为了|以便能够)\s*(.+)/i;
+  const enRegex = /As\s+a\s+([^,]+),\s*I\s+want\s+to\s+([^,]+),\s*(?:So\s+that|so\s+that)\s+(.+)/i;
+
+  const cnMatch = content.match(cnRegex);
+  if (cnMatch) {
+    return {
+      role: cnMatch[1].trim(),
+      action: cnMatch[2].trim(),
+      benefit: cnMatch[3].trim(),
+    };
+  }
+
+  const enMatch = content.match(enRegex);
+  if (enMatch) {
+    return {
+      role: enMatch[1].trim(),
+      action: enMatch[2].trim(),
+      benefit: enMatch[3].trim(),
+    };
+  }
+
+  return {
+    role: '',
+    action: '',
+    benefit: content
+  };
+}
+
+interface UserStoryRendererProps {
+  content: string;
+  performerName?: string;
+}
+
+function UserStoryRenderer({ content, performerName }: UserStoryRendererProps) {
+  const parsed = parseUserStory(content);
+
+  if (!parsed.role && !parsed.action) {
+    return (
+      <div className="text-xs text-slate-600 bg-white p-3 py-2.5 rounded-xl border border-slate-100 italic leading-relaxed">
+        "{content}"
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 transition-all hover:border-slate-300">
+      <div className="flex flex-wrap items-center gap-1.5 leading-relaxed text-xs text-slate-600 font-medium select-text">
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">作为</span>
+        <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-2 py-0.5 rounded-lg font-extrabold text-[10px] shadow-sm">
+          {performerName || parsed.role}
+        </span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，我想要</span>
+        <span className="text-slate-800 font-extrabold border-b border-dashed border-slate-300 pb-0.5">
+          {parsed.action}
+        </span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，</span>
+      </div>
+      
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+        <div className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mb-0.5">以便于</div>
+        <p className="text-xs text-slate-700 font-semibold leading-relaxed select-text">
+          {parsed.benefit}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface UserStoryEditorProps {
+  initialContent: string;
+  actors: { actorId: number; actorName: string; actorDescription?: string }[];
+  onChange: (newContent: string) => void;
+}
+
+function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorProps) {
+  const parsed = parseUserStory(initialContent);
+  const [role, setRole] = useState(parsed.role || (actors[0]?.actorName || ''));
+  const [action, setAction] = useState(parsed.action || '');
+  const [benefit, setBenefit] = useState(parsed.benefit || initialContent);
+
+  useEffect(() => {
+    if (actors.length === 0) {
+      setRole('');
+      return;
+    }
+    if (!actors.some((actor) => actor.actorName === role)) {
+      setRole(actors[0]?.actorName || '');
+    }
+  }, [actors, role]);
+
+  useEffect(() => {
+    if (role && action && benefit) {
+      onChange(`作为 ${role}，我想要 ${action}，以便于 ${benefit}`);
+    } else {
+      onChange(benefit);
+    }
+  }, [role, action, benefit, onChange]);
+
+  return (
+    <div className="space-y-3 bg-slate-50/40 p-3.5 border border-slate-200/85 rounded-xl shadow-inner select-none">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-medium">
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">作为</span>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          disabled={actors.length === 0}
+          className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2 py-0.5 text-xs font-extrabold text-indigo-700 cursor-pointer focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-all shadow-sm disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+        >
+          {actors.length === 0 ? (
+            <option value="">请先绑定参与者</option>
+          ) : (
+            actors.map((a) => (
+              <option key={a.actorId} value={a.actorName}>
+                {a.actorName}
+              </option>
+            ))
+          )}
+        </select>
+
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，我想要</span>
+        <input
+          type="text"
+          value={action}
+          onChange={(e) => setAction(e.target.value)}
+          placeholder="输入场景动作"
+          className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-0.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none w-44 transition-all shadow-sm"
+        />
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，</span>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block">以便于</label>
+        <textarea
+          value={benefit}
+          onChange={(e) => setBenefit(e.target.value)}
+          rows={2}
+          placeholder="输入为用户带来的实际业务价值..."
+          className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-2.5 text-xs text-slate-700 font-semibold leading-relaxed focus:ring-1 focus:ring-slate-900 focus:outline-none resize-none transition-all shadow-sm"
+        />
+      </div>
+    </div>
+  );
+}
+
+interface InteractiveStatusBadgeProps {
+  nodeId: number;
+  nodeKind: 'scenario' | 'acceptance_criterion';
+  status: 'confirmed' | 'needs_confirmation' | 'ai_assumption';
+  setNodeStatus: (id: string, kind: string, status: any) => Promise<void>;
+}
+
+function InteractiveStatusBadge({ nodeId, nodeKind, status, setNodeStatus }: InteractiveStatusBadgeProps) {
+  const [val, setVal] = useState(status);
+
+  useEffect(() => {
+    setVal(status);
+  }, [status]);
+
+  const handleChange = async (newStatus: any) => {
+    setVal(newStatus);
+    await setNodeStatus(nodeId.toString(), nodeKind, newStatus);
+  };
+
+  const statusStyles = {
+    confirmed: 'bg-emerald-50 border-emerald-250 text-emerald-800',
+    needs_confirmation: 'bg-amber-50 border-amber-250 text-amber-800',
+    ai_assumption: 'bg-indigo-50 border-indigo-250 text-indigo-800',
+  };
+
+  const currentStyle = statusStyles[val] || 'bg-slate-50 border-slate-200 text-slate-700';
+
+  return (
+    <select
+      value={val}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => handleChange(e.target.value as any)}
+      className={`border px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-900 transition-all shadow-sm ${currentStyle}`}
+    >
+      <option value="confirmed" className="bg-white text-emerald-800 font-extrabold">已确认</option>
+      <option value="needs_confirmation" className="bg-white text-amber-800 font-extrabold">待确认</option>
+      <option value="ai_assumption" className="bg-white text-indigo-800 font-extrabold">AI推论</option>
+    </select>
+  );
+}
 
 export function WhatToDo() {
   const navigate = useNavigate();
@@ -36,6 +282,8 @@ export function WhatToDo() {
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress,
     acceptChoice, discardChoiceGroup, deferOnboardingChoiceGroup,
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
+    updateScenario, updateAcceptanceCriterion,
+    setNodeStatus,
     deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate,
     confirmRepairDraft,
     discardRepairDraft,
@@ -78,6 +326,16 @@ export function WhatToDo() {
   const [showAddScenarioForm, setShowAddScenarioForm] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
 
+  // Inline edit state inside Scenario Manager Modal
+  const [editingScenarioId, setEditingScenarioId] = useState<number | null>(null);
+  const [editingScenarioName, setEditingScenarioName] = useState('');
+  const [editingScenarioContent, setEditingScenarioContent] = useState('');
+  const [editingScenarioActorId, setEditingScenarioActorId] = useState<number>(0);
+  const [editingAcId, setEditingAcId] = useState<number | null>(null);
+  const [editingAcContent, setEditingAcContent] = useState('');
+  const [collapsedScenarioIds, setCollapsedScenarioIds] = useState<Record<number, boolean>>({});
+  const [collapsedAcScenarioIds, setCollapsedAcScenarioIds] = useState<Record<number, boolean>>({});
+
   const toggleCap = (e: MouseEvent, id: string) => {
     e.stopPropagation();
     setExpandedCaps(prev => ({ ...prev, [id]: !prev[id] }));
@@ -89,6 +347,13 @@ export function WhatToDo() {
   });
 
   const managedFeatObj = ir?.features?.find(f => f.featureId === scenarioManagerFeature?.featureId);
+  const managedFeatureActors = useMemo(
+    () =>
+      (ir?.actors || []).filter((actor: any) =>
+        (managedFeatObj?.actorIds || []).includes(actor.actorId)
+      ),
+    [ir?.actors, managedFeatObj]
+  );
 
   const pageHealth = selectPageHealth({ ir } as any, '/what');
 
@@ -239,14 +504,25 @@ export function WhatToDo() {
     }, 200);
   }, [location.search]);
 
-  // Initialize actor select inside modal when opened
+  // Reset scenario manager UI when switching to another feature
   useEffect(() => {
-    if (scenarioManagerFeature && ir?.actors && ir.actors.length > 0) {
-      setModalNewScenActorId(ir.actors[0].actorId);
+    if (scenarioManagerFeature) {
+      setModalNewScenActorId(managedFeatureActors[0]?.actorId || 0);
     }
     setShowAddScenarioForm(false);
     setModalAddingAcForScenId(null);
-  }, [scenarioManagerFeature, ir]);
+    setCollapsedScenarioIds({});
+    setCollapsedAcScenarioIds({});
+  }, [scenarioManagerFeature?.featureId]);
+
+  // Keep selected actor valid when the feature's bound actors change
+  useEffect(() => {
+    if (!scenarioManagerFeature) return;
+    const nextActorId = managedFeatureActors[0]?.actorId || 0;
+    setModalNewScenActorId((prev) => (
+      managedFeatureActors.some((actor: any) => actor.actorId === prev) ? prev : nextActorId
+    ));
+  }, [scenarioManagerFeature?.featureId, managedFeatureActors]);
 
   // Auto-focus AC input for first scenario missing AC in managedFeatObj
   useEffect(() => {
@@ -558,15 +834,17 @@ export function WhatToDo() {
                 </div>
 
                 {/* AC preview list */}
-                <div className="pt-2 border-t border-slate-200/60 space-y-2 col-span-12">
+                <div className="pt-4 border-t border-slate-200/60 space-y-3 col-span-12">
                   {activeDraft.acceptance_criteria?.map((ac: any, idx: number) => (
-                    <div key={idx} className="bg-white/80 p-3 rounded-xl border border-slate-200/50 flex items-start gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5 animate-pulse"></span>
-                      <div className="flex-1">
-                        <span className="text-xs text-slate-700 leading-normal font-medium">{ac.criterion_content}</span>
-                        <span className="text-[10px] text-slate-400 block mt-1 font-mono">关联场景 ID: {ac.scenario_id}</span>
-                      </div>
-                    </div>
+                    <GherkinVisualRenderer
+                      key={idx}
+                      text={ac.criterion_content || ''}
+                      title={`推荐验收标准 #${idx + 1}`}
+                      badge="AI 推荐预览"
+                      rightBadges={[
+                        <span key="scen" className="font-mono">关联场景 ID: {ac.scenario_id}</span>
+                      ]}
+                    />
                   ))}
                 </div>
               </div>
@@ -1201,7 +1479,7 @@ export function WhatToDo() {
       {/* NEW: Dedicated Leaf Feature Scenario & Acceptance Criteria (AC) Management Modal */}
       {managedFeatObj && (
         <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
+          <div className="bg-white border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-200/50 flex justify-between items-center bg-slate-50/50">
@@ -1233,10 +1511,8 @@ export function WhatToDo() {
                     onClick={() => {
                       setShowAddScenarioForm(!showAddScenarioForm);
                       setModalNewScenName('');
-                      setModalNewScenContent('');
-                      if (ir?.actors && ir.actors.length > 0) {
-                        setModalNewScenActorId(ir.actors[0].actorId);
-                      }
+                        setModalNewScenContent('');
+                        setModalNewScenActorId(managedFeatureActors[0]?.actorId || 0);
                     }}
                     className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
                     aria-label={showAddScenarioForm ? '收起场景表单' : '手动新增场景'}
@@ -1251,40 +1527,37 @@ export function WhatToDo() {
 
               {/* Inline Add Scenario Form inside Modal */}
               {showAddScenarioForm && (
-                <div className="border border-indigo-100 rounded-2xl p-4 bg-indigo-50/15 space-y-3 shadow-inner animate-in slide-in-from-top-2 duration-200">
-                  <div className="text-[10px] text-indigo-700 font-extrabold tracking-wider uppercase">✨ 新增交付场景</div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase">场景名称</label>
+                <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/30 space-y-3 shadow-sm animate-in slide-in-from-top-2 duration-200">
+                  <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">新增交付场景</div>
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase block">场景简短名称</label>
                     <input
                       type="text"
                       value={modalNewScenName}
                       onChange={(e) => setModalNewScenName(e.target.value)}
-                      placeholder="场景简称，如: '扫码录入成功并匹配'"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="例如: 快速创建临时灵感便签"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none transition-all shadow-sm"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase">用户故事交互描述</label>
-                    <textarea
-                      value={modalNewScenContent}
-                      onChange={(e) => setModalNewScenContent(e.target.value)}
-                      placeholder="详细流转过程说明，如: '用户扫描产品条码，系统实时校验条码合法性，匹配相应批次信息'"
-                      rows={2}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium resize-none leading-relaxed outline-none focus:ring-1 focus:ring-indigo-500"
+
+                  {/* Interactive first-person user story editor */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200/40">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase block">用户故事</label>
+                    <UserStoryEditor
+                      initialContent={modalNewScenContent}
+                      actors={managedFeatureActors}
+                      onChange={(content) => {
+                        setModalNewScenContent(content);
+                        const parsed = parseUserStory(content);
+                        const actorObj = managedFeatureActors.find((a: any) => a.actorName === parsed.role);
+                        if (actorObj) {
+                          setModalNewScenActorId(actorObj.actorId);
+                        }
+                      }}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase">执行参与者</label>
-                    <select
-                      value={modalNewScenActorId}
-                      onChange={(e) => setModalNewScenActorId(parseInt(e.target.value, 10))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                      {(ir?.actors || []).map((a: any) => (
-                        <option key={a.actorId} value={a.actorId}>{a.actorName}</option>
-                      ))}
-                    </select>
-                  </div>
+
                   <div className="flex justify-end gap-2 pt-1.5">
                     <button
                       onClick={() => setShowAddScenarioForm(false)}
@@ -1298,8 +1571,8 @@ export function WhatToDo() {
                         await addScenario(managedFeatObj.featureId, modalNewScenActorId, modalNewScenName.trim(), modalNewScenContent.trim());
                         setShowAddScenarioForm(false);
                       }}
-                      disabled={!modalNewScenName.trim()}
-                      className="px-3.5 py-1.5 text-[10px] font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm disabled:opacity-50"
+                      disabled={!modalNewScenName.trim() || !modalNewScenActorId}
+                      className="px-3.5 py-1.5 text-[10px] font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       确定添加场景
                     </button>
@@ -1318,105 +1591,279 @@ export function WhatToDo() {
                     const performer = (ir?.actors || []).find((a: any) => a.actorId === s.actorId);
                     const performerName = performer ? performer.actorName : '系统';
                     const isAddingAc = modalAddingAcForScenId === s.scenarioId;
+                    const isEditingScenario = editingScenarioId === s.scenarioId;
+                    const isScenarioCollapsed = collapsedScenarioIds[s.scenarioId] === true;
+                    const isAcCollapsed = collapsedAcScenarioIds[s.scenarioId] === true;
+                    const scenarioActors = managedFeatureActors.some((actor: any) => actor.actorId === s.actorId)
+                      ? managedFeatureActors
+                      : performer
+                        ? [...managedFeatureActors, performer]
+                        : managedFeatureActors;
 
                     return (
                       <div key={s.scenarioId} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/20 shadow-sm space-y-3 relative hover:border-slate-300 transition-colors">
                         
-                        {/* Scenario Header */}
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <span className="font-extrabold text-xs text-slate-800 tracking-wide block">🎬 {s.scenarioName}</span>
-                            <span className="inline-block text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.2 rounded-md">
-                              参与者: {performerName}
-                            </span>
-                          </div>
-                          <button
-                            onClick={async () => {
-                              if (confirm('确认删除该交付成功场景以及包含的所有验收标准 (AC) 吗？')) {
-                                await deleteScenario(managedFeatObj.featureId, s.scenarioId);
-                              }
-                            }}
-                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                            title="删除该场景"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                        </div>
-
-                        {/* Scenario Description */}
-                        <div className="text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-100 italic leading-relaxed">
-                          "{s.scenarioContent}"
-                        </div>
-
-                        {/* Acceptance Criteria Section */}
-                        <div className="space-y-2 pt-2 border-t border-slate-200/50">
-                          <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                            <span>验收标准 ({s.acceptanceCriteria?.length || 0} 项)</span>
-                            <button
-                              onClick={() => {
-                                setModalAddingAcForScenId(isAddingAc ? null : s.scenarioId);
-                                setModalNewAcContent('');
-                              }}
-                              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5 transition-colors"
-                            >
-                              {isAddingAc ? '取消添加' : '+ 添加 AC 项'}
-                            </button>
-                          </div>
-
-                          {/* Add AC Input form */}
-                          {isAddingAc && (
-                            <div className="flex gap-2 items-center mt-1 animate-in slide-in-from-top-1 duration-150">
+                        {isEditingScenario ? (
+                          <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/30 space-y-3 shadow-sm animate-in slide-in-from-top-2 duration-200">
+                            <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">编辑交付场景</div>
+                            
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] text-slate-400 font-bold uppercase block">场景简短名称</label>
                               <input
                                 type="text"
-                                value={modalNewAcContent}
-                                onChange={(e) => setModalNewAcContent(e.target.value)}
-                                placeholder="输入具体可校验的系统状态, 如: '提示操作成功并更新主状态'"
-                                className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                                value={editingScenarioName}
+                                onChange={(e) => setEditingScenarioName(e.target.value)}
+                                placeholder="例如: 快速创建临时灵感便签"
+                                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none transition-all shadow-sm"
                               />
+                            </div>
+
+                            {/* Interactive first-person user story editor */}
+                            <div className="space-y-2 pt-2 border-t border-slate-200/40">
+                              <label className="text-[10px] text-slate-400 font-bold uppercase block">用户故事</label>
+                              <UserStoryEditor
+                                initialContent={editingScenarioContent}
+                                actors={scenarioActors}
+                                onChange={(content) => {
+                                  setEditingScenarioContent(content);
+                                  const parsed = parseUserStory(content);
+                                  const actorObj = scenarioActors.find((a: any) => a.actorName === parsed.role);
+                                  if (actorObj) {
+                                    setEditingScenarioActorId(actorObj.actorId);
+                                  }
+                                }}
+                              />
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-1.5">
+                              <button
+                                onClick={() => setEditingScenarioId(null)}
+                                className="px-3 py-1.5 text-[10px] font-bold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 shadow-sm"
+                              >
+                                取消
+                              </button>
                               <button
                                 onClick={async () => {
-                                  if (!modalNewAcContent.trim()) return;
-                                  await addAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, modalNewAcContent.trim());
-                                  setModalAddingAcForScenId(null);
-                                  setModalNewAcContent('');
+                                  if (!editingScenarioName.trim()) return;
+                                  await updateScenario(managedFeatObj.featureId, s.scenarioId, {
+                                    scenarioName: editingScenarioName.trim(),
+                                    scenarioContent: editingScenarioContent.trim(),
+                                    actorId: editingScenarioActorId
+                                  });
+                                  setEditingScenarioId(null);
                                 }}
-                                disabled={!modalNewAcContent.trim()}
-                                className="px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50 shrink-0"
+                                disabled={!editingScenarioName.trim()}
+                                className="px-3.5 py-1.5 text-[10px] font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                               >
-                                添加
+                                确认保存
                               </button>
                             </div>
-                          )}
-
-                          {/* AC Items list */}
-                          {(s.acceptanceCriteria || []).length === 0 ? (
-                            <div className="text-[10px] text-slate-500 italic bg-white/50 p-2 rounded-xl border border-dashed border-slate-200/50 leading-relaxed">
-                              暂无交付验收细节。请在上方输入添加，或使用特征树上方的 AI AC 推理生成。
-                            </div>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {(s.acceptanceCriteria || []).map((ac: any) => (
-                                <div key={ac.criterionId} className="flex justify-between items-start gap-2 bg-white p-2 rounded-xl border border-slate-100 group/ac relative">
-                                  <div className="flex-1 flex gap-2 items-start text-xs text-slate-600 font-medium leading-relaxed">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5"></span>
-                                    <span>{ac.criterionContent}</span>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Scenario Header */}
+                            <div className="flex justify-between items-start">
+                              <div className="space-y-1 min-w-0">
+                                <span className="font-extrabold text-xs text-slate-800 tracking-wide block truncate">{s.scenarioName}</span>
+                                {!isScenarioCollapsed && (
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                    <span className="inline-block text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded-md">
+                                      参与者: {performerName}
+                                    </span>
+                                    <InteractiveStatusBadge
+                                      nodeId={s.scenarioId}
+                                      nodeKind="scenario"
+                                      status={s.confirmationStatus || 'confirmed'}
+                                      setNodeStatus={setNodeStatus}
+                                    />
                                   </div>
-                                  <button
-                                    onClick={async () => {
-                                      if (confirm('确认删除此条验收标准 (AC) 吗？')) {
-                                        await deleteAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, ac.criterionId);
-                                      }
-                                    }}
-                                    className="p-0.5 text-slate-400 hover:text-rose-600 opacity-0 group-hover/ac:opacity-100 transition-all shrink-0 mt-0.5"
-                                    title="删除验收标准"
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                  </button>
-                                </div>
-                              ))}
+                                )}
+                              </div>
+                              <div className="flex gap-1.5">
+                                {!isScenarioCollapsed && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingScenarioId(s.scenarioId);
+                                        setEditingScenarioName(s.scenarioName);
+                                        setEditingScenarioContent(s.scenarioContent || '');
+                                        setEditingScenarioActorId(s.actorId);
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                      title="编辑场景"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (confirm('确认删除该交付成功场景以及包含的所有验收标准 (AC) 吗？')) {
+                                          await deleteScenario(managedFeatObj.featureId, s.scenarioId);
+                                        }
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                      title="删除该场景"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCollapsedScenarioIds((prev) => ({ ...prev, [s.scenarioId]: !prev[s.scenarioId] }));
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                                  title={isScenarioCollapsed ? '展开场景' : '折叠场景'}
+                                  aria-label={isScenarioCollapsed ? '展开场景' : '折叠场景'}
+                                >
+                                  {isScenarioCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {/* Scenario Description */}
+                            {!isScenarioCollapsed && (
+                              <UserStoryRenderer
+                                content={s.scenarioContent || ''}
+                                performerName={performerName}
+                              />
+                            )}
+                          </>
+                        )}
+
+                        {/* Acceptance Criteria Section */}
+                        {!isScenarioCollapsed && (
+                          <div className="space-y-2 pt-2 border-t border-slate-200/50">
+                            <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              <span>验收标准 ({s.acceptanceCriteria?.length || 0} 项)</span>
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative group">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCollapsedAcScenarioIds((prev) => ({ ...prev, [s.scenarioId]: !prev[s.scenarioId] }));
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                                    aria-label={isAcCollapsed ? '展开验收标准' : '折叠验收标准'}
+                                  >
+                                    {isAcCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <div className="pointer-events-none absolute right-0 top-0 z-20 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                    {isAcCollapsed ? '展开验收标准' : '折叠验收标准'}
+                                  </div>
+                                </div>
+                                <div className="relative group">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCollapsedAcScenarioIds((prev) => ({ ...prev, [s.scenarioId]: false }));
+                                      setModalAddingAcForScenId(isAddingAc ? null : s.scenarioId);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                                    aria-label={isAddingAc ? '收起 AC 表单' : '手动新增 AC 项'}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <div className="pointer-events-none absolute right-0 top-0 z-20 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                    {isAddingAc ? '收起 AC 表单' : '手动新增 AC 项'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {!isAcCollapsed && (
+                              <>
+                                {/* Add AC Form using AcInlineEditor */}
+                                {isAddingAc && (
+                                  <div className="mt-2.5 animate-in slide-in-from-top-1 duration-150">
+                                    <AcInlineEditor
+                                      initialContent=""
+                                      onSave={async (content) => {
+                                        if (!content.trim()) return;
+                                        await addAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, content.trim());
+                                        setModalAddingAcForScenId(null);
+                                      }}
+                                      onCancel={() => setModalAddingAcForScenId(null)}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* AC Items list */}
+                                {(s.acceptanceCriteria || []).length === 0 ? (
+                                  <div className="text-[10px] text-slate-500 italic bg-white/50 p-2 rounded-xl border border-dashed border-slate-200/50 leading-relaxed">
+                                    暂无交付验收细节。请在上方输入添加，或使用特征树上方的 AI AC 推理生成。
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {(s.acceptanceCriteria || []).map((ac: any, acIdx: number) => {
+                                      const isEditingAc = editingAcId === ac.criterionId;
+                                      return isEditingAc ? (
+                                        <AcInlineEditor
+                                          key={ac.criterionId}
+                                          initialContent={ac.criterionContent || ''}
+                                          onSave={async (newContent) => {
+                                            if (!newContent.trim()) return;
+                                            await updateAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, ac.criterionId, newContent.trim());
+                                            setEditingAcId(null);
+                                          }}
+                                          onCancel={() => setEditingAcId(null)}
+                                        />
+                                      ) : (
+                                        <GherkinVisualRenderer
+                                          key={ac.criterionId}
+                                          text={ac.criterionContent || ''}
+                                          title={`验收标准${acIdx + 1}`}
+                                          statusBadge={
+                                            <span className="scale-75 origin-left inline-block">
+                                              <InteractiveStatusBadge
+                                                nodeId={ac.criterionId}
+                                                nodeKind="acceptance_criterion"
+                                                status={ac.confirmationStatus || 'confirmed'}
+                                                setNodeStatus={setNodeStatus}
+                                              />
+                                            </span>
+                                          }
+                                          rightBadges={[
+                                            <button
+                                              key="edit"
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingAcId(ac.criterionId);
+                                              }}
+                                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                                              title="编辑验收标准"
+                                              aria-label="编辑验收标准"
+                                            >
+                                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            </button>,
+                                            <button
+                                              key="delete"
+                                              type="button"
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('确认删除此条验收标准 (AC) 吗？')) {
+                                                  await deleteAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, ac.criterionId);
+                                                }
+                                              }}
+                                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md transition-all shadow-sm"
+                                              title="删除验收标准"
+                                              aria-label="删除验收标准"
+                                            >
+                                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                          ]}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

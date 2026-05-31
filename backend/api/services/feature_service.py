@@ -75,11 +75,12 @@ class FeatureService:
         # Insert relation if parent is provided
         if req.parent_id is not None:
             pos_result = await session.execute(
-                select(func.count(FeatureRelationModel.id)).where(
+                select(func.max(FeatureRelationModel.position)).where(
                     FeatureRelationModel.parent_feature_id == req.parent_id
                 )
             )
-            position = pos_result.scalar() or 0
+            max_pos = pos_result.scalar()
+            position = 0 if max_pos is None else max_pos + 1
 
             relation = FeatureRelationModel(
                 parent_feature_id=req.parent_id,

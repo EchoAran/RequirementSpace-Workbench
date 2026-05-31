@@ -171,7 +171,8 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "scenario"
 
     def __init__(self):
-        self._service = ScenarioGenerationService()
+        from backend.api.services.service_registry import scenario_generation_service
+        self._service = scenario_generation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one scenario candidate for a pair or single target.
@@ -312,10 +313,10 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "acceptance_criteria"
 
     def __init__(self):
-        from backend.api.services.acceptance_criteria_generation_service import (
-            AcceptanceCriteriaGenerationService,
+        from backend.api.services.service_registry import (
+            acceptance_criteria_generation_service,
         )
-        self._service = AcceptanceCriteriaGenerationService()
+        self._service = acceptance_criteria_generation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one AC candidate for a single or batch of scenarios."""
@@ -433,10 +434,8 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "feature"
 
     def __init__(self):
-        from backend.api.services.feature_generation_service import (
-            FeatureGenerationService,
-        )
-        self._service = FeatureGenerationService()
+        from backend.api.services.service_registry import feature_generation_service
+        self._service = feature_generation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one feature tree candidate."""
@@ -585,7 +584,7 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             },
             draft_type="flow",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(strategy, flows, business_objects),
+            comparison_summary=self._make_comparison_summary(context.strategy, flows, business_objects),
             apply_behavior="append",
             apply_behavior_description="此方案将新增流程与业务对象到项目",
         )
@@ -660,8 +659,8 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "scope"
 
     def __init__(self):
-        from backend.api.services.scope_generation_service import ScopeGenerationService
-        self._service = ScopeGenerationService()
+        from backend.api.services.service_registry import scope_generation_service
+        self._service = scope_generation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one scope/Kano candidate."""
@@ -697,7 +696,7 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             },
             draft_type="scope",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(strategy, scopes),
+            comparison_summary=self._make_comparison_summary(context.strategy, scopes),
             apply_behavior="overwrite",
             apply_behavior_description="此方案将替换当前范围决策",
         )
@@ -706,6 +705,14 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         result = await self._service._persist_scope_generation_draft(
             draft=payload, session=session,
         )
+        # Update Project Kano Status to generated (completed)
+        from backend.database.model import ProjectModel
+        project_id = payload["project_id"]
+        project = await session.get(ProjectModel, project_id)
+        if project:
+            project.kano_status = "generated"
+            project.unlocked_stages = "what,how,scope"
+
         from backend.api.services.perception_job_invalidation_service import (
             mark_perception_jobs_stale,
         )

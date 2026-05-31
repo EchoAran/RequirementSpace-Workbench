@@ -165,6 +165,10 @@ export function ChoiceGroupPreviewModal({
             <h3 className="text-lg font-bold text-slate-800">
               {draftType === 'actor' ? '选择参与者方案' :
                draftType === 'scenario' ? '选择场景方案' :
+               draftType === 'feature' ? '选择功能树方案' :
+               draftType === 'flow' ? '选择流程与对象方案' :
+               draftType === 'scope' ? '选择范围分析方案' :
+               draftType === 'acceptance_criteria' ? '选择验收标准方案' :
                '选择项目草稿方案'}
             </h3>
             <button onClick={onDefer} className="text-slate-400 hover:text-slate-600 transition-colors">

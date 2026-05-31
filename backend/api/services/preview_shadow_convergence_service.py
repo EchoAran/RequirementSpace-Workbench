@@ -97,6 +97,8 @@ def _remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 "reason": scope_obj.get("reason"),
                 "positive_summary": scope_obj.get("positive_summary"),
                 "negative_summary": scope_obj.get("negative_summary"),
+                "positive_picture_base64": scope_obj.get("positive_picture_base64") or scope_obj.get("positivePictureBase64"),
+                "negative_picture_base64": scope_obj.get("negative_picture_base64") or scope_obj.get("negativePictureBase64"),
                 "kano_category": scope_obj.get("kano_category"),
                 "kano_category_name": scope_obj.get("kano_category_name"),
                 "kind": "scope"
@@ -341,6 +343,7 @@ async def build_project_snapshot(project_id: int, session: AsyncSession) -> dict
         scope_json = None
         scope_obj = scopes_by_feature.get(f.id)
         if scope_obj:
+            from backend.services.binary_conversion_service import BinaryConversionService
             scope_json = {
                 "id": scope_obj.id,
                 "feature_id": scope_obj.feature_id,
@@ -348,6 +351,8 @@ async def build_project_snapshot(project_id: int, session: AsyncSession) -> dict
                 "reason": scope_obj.reason,
                 "positive_summary": scope_obj.positive_summary,
                 "negative_summary": scope_obj.negative_summary,
+                "positive_picture_base64": BinaryConversionService.bytes_to_base64(scope_obj.positive_picture) if scope_obj.positive_picture is not None else None,
+                "negative_picture_base64": BinaryConversionService.bytes_to_base64(scope_obj.negative_picture) if scope_obj.negative_picture is not None else None,
                 "kano_category": scope_obj.kano_category,
                 "kano_category_name": scope_obj.kano_category_name
             }
@@ -679,10 +684,22 @@ class PreviewShadowConvergenceService:
             )
             actors = raw_actors.get("actors", [])
             actor_nodes = []
+            # int_to_temp_actor maps any LLM actor ID form → canonical tmp_actor_N
+            int_to_temp_actor = {}
             for idx, a in enumerate(actors):
                 name = a.get("actor_name") or a.get("name")
                 desc = a.get("actor_description") or a.get("description")
                 temp_id = f"tmp_actor_{idx + 1}"
+                # Record LLM-assigned id variations in the lookup table
+                raw_llm_id = a.get("actor_id") or a.get("id")
+                if raw_llm_id is not None:
+                    int_to_temp_actor[raw_llm_id] = temp_id
+                    int_to_temp_actor[str(raw_llm_id)] = temp_id
+                # Also map sequential index (actorId = idx+1) → temp_id
+                int_to_temp_actor[idx + 1] = temp_id
+                int_to_temp_actor[str(idx + 1)] = temp_id
+                # Map temp_id itself
+                int_to_temp_actor[temp_id] = temp_id
                 patch["actors_added"].append({
                     "temp_id": temp_id,
                     "name": name,
@@ -695,6 +712,28 @@ class PreviewShadowConvergenceService:
                         actorDescription=desc
                     )
                 )
+
+            def resolve_new_actor_ref(act_id) -> str:
+                """Map any LLM-returned actor id to a canonical tmp_actor_N reference."""
+                if not act_id and act_id != 0:
+                    return ""
+                act_id_str = str(act_id).strip()
+                # Direct lookup first
+                if act_id_str in int_to_temp_actor:
+                    return int_to_temp_actor[act_id_str]
+                if act_id in int_to_temp_actor:
+                    return int_to_temp_actor[act_id]
+                # Try extracting trailing digits (e.g. "A001" → 1, "actor_3" → 3)
+                import re as _re
+                _m = _re.search(r'(\d+)$', act_id_str)
+                if _m:
+                    trailing_int = int(_m.group(1))
+                    if trailing_int in int_to_temp_actor:
+                        return int_to_temp_actor[trailing_int]
+                    if str(trailing_int) in int_to_temp_actor:
+                        return int_to_temp_actor[str(trailing_int)]
+                # Fallback: first actor
+                return f"tmp_actor_1" if actor_nodes else ""
 
             # Generate Features tree (Skill-Backed or Legacy)
             if hasattr(feature_generation_service, "_skill_generator"):
@@ -727,11 +766,25 @@ class PreviewShadowConvergenceService:
                 name = f.get("feature_name") or f.get("name")
                 desc = f.get("feature_description") or f.get("description")
                 
-                # Resolve parent_ref if it exists in features representation
+                # Resolve parent_ref if it exists in features representation or by hierarchical number
                 parent_val = f.get("parent_id") or f.get("parent_ref")
                 parent_ref = None
+                parent_id_node = None
                 if parent_val:
                     parent_ref = f"tmp_feature_{parent_val}" if not str(parent_val).startswith("tmp_") else parent_val
+                    try:
+                        parent_id_node = int(parent_val)
+                    except (ValueError, TypeError):
+                        import hashlib
+                        parent_id_node = int(hashlib.md5(str(parent_val).encode()).hexdigest(), 16) % 100000
+                elif isinstance(fnum, str) and "-" in fnum:
+                    parent_num = fnum.rsplit("-", 1)[0]
+                    parent_ref = f"tmp_feature_{parent_num}"
+                    try:
+                        parent_id_node = int(parent_num)
+                    except (ValueError, TypeError):
+                        import hashlib
+                        parent_id_node = int(hashlib.md5(str(parent_num).encode()).hexdigest(), 16) % 100000
 
                 patch["features_added"].append({
                     "temp_id": temp_feat_id,
@@ -740,21 +793,26 @@ class PreviewShadowConvergenceService:
                     "parent_ref": parent_ref
                 })
                 
-                # Links to actors
+                # Links to actors — use the lookup table built from the actor generation pass
+                raw_actor_ids = f.get("actor_ids", [])
+                # If LLM didn't assign actor_ids, link only the FIRST actor.
+                # (Linking ALL actors would create N actor-feature pairs, each requiring a scenario.)
+                if not raw_actor_ids and actor_nodes:
+                    raw_actor_ids = [actor_nodes[0].actorId]
                 f_actor_ids = []
-                for act_id in f.get("actor_ids", []):
-                    act_ref = f"tmp_actor_{act_id}" if str(act_id).isdigit() or str(act_id).startswith("tmp_actor_") else f"actor:{act_id}"
-                    patch["feature_actor_links_added"].append({
-                        "feature_ref": temp_feat_id,
-                        "actor_ref": act_ref
-                    })
-                    parsed_actor_id = None
-                    if isinstance(act_id, int):
-                        parsed_actor_id = act_id
-                    elif isinstance(act_id, str):
-                        digits = ''.join(c for c in act_id if c.isdigit())
-                        parsed_actor_id = int(digits) if digits else None
-                    if parsed_actor_id is None:
+                for act_id in raw_actor_ids:
+                    act_ref = resolve_new_actor_ref(act_id)
+                    if act_ref:
+                        patch["feature_actor_links_added"].append({
+                            "feature_ref": temp_feat_id,
+                            "actor_ref": act_ref
+                        })
+                    # Build numeric actorId for FeatureNode (idx+1 corresponds to actor_nodes index)
+                    act_ref_str = act_ref or f"tmp_actor_1"
+                    # Extract trailing digit from canonical tmp_actor_N
+                    try:
+                        parsed_actor_id = int(act_ref_str.rsplit("_", 1)[-1])
+                    except (ValueError, IndexError):
                         parsed_actor_id = 1
                     f_actor_ids.append(parsed_actor_id)
                 
@@ -772,10 +830,16 @@ class PreviewShadowConvergenceService:
                         featureName=name,
                         featureDescription=desc,
                         actorIds=f_actor_ids,
-                        parentId=f.get("parent_id"),
+                        parentId=parent_id_node,
                         childrenIds=f.get("children_ids", [])
                     )
                 )
+
+            # Build featureId → temp_id lookup for safe scenario feat_ref resolution
+            feat_id_to_temp_id: dict[int, str] = {
+                f_node.featureId: f_data["temp_id"]
+                for f_data, f_node in zip(patch["features_added"], feature_nodes)
+            }
 
             # Build childrenIds relationships on feature_nodes locally
             feat_node_map = {node.featureId: node for node in feature_nodes}
@@ -785,7 +849,8 @@ class PreviewShadowConvergenceService:
                     if node.featureId not in parent_node.childrenIds:
                         parent_node.childrenIds.append(node.featureId)
 
-            # Generate Scenarios and ACs for ALL leaf features to pass What stage gate
+            # Generate Scenarios and ACs for ALL leaf features to pass What stage gate.
+            # Rule: one scenario per (leaf_feature × actor) pair to satisfy FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO detector.
             from backend.core.generators.scenarios_generator import ScenariosGenerator, ScenariosGeneratorInput
             from backend.core.generators.acceptance_criteria_generator import AcceptanceCriteriaGenerator, AcceptanceCriteriaGeneratorInput
             scenarios_generator = ScenariosGenerator()
@@ -796,129 +861,117 @@ class PreviewShadowConvergenceService:
             primary_leaf = leaf_nodes[0] if leaf_nodes else (feature_nodes[0] if feature_nodes else None)
 
             sc_counter = 1
-            if primary_leaf:
-                target_actor = actor_map_by_id.get(primary_leaf.actorIds[0] if primary_leaf.actorIds else 1) or actor_nodes[0]
-                
-                try:
-                    feat_idx = feature_nodes.index(primary_leaf)
-                    primary_feature_ref = patch["features_added"][feat_idx]["temp_id"]
-                except Exception:
-                    primary_feature_ref = "tmp_feature_1"
-                
-                try:
-                    act_idx = actor_nodes.index(target_actor)
-                    primary_actor_ref = patch["actors_added"][act_idx]["temp_id"]
-                except Exception:
-                    primary_actor_ref = "tmp_actor_1"
+            llm_scenarios_generated = False  # Only call LLM once (for the primary leaf+actor pair)
 
-                # LLM Scenario Generation for the primary leaf feature
-                raw_scenarios = await scenarios_generator.generate(
-                    ScenariosGeneratorInput(
-                        user_requirements=user_requirements,
-                        actor=target_actor,
-                        feature=primary_leaf,
-                        user_feedback=feedback
-                    )
-                )
-                scenarios = raw_scenarios.get("scenarios", [])
-                scenario_nodes = []
-                for idx, s in enumerate(scenarios):
-                    temp_sc_id = f"tmp_scenario_{sc_counter}"
-                    sc_counter += 1
-                    s_name = s.get("scenario_name") or s.get("name") or "主干业务流转"
-                    s_content = s.get("scenario_content") or s.get("content") or f"As a {target_actor.actorName}, I want to {primary_leaf.featureDescription}, So that 我可以实现对应的业务价值"
-                    
-                    patch["scenarios_added"].append({
-                        "temp_id": temp_sc_id,
-                        "name": s_name,
-                        "content": s_content,
-                        "feature_ref": primary_feature_ref,
-                        "actor_ref": primary_actor_ref
-                    })
-                    scenario_nodes.append(
-                        ScenarioNode(
-                            scenarioId=sc_counter - 1,
-                            scenarioName=s_name,
-                            scenarioContent=s_content,
-                            featureId=primary_leaf.featureId,
-                            actorId=target_actor.actorId,
-                            acceptanceCriteria=[]
-                        )
-                    )
-                
-                # LLM AC Generation for the generated scenarios
-                if scenario_nodes:
-                    raw_ac = await ac_generator.generate(
-                        AcceptanceCriteriaGeneratorInput(
-                            user_requirements=user_requirements,
-                            actor=target_actor,
-                            feature=primary_leaf,
-                            scenarios=scenario_nodes,
-                            user_feedback=feedback
-                        )
-                    )
-                    ac_items = raw_ac.get("scenario_acceptance_criteria", raw_ac.get("acceptance_criteria", []))
-                    for idx, item in enumerate(ac_items):
-                        if isinstance(item, dict) and "acceptance_criteria" in item:
-                            sc_id_val = item.get("scenario_id") or 1
-                            # Map sc_id_val to dynamic temp_scenario reference
-                            target_sc_ref = f"tmp_scenario_{sc_id_val}"
-                            for nested_idx, nested_c in enumerate(item["acceptance_criteria"]):
-                                nested_content = nested_c.get("criterion_content") or nested_c.get("content") if isinstance(nested_c, dict) else nested_c
-                                patch["acceptance_criteria_added"].append({
-                                    "scenario_ref": target_sc_ref,
-                                    "content": nested_content,
-                                    "position": nested_idx + 1
-                                })
-                        else:
-                            content = item.get("criterion_content") or item.get("content") if isinstance(item, dict) else item
-                            pos = item.get("position") or (idx + 1) if isinstance(item, dict) else (idx + 1)
-                            patch["acceptance_criteria_added"].append({
-                                "scenario_ref": "tmp_scenario_1",
-                                "content": content,
-                                "position": pos
-                            })
-
-            # For all OTHER leaf features, generate standard mock scenarios & ACs to pass stage gates perfectly
             for leaf_node in leaf_nodes:
-                if leaf_node == primary_leaf:
-                    continue
-                
-                bound_actor_id = leaf_node.actorIds[0] if leaf_node.actorIds else 1
-                bound_actor = actor_map_by_id.get(bound_actor_id) or actor_nodes[0]
-                
-                try:
-                    feat_idx = feature_nodes.index(leaf_node)
-                    feat_ref = patch["features_added"][feat_idx]["temp_id"]
-                except Exception:
-                    feat_ref = "tmp_feature_1"
-                
-                try:
-                    act_idx = actor_nodes.index(bound_actor)
-                    act_ref = patch["actors_added"][act_idx]["temp_id"]
-                except Exception:
-                    act_ref = "tmp_actor_1"
-                
-                # Fast high-quality template-based scenario
-                temp_sc_id = f"tmp_scenario_{sc_counter}"
-                sc_counter += 1
-                s_name = f"验证{leaf_node.featureName}的主干业务场景"
-                s_content = f"As a {bound_actor.actorName}, I want to {leaf_node.featureDescription}, So that 我可以获得预期的系统产出和服务。"
-                
-                patch["scenarios_added"].append({
-                    "temp_id": temp_sc_id,
-                    "name": s_name,
-                    "content": s_content,
-                    "feature_ref": feat_ref,
-                    "actor_ref": act_ref
-                })
-                
-                # AC
-                patch["acceptance_criteria_added"].append({
-                    "scenario_ref": temp_sc_id,
-                    "content": f"Given {bound_actor.actorName} 准备使用 {leaf_node.featureName} 功能, When {bound_actor.actorName} 触发相关交互操作, Then 系统应当正确处理并呈现 {leaf_node.featureName} 的相关界面与数据元。",
-                    "position": 1
-                })
+                # Determine which actors are linked to this leaf feature
+                linked_actor_ids = leaf_node.actorIds if leaf_node.actorIds else [actor_nodes[0].actorId if actor_nodes else 1]
+
+                # Use the pre-built map for safe temp_id lookup (avoids index() fallback bugs)
+                feat_ref = feat_id_to_temp_id.get(leaf_node.featureId, "tmp_feature_1")
+
+                for actor_id in linked_actor_ids:
+                    bound_actor = actor_map_by_id.get(actor_id) or actor_nodes[0]
+
+                    try:
+                        act_idx = actor_nodes.index(bound_actor)
+                        act_ref = patch["actors_added"][act_idx]["temp_id"]
+                    except Exception:
+                        act_ref = "tmp_actor_1"
+
+                    # Use LLM for the very first (primary leaf, primary actor) pair
+                    if leaf_node == primary_leaf and not llm_scenarios_generated and actor_id == linked_actor_ids[0]:
+                        llm_scenarios_generated = True
+                        raw_scenarios = await scenarios_generator.generate(
+                            ScenariosGeneratorInput(
+                                user_requirements=user_requirements,
+                                actor=bound_actor,
+                                feature=leaf_node,
+                                user_feedback=feedback
+                            )
+                        )
+                        scenarios = raw_scenarios.get("scenarios", [])
+                        scenario_nodes = []
+                        for idx, s in enumerate(scenarios):
+                            temp_sc_id = f"tmp_scenario_{sc_counter}"
+                            sc_counter += 1
+                            s_name = s.get("scenario_name") or s.get("name") or "主干业务流转"
+                            s_content = s.get("scenario_content") or s.get("content") or (
+                                f"As a {bound_actor.actorName}, I want to {leaf_node.featureDescription}, So that 我可以实现对应的业务价值"
+                            )
+                            patch["scenarios_added"].append({
+                                "temp_id": temp_sc_id,
+                                "name": s_name,
+                                "content": s_content,
+                                "feature_ref": feat_ref,
+                                "actor_ref": act_ref
+                            })
+                            scenario_nodes.append(
+                                ScenarioNode(
+                                    scenarioId=sc_counter - 1,
+                                    scenarioName=s_name,
+                                    scenarioContent=s_content,
+                                    featureId=leaf_node.featureId,
+                                    actorId=bound_actor.actorId,
+                                    acceptanceCriteria=[]
+                                )
+                            )
+                        # LLM AC Generation for the generated scenarios
+                        if scenario_nodes:
+                            raw_ac = await ac_generator.generate(
+                                AcceptanceCriteriaGeneratorInput(
+                                    user_requirements=user_requirements,
+                                    actor=bound_actor,
+                                    feature=leaf_node,
+                                    scenarios=scenario_nodes,
+                                    user_feedback=feedback
+                                )
+                            )
+                            ac_items = raw_ac.get("scenario_acceptance_criteria", raw_ac.get("acceptance_criteria", []))
+                            for idx, item in enumerate(ac_items):
+                                if isinstance(item, dict) and "acceptance_criteria" in item:
+                                    sc_id_val = item.get("scenario_id") or 1
+                                    target_sc_ref = f"tmp_scenario_{sc_id_val}"
+                                    for nested_idx, nested_c in enumerate(item["acceptance_criteria"]):
+                                        nested_content = nested_c.get("criterion_content") or nested_c.get("content") if isinstance(nested_c, dict) else nested_c
+                                        patch["acceptance_criteria_added"].append({
+                                            "scenario_ref": target_sc_ref,
+                                            "content": nested_content,
+                                            "position": nested_idx + 1
+                                        })
+                                else:
+                                    content = item.get("criterion_content") or item.get("content") if isinstance(item, dict) else item
+                                    pos = item.get("position") or (idx + 1) if isinstance(item, dict) else (idx + 1)
+                                    patch["acceptance_criteria_added"].append({
+                                        "scenario_ref": "tmp_scenario_1",
+                                        "content": content,
+                                        "position": pos
+                                    })
+                    else:
+                        # Template-based scenario for all other (leaf_feature, actor) pairs
+                        temp_sc_id = f"tmp_scenario_{sc_counter}"
+                        sc_counter += 1
+                        s_name = f"验证{leaf_node.featureName}在{bound_actor.actorName}视角下的主干业务场景"
+                        s_content = (
+                            f"As a {bound_actor.actorName}, I want to {leaf_node.featureDescription}, "
+                            f"So that 我可以获得预期的系统产出和服务。"
+                        )
+                        patch["scenarios_added"].append({
+                            "temp_id": temp_sc_id,
+                            "name": s_name,
+                            "content": s_content,
+                            "feature_ref": feat_ref,
+                            "actor_ref": act_ref
+                        })
+                        patch["acceptance_criteria_added"].append({
+                            "scenario_ref": temp_sc_id,
+                            "content": (
+                                f"Given {bound_actor.actorName} 准备使用 {leaf_node.featureName} 功能, "
+                                f"When {bound_actor.actorName} 触发相关交互操作, "
+                                f"Then 系统应当正确处理并呈现 {leaf_node.featureName} 的相关界面与数据元。"
+                            ),
+                            "position": 1
+                        })
 
             # Since What was NOT passed, How and Scope must be generated dynamically using our transaction-free patterns
             if not how_passed:
@@ -962,19 +1015,123 @@ class PreviewShadowConvergenceService:
                         })
 
                 # Flows
+                int_to_temp_feat = {}
+                if temp_feat_to_int:
+                    for k, v in temp_feat_to_int.items():
+                        int_to_temp_feat[v] = k
+                        int_to_temp_feat[str(v)] = k
+                        int_to_temp_feat[k] = k
+                
+                # int_to_temp_actor was already built (with LLM raw IDs) during actor generation above
+                # No rebuild needed here — reuse it directly.
+
+                int_to_temp_bo = {}
+                for bi, bo in enumerate(raw_flows.get("business_objects", [])):
+                    bo_id_val = bo.get("business_object_number") or bo.get("id") or f"gen_{bi + 1}"
+                    bo_temp_id = f"tmp_bo_gen_{bi + 1}"
+                    int_to_temp_bo[bo_id_val] = bo_temp_id
+                    int_to_temp_bo[str(bo_id_val)] = bo_temp_id
+                    int_to_temp_bo[bo_temp_id] = bo_temp_id
+
                 all_bo_ids = [bo.get("business_object_number") or bo.get("id") or f"gen_{bi + 1}" for bi, bo in enumerate(raw_flows.get("business_objects", []))]
+                def resolve_feature_ref(feat_id: Any) -> str:
+                    if not feat_id:
+                        return ""
+                    feat_id_str = str(feat_id).strip()
+                    if feat_id_str.startswith("tmp_feature_"):
+                        return feat_id_str
+                    raw_id = feat_id
+                    if feat_id_str.startswith("feature:"):
+                        parts = feat_id_str.split(":", 1)
+                        if len(parts) == 2:
+                            val = parts[1]
+                            try:
+                                raw_id = int(val)
+                            except ValueError:
+                                raw_id = val
+                    else:
+                        try:
+                            raw_id = int(feat_id)
+                        except (ValueError, TypeError):
+                            raw_id = feat_id
+                    if raw_id in int_to_temp_feat:
+                        return int_to_temp_feat[raw_id]
+                    if str(raw_id) in int_to_temp_feat:
+                        return int_to_temp_feat[str(raw_id)]
+                    if isinstance(raw_id, int):
+                        return f"feature:{raw_id}"
+                    if feat_id_str.startswith("feature:"):
+                        return feat_id_str
+                    return f"tmp_feature_{feat_id}"
+
+                def resolve_actor_ref(act_id: Any) -> str:
+                    if not act_id:
+                        return ""
+                    act_id_str = str(act_id).strip()
+                    if act_id_str.startswith("tmp_actor_"):
+                        return act_id_str
+                    raw_id = act_id
+                    if act_id_str.startswith("actor:"):
+                        parts = act_id_str.split(":", 1)
+                        if len(parts) == 2:
+                            val = parts[1]
+                            try:
+                                raw_id = int(val)
+                            except ValueError:
+                                raw_id = val
+                    else:
+                        try:
+                            raw_id = int(act_id)
+                        except (ValueError, TypeError):
+                            raw_id = act_id
+                    if raw_id in int_to_temp_actor:
+                        return int_to_temp_actor[raw_id]
+                    if str(raw_id) in int_to_temp_actor:
+                        return int_to_temp_actor[str(raw_id)]
+                    if isinstance(raw_id, int):
+                        return f"actor:{raw_id}"
+                    if act_id_str.startswith("actor:"):
+                        return act_id_str
+                    return f"tmp_actor_{act_id}"
+
+                def resolve_bo_ref(bo_num: Any) -> str:
+                    if not bo_num:
+                        return ""
+                    bo_num_str = str(bo_num).strip()
+                    if bo_num_str.startswith("tmp_bo_"):
+                        return bo_num_str
+                    raw_id = bo_num
+                    if bo_num_str.startswith("business_object:"):
+                        parts = bo_num_str.split(":", 1)
+                        if len(parts) == 2:
+                            val = parts[1]
+                            try:
+                                raw_id = int(val)
+                            except ValueError:
+                                raw_id = val
+                    else:
+                        try:
+                            raw_id = int(bo_num)
+                        except (ValueError, TypeError):
+                            raw_id = bo_num
+                    if raw_id in int_to_temp_bo:
+                        return int_to_temp_bo[raw_id]
+                    if str(raw_id) in int_to_temp_bo:
+                        return int_to_temp_bo[str(raw_id)]
+                    if isinstance(raw_id, int):
+                        return f"business_object:{raw_id}"
+                    if bo_num_str.startswith("business_object:"):
+                        return bo_num_str
+                    if bo_num in all_bo_ids:
+                        mapped_idx = all_bo_ids.index(bo_num)
+                        return f"tmp_bo_gen_{mapped_idx + 1}"
+                    return f"tmp_bo_{bo_num}"
+
                 for flow_idx, fl in enumerate(raw_flows.get("flows", [])):
                     flow_num = f"gen_{flow_idx + 1}"
                     flow_temp_id = f"tmp_flow_{flow_num}"
                     
-                    feature_refs = []
-                    for feat_id in fl.get("feature_ids", []):
-                        if isinstance(feat_id, int):
-                            feature_refs.append(f"feature:{feat_id}")
-                        elif str(feat_id).startswith("tmp_") or str(feat_id).startswith("feature:"):
-                            feature_refs.append(str(feat_id))
-                        else:
-                            feature_refs.append(f"tmp_feature_{feat_id}")
+                    feature_refs = [resolve_feature_ref(feat_id) for feat_id in fl.get("feature_ids", [])]
                             
                     patch["flows_added"].append({
                         "temp_id": flow_temp_id,
@@ -987,38 +1144,11 @@ class PreviewShadowConvergenceService:
                         step_num = f"gen_{s_idx + 1}"
                         step_temp_id = f"tmp_step_{flow_num}_{step_num}"
                         
-                        actor_refs = []
-                        for act_id in st.get("actor_ids", []):
-                            if isinstance(act_id, int):
-                                actor_refs.append(f"actor:{act_id}")
-                            elif str(act_id).startswith("tmp_") or str(act_id).startswith("actor:"):
-                                actor_refs.append(str(act_id))
-                            else:
-                                actor_refs.append(f"tmp_actor_{act_id}")
+                        actor_refs = [resolve_actor_ref(act_id) for act_id in st.get("actor_ids", [])]
                                 
-                        input_bo_refs = []
-                        for bo_num in st.get("input_business_object_numbers", []):
-                            if isinstance(bo_num, int):
-                                input_bo_refs.append(f"business_object:{bo_num}")
-                            elif str(bo_num).startswith("tmp_") or str(bo_num).startswith("business_object:"):
-                                input_bo_refs.append(str(bo_num))
-                            elif bo_num in all_bo_ids:
-                                mapped_idx = all_bo_ids.index(bo_num)
-                                input_bo_refs.append(f"tmp_bo_gen_{mapped_idx + 1}")
-                            else:
-                                input_bo_refs.append(f"tmp_bo_{bo_num}")
+                        input_bo_refs = [resolve_bo_ref(bo_num) for bo_num in st.get("input_business_object_numbers", [])]
                                 
-                        output_bo_refs = []
-                        for bo_num in st.get("output_business_object_numbers", []):
-                            if isinstance(bo_num, int):
-                                output_bo_refs.append(f"business_object:{bo_num}")
-                            elif str(bo_num).startswith("tmp_") or str(bo_num).startswith("business_object:"):
-                                output_bo_refs.append(str(bo_num))
-                            elif bo_num in all_bo_ids:
-                                mapped_idx = all_bo_ids.index(bo_num)
-                                output_bo_refs.append(f"tmp_bo_gen_{mapped_idx + 1}")
-                            else:
-                                output_bo_refs.append(f"tmp_bo_{bo_num}")
+                        output_bo_refs = [resolve_bo_ref(bo_num) for bo_num in st.get("output_business_object_numbers", [])]
                                 
                         next_step_refs = []
                         all_step_nums_in_flow = [s2.get("step_number") or s2.get("id") or f"gen_{s2i + 1}" for s2i, s2 in enumerate(fl.get("flow_steps", []))]
@@ -1053,13 +1183,46 @@ class PreviewShadowConvergenceService:
                     user_feedback=feedback,
                     temp_feat_to_int=temp_feat_to_int
                 )
-                int_to_temp_feat = {v: k for k, v in temp_feat_to_int.items()} if temp_feat_to_int else {}
+                int_to_temp_feat = {}
+                if temp_feat_to_int:
+                    for k, v in temp_feat_to_int.items():
+                        int_to_temp_feat[v] = k
+                        int_to_temp_feat[str(v)] = k
+                        int_to_temp_feat[k] = k
+                
+                def resolve_feature_ref(feat_id: Any) -> str:
+                    if not feat_id:
+                        return ""
+                    feat_id_str = str(feat_id).strip()
+                    if feat_id_str.startswith("tmp_feature_"):
+                        return feat_id_str
+                    raw_id = feat_id
+                    if feat_id_str.startswith("feature:"):
+                        parts = feat_id_str.split(":", 1)
+                        if len(parts) == 2:
+                            val = parts[1]
+                            try:
+                                raw_id = int(val)
+                            except ValueError:
+                                raw_id = val
+                    else:
+                        try:
+                            raw_id = int(feat_id)
+                        except (ValueError, TypeError):
+                            raw_id = feat_id
+                    if raw_id in int_to_temp_feat:
+                        return int_to_temp_feat[raw_id]
+                    if str(raw_id) in int_to_temp_feat:
+                        return int_to_temp_feat[str(raw_id)]
+                    if isinstance(raw_id, int):
+                        return f"feature:{raw_id}"
+                    if feat_id_str.startswith("feature:"):
+                        return feat_id_str
+                    return f"tmp_feature_{feat_id}"
+
                 for sc in scopes:
                     feat_id = sc.get("feature_id")
-                    if feat_id in int_to_temp_feat:
-                        feat_ref = int_to_temp_feat[feat_id]
-                    else:
-                        feat_ref = f"feature:{feat_id}" if isinstance(feat_id, int) else (f"tmp_feature_{feat_id}" if not str(feat_id).startswith("tmp_") else feat_id)
+                    feat_ref = resolve_feature_ref(feat_id)
                     patch["scopes_added"].append({
                         "feature_ref": feat_ref,
                         "status": (sc.get("scope_status") or sc.get("status") or "CURRENT").upper(),
@@ -1067,7 +1230,9 @@ class PreviewShadowConvergenceService:
                         "kano_category": sc.get("kano_category") or "M",
                         "kano_category_name": sc.get("kano_category_name") or "Must-be",
                         "positive_summary": sc.get("positive_summary") or "已支持",
-                        "negative_summary": sc.get("negative_summary") or "不满足"
+                        "negative_summary": sc.get("negative_summary") or "不满足",
+                        "positive_picture_base64": sc.get("positive_picture_base64"),
+                        "negative_picture_base64": sc.get("negative_picture_base64")
                     })
 
         # 3. What is already converged: use service registry wrappers outside session transactions
@@ -1150,12 +1315,18 @@ class PreviewShadowConvergenceService:
                         
                         actor_refs = []
                         for act_id in st.get("actor_ids", []):
-                            if isinstance(act_id, int):
-                                actor_refs.append(f"actor:{act_id}")
-                            elif str(act_id).startswith("tmp_") or str(act_id).startswith("actor:"):
+                            if str(act_id).startswith("actor:"):
                                 actor_refs.append(str(act_id))
+                            elif isinstance(act_id, int):
+                                # Real DB actor IDs (what_passed means actors exist in DB)
+                                actor_refs.append(f"actor:{act_id}")
                             else:
-                                actor_refs.append(f"tmp_actor_{act_id}")
+                                # Numeric string → treat as real DB actor ID
+                                try:
+                                    actor_refs.append(f"actor:{int(act_id)}")
+                                except (ValueError, TypeError):
+                                    # Non-numeric (e.g. "admin") — skip; validator will catch invalid refs
+                                    pass
                                 
                         input_bo_refs = []
                         for bo_num in st.get("input_business_object_numbers", []):
@@ -1232,7 +1403,9 @@ class PreviewShadowConvergenceService:
                         "kano_category": sc.get("kano_category") or "M",
                         "kano_category_name": sc.get("kano_category_name") or "Must-be",
                         "positive_summary": sc.get("positive_summary") or "已支持",
-                        "negative_summary": sc.get("negative_summary") or "不满足"
+                        "negative_summary": sc.get("negative_summary") or "不满足",
+                        "positive_picture_base64": sc.get("positive_picture_base64"),
+                        "negative_picture_base64": sc.get("negative_picture_base64")
                     })
         return patch
 
@@ -1439,6 +1612,8 @@ class PreviewShadowConvergenceService:
                     "reason": sc["reason"],
                     "positive_summary": sc.get("positive_summary"),
                     "negative_summary": sc.get("negative_summary"),
+                    "positive_picture_base64": sc.get("positive_picture_base64"),
+                    "negative_picture_base64": sc.get("negative_picture_base64"),
                     "kano_category": sc.get("kano_category"),
                     "kano_category_name": sc.get("kano_category_name")
                 }
@@ -1460,6 +1635,8 @@ class PreviewShadowConvergenceService:
                     "scope_id": neg_counter,
                     "scope_status": "CURRENT",
                     "reason": "AI影子收敛补充",
+                    "positive_picture_base64": None,
+                    "negative_picture_base64": None,
                     "kano_category": "M",
                     "kano_category_name": "Must-be"
                 }
@@ -1508,35 +1685,65 @@ class PreviewShadowConvergenceService:
         step_id_map: dict[str, int] = {}
 
         # Helpers to resolve a ref string (e.g. "actor:12" or "tmp_actor_1") to integer ID
-        def resolve_actor_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return actor_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_actor_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return actor_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
-        def resolve_feature_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return feature_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_feature_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return feature_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
-        def resolve_scenario_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return scenario_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_scenario_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return scenario_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
-        def resolve_bo_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return bo_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_bo_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return bo_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
-        def resolve_flow_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return flow_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_flow_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return flow_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
-        def resolve_step_id(ref: str) -> int:
-            if ref.startswith("tmp_"):
-                return step_id_map[ref]
-            return int(ref.split(":")[1])
+        def resolve_step_id(ref: Any) -> int:
+            if not ref:
+                return 0
+            ref_str = str(ref)
+            if ref_str.startswith("tmp_"):
+                return step_id_map[ref_str]
+            if ":" in ref_str:
+                return int(ref_str.split(":")[1])
+            return int(ref_str)
 
         # Step A: Insert Actors
         for a in patch.get("actors_added", []):
@@ -1564,12 +1771,21 @@ class PreviewShadowConvergenceService:
                 
                 if parent_ref is None:
                     can_insert = True
-                elif parent_ref.startswith("feature:"):
-                    can_insert = True
-                    parent_id = int(parent_ref.split(":")[1])
-                elif parent_ref.startswith("tmp_") and parent_ref in feature_id_map:
-                    can_insert = True
-                    parent_id = feature_id_map[parent_ref]
+                else:
+                    parent_ref_str = str(parent_ref)
+                    if parent_ref_str.startswith("feature:"):
+                        can_insert = True
+                        parent_id = int(parent_ref_str.split(":")[1])
+                    elif parent_ref_str.startswith("tmp_"):
+                        if parent_ref_str in feature_id_map:
+                            can_insert = True
+                            parent_id = feature_id_map[parent_ref_str]
+                    else:
+                        try:
+                            parent_id = int(parent_ref_str)
+                            can_insert = True
+                        except ValueError:
+                            pass
                 
                 if can_insert:
                     feat = FeatureModel(
@@ -1585,11 +1801,12 @@ class PreviewShadowConvergenceService:
                     if parent_id is not None:
                         # Find next position under parent
                         pos_res = await session.execute(
-                            select(func.count(FeatureRelationModel.id)).where(
+                            select(func.max(FeatureRelationModel.position)).where(
                                 FeatureRelationModel.parent_feature_id == parent_id
                             )
                         )
-                        next_pos = pos_res.scalar_one()
+                        max_pos = pos_res.scalar()
+                        next_pos = 0 if max_pos is None else max_pos + 1
                         
                         relation = FeatureRelationModel(
                             parent_feature_id=parent_id,
@@ -1738,6 +1955,10 @@ class PreviewShadowConvergenceService:
             )
             existing_scope = scope_res.scalar_one_or_none()
             
+            from backend.services.binary_conversion_service import BinaryConversionService
+            pos_pic = BinaryConversionService.base64_to_bytes(sc.get("positive_picture_base64")) if sc.get("positive_picture_base64") else None
+            neg_pic = BinaryConversionService.base64_to_bytes(sc.get("negative_picture_base64")) if sc.get("negative_picture_base64") else None
+
             if existing_scope:
                 existing_scope.status = sc["status"]
                 existing_scope.reason = sc["reason"]
@@ -1745,6 +1966,10 @@ class PreviewShadowConvergenceService:
                 existing_scope.kano_category_name = sc.get("kano_category_name")
                 existing_scope.positive_summary = sc.get("positive_summary")
                 existing_scope.negative_summary = sc.get("negative_summary")
+                if pos_pic is not None:
+                    existing_scope.positive_picture = pos_pic
+                if neg_pic is not None:
+                    existing_scope.negative_picture = neg_pic
             else:
                 new_scope = ScopeModel(
                     feature_id=feat_id,
@@ -1753,7 +1978,9 @@ class PreviewShadowConvergenceService:
                     kano_category=sc.get("kano_category"),
                     kano_category_name=sc.get("kano_category_name"),
                     positive_summary=sc.get("positive_summary"),
-                    negative_summary=sc.get("negative_summary")
+                    negative_summary=sc.get("negative_summary"),
+                    positive_picture=pos_pic,
+                    negative_picture=neg_pic
                 )
                 session.add(new_scope)
                 await session.flush()
@@ -1793,6 +2020,9 @@ class PreviewShadowConvergenceService:
                 for sc in generated_scopes:
                     feat_id = sc.get("feature_id")
                     if feat_id in missing_leaf_ids:
+                        from backend.services.binary_conversion_service import BinaryConversionService
+                        pos_pic = BinaryConversionService.base64_to_bytes(sc.get("positive_picture_base64")) if sc.get("positive_picture_base64") else None
+                        neg_pic = BinaryConversionService.base64_to_bytes(sc.get("negative_picture_base64")) if sc.get("negative_picture_base64") else None
                         new_scope = ScopeModel(
                             feature_id=feat_id,
                             status=sc.get("scope_status", "current").upper(),
@@ -1800,7 +2030,9 @@ class PreviewShadowConvergenceService:
                             kano_category=sc.get("kano_category"),
                             kano_category_name=sc.get("kano_category_name"),
                             positive_summary=sc.get("positive_summary"),
-                            negative_summary=sc.get("negative_summary")
+                            negative_summary=sc.get("negative_summary"),
+                            positive_picture=pos_pic,
+                            negative_picture=neg_pic
                         )
                         session.add(new_scope)
                         missing_leaf_ids.remove(feat_id)

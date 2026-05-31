@@ -60,7 +60,8 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "project_creation"
 
     def __init__(self):
-        self._service = ProjectCreationService()
+        from backend.api.services.service_registry import project_creation_service
+        self._service = project_creation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one complete project draft candidate.

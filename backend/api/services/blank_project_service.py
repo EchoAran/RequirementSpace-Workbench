@@ -48,6 +48,10 @@ class BlankProjectService:
 
         session.add(project)
         await session.flush()
+        # Commit before returning so the follow-up GET /projects/{id}
+        # in the frontend can always observe the newly created project.
+        await session.commit()
+        await session.refresh(project)
 
         return {
             "project_id": project.id,

@@ -12,6 +12,8 @@ import {
   selectScopeItems,
   selectPageHealth,
 } from '@/store/useWorkspaceStore';
+import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
+
 import { buildProjectRoute, getStageIssues, groupScopeItems } from '@/core/selectors';
 
 const SCOPE_COLUMNS = [
@@ -31,7 +33,8 @@ export function ScopeAndDelivery() {
     activeDraft, activeDraftType, isGenerating, isLoading,
     setPendingManualAction, resetKano, runDiagnosis,
     confirmRepairDraft, discardRepairDraft, regenerateRepairDraft,
-    createSlotFromIssue, expandSlot, updateIssueAttributes, clearPerceptionSlot
+    createSlotFromIssue, expandSlot, updateIssueAttributes, clearPerceptionSlot,
+    activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress, acceptChoice, discardChoiceGroup
   } = useWorkspaceStore();
   
   const [scopeFeedback, setScopeFeedback] = useState('');
@@ -114,8 +117,8 @@ export function ScopeAndDelivery() {
       scopeId: scope?.scopeId,
       title: feature?.featureName || item.title || '',
       description: feature?.featureDescription || item.description || '',
-      status: scope?.confirmationStatus || item.confirmationStatus || item.status || 'ai_assumption',
-      confirmationStatus: scope?.confirmationStatus || item.confirmationStatus || item.status || 'ai_assumption',
+      status: scope?.confirmationStatus || item.confirmationStatus || item.status,
+      confirmationStatus: scope?.confirmationStatus || item.confirmationStatus || item.status,
       scopeStatus: scope?.scopeStatus || item.scopeStatus,
       parentModuleName: item.parentModuleName,
       scope: scope || item.scope || null,
@@ -217,6 +220,8 @@ export function ScopeAndDelivery() {
 
   const previewScopeMove = async (itemId: string, targetKey: string) => {
     if (!ir?.projectId) return;
+    const sourceItem = [...inScope, ...deferred, ...excluded, ...undecided].find((item: any) => item.id === itemId);
+    if (targetKey === 'undecided' && sourceItem?.scopeStatus) return;
     const targetLabel = SCOPE_COLUMNS.find((column) => column.key === targetKey)?.label || targetKey;
     const scopeStatus = targetKey;
     const featureId = parseInt(itemId, 10);
@@ -480,7 +485,7 @@ export function ScopeAndDelivery() {
                   columnKey="exclude"
                   title="已排除" 
                   items={excluded} 
-                  moveTargets={SCOPE_COLUMNS.map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
+                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
@@ -576,6 +581,22 @@ export function ScopeAndDelivery() {
             await confirmScope();
           }
         }}
+      />
+
+      <ChoiceGroupPreviewModal
+        group={activeChoiceGroup}
+        isWorking={isGeneratingChoices || isLoading}
+        isGeneratingChoices={isGeneratingChoices}
+        generationProgress={choiceGroupGenerationProgress}
+        onAccept={async (choiceId) => {
+          await acceptChoice(choiceId);
+        }}
+        onDiscard={async () => {
+          if (activeChoiceGroup) {
+            await discardChoiceGroup(activeChoiceGroup.id);
+          }
+        }}
+        onDefer={() => {}}
       />
 
       <RightObjectPanel />

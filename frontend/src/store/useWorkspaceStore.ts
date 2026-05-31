@@ -771,8 +771,8 @@ const buildSelectedScopeObject = (feature: any) => {
     scopeId: feature.scope?.scopeId,
     title: feature.featureName || '',
     description: feature.featureDescription || '',
-    status: feature.scope?.confirmationStatus || 'ai_assumption',
-    confirmationStatus: feature.scope?.confirmationStatus || 'ai_assumption',
+    status: feature.scope?.confirmationStatus,
+    confirmationStatus: feature.scope?.confirmationStatus,
     scopeStatus: feature.scope?.scopeStatus,
     scope: feature.scope || null,
   };

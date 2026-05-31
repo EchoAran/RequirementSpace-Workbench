@@ -10,6 +10,7 @@ import { SlotPanel } from '../right-panel/SlotPanel';
 import { StatusBadge } from './StatusBadge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { normalizeScopeStatus } from '@/core/selectors';
+import { GherkinVisualRenderer, GherkinVisualEditor } from './GherkinVisualizer';
 
 const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null): Choice | null => {
   if (!ir || !choiceId) return null;
@@ -447,7 +448,7 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
   const scope = feature?.scope || selectedObject.scope || null;
   const scopeId = scope?.scopeId ?? selectedObject.scopeId;
   const featureName = feature?.featureName || selectedObject.featureName || selectedObject.title || '未命名功能';
-  const confirmationStatus = scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption';
+  const confirmationStatus = scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || '';
   const initialScopeStatus = scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '';
 
   const [scopeStatus, setScopeStatus] = useState(initialScopeStatus);
@@ -456,7 +457,7 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
 
   useEffect(() => {
     setScopeStatus(scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '');
-    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption');
+    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || '');
   }, [scope?.scopeStatus, scope?.confirmationStatus, scopeId, featureId, selectedObject.confirmationStatus, selectedObject.status]);
 
   const handleSave = async () => {
@@ -473,10 +474,11 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
 
       const latestFeature = useWorkspaceStore.getState().ir?.features?.find((item: any) => item.featureId === featureId);
       const latestScopeId = latestFeature?.scope?.scopeId;
-      const latestConfirmationStatus = latestFeature?.scope?.confirmationStatus || 'ai_assumption';
+      const latestConfirmationStatus = latestFeature?.scope?.confirmationStatus || '';
 
       if (
         latestScopeId &&
+        draftConfirmationStatus &&
         draftConfirmationStatus !== latestConfirmationStatus
       ) {
         await setNodeStatus(latestScopeId.toString(), 'scope', draftConfirmationStatus as NodeStatus);
@@ -488,14 +490,14 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
 
   const handleReset = () => {
     setScopeStatus(scope?.scopeStatus ? normalizeScopeStatus(scope.scopeStatus) : '');
-    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || 'ai_assumption');
+    setDraftConfirmationStatus(scope?.confirmationStatus || selectedObject.confirmationStatus || selectedObject.status || '');
   };
 
   return (
     <PanelShell title={featureName} subtitle="交付范围 / 叶子功能决策">
       <Section title="状态与交付范围">
         <div className="flex flex-wrap gap-2">
-          <StatusBadge status={draftConfirmationStatus} />
+          {draftConfirmationStatus ? <StatusBadge status={draftConfirmationStatus} /> : null}
           <span className="inline-flex px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
             {scopeStatus
               ? SCOPE_DECISION_OPTIONS.find((option) => option.value === scopeStatus)?.label || scopeStatus
@@ -507,7 +509,7 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
       <ConfirmationStatusSection
         nodeKind="scope"
         selectedObject={{ ...selectedObject, scopeId, confirmationStatus: draftConfirmationStatus }}
-        fallbackStatus="ai_assumption"
+        fallbackStatus="needs_confirmation"
         disabled={!scopeId || isSaving}
         value={draftConfirmationStatus}
         onChange={setDraftConfirmationStatus}
@@ -827,23 +829,17 @@ function ScenarioObjectPanel({ selectedObject }: { selectedObject: any }) {
         {(selectedObject.acceptanceCriteria || []).length === 0 ? (
           <div className="text-xs text-slate-400 italic">该场景暂无关联的交付验收标准。</div>
         ) : (
-          <div className="space-y-3 select-text">
-            {(selectedObject.acceptanceCriteria || []).map((ac: any) => {
-              return (
-                <div 
-                  key={ac.criterionId} 
-                  onClick={() => setSelectedObject({ ...ac, kind: 'acceptance_criterion' })}
-                  className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 hover:bg-indigo-50/40 hover:border-indigo-300 transition-all cursor-pointer space-y-1.5 shadow-sm group"
-                  title="点击即可单独编辑此条验收标准"
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-extrabold text-[10px] text-indigo-500 group-hover:text-indigo-600 transition-colors">验收标准 #{ac.criterionId}</span>
-                    <span className="text-[10px] text-indigo-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">编辑该条验收标准 →</span>
-                  </div>
-                  <div className="text-xs text-slate-700 font-medium leading-relaxed">{ac.criterionContent}</div>
-                </div>
-              );
-            })}
+          <div className="space-y-4">
+            {(selectedObject.acceptanceCriteria || []).map((ac: any) => (
+              <GherkinVisualRenderer
+                key={ac.criterionId}
+                text={ac.criterionContent || ''}
+                title={`验收标准 #${ac.criterionId}`}
+                badge="验收标准"
+                statusBadge={<StatusBadge status={ac.confirmationStatus} />}
+                onClick={() => setSelectedObject({ ...ac, kind: 'acceptance_criterion' })}
+              />
+            ))}
           </div>
         )}
       </Section>
@@ -854,7 +850,9 @@ function ScenarioObjectPanel({ selectedObject }: { selectedObject: any }) {
 // 7. Dedicated Acceptance Criterion Panel
 function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any }) {
   const updateAcceptanceCriterion = useWorkspaceStore((state) => state.updateAcceptanceCriterion);
+  const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
   const [acContent, setAcContent] = useState(selectedObject.criterionContent || '');
+  const [activeTab, setActiveTab] = useState<'visual' | 'raw'>('visual');
 
   useEffect(() => {
     setAcContent(selectedObject.criterionContent || '');
@@ -864,7 +862,7 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
     for (const f of ir.features || []) {
       for (const s of f.scenarios || []) {
         if ((s.acceptanceCriteria || []).some((ac: any) => ac.criterionId === selectedObject.criterionId)) {
-          return { featureId: f.featureId, scenarioId: s.scenarioId };
+          return { featureId: f.featureId, scenarioId: s.scenarioId, scenario: s };
         }
       }
     }
@@ -879,12 +877,59 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
   return (
     <PanelShell title={`验收标准 #${selectedObject.criterionId}`} subtitle="交付验收标准">
       <ConfirmationStatusSection nodeKind="acceptance_criterion" selectedObject={selectedObject} />
+      
+      <div className="px-5 py-3.5 border-b border-slate-100 select-none">
+        <div className="bg-slate-100/80 p-1 rounded-xl flex gap-1 border border-slate-200/50 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveTab('visual')}
+            className={`grow text-[10px] font-extrabold uppercase py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1 ${
+              activeTab === 'visual'
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            ⚡ 可视化设计器
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('raw')}
+            className={`grow text-[10px] font-extrabold uppercase py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1 ${
+              activeTab === 'raw'
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            📝 原生 Gherkin 文本
+          </button>
+        </div>
+      </div>
+
       <Section title="验收标准详细说明">
-        <TextField label="交付验收标准具体内容" value={acContent} onChange={setAcContent} multiline />
+        {activeTab === 'visual' ? (
+          <div className="border border-slate-200/80 rounded-2xl p-4 bg-slate-50/10 mb-4 shadow-sm">
+            <GherkinVisualEditor
+              initialText={acContent}
+              onChange={setAcContent}
+            />
+          </div>
+        ) : (
+          <TextField 
+            label="交付验收标准具体内容" 
+            value={acContent} 
+            onChange={setAcContent} 
+            multiline 
+          />
+        )}
+        
         {parent ? (
           <ActionRow>
             <ActionButton onClick={() => void handleSave()}>保存更改</ActionButton>
-            <ActionButton variant="secondary" onClick={() => setAcContent(selectedObject.criterionContent || '')}>
+            <ActionButton variant="secondary" onClick={() => {
+              setAcContent(selectedObject.criterionContent || '');
+              // To reset the visual editor as well, we trigger selectedObject reload
+              setSelectedObject({ ...selectedObject });
+            }}>
               重置修改
             </ActionButton>
           </ActionRow>

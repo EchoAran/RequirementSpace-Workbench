@@ -114,8 +114,8 @@ export function Overview() {
 
   const handleDeferChoiceGroupPreview = useCallback(() => {
     setPreviewChoiceId(null);
-    deferOnboardingChoiceGroup();
-  }, [deferOnboardingChoiceGroup]);
+    useWorkspaceStore.setState({ activeChoiceGroup: null });
+  }, []);
 
   const openIssueFlow = async (issueId: string) => {
     const slotId = await createSlotFromIssue(issueId);

@@ -1741,7 +1741,7 @@ export function HowItWorks() {
             await discardChoiceGroup(activeChoiceGroup.id);
           }
         }}
-        onDefer={() => {}}
+        onDefer={() => useWorkspaceStore.setState({ activeChoiceGroup: null })}
       />
 
       <RightObjectPanel />

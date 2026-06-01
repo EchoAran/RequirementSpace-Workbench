@@ -21,7 +21,7 @@ class ActorsGenerator(BaseGenerator[ActorsGeneratorInput]):
                 "{{user_requirements}}", user_requirements_
             ),
             query=feedback,
-            print_log=False,
+            print_log=True,
         )
         if not response:
             raise ValueError("LLM returned an empty response. Please check backend server logs for the detailed LLM connection or settings error.")

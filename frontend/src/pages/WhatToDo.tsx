@@ -1937,7 +1937,7 @@ export function WhatToDo() {
             await discardChoiceGroup(activeChoiceGroup.id);
           }
         }}
-        onDefer={deferOnboardingChoiceGroup}
+        onDefer={() => useWorkspaceStore.setState({ activeChoiceGroup: null })}
       />
 
       <AIAddObjectDialog

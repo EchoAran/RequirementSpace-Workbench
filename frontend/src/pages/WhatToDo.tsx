@@ -1340,9 +1340,10 @@ export function WhatToDo() {
               <button
                 onClick={async () => {
                   if (selectedFeatureIds.length === 0) return;
-                  await generateScenarios(selectedFeatureIds);
+                  const ids = [...selectedFeatureIds];
                   setIsScenarioModalOpen(false);
                   setSelectedFeatureIds([]);
+                  await generateScenarios(ids);
                 }}
                 disabled={selectedFeatureIds.length === 0 || isGenerating || isLoading}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"

@@ -329,7 +329,29 @@ export function DraftPreviewModal({
 }: DraftPreviewModalProps) {
   const [feedback, setFeedback] = useState('');
 
-  if (!draft || !draftType) return null;
+  if (!draftType) return null;
+  if (!draft) {
+    if (isWorking) {
+      return (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 backdrop-blur-md transition-all duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-md mx-4 p-8 scale-in duration-300 animate-in">
+            <div className="text-center">
+              <div className="relative w-16 h-16 mx-auto mb-6 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-800 mb-2 leading-relaxed">
+                正在生成{titles[draftType]}，请稍候...
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium px-4 mb-6 leading-normal">
+                AI 正在为您智能规划与精炼，以构建最佳结构化系统方案
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const items = getDraftItems(draft, draftType);
 

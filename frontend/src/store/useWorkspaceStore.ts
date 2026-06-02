@@ -614,6 +614,7 @@ export interface WorkspaceState {
     candidateStatuses: Record<number, 'pending' | 'generating' | 'complete' | 'failed'>;
   } | null;
   isGeneratingChoices: boolean;
+  generatingChoiceGroupType?: string | null;
   openOnboardingChoiceGroups: any[];
   pendingGenerationConflict: PendingGenerationConflict | null;
   createOnboardingChoiceGroup: (userRequirements: string, candidateCount?: number) => Promise<void>;
@@ -1784,30 +1785,29 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   generateScenarios: async (featureIds, forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    // Determine mode: single/pair → choice group, full/batch → keep draft
     const isSingleTarget = !Array.isArray(featureIds) ||
       (Array.isArray(featureIds) && featureIds.length === 1);
     const targetFeatureId = isSingleTarget
       ? (Array.isArray(featureIds) ? featureIds[0] : featureIds)
       : null;
+    const targetFeatureIds = Array.isArray(featureIds) ? featureIds : (featureIds ? [featureIds] : []);
 
-    if (isSingleTarget && targetFeatureId) {
-      // Phase 3: single/pair → choice group path
-      try {
-        const group = await get().createGenerationChoiceGroup({
-          projectId: pId,
-          generationType: 'scenario',
-          target: { generation_mode: 'single', feature_id: targetFeatureId },
-          candidateCount: 2,
-          forceReplace,
-          conflictAction: 'generateScenarios',
-          conflictArgs: { featureIds },
-        });
-        if (group || get().pendingGenerationConflict) return;
-      } catch (_err) {
-        if (get().pendingGenerationConflict) return;
-        // Fall through to draft fallback
-      }
+    try {
+      const group = await get().createGenerationChoiceGroup({
+        projectId: pId,
+        generationType: 'scenario',
+        target: isSingleTarget
+          ? { generation_mode: 'single', feature_id: targetFeatureId }
+          : { generation_mode: 'batch', feature_ids: targetFeatureIds },
+        candidateCount: 2,
+        forceReplace,
+        conflictAction: 'generateScenarios',
+        conflictArgs: { featureIds },
+      });
+      if (group || get().pendingGenerationConflict) return;
+    } catch (_err) {
+      if (get().pendingGenerationConflict) return;
+      // Fall through to draft fallback
     }
 
     // ── Fallback / full / batch: old draft path ──────────────
@@ -1816,10 +1816,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (Array.isArray(featureIds)) {
         if (featureIds.length === 0) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId);
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互和AC验收条件。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
         } else if (featureIds.length === 1) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds[0]);
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互和AC验收条件。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
         } else {
           const drafts = await Promise.all(
             featureIds.map(fId => workspaceApi.createScenarioGenerationDraft(pId, fId))
@@ -1837,7 +1837,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         }
       } else {
         const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds);
-        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互和AC验收条件。' });
+        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '生成成功场景失败';

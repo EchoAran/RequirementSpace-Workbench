@@ -29,6 +29,7 @@ function CandidateComparisonView({
   const hasFlows = choices.some(c => asArray(c.preview?.flows || c.payload?.flows).length > 0);
   const hasScenarios = choices.some(c => asArray(c.payload?.scenarios || c.preview?.scenarios).length > 0);
   const hasCriteria = choices.some(c => asArray(c.payload?.acceptance_criteria || c.preview?.criteria).length > 0);
+  const hasScopes = choices.some(c => asArray(c.payload?.scopes || c.preview?.scopes).length > 0);
 
   // Safely cast to array helper
   function getActorsArray(choice: any): any[] {
@@ -51,12 +52,17 @@ function CandidateComparisonView({
     return asArray(choice?.payload?.acceptance_criteria || choice?.preview?.criteria);
   }
 
+  function getScopesArray(choice: any): any[] {
+    return asArray(choice?.payload?.scopes || choice?.preview?.scopes);
+  }
+
   function getObjectStats(choice: any) {
     const actors = getActorsArray(choice).length;
     const features = getFeaturesArray(choice).length;
     const flows = getFlowsArray(choice).length;
     const scenarios = getScenariosArray(choice).length;
     const criteria = getCriteriaArray(choice).length;
+    const scopes = getScopesArray(choice).length;
     const businessObjects = choice?.preview?.business_object_count
       || asArray(choice?.payload?.business_objects || choice?.payload?.businessObjects).length;
 
@@ -76,7 +82,7 @@ function CandidateComparisonView({
       return [`验收标准 ${criteria}`];
     }
     if (draftType === 'scope') {
-      return [`功能 ${features}`, `场景 ${scenarios}`, `验收标准 ${criteria}`];
+      return [`范围决策 ${scopes}`];
     }
     return [
       `参与者 ${actors}`,
@@ -252,6 +258,47 @@ function CandidateComparisonView({
         return {
           ...ac,
           _diffType: 'unique'
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+
+  function getDiffScopes(currentChoice: any, allChoices: any[]) {
+    const currentScopes = getScopesArray(currentChoice);
+    const otherChoices = allChoices.filter(c => c.id !== currentChoice.id);
+
+    return currentScopes.map(sc => {
+      const featName = (sc.feature_name || '').trim();
+      const scopeStatus = (sc.scope_status || '').trim();
+      const reason = (sc.reason || '').trim();
+
+      let isUnique = true;
+      let hasStatusDiff = false;
+      let hasReasonDiff = false;
+
+      for (const other of otherChoices) {
+        const otherScopes = getScopesArray(other);
+        const matched = otherScopes.find(os => (os.feature_name || '').trim() === featName);
+        if (matched) {
+          isUnique = false;
+          const otherStatus = (matched.scope_status || '').trim();
+          const otherReason = (matched.reason || '').trim();
+          if (otherStatus.toLowerCase() !== scopeStatus.toLowerCase()) {
+            hasStatusDiff = true;
+          }
+          if (otherReason !== reason) {
+            hasReasonDiff = true;
+          }
+        }
+      }
+
+      if (isUnique || hasStatusDiff || hasReasonDiff) {
+        return {
+          ...sc,
+          _diffType: isUnique ? 'unique' : 'diff',
+          _hasStatusDiff: hasStatusDiff,
+          _hasReasonDiff: hasReasonDiff,
         };
       }
       return null;
@@ -502,6 +549,58 @@ function CandidateComparisonView({
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
                         <span>✓</span> 验收标准文本与其它方案完全一致
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+
+          {/* Row 7: Scope Differences */}
+          {hasScopes && (
+            <tr className="hover:bg-slate-50/40 transition-colors">
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">范围决策差异</td>
+              {choices.map((c, i) => {
+                const diffScopes: any[] = getDiffScopes(c, choices);
+                return (
+                  <td key={c.id || i} className="px-5 py-3 border-r border-slate-200 last:border-r-0 align-top space-y-2 max-h-[300px] overflow-y-auto">
+                    {diffScopes.length > 0 ? (
+                      diffScopes.map((sc: any, scIdx: number) => {
+                        const rawStatus = String(sc.scope_status || '').toLowerCase();
+                        const statusZh = rawStatus === 'current' || rawStatus === '本期'
+                          ? '本期'
+                          : rawStatus === 'postponed' || rawStatus === '暂缓'
+                          ? '暂缓'
+                          : '不纳入';
+                        return (
+                          <div key={scIdx} className="p-2.5 rounded-xl border border-indigo-150 bg-indigo-50/10 space-y-1 hover:border-indigo-250 transition-colors shadow-sm text-left animate-in fade-in duration-200">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {sc._diffType === 'unique' ? (
+                                <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">方案独有功能范围</span>
+                              ) : (
+                                <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">决策状态差异</span>
+                              )}
+                              <span className="text-[11px] font-extrabold text-slate-800 leading-none">{sc.feature_name}</span>
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md ${
+                                statusZh === '本期'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                  : statusZh === '暂缓'
+                                  ? 'bg-sky-50 text-sky-700 border border-sky-100'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-100'
+                              }`}>{statusZh}</span>
+                            </div>
+                            {sc.reason && (
+                              <p className="text-[10px] text-slate-500 leading-normal mt-1.5 font-medium">
+                                {sc.reason}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
+                        <span>✓</span> 范围划分决策与其它方案完全一致
                       </div>
                     )}
                   </td>

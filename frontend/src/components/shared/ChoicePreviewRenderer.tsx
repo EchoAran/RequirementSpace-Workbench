@@ -458,33 +458,48 @@ function ScopePreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
   const scopes = preview?.scopes || [];
-  const current = scopes.filter((s: any) => s.scope_status === 'current').length;
-  const postponed = scopes.filter((s: any) => s.scope_status === 'postponed').length;
-  const excluded = scopes.filter((s: any) => s.scope_status === 'exclude').length;
+
+  const isCurrent = (status: string) => {
+    const s = String(status || '').toLowerCase();
+    return s === 'current' || s === '本期';
+  };
+  const isPostponed = (status: string) => {
+    const s = String(status || '').toLowerCase();
+    return s === 'postponed' || s === '暂缓';
+  };
+
+  const current = scopes.filter((s: any) => isCurrent(s.scope_status)).length;
+  const postponed = scopes.filter((s: any) => isPostponed(s.scope_status)).length;
+  const excluded = scopes.filter((s: any) => !isCurrent(s.scope_status) && !isPostponed(s.scope_status)).length;
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3 text-xs">
-        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-medium rounded-full">当前 {current}</span>
-        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-medium rounded-full">推迟 {postponed}</span>
-        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-medium rounded-full">不纳入 {excluded}</span>
+        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold rounded-full border border-emerald-100/50">本期 {current}</span>
+        <span className="px-2.5 py-1 bg-sky-50 text-sky-700 font-bold rounded-full border border-sky-100/50">暂缓 {postponed}</span>
+        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded-full border border-slate-200/50">不纳入 {excluded}</span>
       </div>
       <div className="divide-y divide-slate-100">
         {scopes.map((s: any, i: number) => (
-          <div key={i} className="py-2.5 first:pt-0 last:pb-0">
+          <div key={i} className="py-3 first:pt-0 last:pb-0 text-left">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-bold text-slate-800">{s.feature_name || `功能 #${s.feature_id}`}</p>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                s.scope_status === 'current' ? 'bg-emerald-50 text-emerald-700' :
-                s.scope_status === 'postponed' ? 'bg-amber-50 text-amber-700' :
-                'bg-slate-100 text-slate-500'
+              <p className="text-xs font-bold text-slate-800">{s.feature_name || `功能 #${s.feature_id}`}</p>
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md ${
+                isCurrent(s.scope_status) ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                isPostponed(s.scope_status) ? 'bg-sky-50 text-sky-700 border border-sky-100' :
+                'bg-rose-50 text-rose-700 border border-rose-100'
               }`}>
-                {s.scope_status === 'current' ? '当前' : s.scope_status === 'postponed' ? '推迟' : '不纳入'}
+                {isCurrent(s.scope_status) ? '本期' : isPostponed(s.scope_status) ? '暂缓' : '不纳入'}
               </span>
             </div>
             {s.kano_category && (
-              <span className="text-[10px] text-indigo-500 font-medium">Kano: {s.kano_category}</span>
+              <div className="mt-1">
+                <span className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.2 rounded-md">
+                  Kano: {s.kano_category}
+                </span>
+              </div>
             )}
-            {s.reason && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{s.reason}</p>}
+            {s.reason && <p className="text-[10px] text-slate-500 mt-1 leading-normal font-medium">{s.reason}</p>}
           </div>
         ))}
       </div>

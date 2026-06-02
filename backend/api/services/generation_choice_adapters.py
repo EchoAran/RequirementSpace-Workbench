@@ -175,39 +175,69 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         self._service = scenario_generation_service
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
-        """Generate one scenario candidate for a pair or single target.
+        """Generate one scenario candidate for a pair, single, or batch target.
 
         Target format:
           pair:  {"generation_mode": "pair",  "feature_id": 12, "actor_id": 3}
           single: {"generation_mode": "single", "feature_id": 12}
+          batch:  {"generation_mode": "batch",  "feature_ids": [12, 15]}
         """
         target = context.target or {}
         generation_mode = target.get("generation_mode", "pair")
         feature_id = target.get("feature_id")
+        feature_ids = target.get("feature_ids")
         actor_id = target.get("actor_id")
 
         strategy_hint = f"请按 {context.strategy} 风格生成本场景集。"
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
-        draft_payload, response_payload = await self._service._generate_preview(
-            project_id=context.project_id,
-            feature_id=feature_id,
-            actor_id=actor_id,
-            generation_mode=generation_mode,
-            user_feedback=combined,
-            session=context.session,
-        )
+        if generation_mode == "batch" and feature_ids:
+            # Load full project context and filter target pairs for the selected features
+            (
+                user_requirements,
+                actor_node_map,
+                feature_node_map,
+                target_pairs,
+            ) = await self._service._load_generation_context(
+                project_id=context.project_id,
+                feature_id=None,
+                actor_id=None,
+                generation_mode="full",
+                session=context.session,
+            )
+            feature_ids_set = set(feature_ids)
+            target_pairs = [p for p in target_pairs if p[0] in feature_ids_set]
 
-        scenarios = response_payload.get("scenarios", [])
-        feature_name = scenarios[0].get("feature_name", "") if scenarios else ""
-        actor_name = scenarios[0].get("actor_name", "") if scenarios else ""
+            generated_scenarios = await self._service._generate_scenarios_concurrently(
+                user_requirements=user_requirements,
+                actor_node_map=actor_node_map,
+                feature_node_map=feature_node_map,
+                target_pairs=target_pairs,
+                user_feedback=combined,
+            )
+            scenarios = generated_scenarios
+            feature_name = "批量功能"
+            actor_name = "多角色"
+        else:
+            draft_payload, response_payload = await self._service._generate_preview(
+                project_id=context.project_id,
+                feature_id=feature_id,
+                actor_id=actor_id,
+                generation_mode=generation_mode,
+                user_feedback=combined,
+                session=context.session,
+            )
+            scenarios = response_payload.get("scenarios", [])
+            feature_name = scenarios[0].get("feature_name", "") if scenarios else ""
+            actor_name = scenarios[0].get("actor_name", "") if scenarios else ""
 
         # Build preview
         preview = {
             "scenario_count": len(scenarios),
             "generation_mode": generation_mode,
             "feature_id": feature_id,
+            "feature_ids": feature_ids,
             "feature_name": feature_name,
             "actor_id": actor_id,
             "actor_name": actor_name,
@@ -220,18 +250,31 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             ],
         }
 
+        # For batch mode, create the payload matching the schema
+        draft_payload = {
+            "project_id": context.project_id,
+            "generation_mode": generation_mode,
+            "feature_id": feature_id,
+            "feature_ids": feature_ids,
+            "actor_id": actor_id,
+            "scenarios": scenarios,
+        }
+
+        title = f"场景方案 — {len(scenarios)} 个场景" if generation_mode == "batch" else f"{feature_name} × {actor_name} — {len(scenarios)} 个场景"
+        rationale = f"按 {context.strategy} 策略批量生成的场景集" if generation_mode == "batch" else f"按 {context.strategy} 策略为 {feature_name} × {actor_name} 生成的场景集"
+        comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(context.strategy, scenarios, feature_name, actor_name)
+        apply_desc = "此方案将为选定功能点新增场景" if generation_mode == "batch" else f"此方案将为 {feature_name} × {actor_name} 新增场景"
+
         return GenerationCandidate(
-            title=f"{feature_name} × {actor_name} — {len(scenarios)} 个场景",
-            rationale=f"按 {context.strategy} 策略为 {feature_name} × {actor_name} 生成的场景集",
+            title=title,
+            rationale=rationale,
             payload=draft_payload,
             preview=preview,
             draft_type="scenario",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(
-                context.strategy, scenarios, feature_name, actor_name,
-            ),
+            comparison_summary=comparison_summary,
             apply_behavior="append",
-            apply_behavior_description=f"此方案将为 {feature_name} × {actor_name} 新增场景",
+            apply_behavior_description=apply_desc,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:

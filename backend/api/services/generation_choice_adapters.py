@@ -278,12 +278,25 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
-        """Persist scenario payload to ScenarioModel (append mode)."""
+        """Persist scenario payload to ScenarioModel (append mode) and automatically generate AC."""
         # Reuse the existing persist method
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,
             session=session,
         )
+
+        scenario_ids = result.get("scenario_ids", [])
+        if scenario_ids:
+            ac_result = await (
+                self._service._acceptance_criteria_generation_service
+            ).create_and_persist_for_scenarios(
+                project_id=payload["project_id"],
+                scenario_ids=scenario_ids,
+                session=session,
+            )
+            result["acceptance_criterion_count"] = ac_result.get("acceptance_criterion_count", 0)
+        else:
+            result["acceptance_criterion_count"] = 0
 
         # Invalidate perception jobs
         from backend.api.services.perception_job_invalidation_service import (

@@ -1179,16 +1179,35 @@ export function WhatToDo() {
                                         )}
                                       </div>
 
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setScenarioManagerFeature(child);
-                                        }}
-                                        className="text-[10px] bg-slate-900 hover:bg-indigo-600 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm flex items-center gap-1 shrink-0"
-                                      >
-                                        🎬 场景与验收标准
-                                      </button>
+                                      {capScenarios.length > 0 ? (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setScenarioManagerFeature(child);
+                                          }}
+                                          className="text-[10px] bg-slate-900 hover:bg-indigo-600 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm flex items-center gap-1 shrink-0"
+                                        >
+                                          🎬 场景与验收标准
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={isGenerating || isLoading}
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            await generateScenarios([child.featureId]);
+                                          }}
+                                          className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                                        >
+                                          {isGenerating ? (
+                                            <RefreshCw className="w-3 h-3 animate-spin text-indigo-200" />
+                                          ) : (
+                                            <Sparkles className="w-3 h-3 text-indigo-200" />
+                                          )}
+                                          生成场景与验收标准
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 );

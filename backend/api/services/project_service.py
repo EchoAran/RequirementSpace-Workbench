@@ -513,7 +513,16 @@ class ProjectService:
                 for f in feat_list:
                     if f.parent_id == parent_id:
                         indent = "  " * level
-                        scope_text = f" [范围: {f.scope.scope_status}]" if f.scope else ""
+                        scope_text = ""
+                        if f.scope:
+                            status_map = {
+                                "current": "本期",
+                                "postponed": "暂缓",
+                                "exclude": "不纳入"
+                            }
+                            raw_status = f.scope.scope_status or ""
+                            status_zh = status_map.get(raw_status.lower(), raw_status)
+                            scope_text = f" [范围: {status_zh}]"
                         lines.append(f"{indent}- **{f.feature_name}**: {f.feature_description}{scope_text}")
                         build_tree(feat_list, f.feature_id, level + 1)
             build_tree(detail.features)

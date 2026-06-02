@@ -1349,17 +1349,23 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   discardOnboardingChoiceGroup: async () => {
     const group = get().activeChoiceGroup;
-    if (!group) return;
+    if (!group) {
+      set({ activeChoiceGroup: null });
+      return;
+    }
     try {
       await workspaceApi.discardProjectCreationChoiceGroup(group.id);
+    } catch (err) {
+      console.warn('Failed to discard onboarding choice group on backend:', err);
+    } finally {
       set({
         activeChoiceGroup: null,
+        isGeneratingChoices: false,
+        generatingChoiceGroupType: null,
         currentSystemView: 'onboarding',
-        lastActionMessage: '已丢弃方案组',
+        lastActionMessage: '已关闭候选方案并返回创建页面',
       });
-      get().loadOpenOnboardingChoiceGroups();
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : '丢弃方案失败' });
+      void get().loadOpenOnboardingChoiceGroups();
     }
   },
 
@@ -2683,14 +2689,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   discardChoiceGroup: async (groupId) => {
     const projectId = get().ir?.projectId;
-    if (!projectId) return;
+    if (!projectId) {
+      set({ activeChoiceGroup: null });
+      return;
+    }
     set({ isLoading: true, error: null });
     try {
       await workspaceApi.discardChoiceGroup(projectId, groupId);
+    } catch (err) {
+      console.warn('Failed to discard choice group on backend:', err);
+    } finally {
       set({ activeChoiceGroup: null, isLoading: false, lastActionMessage: '已丢弃候选方案组。' });
       await get().refreshWorkspace();
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : '丢弃方案组失败', isLoading: false });
     }
   },
 

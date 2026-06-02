@@ -163,11 +163,36 @@ export const GherkinVisualRenderer: React.FC<{
   const parsed = parseGherkin(text);
   const { clauses, examples, boundary, businessMeaning } = parsed;
 
-  // Group clauses logically to match Setup / Action / Guard / Then layout
-  const givenClauses = clauses.filter(c => c.keyword === 'Given');
-  const whenClauses = clauses.filter(c => c.keyword === 'When');
-  const guardClauses = clauses.filter(c => c.keyword === 'And' || c.keyword === 'But');
-  const thenClauses = clauses.filter(c => c.keyword === 'Then');
+  // Group clauses logically to match standard Given / When / Then layout
+  const givenClauses: GherkinClause[] = [];
+  const whenClauses: GherkinClause[] = [];
+  const thenClauses: GherkinClause[] = [];
+
+  let currentCategory: 'Given' | 'When' | 'Then' | null = null;
+
+  for (const clause of clauses) {
+    if (clause.keyword === 'Given') {
+      currentCategory = 'Given';
+      givenClauses.push(clause);
+    } else if (clause.keyword === 'When') {
+      currentCategory = 'When';
+      whenClauses.push(clause);
+    } else if (clause.keyword === 'Then') {
+      currentCategory = 'Then';
+      thenClauses.push(clause);
+    } else if (clause.keyword === 'And' || clause.keyword === 'But') {
+      if (currentCategory === 'Given') {
+        givenClauses.push(clause);
+      } else if (currentCategory === 'When') {
+        whenClauses.push(clause);
+      } else if (currentCategory === 'Then') {
+        thenClauses.push(clause);
+      } else {
+        // Fallback if leading clause is And/But
+        givenClauses.push(clause);
+      }
+    }
+  }
 
   return (
     <div 
@@ -201,17 +226,40 @@ export const GherkinVisualRenderer: React.FC<{
 
       {/* Structured Card Grid */}
       {clauses.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           {/* GIVEN Column */}
           <div className="bg-slate-50/40 border border-slate-200 rounded-xl p-3 space-y-2">
             <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">GIVEN</span>
             {givenClauses.length > 0 ? (
-              givenClauses.map((c, i) => (
-                <div key={i} className="text-xs text-slate-700 leading-relaxed font-medium">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5" />
-                  {renderHighlightedText(c.content)}
-                </div>
-              ))
+              givenClauses.map((c, i) => {
+                const isMain = c.keyword === 'Given';
+                return (
+                  <div 
+                    key={i} 
+                    className={`text-xs leading-relaxed flex items-start ${
+                      isMain 
+                        ? 'text-slate-700 font-semibold mt-1' 
+                        : 'text-slate-500 font-medium pl-3 border-l border-slate-200/60 ml-1 mt-0.5'
+                    }`}
+                  >
+                    {isMain ? (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5 mt-1.5 shrink-0" />
+                    ) : (
+                      <span className={`inline-block w-1 h-1 rounded-full mr-1.5 mt-1.5 shrink-0 ${
+                        c.keyword === 'But' ? 'bg-rose-350' : 'bg-slate-350'
+                      }`} />
+                    )}
+                    <div>
+                      {!isMain && (
+                        <span className="text-[9px] font-extrabold uppercase mr-1 text-slate-400 font-mono tracking-wider">
+                          {c.keyword}
+                        </span>
+                      )}
+                      {renderHighlightedText(c.content)}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-xs text-slate-400 italic">无前置条件</div>
             )}
@@ -221,32 +269,37 @@ export const GherkinVisualRenderer: React.FC<{
           <div className="bg-slate-50/40 border border-slate-200 rounded-xl p-3 space-y-2">
             <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">WHEN</span>
             {whenClauses.length > 0 ? (
-              whenClauses.map((c, i) => (
-                <div key={i} className="text-xs text-slate-700 leading-relaxed font-semibold">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 mr-1.5" />
-                  {renderHighlightedText(c.content)}
-                </div>
-              ))
+              whenClauses.map((c, i) => {
+                const isMain = c.keyword === 'When';
+                return (
+                  <div 
+                    key={i} 
+                    className={`text-xs leading-relaxed flex items-start ${
+                      isMain 
+                        ? 'text-slate-700 font-semibold mt-1' 
+                        : 'text-slate-500 font-medium pl-3 border-l border-slate-200/60 ml-1 mt-0.5'
+                    }`}
+                  >
+                    {isMain ? (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 mr-1.5 mt-1.5 shrink-0" />
+                    ) : (
+                      <span className={`inline-block w-1 h-1 rounded-full mr-1.5 mt-1.5 shrink-0 ${
+                        c.keyword === 'But' ? 'bg-rose-350' : 'bg-slate-350'
+                      }`} />
+                    )}
+                    <div>
+                      {!isMain && (
+                        <span className="text-[9px] font-extrabold uppercase mr-1 text-slate-400 font-mono tracking-wider">
+                          {c.keyword}
+                        </span>
+                      )}
+                      {renderHighlightedText(c.content)}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-xs text-slate-400 italic">无触发时机</div>
-            )}
-          </div>
-
-          {/* GUARD Column */}
-          <div className="bg-slate-50/40 border border-slate-200 rounded-xl p-3 space-y-2">
-            <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">GUARD</span>
-            {guardClauses.length > 0 ? (
-              guardClauses.map((c, i) => (
-                <div key={i} className="text-xs text-slate-700 leading-relaxed font-medium">
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${
-                    c.keyword === 'But' ? 'bg-rose-400' : 'bg-amber-400'
-                  }`} />
-                  <span className="text-[9px] font-bold uppercase mr-1 text-slate-400 font-mono">{c.keyword}</span>
-                  {renderHighlightedText(c.content)}
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-slate-400 italic">无分支限定</div>
             )}
           </div>
 
@@ -254,12 +307,35 @@ export const GherkinVisualRenderer: React.FC<{
           <div className="bg-slate-50/40 border border-slate-200 rounded-xl p-3 space-y-2">
             <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">THEN</span>
             {thenClauses.length > 0 ? (
-              thenClauses.map((c, i) => (
-                <div key={i} className="text-xs text-slate-800 leading-relaxed font-bold">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
-                  {renderHighlightedText(c.content)}
-                </div>
-              ))
+              thenClauses.map((c, i) => {
+                const isMain = c.keyword === 'Then';
+                return (
+                  <div 
+                    key={i} 
+                    className={`text-xs leading-relaxed flex items-start ${
+                      isMain 
+                        ? 'text-slate-800 font-bold mt-1' 
+                        : 'text-slate-600 font-semibold pl-3 border-l border-slate-200/60 ml-1 mt-0.5'
+                    }`}
+                  >
+                    {isMain ? (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 mt-1.5 shrink-0" />
+                    ) : (
+                      <span className={`inline-block w-1 h-1 rounded-full mr-1.5 mt-1.5 shrink-0 ${
+                        c.keyword === 'But' ? 'bg-rose-350' : 'bg-slate-350'
+                      }`} />
+                    )}
+                    <div>
+                      {!isMain && (
+                        <span className="text-[9px] font-extrabold uppercase mr-1 text-slate-400 font-mono tracking-wider">
+                          {c.keyword}
+                        </span>
+                      )}
+                      {renderHighlightedText(c.content)}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-xs text-slate-400 italic">无预期结果</div>
             )}

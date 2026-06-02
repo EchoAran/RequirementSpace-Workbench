@@ -1,9 +1,162 @@
-/**
- * ChoicePreviewRenderer — dispatches preview rendering by draft_type.
- *
- * Used inside ChoiceGroupPreviewModal to show type-appropriate content
- * for each candidate choice.
- */
+import React from 'react';
+import { GherkinVisualRenderer } from './GherkinVisualizer';
+
+function asArray(value: any): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function parseParentFeatureNumber(num?: string | null) {
+  if (!num) return null;
+  const delimiter = num.includes('.') ? '.' : num.includes('-') ? '-' : null;
+  if (!delimiter) return null;
+  return num.split(delimiter).slice(0, -1).join(delimiter);
+}
+
+function getFeatureDepth(num?: string | null) {
+  if (!num) return 0;
+  const delimiter = num.includes('.') ? '.' : num.includes('-') ? '-' : null;
+  if (!delimiter) return 0;
+  return num.split(delimiter).length - 1;
+}
+
+function buildNestedFeatureTree(features: any[]) {
+  const byNumber = new Map<string, any>();
+  const roots: any[] = [];
+
+  features.forEach((f, idx) => {
+    const num = f.feature_number || f.featureNumber || `draft-${idx}`;
+    byNumber.set(num, { ...f, feature_number: num, children: [] });
+  });
+
+  Array.from(byNumber.values()).forEach((f) => {
+    const parentNum = parseParentFeatureNumber(f.feature_number);
+    const parent = parentNum ? byNumber.get(parentNum) : null;
+    if (parent) {
+      parent.children.push(f);
+    } else {
+      roots.push(f);
+    }
+  });
+
+  const sortByNum = (items: any[]) => {
+    items.sort((a, b) => String(a.feature_number).localeCompare(String(b.feature_number), undefined, { numeric: true }));
+    items.forEach((item) => sortByNum(item.children));
+    return items;
+  };
+
+  return sortByNum(roots);
+}
+
+export function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
+  const [isExpanded, setIsExpanded] = React.useState(true); // Default fully expanded as requested!
+  const hasChildren = node.children && node.children.length > 0;
+
+  return (
+    <div className="space-y-1">
+      <div 
+        className={`flex items-start gap-1.5 p-2 rounded-xl border transition-all ${
+          depth === 0 
+            ? 'bg-slate-50/70 border-slate-200/80 shadow-sm' 
+            : 'bg-white border-slate-100 hover:border-indigo-200 shadow-inner bg-slate-50/10'
+        }`}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="mt-0.5 p-0.5 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0 flex items-center justify-center focus:outline-none"
+          >
+            {isExpanded ? (
+              <span className="block text-[8px] leading-none font-bold select-none transform scale-90">▼</span>
+            ) : (
+              <span className="block text-[8px] leading-none font-bold select-none transform scale-90">▶</span>
+            )}
+          </button>
+        ) : (
+          <span className="w-4 h-4 shrink-0 block" />
+        )}
+        
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {node.feature_number && (
+              <span className="rounded bg-slate-100 border border-slate-200/50 px-1 py-0.2 text-[8px] font-bold text-slate-500 font-mono tracking-tighter leading-none select-none">
+                {node.feature_number}
+              </span>
+            )}
+            <span className="text-[11px] font-extrabold text-slate-800 leading-normal truncate">
+              {node.feature_name || node.name || node.featureName || node.title}
+            </span>
+          </div>
+          {(node.feature_description || node.description || node.featureDescription) && (
+            <p className="mt-1 text-[10px] text-slate-500 leading-relaxed font-medium">
+              {node.feature_description || node.description || node.featureDescription}
+            </p>
+          )}
+          {asArray(node.actor_names || node.actorNames).length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5 select-none">
+              {asArray(node.actor_names || node.actorNames).map((an: string, j: number) => (
+                <span key={j} className="inline-flex rounded-full border border-indigo-150 bg-indigo-50/50 px-1.5 py-0.2 text-[8px] font-bold text-indigo-755 leading-none">{an}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {hasChildren && isExpanded && (
+        <div className="pl-3.5 border-l border-slate-200 ml-3.5 space-y-1.5 mt-1 animate-in fade-in duration-200">
+          {node.children.map((child: any) => (
+            <ExpandableFeatureTreeNode key={child.feature_number || child.feature_name} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ExpandableFeatureTree({ features }: { features: any[] }) {
+  const nestedTree = buildNestedFeatureTree(features);
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 select-text">
+      {nestedTree.length > 0 ? (
+        nestedTree.map((root) => (
+          <ExpandableFeatureTreeNode key={root.feature_number || root.feature_name} node={root} />
+        ))
+      ) : (
+        <div className="text-[10px] text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+          暂无功能节点
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DetailedActorList({ actors }: { actors: any[] }) {
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 select-text">
+      {actors.length > 0 ? (
+        actors.map((actor: any, i: number) => (
+          <div key={i} className="p-2.5 rounded-xl bg-slate-50/50 border border-slate-200/60 shadow-sm space-y-1.5 hover:border-indigo-200 transition-colors">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.5 rounded-md leading-none select-none">角色</span>
+              <span className="text-[11px] font-extrabold text-slate-800 leading-none">{actor.actor_name || actor.name}</span>
+            </div>
+            {(actor.actor_description || actor.description) && (
+              <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+                {actor.actor_description || actor.description}
+              </p>
+            )}
+          </div>
+        ))
+      ) : (
+        <div className="text-[10px] text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+          暂无参与者角色
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ChoicePreviewRendererProps {
   draftType?: string;
@@ -41,38 +194,43 @@ export function ChoicePreviewRenderer({
 /* ── Project Creation Preview ─────────────────────────────── */
 
 function ProjectCreationPreview({
-  preview, comparisonSummary,
+  preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const project = preview || payload || {};
+  const actors = asArray(payload?.actors || preview?.actors || []);
+  const features = asArray(payload?.features || preview?.features || []);
+
+  const normalizedActors = actors.map(act => typeof act === 'string' ? { name: act } : act);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h4 className="text-xl font-bold text-slate-900 mb-1">
-          {preview?.project_name || '未命名项目'}
+          {project.project_name || '未命名项目'}
         </h4>
-        <p className="text-sm text-slate-500">
-          {preview?.project_description || ''}
-        </p>
+        {project.project_description && (
+          <p className="text-sm text-slate-500 leading-relaxed">
+            {project.project_description}
+          </p>
+        )}
       </div>
 
-      <Section title={`参与者（${preview?.actor_count || 0}）`}>
-        {(preview?.actors || []).map((name: string, i: number) => (
-          <Chip key={i} className="bg-blue-50 text-blue-700 border-blue-100">
-            {name}
-          </Chip>
-        ))}
-      </Section>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">涉众角色定义</h5>
+          <span className="text-xs font-bold text-slate-400">（{normalizedActors.length} 个角色）</span>
+        </div>
+        <DetailedActorList actors={normalizedActors} />
+      </div>
 
-      <Section title={`功能模块（${preview?.feature_count || 0}）`}>
-        {(preview?.features || []).map((name: string, i: number) => (
-          <Chip key={i} className="bg-emerald-50 text-emerald-700 border-emerald-100">
-            {name}
-          </Chip>
-        ))}
-      </Section>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能模块树</h5>
+          <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
+        </div>
+        <ExpandableFeatureTree features={features} />
+      </div>
 
-      {comparisonSummary && (
-        <SummaryBox text={comparisonSummary} />
-      )}
     </div>
   );
 }
@@ -87,22 +245,12 @@ function ActorPreview({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-bold text-slate-700">参与者列表</span>
-        <span className="text-xs text-slate-400">（{actors.length} 个）</span>
+        <span className="text-xs font-black uppercase tracking-wide text-slate-500">参与者列表</span>
+        <span className="text-xs font-bold text-slate-400">（{actors.length} 个）</span>
       </div>
 
-      <Section title="">
-        {actors.map((actor: any, i: number) => (
-          <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <p className="text-sm font-bold text-slate-800">{actor.actor_name || actor.name}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{actor.actor_description || actor.description || ''}</p>
-          </div>
-        ))}
-      </Section>
+      <DetailedActorList actors={actors} />
 
-      {comparisonSummary && (
-        <SummaryBox text={comparisonSummary} />
-      )}
     </div>
   );
 }
@@ -138,9 +286,6 @@ function ScenarioPreview({
         ))}
       </div>
 
-      {comparisonSummary && (
-        <SummaryBox text={comparisonSummary} />
-      )}
     </div>
   );
 }
@@ -153,14 +298,25 @@ function ACPreview({
   const criteria = preview?.criteria || payload?.acceptance_criteria || [];
   return (
     <div className="space-y-4">
-      <Section title={`验收标准 — ${preview?.scenario_name || ''}（${criteria.length} 条）`}>
-        {criteria.map((ac: any, i: number) => (
-          <div key={i} className="w-full p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <p className="text-xs text-slate-700 leading-relaxed">{ac.content || ac.criterion_content}</p>
-          </div>
-        ))}
-      </Section>
-      {comparisonSummary && <SummaryBox text={comparisonSummary} />}
+      {criteria.length > 0 ? (
+        <div className="space-y-4">
+          {criteria.map((ac: any, i: number) => {
+            const text = ac.content || ac.criterion_content || '';
+            return (
+              <GherkinVisualRenderer
+                key={ac.id || ac.criterion_id || i}
+                text={text}
+                title={`验收标准 #${i + 1}`}
+                badge="验收标准"
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
+          暂无验收标准数据
+        </div>
+      )}
     </div>
   );
 }
@@ -171,24 +327,16 @@ function FeaturePreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
   const features = preview?.features || payload?.features || [];
+
   return (
     <div className="space-y-4">
-      <Section title={`功能树（${features.length} 项）`}>
-        {features.map((f: any, i: number) => (
-          <div key={i} className="w-full p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <p className="text-sm font-bold text-slate-800">{f.feature_name}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{f.feature_description}</p>
-            {f.actor_names && f.actor_names.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {f.actor_names.map((an: string, j: number) => (
-                  <Chip key={j} className="bg-blue-50 text-blue-600 border-blue-100 text-[10px]">{an}</Chip>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </Section>
-      {comparisonSummary && <SummaryBox text={comparisonSummary} />}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能分解</span>
+        <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
+      </div>
+
+      <ExpandableFeatureTree features={features} />
+      
     </div>
   );
 }
@@ -201,31 +349,105 @@ function FlowPreview({
   const flows = preview?.flows || [];
   const boCount = preview?.business_object_count || 0;
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-slate-500">{flows.length} 个流程，{boCount} 个业务对象</p>
-      <div className="divide-y divide-slate-100">
+    <div className="space-y-5">
+      <div className="flex justify-between items-center bg-slate-50 border border-slate-150 rounded-xl p-3">
+        <span className="text-xs text-slate-600 font-semibold">包含 {flows.length} 个业务流程</span>
+        <span className="rounded bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+          {boCount} 个业务对象数据
+        </span>
+      </div>
+      
+      <div className="space-y-5">
         {flows.map((f: any, i: number) => (
-          <div key={i} className="py-3 first:pt-0 last:pb-0">
-            <p className="text-sm font-bold text-slate-800">{f.flow_name}</p>
-            {f.feature_names && f.feature_names.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {f.feature_names.map((fn: string, j: number) => (
-                  <Chip key={j} className="bg-emerald-50 text-emerald-600 border-emerald-100 text-[10px]">{fn}</Chip>
-                ))}
+          <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h5 className="text-sm font-extrabold text-slate-900">{f.flow_name}</h5>
+                {f.feature_names && f.feature_names.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {f.feature_names.map((fn: string, j: number) => (
+                      <Chip key={j} className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[9px] font-bold tracking-tight py-0">{fn}</Chip>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-            <p className="text-xs text-slate-400 mt-1">{f.step_count} 个步骤</p>
-            {(f.step_names || []).length > 0 && (
-              <div className="mt-1.5 space-y-0.5">
+              <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-1 tracking-wider">{f.step_count || 0} Steps</p>
+            </div>
+
+            {/* Visual step timeline trail */}
+            {((f.flow_steps || f.flowSteps) && asArray(f.flow_steps || f.flowSteps).length > 0) ? (
+              <div className="mt-4 pl-2 space-y-4 border-l-2 border-dashed border-slate-200/80 ml-2">
+                {asArray(f.flow_steps || f.flowSteps).map((step: any, stepIndex: number) => {
+                  const number = step.step_number || step.stepNumber || `S-${String(stepIndex + 1).padStart(3, '0')}`;
+                  const type = step.step_type || step.stepType || 'actorAction';
+                  const name = step.step_name || step.stepName || '';
+                  const desc = step.step_description || step.stepDescription || '';
+                  const actors = asArray(step.actor_names || step.actorNames);
+                  const inputs = asArray(step.input_business_object_names || step.inputBusinessObjectNames);
+                  const outputs = asArray(step.output_business_object_names || step.outputBusinessObjectNames);
+                  
+                  return (
+                    <div key={stepIndex} className="relative pl-6">
+                      {/* Timeline dot */}
+                      <span className="absolute -left-[9px] top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white border-2 border-indigo-500 shadow-sm text-[8px] font-bold text-indigo-600 font-mono">
+                        {stepIndex + 1}
+                      </span>
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 shadow-inner">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-extrabold text-slate-500 font-mono leading-none">
+                            {number}
+                          </span>
+                          <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 leading-none">
+                            {type === 'actorAction' ? '👤 交互' : type === 'systemAction' ? '⚙️ 自动' : '🔀 分支'}
+                          </span>
+                          <h6 className="text-xs font-bold text-slate-800 leading-none">{name}</h6>
+                        </div>
+                        {desc && (
+                          <p className="mt-2 text-xs text-slate-500 leading-relaxed font-medium">{desc}</p>
+                        )}
+                        <div className="mt-2.5 grid gap-2.5 text-[10px] leading-none sm:grid-cols-2">
+                          {actors.length > 0 && (
+                            <div>
+                              <div className="mb-1 font-bold text-slate-400">执行角色</div>
+                              <div className="flex flex-wrap gap-1">
+                                {actors.map((act) => (
+                                  <span key={act} className="rounded bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 font-bold">{act}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {(inputs.length > 0 || outputs.length > 0) && (
+                            <div>
+                              <div className="mb-1 font-bold text-slate-400">输入 / 输出业务数据</div>
+                              <div className="flex flex-wrap gap-1">
+                                {inputs.map((inp) => (
+                                  <span key={inp} className="rounded bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 font-bold">In: {inp}</span>
+                                ))}
+                                {outputs.map((out) => (
+                                  <span key={out} className="rounded bg-emerald-50 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 font-bold">Out: {out}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (f.step_names || []).length > 0 ? (
+              <div className="mt-3 pl-2 space-y-3 border-l-2 border-dashed border-slate-250 ml-2">
                 {(f.step_names as string[]).map((sn: string, j: number) => (
-                  <p key={j} className="text-xs text-slate-500 pl-3 border-l-2 border-slate-200">{sn}</p>
+                  <div key={j} className="relative pl-6">
+                    <span className="absolute -left-[5px] top-1.5 h-2 w-2 rounded-full bg-indigo-500 shadow-sm" />
+                    <p className="text-xs text-slate-700 font-semibold">{sn}</p>
+                  </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         ))}
       </div>
-      {comparisonSummary && <SummaryBox text={comparisonSummary} />}
     </div>
   );
 }
@@ -266,7 +488,6 @@ function ScopePreview({
           </div>
         ))}
       </div>
-      {comparisonSummary && <SummaryBox text={comparisonSummary} />}
     </div>
   );
 }
@@ -285,7 +506,6 @@ function GenericPreview({
       ) : (
         <p className="text-sm text-slate-400 italic">暂无预览信息</p>
       )}
-      {comparisonSummary && <SummaryBox text={comparisonSummary} />}
     </div>
   );
 }
@@ -308,13 +528,5 @@ function Chip({ className, children }: { className?: string; children: React.Rea
     <span className={`px-3 py-1 text-xs font-medium rounded-full border ${className || ''}`}>
       {children}
     </span>
-  );
-}
-
-function SummaryBox({ text }: { text: string }) {
-  return (
-    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-      <p className="text-xs text-slate-600">{text}</p>
-    </div>
   );
 }

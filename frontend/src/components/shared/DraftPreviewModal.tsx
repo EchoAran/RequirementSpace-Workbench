@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
+import { GherkinVisualRenderer } from './GherkinVisualizer';
+import { ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
 
 type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
 
@@ -102,125 +104,37 @@ function itemDescription(item: any) {
   );
 }
 
-function parentFeatureNumber(featureNumber?: string | null) {
-  if (!featureNumber || !featureNumber.includes('-')) return null;
-  return featureNumber.split('-').slice(0, -1).join('-');
-}
-
-function featureDepth(featureNumber?: string | null) {
-  if (!featureNumber) return 0;
-  return featureNumber.split('-').length - 1;
-}
-
-function buildProjectFeatureTree(features: any[]) {
-  const byNumber = new Map<string, any>();
-  const roots: any[] = [];
-
-  features.forEach((feature, index) => {
-    const number = feature.feature_number || `draft-${index}`;
-    byNumber.set(number, { ...feature, feature_number: number, children: [] });
-  });
-
-  Array.from(byNumber.values()).forEach((feature) => {
-    const parentNumber = parentFeatureNumber(feature.feature_number);
-    const parent = parentNumber ? byNumber.get(parentNumber) : null;
-    if (parent) {
-      parent.children.push(feature);
-    } else {
-      roots.push(feature);
-    }
-  });
-
-  const sortByNumber = (items: any[]) => {
-    items.sort((a, b) => String(a.feature_number).localeCompare(String(b.feature_number), undefined, { numeric: true }));
-    items.forEach((item) => sortByNumber(item.children));
-    return items;
-  };
-
-  return sortByNumber(roots);
-}
-
-function ProjectFeatureTreeNode({ node }: { node: any }) {
-  const depth = featureDepth(node.feature_number);
-  return (
-    <div className={depth === 0 ? '' : 'border-l border-slate-200 pl-3'}>
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {node.feature_number && (
-            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
-              {node.feature_number}
-            </span>
-          )}
-          <h5 className="min-w-0 text-sm font-extrabold text-slate-900">{node.feature_name}</h5>
-        </div>
-        {node.feature_description && (
-          <p className="mt-2 text-xs leading-relaxed text-slate-600">{node.feature_description}</p>
-        )}
-        {node.actor_names?.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {node.actor_names.map((actorName: string) => (
-              <span key={actorName} className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                {actorName}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      {node.children?.length > 0 && (
-        <div className="mt-2 space-y-2">
-          {node.children.map((child: any) => (
-            <ProjectFeatureTreeNode key={child.feature_number || child.feature_name} node={child} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ProjectDraftPreview({ draft }: { draft: any }) {
   const project = draft.project_preview || draft;
   const actors = asArray(draft.actors);
-  const featureTree = buildProjectFeatureTree(asArray(draft.features));
+  const features = asArray(draft.features);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <section>
         <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">项目概览</h4>
         <div className="mt-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h5 className="text-sm font-extrabold text-slate-900">{project.project_name}</h5>
           {project.project_description && (
-            <p className="mt-2 text-xs leading-relaxed text-slate-600">{project.project_description}</p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-650 font-medium">{project.project_description}</p>
           )}
         </div>
       </section>
 
       <section>
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">角色</h4>
-          <span className="text-[11px] font-bold text-slate-400">{actors.length} 个</span>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">涉众角色定义</h4>
+          <span className="text-xs font-bold text-slate-400">（{actors.length} 个角色）</span>
         </div>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {actors.map((actor: any, index: number) => (
-            <div key={actor.actor_name || index} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <h5 className="text-sm font-extrabold text-slate-900">{actor.actor_name}</h5>
-              {actor.actor_description && (
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{actor.actor_description}</p>
-              )}
-            </div>
-          ))}
-        </div>
+        <DetailedActorList actors={actors} />
       </section>
 
       <section>
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">功能树</h4>
-          <span className="text-[11px] font-bold text-slate-400">{asArray(draft.features).length} 个节点</span>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能模块树</h4>
+          <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
         </div>
-        <div className="mt-2 space-y-2">
-          {featureTree.map((root) => (
-            <ProjectFeatureTreeNode key={root.feature_number || root.feature_name} node={root} />
-          ))}
-        </div>
+        <ExpandableFeatureTree features={features} />
       </section>
     </div>
   );
@@ -421,7 +335,7 @@ export function DraftPreviewModal({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-700">
@@ -429,9 +343,6 @@ export function DraftPreviewModal({
             </span>
             <div className="min-w-0">
               <h3 className="text-base font-extrabold text-slate-900">{titles[draftType]}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                请先预览 AI 生成结果，确认后再合并到当前工作空间。
-              </p>
             </div>
           </div>
           <button
@@ -448,8 +359,32 @@ export function DraftPreviewModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {draftType === 'project' ? (
             <ProjectDraftPreview draft={draft} />
+          ) : draftType === 'actor' ? (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">角色定义预览</h4>
+              <DetailedActorList actors={items} />
+            </div>
+          ) : draftType === 'feature' ? (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">功能能力树预览</h4>
+              <ExpandableFeatureTree features={items} />
+            </div>
           ) : draftType === 'flow' ? (
             <FlowDraftPreview draft={draft} />
+          ) : draftType === 'ac' ? (
+            <div className="space-y-4">
+              {items.map((item, index) => {
+                const text = item.criterion_content || item.content || '';
+                return (
+                  <GherkinVisualRenderer
+                    key={item.id || item.criterion_id || index}
+                    text={text}
+                    title={itemTitle(item, index)}
+                    badge="推荐验收标准"
+                  />
+                );
+              })}
+            </div>
           ) : items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
               当前草稿没有可展示的条目。

@@ -10,6 +10,9 @@ class PreviewShadowDraftResponse(CamelModel):
     shadow_summary: dict[str, int] = {}
     prototype_preview: PrototypePreviewResponse | None = None
     shadow_snapshot_json: dict | None = None
+    error_message: str | None = None
+    current_progress: int | None = None
+    current_step_label: str | None = None
 
 
 class PreviewShadowRegenerateRequest(CamelModel):

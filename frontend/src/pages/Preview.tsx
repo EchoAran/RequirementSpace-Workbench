@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckSquare,
   ChevronDown,
@@ -33,7 +33,7 @@ import { workspaceApi } from '@/lib/api';
 
 type PrototypePreview = {
   prototypeId: number;
-  projectId: number;
+  projectId: string;
   html: string;
   javascript: string;
   css: string;
@@ -99,6 +99,12 @@ export function Preview() {
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [progressSubtitle, setProgressSubtitle] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Keep a ref of activeShadowDraft to avoid stale closures in progress setInterval
+  const activeShadowDraftRef = useRef(activeShadowDraft);
+  useEffect(() => {
+    activeShadowDraftRef.current = activeShadowDraft;
+  }, [activeShadowDraft]);
 
   // On page entry, only load existing preview state. Do not auto-trigger shadow convergence.
   useEffect(() => {
@@ -195,10 +201,10 @@ export function Preview() {
 
   // Smooth animated progress bar simulation
   useEffect(() => {
-    const isGenerating = activeShadowDraft?.status === 'generating';
+    const isGenerating = activeShadowDraftRef.current?.status === 'generating';
     const isLoading = prototypeState === 'loading';
     if (!isGenerating && !isLoading) {
-      if (activeShadowDraft?.status === 'failed' && hasRequestedShadowPreview) {
+      if (activeShadowDraftRef.current?.status === 'failed' && hasRequestedShadowPreview) {
         setProgressSubtitle('❌ 影子原型推演失败！已为您捕获关键日志信息。');
         setIsModalOpen(true); // Keep modal open to show traceback!
         return;
@@ -224,7 +230,7 @@ export function Preview() {
     setIsModalOpen(true);
     
     // Determine unready gates to initialize start percentage
-    const unreadyGates = activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || [];
+    const unreadyGates = activeShadowDraftRef.current?.unreadyGates || activeShadowDraftRef.current?.unready_gates || [];
     let startProgress = 0;
     if (unreadyGates.length > 0) {
       if (!unreadyGates.includes('what')) {
@@ -237,24 +243,87 @@ export function Preview() {
       startProgress = 90;
     }
 
-    setSmoothProgress(startProgress);
+    // Only set startProgress if we are starting fresh (smoothProgress is 0 or low)
+    setSmoothProgress((prev) => (prev > 0 ? prev : startProgress));
 
     const interval = setInterval(() => {
+      // Access the latest state from ref
+      const currentDraft = activeShadowDraftRef.current;
+      const currentUnreadyGates = currentDraft?.unreadyGates || currentDraft?.unready_gates || [];
+      
+      // Calculate target progress based on backend progress or fallback unready gates
+      let fallbackTarget = 98;
+      if (currentUnreadyGates.length > 0) {
+        if (currentUnreadyGates.includes('what')) {
+          fallbackTarget = 35;
+        } else if (currentUnreadyGates.includes('how')) {
+          fallbackTarget = 70;
+        } else if (currentUnreadyGates.includes('scope')) {
+          fallbackTarget = 90;
+        }
+      }
+
+      const targetProgress = typeof currentDraft?.currentProgress === 'number'
+        ? currentDraft.currentProgress
+        : fallbackTarget;
+
+      // Update progress and subtitle
       setSmoothProgress((prev) => {
-        if (prev < 35) {
-          setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计资产（角色树、功能特征树、典型故事场景及 AC）...');
-          return prev + 0.5; // Smoothly goes to 35%
-        } else if (prev < 70) {
-          setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
-          return prev + 0.4; // Smoothly goes to 70%
-        } else if (prev < 90) {
-          setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
-          return prev + 0.3; // Smoothly goes to 90%
-        } else if (prev < 98) {
-          setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
-          return prev + 0.1; // Slows down to 98%
+        // If smoothProgress is behind the target, catch up smoothly
+        if (prev < targetProgress) {
+          const diff = targetProgress - prev;
+          const step = Math.min(2.0, Math.max(0.1, diff * 0.15));
+          const nextVal = prev + step;
+
+          // Update subtitle according to step labels
+          const currentLabel = currentDraft?.currentStepLabel;
+          if (currentLabel) {
+            setProgressSubtitle(currentLabel);
+          } else {
+            if (nextVal < 35) {
+              setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+            } else if (nextVal < 70) {
+              setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+            } else if (nextVal < 90) {
+              setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+            } else if (nextVal < 98) {
+              setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+            }
+          }
+
+          return Math.min(targetProgress, nextVal);
         } else {
-          return 98; // Wait at 98%
+          // If we have reached or exceeded targetProgress, slowly creep forward to show activity
+          // but do not cross logical step ceilings to avoid outrunning future milestones
+          let ceiling = 98;
+          if (targetProgress < 15) ceiling = 14;
+          else if (targetProgress < 25) ceiling = 24;
+          else if (targetProgress < 35) ceiling = 34;
+          else if (targetProgress < 50) ceiling = 49;
+          else if (targetProgress < 75) ceiling = 74;
+          else if (targetProgress < 85) ceiling = 84;
+          else if (targetProgress < 90) ceiling = 89;
+          else ceiling = 98;
+
+          const currentLabel = currentDraft?.currentStepLabel;
+          if (currentLabel) {
+            setProgressSubtitle(currentLabel);
+          } else {
+            if (prev < 35) {
+              setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+            } else if (prev < 70) {
+              setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+            } else if (prev < 90) {
+              setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+            } else if (prev < 98) {
+              setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+            }
+          }
+
+          if (prev < ceiling) {
+            return Math.min(ceiling, prev + 0.05);
+          }
+          return prev;
         }
       });
     }, 100);
@@ -350,7 +419,7 @@ export function Preview() {
     if (activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && activeShadowDraft.shadowSnapshotJson) {
       const snap = activeShadowDraft.shadowSnapshotJson;
       return {
-        projectId: snap.project_id || snap.projectId || ir?.projectId,
+        projectId: ir?.projectId,
         projectName: snap.project_name || snap.projectName || snap.name || ir?.projectName,
         projectDescription: snap.project_description || snap.projectDescription || snap.description || ir?.projectDescription,
         userRequirements: snap.user_requirements || snap.userRequirements || ir?.userRequirements,
@@ -1218,7 +1287,7 @@ export function Preview() {
                 const isStepFinished = 
                   step.checkKey === 'all' 
                     ? (smoothProgress === 100)
-                    : (!(activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || []).includes(step.checkKey) && smoothProgress >= step.threshold);
+                    : (!(activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || []).includes(step.checkKey) || smoothProgress >= step.threshold);
                 
                 const isStepActive = 
                   !isFailed && !isStepFinished && (

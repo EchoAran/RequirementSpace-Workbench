@@ -113,6 +113,7 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         """Persist the payload to real ProjectModel / ActorModel / FeatureModel."""
         project_id = kwargs.get("project_id")
+        owner_user_id = kwargs.get("owner_user_id")
         if project_id is not None:
             project = await self._service._apply_project_creation_draft_to_existing_project(
                 project_id=project_id,
@@ -122,10 +123,11 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
         else:
             project = await self._service._persist_project_creation_draft(
                 draft=payload,
+                owner_user_id=owner_user_id,
                 session=session,
             )
         return {
-            "project_id": project.id,
+            "project_id": project.public_id,
             "project_name": project.name,
             "project_description": project.description,
         }
@@ -215,6 +217,7 @@ class ProjectCreationChoiceGroupService:
     async def create_choice_group(
         self,
         user_requirements: str,
+        owner_user_id: int,
         candidate_count: int | None = None,
         user_feedback: str | None = None,
         session: AsyncSession | None = None,
@@ -328,17 +331,18 @@ class ProjectCreationChoiceGroupService:
                 draft_id=group_id,
                 draft_type=ONBOARDING_DRAFT_TYPE,
                 payload=group_payload,
+                owner_user_id=owner_user_id,
                 session=session,
             )
 
         return self._build_response(group_payload)
 
     async def get_choice_group(
-        self, group_id: str, session: AsyncSession
+        self, group_id: str, owner_user_id: int, session: AsyncSession | None = None
     ) -> dict | None:
         """Load a single onboarding choice group by id."""
         try:
-            payload = await GenerativeDraftStore.get_draft(group_id, session)
+            payload = await GenerativeDraftStore.get_draft(group_id, owner_user_id, session)
         except ValueError:
             return None
         if payload.get("draft_type") != ONBOARDING_DRAFT_TYPE:
@@ -346,13 +350,16 @@ class ProjectCreationChoiceGroupService:
         return self._build_response(payload)
 
     async def list_open_choice_groups(
-        self, session: AsyncSession
+        self, owner_user_id: int, session: AsyncSession | None = None
     ) -> list[dict]:
         """List all open onboarding choice groups."""
         from backend.database.model import GenerativeDraftModel
         result = await session.execute(
             select(GenerativeDraftModel)
-            .where(GenerativeDraftModel.draft_type == ONBOARDING_DRAFT_TYPE)
+            .where(
+                GenerativeDraftModel.draft_type == ONBOARDING_DRAFT_TYPE,
+                GenerativeDraftModel.owner_user_id == owner_user_id
+            )
         )
         groups = []
         for draft in result.scalars().all():
@@ -365,7 +372,8 @@ class ProjectCreationChoiceGroupService:
         self,
         group_id: str,
         choice_id: str,
-        session: AsyncSession,
+        owner_user_id: int,
+        session: AsyncSession | None = None,
     ) -> dict:
         """Accept a choice from an onboarding choice group.
 
@@ -375,7 +383,7 @@ class ProjectCreationChoiceGroupService:
         4. Mark choice accepted, siblings rejected, group resolved
         5. Return project info
         """
-        payload = await GenerativeDraftStore.get_draft(group_id, session)
+        payload = await GenerativeDraftStore.get_draft(group_id, owner_user_id, session)
         if payload.get("draft_type") != ONBOARDING_DRAFT_TYPE:
             raise ValueError("invalid_onboarding_draft_type")
         if payload.get("status") != "open":
@@ -396,6 +404,7 @@ class ProjectCreationChoiceGroupService:
         service = ProjectCreationService()
         project = await service._persist_project_creation_draft(
             draft=target_choice["payload"],
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -407,7 +416,7 @@ class ProjectCreationChoiceGroupService:
             else:
                 c["status"] = "rejected"
         payload["updated_at"] = time.time()
-        payload["resolved_project_id"] = project.id
+        payload["resolved_project_id"] = project.public_id
 
         # Save updated group
         await GenerativeDraftStore.save_draft(
@@ -415,22 +424,23 @@ class ProjectCreationChoiceGroupService:
             draft_id=group_id,
             draft_type=ONBOARDING_DRAFT_TYPE,
             payload=payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
         return {
-            "project_id": project.id,
+            "project_id": project.public_id,
             "project_name": project.name,
             "project_description": project.description,
             "message": "project_created",
         }
 
     async def discard_choice_group(
-        self, group_id: str, session: AsyncSession
+        self, group_id: str, owner_user_id: int, session: AsyncSession | None = None
     ) -> dict:
         """Discard an onboarding choice group without creating a project."""
         try:
-            payload = await GenerativeDraftStore.get_draft(group_id, session)
+            payload = await GenerativeDraftStore.get_draft(group_id, owner_user_id, session)
         except ValueError:
             raise ValueError("choice_group_not_found")
 
@@ -444,6 +454,7 @@ class ProjectCreationChoiceGroupService:
             draft_id=group_id,
             draft_type=ONBOARDING_DRAFT_TYPE,
             payload=payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -452,10 +463,12 @@ class ProjectCreationChoiceGroupService:
     async def defer_choice_group(
         self,
         group_id: str,
-        session: AsyncSession,
+        owner_user_id: int,
+        session: AsyncSession | None = None,
     ) -> dict:
         try:
-            payload = await GenerativeDraftStore.get_draft(group_id, session)
+            payload = await GenerativeDraftStore.get_draft(group_id, owner_user_id, session)
+
         except ValueError:
             raise ValueError("choice_group_not_found")
 
@@ -468,12 +481,18 @@ class ProjectCreationChoiceGroupService:
             user_requirements=payload.get("user_requirements", ""),
             project_name=None,
             project_description=None,
+            owner_user_id=owner_user_id,
             session=session,
         )
         project_id = project_result["project_id"]
 
+        # Resolve the internal integer id from the projects table
+        from backend.database.model import ProjectModel
+        proj_stmt = select(ProjectModel.id).where(ProjectModel.public_id == project_id)
+        proj_id_internal = (await session.execute(proj_stmt)).scalar_one()
+
         group = ChoiceGroupModel(
-            project_id=project_id,
+            project_id=proj_id_internal,
             status="open",
             selection_mode="single",
             generation_type="project_creation",
@@ -525,6 +544,7 @@ class ProjectCreationChoiceGroupService:
             draft_id=group_id,
             draft_type=ONBOARDING_DRAFT_TYPE,
             payload=payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 

@@ -35,7 +35,7 @@ export type AIAddTargetType =
 interface AIAddObjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  projectId: number;
+  projectId: string;
   targetType: AIAddTargetType;
   anchor?: Record<string, any>;
   onConfirm: () => void;

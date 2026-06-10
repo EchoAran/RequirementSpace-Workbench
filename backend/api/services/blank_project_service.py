@@ -13,6 +13,7 @@ class BlankProjectService:
         user_requirements: str,
         project_name: str | None,
         project_description: str | None,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.database.model import ProjectModel
@@ -44,6 +45,7 @@ class BlankProjectService:
             name=normalized_name,
             description=normalized_description,
             user_requirements=user_requirements,
+            owner_user_id=owner_user_id,
         )
 
         session.add(project)
@@ -54,7 +56,7 @@ class BlankProjectService:
         await session.refresh(project)
 
         return {
-            "project_id": project.id,
+            "project_id": project.public_id,
             "project_name": project.name,
             "project_description": project.description,
             "message": "project_created",

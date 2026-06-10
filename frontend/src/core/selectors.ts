@@ -1213,7 +1213,7 @@ export const projectionPath = (projection: string) => {
 };
 
 export const buildProjectRoute = (
-  projectId: number | string | null | undefined,
+  projectId: string | null | undefined,
   page: '/overview' | '/what' | '/flow' | '/scope' | '/preview'
 ): string => {
   if (projectId === null || projectId === undefined || projectId === '') return page;

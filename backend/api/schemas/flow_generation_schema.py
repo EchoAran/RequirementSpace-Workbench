@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class FlowGenerationDraftCreateRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
 
 class GeneratedBusinessObjectAttributePreview(BaseModel):
     business_object_attribute_name: str
@@ -32,14 +32,14 @@ class GeneratedFlowPreview(BaseModel):
 
 class FlowGenerationDraftResponse(BaseModel):
     draft_id: str
-    project_id: int
+    project_id: str
     generation_mode: str
     leaf_feature_count: int
     business_objects: list[GeneratedBusinessObjectPreview]
     flows: list[GeneratedFlowPreview]
 
 class FlowGenerationConfirmResponse(BaseModel):
-    project_id: int
+    project_id: str
     business_object_count: int
     flow_count: int
     flow_step_count: int

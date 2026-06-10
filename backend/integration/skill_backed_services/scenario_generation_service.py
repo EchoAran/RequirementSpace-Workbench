@@ -46,14 +46,16 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
     async def regenerate_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         if not user_feedback or not draft.get("gherkin_by_target"):
             return await super().regenerate_draft(
                 draft_id=draft_id,
+                owner_user_id=owner_user_id,
                 user_feedback=user_feedback,
                 session=session,
             )
@@ -98,6 +100,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         if not generated_scenarios:
             return await super().regenerate_draft(
                 draft_id=draft_id,
+                owner_user_id=owner_user_id,
                 user_feedback=user_feedback,
                 session=session,
             )
@@ -119,6 +122,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             draft_id=draft_id,
             draft_type="scenario",
             payload=draft_payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
         return response_payload
@@ -168,10 +172,11 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
     async def confirm_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
         generate_acceptance_criteria: bool = False,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         result = await self._persist_scenario_generation_draft(
             draft=draft,
@@ -220,7 +225,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             result["acceptance_criterion_count"] = 0
 
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.delete_draft(draft_id, session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
         return result
 
     async def _generate_with_skill(

@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,10 +10,11 @@ from backend.api.schemas.prototype_generation_schema import (
 )
 from backend.api.services.service_registry import prototype_generation_service
 from backend.database.database import get_session
+from backend.api.dependencies.llm import get_llm_context
 
 
 router = APIRouter(
-    prefix="/api/projects",
+    prefix="/api/projects/{project_id}",
     tags=["prototype_generation"],
 )
 
@@ -21,18 +24,21 @@ PROTOTYPE_GENERATION_ERRORS = {
 
 
 @router.post(
-    "/{project_id}/prototype-preview",
+    "/prototype-preview",
     response_model=PrototypePreviewResponse,
 )
 async def generate_prototype_preview(
-    project_id: int,
+    project_id: str,
     request: PrototypePreviewGenerateRequest | None = Body(default=None),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
+    owned_project: ProjectModel = Depends(require_owned_project),
 ):
     try:
+        # Commit request session early to release db connection before long-running LLM call
+        await session.commit()
         return await prototype_generation_service.generate_preview(
-            project_id=project_id,
-            session=session,
+            project_id=owned_project.id,
             force_regenerate=(
                 request.force_regenerate
                 if request is not None
@@ -54,21 +60,21 @@ async def generate_prototype_preview(
 
 
 @router.get(
-    "/{project_id}/prototype-preview/latest",
+    "/prototype-preview/latest",
     response_model=PrototypePreviewResponse | PrototypePreviewNotFoundResponse,
 )
 async def get_latest_prototype_preview(
-    project_id: int,
+    project_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         latest = await prototype_generation_service.get_latest_preview(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
             raise_if_missing=False,
         )
         if latest is None:
-            return PrototypePreviewNotFoundResponse(project_id=project_id)
+            return PrototypePreviewNotFoundResponse(project_id=owned_project.public_id)
         return latest
     except ValueError as error:
         if str(error) == "project_not_found":

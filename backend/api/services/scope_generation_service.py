@@ -32,12 +32,16 @@ class ScopeGenerationService:
     async def create_draft(
         self,
         project_id: int,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.database.model import ProjectModel
         # 1. Update project kano_status to generating and commit immediately
         project_res = await session.execute(
-            select(ProjectModel).where(ProjectModel.id == project_id)
+            select(ProjectModel).where(
+                ProjectModel.id == project_id,
+                ProjectModel.owner_user_id == owner_user_id,
+            )
         )
         project = project_res.scalar_one_or_none()
         if project is None:
@@ -64,12 +68,16 @@ class ScopeGenerationService:
                 draft_id=draft_id,
                 draft_type="scope",
                 payload=draft_payload,
+                owner_user_id=owner_user_id,
                 session=session,
             )
 
             # 2. Re-acquire project to set draft_ready state
             project_res = await session.execute(
-                select(ProjectModel).where(ProjectModel.id == project_id)
+                select(ProjectModel).where(
+                    ProjectModel.id == project_id,
+                    ProjectModel.owner_user_id == owner_user_id,
+                )
             )
             project = project_res.scalar_one()
             project.kano_status = "missing"
@@ -80,7 +88,10 @@ class ScopeGenerationService:
             # Re-acquire project under new transaction to set failed state
             try:
                 project_res = await session.execute(
-                    select(ProjectModel).where(ProjectModel.id == project_id)
+                    select(ProjectModel).where(
+                        ProjectModel.id == project_id,
+                        ProjectModel.owner_user_id == owner_user_id,
+                    )
                 )
                 project = project_res.scalar_one_or_none()
                 if project:
@@ -94,16 +105,20 @@ class ScopeGenerationService:
     async def regenerate_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         user_feedback: str | None,
         session,
     ) -> dict:
         from backend.database.model import ProjectModel
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
         project_id = draft["project_id"]
 
         # 1. Set project kano_status to generating
         project_res = await session.execute(
-            select(ProjectModel).where(ProjectModel.id == project_id)
+            select(ProjectModel).where(
+                ProjectModel.id == project_id,
+                ProjectModel.owner_user_id == owner_user_id,
+            )
         )
         project = project_res.scalar_one_or_none()
         if project:
@@ -127,12 +142,16 @@ class ScopeGenerationService:
                 draft_id=draft_id,
                 draft_type="scope",
                 payload=draft_payload,
+                owner_user_id=owner_user_id,
                 session=session,
             )
 
             # 2. Re-acquire to set draft_ready
             project_res = await session.execute(
-                select(ProjectModel).where(ProjectModel.id == project_id)
+                select(ProjectModel).where(
+                    ProjectModel.id == project_id,
+                    ProjectModel.owner_user_id == owner_user_id,
+                )
             )
             project = project_res.scalar_one()
             project.kano_status = "missing"
@@ -142,7 +161,10 @@ class ScopeGenerationService:
         except Exception as err:
             try:
                 project_res = await session.execute(
-                    select(ProjectModel).where(ProjectModel.id == project_id)
+                    select(ProjectModel).where(
+                        ProjectModel.id == project_id,
+                        ProjectModel.owner_user_id == owner_user_id,
+                    )
                 )
                 project = project_res.scalar_one_or_none()
                 if project:
@@ -156,10 +178,11 @@ class ScopeGenerationService:
     async def confirm_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.database.model import ProjectModel
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
         project_id = draft["project_id"]
 
         result = await self._persist_scope_generation_draft(
@@ -174,7 +197,10 @@ class ScopeGenerationService:
 
         # Set kano_status to generated
         project_res = await session.execute(
-            select(ProjectModel).where(ProjectModel.id == project_id)
+            select(ProjectModel).where(
+                ProjectModel.id == project_id,
+                ProjectModel.owner_user_id == owner_user_id,
+            )
         )
         project = project_res.scalar_one_or_none()
         if project:
@@ -182,21 +208,25 @@ class ScopeGenerationService:
             await session.flush()
 
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.delete_draft(draft_id, session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
 
         return result
 
     async def discard_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.database.model import ProjectModel
         try:
-            draft = await self._get_draft(draft_id, session)
+            draft = await self._get_draft(draft_id, owner_user_id, session)
             project_id = draft["project_id"]
             project_res = await session.execute(
-                select(ProjectModel).where(ProjectModel.id == project_id)
+                select(ProjectModel).where(
+                    ProjectModel.id == project_id,
+                    ProjectModel.owner_user_id == owner_user_id,
+                )
             )
             project = project_res.scalar_one_or_none()
             if project:
@@ -206,7 +236,7 @@ class ScopeGenerationService:
             pass
 
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.delete_draft(draft_id, session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
 
         return {
             "draft_id": draft_id,
@@ -216,10 +246,11 @@ class ScopeGenerationService:
     async def _get_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.api.services.draft_store import GenerativeDraftStore
-        return await GenerativeDraftStore.get_draft(draft_id, session)
+        return await GenerativeDraftStore.get_draft(draft_id, owner_user_id, session)
 
     async def _generate_preview(
         self,

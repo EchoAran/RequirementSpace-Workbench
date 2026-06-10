@@ -5,7 +5,7 @@ from backend.api.schemas.project_schema import CamelModel
 
 class AuditLogResponse(CamelModel):
     id: int
-    project_id: int
+    project_id: str
     action_type: str
     summary: str
     target_type: str
@@ -24,7 +24,7 @@ class UserRequirementsRefineRequest(CamelModel):
 
 
 class UserRequirementsResponse(CamelModel):
-    project_id: int
+    project_id: str
     user_requirements: str
 
 

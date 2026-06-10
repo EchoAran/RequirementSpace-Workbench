@@ -25,10 +25,11 @@ from backend.core.detectors import (
 from backend.services.binary_conversion_service import BinaryConversionService
 
 class ProjectService:
-    async def list_projects(self, session: AsyncSession) -> list[ProjectListItemResponse]:
+    async def list_projects(self, owner_user_id: int, session: AsyncSession) -> list[ProjectListItemResponse]:
         # Eager load relationships to avoid N+1 queries during node count calculation
         stmt = (
             select(ProjectModel)
+            .where(ProjectModel.owner_user_id == owner_user_id)
             .options(
                 selectinload(ProjectModel.perception_slot),
                 selectinload(ProjectModel.actors),
@@ -68,8 +69,8 @@ class ProjectService:
 
             response.append(
                 ProjectListItemResponse(
-                    id=str(p.id),
-                    project_id=p.id,
+                    id=p.public_id,
+                    project_id=p.public_id,
                     name=p.name,
                     idea=p.user_requirements,
                     description=p.description,
@@ -364,7 +365,7 @@ class ProjectService:
         unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
 
         return ProjectDetailResponse(
-            project_id=p.id,
+            project_id=p.public_id,
             project_name=p.name,
             project_description=p.description,
             user_requirements=p.user_requirements,
@@ -392,7 +393,7 @@ class ProjectService:
             await session.commit()
 
         return {
-            "project_id": project_id,
+            "project_id": p.public_id,
             "stage": stage_clean,
             "message": "stage_unlocked",
             "unlocked_stages": unlocked_list
@@ -407,7 +408,7 @@ class ProjectService:
 
         await session.delete(p)
         await session.commit()
-        return {"project_id": project_id, "message": "project_deleted"}
+        return {"project_id": p.public_id, "message": "project_deleted"}
 
     async def delete_perception_slot(self, project_id: int, session: AsyncSession) -> dict:
         stmt = (
@@ -424,7 +425,7 @@ class ProjectService:
             await session.delete(p.perception_slot)
             await session.commit()
 
-        return {"project_id": project_id, "message": "perception_slot_deleted"}
+        return {"project_id": p.public_id, "message": "perception_slot_deleted"}
 
     @staticmethod
     def _is_stage_visible(
@@ -462,7 +463,7 @@ class ProjectService:
         p.description = description.strip()
         await session.commit()
         return {
-            "project_id": p.id,
+            "project_id": p.public_id,
             "name": p.name,
             "description": p.description,
             "message": "project_updated"

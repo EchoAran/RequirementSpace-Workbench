@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_generative_draft
+from backend.api.dependencies.llm import get_llm_context
+from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.schemas import DraftRegenerateRequest
 from backend.api.schemas.project_creation_schema import (
     ProjectCreationConfirmResponse,
@@ -26,6 +30,7 @@ FEATURE_GENERATION_ERRORS = {
     "invalid_skill_payload",
 }
 
+
 router = APIRouter(
     prefix="/api/project_creation_drafts",
     tags=["project_creation"],
@@ -37,11 +42,14 @@ router = APIRouter(
 )
 async def create_project_creation_draft(
     request: ProjectCreationDraftCreateRequest,
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     try:
         return await project_creation_service.create_draft(
             user_requirements=request.user_requirements,
+            owner_user_id=user.id,
             session=session,
             project_name=request.project_name,
             project_description=request.project_description,
@@ -60,14 +68,16 @@ async def create_project_creation_draft(
     response_model=ProjectCreationDraftResponse,
 )
 async def regenerate_project_creation_draft(
-    draft_id: str,
     request: DraftRegenerateRequest | None = None,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     user_feedback = request.user_feedback if request else None
     try:
         return await project_creation_service.regenerate_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             user_feedback=user_feedback,
             session=session,
         )
@@ -92,12 +102,13 @@ async def regenerate_project_creation_draft(
     response_model=ProjectCreationConfirmResponse,
 )
 async def confirm_project_creation_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_creation_service.confirm_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             session=session,
         )
     except ValueError as error:
@@ -115,8 +126,9 @@ async def confirm_project_creation_draft(
     response_model=ProjectCreationDraftDiscardResponse,
 )
 async def discard_project_creation_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
 ):
     return await project_creation_service.discard_draft(
-        draft_id=draft_id,
+        draft_id=draft.draft_id,
+        owner_user_id=draft.owner_user_id,
     )

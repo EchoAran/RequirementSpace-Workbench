@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import UserModel, ProjectModel
 from backend.api.schemas.project_schema import (
     ProjectListItemResponse,
     ProjectDetailResponse,
@@ -27,9 +30,10 @@ router = APIRouter(
     response_model=list[ProjectListItemResponse],
 )
 async def list_projects(
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    return await project_service.list_projects(session=session)
+    return await project_service.list_projects(owner_user_id=user.id, session=session)
 
 
 @router.get(
@@ -37,12 +41,13 @@ async def list_projects(
     response_model=ProjectDetailResponse,
 )
 async def get_project_detail(
-    project_id: int,
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.get_project_detail(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
     except ValueError as error:
@@ -58,13 +63,14 @@ async def get_project_detail(
     "/{project_id}/unlock-stage",
 )
 async def unlock_stage(
-    project_id: int,
+    project_id: str,
     request: UnlockStageRequest,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.unlock_stage(
-            project_id=project_id,
+            project_id=owned_project.id,
             stage=request.stage,
             session=session,
         )
@@ -83,12 +89,13 @@ async def unlock_stage(
     response_model=PerceptionSlotDeleteResponse,
 )
 async def delete_perception_slot(
-    project_id: int,
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.delete_perception_slot(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
     except ValueError as error:
@@ -105,12 +112,13 @@ async def delete_perception_slot(
     response_model=ProjectDeleteResponse,
 )
 async def delete_project(
-    project_id: int,
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.delete_project(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
     except ValueError as error:
@@ -126,13 +134,14 @@ async def delete_project(
     response_model=ProjectUpdateResponse,
 )
 async def update_project(
-    project_id: int,
+    project_id: str,
     request: ProjectUpdateRequest,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.update_project(
-            project_id=project_id,
+            project_id=owned_project.id,
             name=request.name,
             description=request.description,
             session=session,
@@ -150,12 +159,13 @@ async def update_project(
     response_model=ProjectDetailResponse,
 )
 async def export_project_json(
-    project_id: int,
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.get_project_detail(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
     except ValueError as error:
@@ -171,12 +181,13 @@ async def export_project_json(
     response_class=PlainTextResponse,
 )
 async def export_project_markdown(
-    project_id: int,
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.export_project_markdown(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
     except ValueError as error:
@@ -192,13 +203,14 @@ async def export_project_markdown(
     response_model=ScopeImpactPreviewResponse,
 )
 async def preview_scope_impact(
-    project_id: int,
+    project_id: str,
     request: ScopeImpactPreviewRequest,
+    owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await project_service.preview_scope_impact(
-            project_id=project_id,
+            project_id=owned_project.id,
             feature_id=request.feature_id,
             next_status=request.next_status,
             session=session,

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class ActorGenerationDraftCreateRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
 
 
 class GeneratedActorPreview(BaseModel):
@@ -12,12 +12,12 @@ class GeneratedActorPreview(BaseModel):
 
 class ActorGenerationDraftResponse(BaseModel):
     draft_id: str
-    project_id: int
+    project_id: str
     actors: list[GeneratedActorPreview]
 
 
 class ActorGenerationConfirmResponse(BaseModel):
-    project_id: int
+    project_id: str
     actor_count: int
     message: str = "actors_created"
 

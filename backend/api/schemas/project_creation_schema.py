@@ -28,7 +28,7 @@ class ProjectCreationDraftResponse(BaseModel):
     features: list[GeneratedFeaturePreview]
 
 class ProjectCreationConfirmResponse(BaseModel):
-    project_id: int
+    project_id: str
     project_name: str
     project_description: str
     message: str = "project_created"

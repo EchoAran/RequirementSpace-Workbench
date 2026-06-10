@@ -21,6 +21,21 @@ export class HttpError extends Error {
   }
 }
 
+// 401 callback mechanism to avoid circular dependencies with stores
+type UnauthorizedCallback = () => void;
+const unauthorizedCallbacks: Set<UnauthorizedCallback> = new Set();
+
+export function onUnauthorized(callback: UnauthorizedCallback) {
+  unauthorizedCallbacks.add(callback);
+  return () => {
+    unauthorizedCallbacks.delete(callback);
+  };
+}
+
+function triggerUnauthorized() {
+  unauthorizedCallbacks.forEach(cb => cb());
+}
+
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, body, ...restOptions } = options;
 
@@ -53,6 +68,7 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   }
 
   const config: RequestInit = {
+    credentials: 'include',
     ...restOptions,
     headers: {
       ...defaultHeaders,
@@ -76,6 +92,10 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        triggerUnauthorized();
+      }
+
       // Extract error detail from FastAPI's typical error response
       let errorMessage = `HTTP Error ${response.status}: ${response.statusText}`;
       let detail: any = null;

@@ -15,8 +15,8 @@ from backend.integration.skill_backed_services.skill_imports import import_skill
 
 
 class SkillBackedPrototypeGenerationService(PrototypeGenerationService):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, session_factory=None) -> None:
+        super().__init__(session_factory=session_factory)
         gherkin2code_core = import_skill_module(
             "gherkin-code-skill",
             "gherkin2code_skill.core",
@@ -24,57 +24,14 @@ class SkillBackedPrototypeGenerationService(PrototypeGenerationService):
         self._skill_generator = gherkin2code_core.Gherkin2Code()
         self._llm_json_client = SkillBackedLLMJsonClient()
 
-    async def generate_preview(
+    async def _generate_pages(
         self,
-        project_id: int,
-        session,
-        force_regenerate: bool = True,
-    ) -> PrototypePreviewResponse:
-        if not force_regenerate:
-            latest = await self.get_latest_preview(
-                project_id=project_id,
-                session=session,
-                raise_if_missing=False,
-            )
-            if latest is not None:
-                return latest
+        targets: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return await self._generate_skill_pages_concurrently(targets)
 
-        detail = await self._project_service.get_project_detail(
-            project_id=project_id,
-            session=session,
-        )
-        gherkin_specs = await self._load_gherkin_specs(
-            project_id=project_id,
-            session=session,
-        )
-        generator_input = self._build_generator_input(
-            detail=detail,
-            gherkin_specs=gherkin_specs,
-        )
-        targets = self._build_role_feature_targets(
-            generator_input=generator_input,
-            detail=detail,
-        )
-        pages = await self._generate_skill_pages_concurrently(targets)
-        first_page = pages[0] if pages else self._empty_page(project_id)
-
-        preview = PrototypePreviewModel(
-            project_id=project_id,
-            status="ready",
-            source="role_feature_pages",
-            html=first_page["html"],
-            javascript=first_page["javascript"],
-            css=first_page["css"],
-            pages=pages,
-            input_snapshot=detail.model_dump(
-                mode="json",
-                by_alias=True,
-            ),
-            gherkin_snapshot={"specs": gherkin_specs} if gherkin_specs else None,
-        )
-        session.add(preview)
-        await session.flush()
-        return self._to_response(preview)
+    def _preview_source(self) -> str:
+        return "role_feature_pages"
 
     async def _generate_skill_pages_concurrently(
         self,

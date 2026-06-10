@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,13 +24,13 @@ scenario_service = ScenarioService()
 
 @router.post("", response_model=ScenarioResponse)
 async def create_scenario(
-    project_id: int,
+    project_id: str,
     request: ScenarioCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.create_scenario(
-            project_id=project_id,
+            project_id=owned_project.id,
             req=request,
             session=session,
         )
@@ -37,6 +39,8 @@ async def create_scenario(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -46,14 +50,14 @@ async def create_scenario(
 
 @router.put("/{scenario_id}", response_model=ScenarioResponse)
 async def update_scenario(
-    project_id: int,
+    project_id: str,
     scenario_id: int,
     request: ScenarioUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.update_scenario(
-            project_id=project_id,
+            project_id=owned_project.id,
             scenario_id=scenario_id,
             req=request,
             session=session,
@@ -64,6 +68,8 @@ async def update_scenario(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -73,13 +79,13 @@ async def update_scenario(
 
 @router.delete("/{scenario_id}")
 async def delete_scenario(
-    project_id: int,
+    project_id: str,
     scenario_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.delete_scenario(
-            project_id=project_id,
+            project_id=owned_project.id,
             scenario_id=scenario_id,
             session=session,
         )
@@ -88,6 +94,8 @@ async def delete_scenario(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -97,14 +105,14 @@ async def delete_scenario(
 
 @router.post("/{scenario_id}/acceptance_criteria", response_model=ACResponse)
 async def create_acceptance_criterion(
-    project_id: int,
+    project_id: str,
     scenario_id: int,
     request: ACCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.create_ac(
-            project_id=project_id,
+            project_id=owned_project.id,
             scenario_id=scenario_id,
             req=request,
             session=session,
@@ -114,6 +122,8 @@ async def create_acceptance_criterion(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -123,15 +133,15 @@ async def create_acceptance_criterion(
 
 @router.put("/{scenario_id}/acceptance_criteria/{ac_id}", response_model=ACResponse)
 async def update_acceptance_criterion(
-    project_id: int,
+    project_id: str,
     scenario_id: int,
     ac_id: int,
     request: ACUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.update_ac(
-            project_id=project_id,
+            project_id=owned_project.id,
             scenario_id=scenario_id,
             ac_id=ac_id,
             req=request,
@@ -143,6 +153,8 @@ async def update_acceptance_criterion(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -152,14 +164,14 @@ async def update_acceptance_criterion(
 
 @router.delete("/{scenario_id}/acceptance_criteria/{ac_id}")
 async def delete_acceptance_criterion(
-    project_id: int,
+    project_id: str,
     scenario_id: int,
     ac_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scenario_service.delete_ac(
-            project_id=project_id,
+            project_id=owned_project.id,
             scenario_id=scenario_id,
             ac_id=ac_id,
             session=session,
@@ -169,6 +181,8 @@ async def delete_acceptance_criterion(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

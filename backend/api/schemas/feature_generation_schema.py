@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class FeatureGenerationDraftCreateRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
 
 
 class GeneratedFeaturePreview(BaseModel):
@@ -13,12 +13,12 @@ class GeneratedFeaturePreview(BaseModel):
 
 class FeatureGenerationDraftResponse(BaseModel):
     draft_id: str
-    project_id: int
+    project_id: str
     features: list[GeneratedFeaturePreview]
 
 
 class FeatureGenerationConfirmResponse(BaseModel):
-    project_id: int
+    project_id: str
     feature_count: int
     message: str = "features_created"
 

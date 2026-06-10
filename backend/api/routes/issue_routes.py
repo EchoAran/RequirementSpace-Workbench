@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,7 @@ from backend.api.schemas.issue_schema import (
 )
 from backend.api.services.issue_service import IssueService
 from backend.database.database import get_session
+from backend.api.dependencies.llm import get_llm_context
 
 
 router = APIRouter(
@@ -63,13 +66,13 @@ ISSUE_ERRORS = {
     response_model=ProjectIssuesResponse,
 )
 async def list_project_issues(
-    project_id: int,
+    project_id: str,
     stage: str = Query(pattern="^(what|how|scope|preview)$"),
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await issue_service.list_issues(
-            project_id=project_id,
+            project_id=owned_project.id,
             stage=stage,
             session=session,
         )
@@ -92,13 +95,14 @@ async def list_project_issues(
     response_model=IssueResolutionResponse,
 )
 async def resolve_project_issue(
-    project_id: int,
+    project_id: str,
     request: IssueResolveRequest,
     session: AsyncSession = Depends(get_session),
-):
+    llm_ctx=Depends(get_llm_context),
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await issue_service.resolve_issue(
-            project_id=project_id,
+            project_id=owned_project.id,
             issue_id=request.issue_id,
             issue_code=request.issue_code,
             stage=request.stage,
@@ -129,13 +133,13 @@ async def resolve_project_issue(
     response_model=IssueStatusUpdateResponse,
 )
 async def update_project_issue_status(
-    project_id: int,
+    project_id: str,
     request: IssueStatusUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await issue_service.set_issue_status(
-            project_id=project_id,
+            project_id=owned_project.id,
             issue_id=request.issue_id,
             status=request.status,
             session=session,

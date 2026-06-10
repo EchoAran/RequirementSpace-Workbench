@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,13 +25,13 @@ flow_service = FlowService()
 
 @router.post("", response_model=FlowResponse)
 async def create_flow(
-    project_id: int,
+    project_id: str,
     request: FlowCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.create_flow(
-            project_id=project_id,
+            project_id=owned_project.id,
             req=request,
             session=session,
         )
@@ -38,6 +40,8 @@ async def create_flow(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -47,14 +51,14 @@ async def create_flow(
 
 @router.put("/{flow_id}", response_model=FlowResponse)
 async def update_flow(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     request: FlowUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.update_flow(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             req=request,
             session=session,
@@ -65,6 +69,8 @@ async def update_flow(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -74,13 +80,13 @@ async def update_flow(
 
 @router.delete("/{flow_id}")
 async def delete_flow(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.delete_flow(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             session=session,
         )
@@ -89,6 +95,8 @@ async def delete_flow(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -98,14 +106,14 @@ async def delete_flow(
 
 @router.post("/{flow_id}/steps", response_model=FlowStepResponse)
 async def create_flow_step(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     request: FlowStepCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.create_flow_step(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             req=request,
             session=session,
@@ -115,6 +123,8 @@ async def create_flow_step(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -124,15 +134,15 @@ async def create_flow_step(
 
 @router.put("/{flow_id}/steps/{step_id}", response_model=FlowStepResponse)
 async def update_flow_step(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     step_id: int,
     request: FlowStepUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.update_flow_step(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             step_id=step_id,
             req=request,
@@ -144,6 +154,8 @@ async def update_flow_step(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -153,14 +165,14 @@ async def update_flow_step(
 
 @router.delete("/{flow_id}/steps/{step_id}")
 async def delete_flow_step(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     step_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.delete_flow_step(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             step_id=step_id,
             session=session,
@@ -170,6 +182,8 @@ async def delete_flow_step(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -179,14 +193,14 @@ async def delete_flow_step(
 
 @router.put("/{flow_id}/steps/reorder", response_model=FlowResponse)
 async def reorder_flow_steps(
-    project_id: int,
+    project_id: str,
     flow_id: int,
     request: FlowStepsReorderRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await flow_service.reorder_flow_steps(
-            project_id=project_id,
+            project_id=owned_project.id,
             flow_id=flow_id,
             req=request,
             session=session,
@@ -197,6 +211,8 @@ async def reorder_flow_steps(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

@@ -504,7 +504,12 @@ class GenerationChoiceService:
             ))
             await session.flush()
 
-        return _build_choice_group_response(group, created_choices)
+        # Get public_id of the project
+        from backend.database.model import ProjectModel
+        proj_stmt = select(ProjectModel.public_id).where(ProjectModel.id == project_id)
+        project_public_id = (await session.execute(proj_stmt)).scalar_one()
+ 
+        return _build_choice_group_response(group, created_choices, project_public_id=project_public_id)
 
     async def regenerate_choice_group(
         self,
@@ -564,7 +569,7 @@ class GenerationChoiceService:
         res = await session.execute(
             select(ChoiceModel)
             .where(ChoiceModel.id == choice_id)
-            .options(selectinload(ChoiceModel.choice_group))
+            .options(selectinload(ChoiceModel.choice_group).selectinload(ChoiceGroupModel.project))
         )
         choice = res.scalar_one_or_none()
         if not choice:
@@ -676,11 +681,18 @@ def get_generation_choice_applier() -> GenerationChoiceApplier:
 def _build_choice_group_response(
     group: ChoiceGroupModel,
     choices: list[ChoiceModel],
+    project_public_id: str | None = None,
 ) -> dict:
     """将 ChoiceGroupModel + ChoiceModel 列表构建为响应 dict。"""
+    proj_pub_id = project_public_id
+    if proj_pub_id is None and group.project is not None:
+        proj_pub_id = group.project.public_id
+    if proj_pub_id is None:
+        proj_pub_id = str(group.project_id)
+ 
     return {
         "id": group.id,
-        "project_id": group.project_id,
+        "project_id": proj_pub_id,
         "slot_id": group.slot_id,
         "status": group.status,
         "selection_mode": group.selection_mode,

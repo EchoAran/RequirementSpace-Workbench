@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
@@ -28,27 +29,69 @@ from backend.schemas import (
 )
 
 
+@dataclass
+class PrototypeGenerationContext:
+    targets: list[dict[str, Any]]
+    input_snapshot: dict[str, Any]
+    gherkin_snapshot: dict[str, Any] | None
+
+
 class PrototypeGenerationService:
-    def __init__(self) -> None:
+    def __init__(self, session_factory=None) -> None:
         self._project_service = ProjectService()
         self._generator = PrototypeGenerator()
         self._max_concurrency = 5
+        from backend.database.database import AsyncSessionLocal
+        self.session_factory = session_factory or AsyncSessionLocal
 
     async def generate_preview(
         self,
         project_id: int,
-        session,
         force_regenerate: bool = False,
     ) -> PrototypePreviewResponse:
         if not force_regenerate:
-            latest = await self.get_latest_preview(
-                project_id=project_id,
-                session=session,
-                raise_if_missing=False,
-            )
-            if latest is not None:
-                return latest
+            async with self.session_factory() as session:
+                latest = await self.get_latest_preview(
+                    project_id=project_id,
+                    session=session,
+                    raise_if_missing=False,
+                )
+                if latest is not None:
+                    return latest
 
+        async with self.session_factory() as session:
+            context = await self._load_generation_context(project_id, session)
+
+        pages = await self._generate_pages(context.targets)
+        
+        async with self.session_factory() as session:
+            try:
+                preview = self._build_preview_model(
+                    project_id=project_id,
+                    context=context,
+                    pages=pages,
+                )
+                session.add(preview)
+                await session.commit()
+                
+                from sqlalchemy.orm import selectinload
+                result = await session.execute(
+                    select(PrototypePreviewModel)
+                    .options(selectinload(PrototypePreviewModel.project))
+                    .where(PrototypePreviewModel.id == preview.id)
+                )
+                preview = result.scalar_one()
+                response = self._to_response(preview)
+            except Exception:
+                await session.rollback()
+                raise
+        return response
+
+    async def _load_generation_context(
+        self,
+        project_id: int,
+        session,
+    ) -> PrototypeGenerationContext:
         detail = await self._project_service.get_project_detail(
             project_id=project_id,
             session=session,
@@ -66,26 +109,46 @@ class PrototypeGenerationService:
             generator_input=generator_input,
             detail=detail,
         )
-        pages = await self._generate_pages_concurrently(targets)
-        first_page = pages[0] if pages else self._empty_page(project_id)
+        
+        input_snapshot = detail.model_dump(
+            mode="json",
+            by_alias=True,
+        )
+        gherkin_snapshot = {"specs": gherkin_specs} if gherkin_specs else None
 
-        preview = PrototypePreviewModel(
+        return PrototypeGenerationContext(
+            targets=targets,
+            input_snapshot=input_snapshot,
+            gherkin_snapshot=gherkin_snapshot,
+        )
+
+    async def _generate_pages(
+        self,
+        targets: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return await self._generate_pages_concurrently(targets)
+
+    def _preview_source(self) -> str:
+        return "placeholder"
+
+    def _build_preview_model(
+        self,
+        project_id: int,
+        context: PrototypeGenerationContext,
+        pages: list[dict[str, Any]],
+    ) -> PrototypePreviewModel:
+        first_page = pages[0] if pages else self._empty_page(project_id)
+        return PrototypePreviewModel(
             project_id=project_id,
             status="ready",
-            source="placeholder",
+            source=self._preview_source(),
             html=first_page["html"],
             javascript=first_page["javascript"],
             css=first_page["css"],
             pages=pages,
-            input_snapshot=detail.model_dump(
-                mode="json",
-                by_alias=True,
-            ),
-            gherkin_snapshot={"specs": gherkin_specs} if gherkin_specs else None,
+            input_snapshot=context.input_snapshot,
+            gherkin_snapshot=context.gherkin_snapshot,
         )
-        session.add(preview)
-        await session.flush()
-        return self._to_response(preview)
 
     async def _generate_pages_concurrently(
         self,
@@ -119,8 +182,10 @@ class PrototypeGenerationService:
             project_id=project_id,
             session=session,
         )
+        from sqlalchemy.orm import selectinload
         result = await session.execute(
             select(PrototypePreviewModel)
+            .options(selectinload(PrototypePreviewModel.project))
             .where(PrototypePreviewModel.project_id == project_id)
             .order_by(PrototypePreviewModel.created_at.desc())
             .limit(1)
@@ -461,9 +526,12 @@ class PrototypeGenerationService:
             PrototypePageResponse(**page)
             for page in (preview.pages or [])
         ]
+        project_id = str(preview.project_id)
+        if preview.project is not None:
+            project_id = preview.project.public_id
         return PrototypePreviewResponse(
             prototype_id=preview.id,
-            project_id=preview.project_id,
+            project_id=project_id,
             html=preview.html,
             javascript=preview.javascript,
             css=preview.css,

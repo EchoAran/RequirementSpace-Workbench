@@ -3,7 +3,7 @@ from backend.api.schemas.project_schema import CamelModel
 
 
 class PerceptionSlotFillingDraftCreateRequest(CamelModel):
-    project_id: int = Field(gt=0)
+    project_id: str
     perception_job_id: int = Field(gt=0)
 
 
@@ -74,7 +74,7 @@ class PerceptionSlotFilledFlowPreview(CamelModel):
 
 class PerceptionSlotFillingDraftResponse(CamelModel):
     draft_id: str
-    project_id: int
+    project_id: str
     perception_job_id: int
     filler_kind: str
     actors: list[PerceptionSlotFilledActorPreview] = []
@@ -88,7 +88,7 @@ class PerceptionSlotFillingDraftResponse(CamelModel):
 
 
 class PerceptionSlotFillingConfirmResponse(CamelModel):
-    project_id: int
+    project_id: str
     filler_kind: str
     created_count: int = 0
     scenario_count: int = 0

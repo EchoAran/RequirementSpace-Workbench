@@ -287,6 +287,9 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
         scenario_ids = result.get("scenario_ids", [])
         if scenario_ids:
+            # Commit the scenario inserts immediately to release database write lock!
+            await session.commit()
+
             ac_result = await (
                 self._service._acceptance_criteria_generation_service
             ).create_and_persist_for_scenarios(

@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
 from backend.api.services.project_interview_service import ProjectInterviewService
 from backend.database.database import get_session
+from backend.api.dependencies.llm import get_llm_context
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +52,17 @@ class InterviewCompleteResponse(BaseModel):
 
 
 @router.post("/chat", response_model=InterviewChatResponse)
-async def interview_chat(request: InterviewChatRequest):
+async def interview_chat(
+    request: InterviewChatRequest,
+    user=Depends(get_current_user),
+    llm_ctx=Depends(get_llm_context),
+):
     """Send conversation history and get the AI interviewer's next response."""
     try:
         service = _get_service()
         return await service.chat(request.messages)
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Project interview chat failed")
         raise HTTPException(status_code=500, detail="interview_error")
@@ -63,7 +71,9 @@ async def interview_chat(request: InterviewChatRequest):
 @router.post("/complete", response_model=InterviewCompleteResponse)
 async def interview_complete(
     request: InterviewCompleteRequest,
+    user=Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     """Complete the interview and trigger AI project draft generation.
 
@@ -80,6 +90,7 @@ async def interview_complete(
             name=request.name,
             description=request.description or "",
             user_requirements=request.user_requirements,
+            owner_user_id=user.id,
         )
         db_session.add(project)
         await db_session.flush()
@@ -93,6 +104,7 @@ async def interview_complete(
         creation_service = ProjectCreationService()
         draft_response = await creation_service.create_draft(
             user_requirements=request.user_requirements,
+            owner_user_id=user.id,
             session=db_session,
             project_name=request.name,
             project_description=request.description,
@@ -110,6 +122,8 @@ async def interview_complete(
             "features": draft_response.get("features", []),
             "message": "draft_created",
         }
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Project interview complete failed")
         raise HTTPException(status_code=500, detail="project_creation_failed")

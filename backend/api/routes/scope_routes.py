@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,14 +20,14 @@ scope_service = ScopeService()
 
 @router.put("", response_model=ScopeResponse)
 async def update_feature_scope(
-    project_id: int,
+    project_id: str,
     feature_id: int,
     request: ScopeUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scope_service.update_scope(
-            project_id=project_id,
+            project_id=owned_project.id,
             feature_id=feature_id,
             req=request,
             session=session,
@@ -36,6 +38,8 @@ async def update_feature_scope(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

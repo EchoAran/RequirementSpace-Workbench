@@ -249,7 +249,7 @@ export interface PendingManualAction {
 // 整个项目空间
 export interface RequirementSpace {
   kind: 'requirement_space';
-  projectId: number;
+  projectId: string;
   projectName: string;
   projectDescription: string;
   userRequirements: string;
@@ -441,7 +441,7 @@ export const NodeStatusToText: Record<string, string> = {
 /**
  * 节点类型 → 目标页面路由映射，用于概览页假设账本点击导航
  */
-export const NodeKindToRoute: Record<string, (projectId: number) => string> = {
+export const NodeKindToRoute: Record<string, (projectId: string) => string> = {
   actor: (id) => `/projects/${id}/what`,
   feature: (id) => `/projects/${id}/what`,
   scenario: (id) => `/projects/${id}/what`,
@@ -514,8 +514,8 @@ export interface ProjectCreationDraft {
 }
 
 export interface ProjectCreationConfirmResponse {
-  projectId?: number;
-  project_id: number;
+  projectId?: string;
+  project_id: string;
   projectName?: string;
   project_name: string;
   projectDescription?: string;
@@ -562,13 +562,13 @@ export interface ProjectCreationChoiceGroup {
   contextHash?: string;
   createdAt?: number;
   updatedAt?: number;
-  resolvedProjectId?: number;
+  resolvedProjectId?: string;
   choices: ProjectCreationChoiceItem[];
 }
 
 export interface ProjectCreationChoiceGroupDeferResponse {
-  projectId?: number;
-  project_id?: number;
+  projectId?: string;
+  project_id?: string;
   projectName?: string;
   project_name?: string;
   projectDescription?: string;
@@ -581,7 +581,7 @@ export interface ProjectCreationChoiceGroupDeferResponse {
 // Phase 3: Generic generation choice group (actor, scenario, etc.)
 export interface GenerationChoiceGroup {
   id: number | string;
-  projectId: number;
+  projectId: string;
   status: string;
   generationType?: string;
   target?: any;

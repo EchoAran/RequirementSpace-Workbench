@@ -27,7 +27,7 @@ class ProjectCreationChoiceGroupResponse(CamelModel):
     context_hash: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
-    resolved_project_id: int | None = None
+    resolved_project_id: str | None = None
     choices: list["ProjectCreationChoiceItem"] = []
 
 
@@ -46,7 +46,7 @@ class ProjectCreationChoiceItem(CamelModel):
 
 
 class ProjectCreationChoiceAcceptResponse(CamelModel):
-    project_id: int
+    project_id: str
     project_name: str
     project_description: str
     message: str = "project_created"
@@ -58,7 +58,7 @@ class ProjectCreationChoiceGroupDiscardResponse(CamelModel):
 
 
 class ProjectCreationChoiceGroupDeferResponse(CamelModel):
-    project_id: int
+    project_id: str
     project_name: str
     project_description: str
     choice_group: ChoiceGroupResponse

@@ -6,7 +6,7 @@ from backend.api.schemas.project_schema import CamelModel
 
 class IssueRepairDraftResponse(CamelModel):
     draft_id: str
-    project_id: int
+    project_id: str
     issue_code: str
     issue_id: str
     stage: str

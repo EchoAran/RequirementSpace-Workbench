@@ -13,7 +13,7 @@ class NextSuggestionResponseItem(CamelModel):
 
 
 class NextSuggestionResponse(CamelModel):
-    project_id: int
+    project_id: str
     stage: str
     suggestion: NextSuggestionResponseItem | None
 
@@ -30,7 +30,7 @@ class NextSuggestionRediagnoseRequest(CamelModel):
 
 
 class NextSuggestionStartResponse(CamelModel):
-    project_id: int
+    project_id: str
     stage: str
     suggestion_code: str
     action_type: str

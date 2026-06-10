@@ -1,3 +1,7 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel, UserModel
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import llm_context_manager
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,18 +37,20 @@ NEXT_SUGGESTION_ERRORS = {
     response_model=NextSuggestionResponse,
 )
 async def get_next_suggestion(
-    project_id: int,
+    project_id: str,
     background_tasks: BackgroundTasks,
     stage: str = Query(pattern="^(what|how|scope|preview)$"),
     session: AsyncSession = Depends(get_session),
-):
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        return await next_suggestion_service.get_next_suggestion(
-            project_id=project_id,
-            stage=stage,
-            session=session,
-            background_tasks=background_tasks,
-        )
+        async with llm_context_manager(user, session):
+            return await next_suggestion_service.get_next_suggestion(
+                project_id=owned_project.id,
+                stage=stage,
+                session=session,
+                background_tasks=background_tasks,
+            )
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(
@@ -64,18 +70,20 @@ async def get_next_suggestion(
     response_model=NextSuggestionResponse,
 )
 async def rediagnose_next_suggestion(
-    project_id: int,
+    project_id: str,
     request: NextSuggestionRediagnoseRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-):
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        return await next_suggestion_service.rediagnose_next_suggestion(
-            project_id=project_id,
-            stage=request.stage,
-            session=session,
-            background_tasks=background_tasks,
-        )
+        async with llm_context_manager(user, session):
+            return await next_suggestion_service.rediagnose_next_suggestion(
+                project_id=owned_project.id,
+                stage=request.stage,
+                session=session,
+                background_tasks=background_tasks,
+            )
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(
@@ -95,19 +103,21 @@ async def rediagnose_next_suggestion(
     response_model=NextSuggestionStartResponse,
 )
 async def start_next_suggestion(
-    project_id: int,
+    project_id: str,
     request: NextSuggestionStartRequest,
     session: AsyncSession = Depends(get_session),
-):
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        return await next_suggestion_service.start_next_suggestion(
-            project_id=project_id,
-            stage=request.stage,
-            suggestion_code=request.suggestion_code,
-            target=request.target,
-            query=request.query,
-            session=session,
-        )
+        async with llm_context_manager(user, session):
+            return await next_suggestion_service.start_next_suggestion(
+                project_id=owned_project.id,
+                stage=request.stage,
+                suggestion_code=request.suggestion_code,
+                target=request.target,
+                query=request.query,
+                session=session,
+            )
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(

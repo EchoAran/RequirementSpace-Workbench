@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,14 +21,16 @@ feature_service = FeatureService()
 
 @router.get("", response_model=list[FeatureResponse])
 async def list_features(
-    project_id: int,
+    project_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await feature_service.get_features(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -36,13 +40,13 @@ async def list_features(
 
 @router.post("", response_model=FeatureResponse)
 async def create_feature(
-    project_id: int,
+    project_id: str,
     request: FeatureCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await feature_service.create_feature(
-            project_id=project_id,
+            project_id=owned_project.id,
             req=request,
             session=session,
         )
@@ -51,6 +55,8 @@ async def create_feature(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -60,14 +66,14 @@ async def create_feature(
 
 @router.put("/{feature_id}", response_model=FeatureResponse)
 async def update_feature(
-    project_id: int,
+    project_id: str,
     feature_id: int,
     request: FeatureUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await feature_service.update_feature(
-            project_id=project_id,
+            project_id=owned_project.id,
             feature_id=feature_id,
             req=request,
             session=session,
@@ -78,6 +84,8 @@ async def update_feature(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -87,13 +95,13 @@ async def update_feature(
 
 @router.delete("/{feature_id}")
 async def delete_feature(
-    project_id: int,
+    project_id: str,
     feature_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await feature_service.delete_feature(
-            project_id=project_id,
+            project_id=owned_project.id,
             feature_id=feature_id,
             session=session,
         )
@@ -102,6 +110,8 @@ async def delete_feature(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

@@ -8,7 +8,7 @@ class BlankProjectCreateRequest(BaseModel):
 
 
 class BlankProjectCreateResponse(BaseModel):
-    project_id: int
+    project_id: str
     project_name: str
     project_description: str
     message: str = "project_created"

@@ -26,7 +26,7 @@ class ChoiceResponse(CamelModel):
 
 class ChoiceGroupResponse(CamelModel):
     id: int
-    project_id: int
+    project_id: str
     slot_id: int | None = None
     status: str
     selection_mode: str
@@ -50,7 +50,7 @@ class ChoiceGroupResponse(CamelModel):
 
 
 class ProjectChoiceGroupsResponse(CamelModel):
-    project_id: int
+    project_id: str
     choice_groups: list[ChoiceGroupResponse]
 
 
@@ -80,7 +80,7 @@ class ChoiceActionResponse(CamelModel):
 
 class GenerationChoiceGroupCreateRequest(CamelModel):
     """创建 AI 生成 choice group 的请求。"""
-    project_id: int
+    project_id: str
     generation_type: str = Field(
         ...,
         description="生成类型: actor, scenario, feature, project_creation 等",

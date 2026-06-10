@@ -35,6 +35,7 @@ from backend.database.model import (
 )
 from backend.api.schemas.project_schema import ProjectDetailResponse
 from backend.api.services.service_registry import prototype_generation_service
+from backend.core.llm_context import current_llm_context, is_web_request_ctx, LLMRequestContext
 
 
 def calculate_stable_snapshot_hash(snapshot: dict) -> str:
@@ -422,7 +423,7 @@ async def build_project_snapshot(project_id: int, session: AsyncSession) -> dict
 
     # Assemble
     snapshot = {
-        "project_id": project.id,
+        "project_id": project.public_id,
         "name": project.name,
         "description": project.description,
         "user_requirements": project.user_requirements,
@@ -509,120 +510,167 @@ class PreviewShadowConvergenceService:
             )
             return normalized_scopes
 
-    async def converge_shadow_snapshot_task(self, project_id: int, draft_id: str) -> None:
+    async def _update_progress(self, draft_id: str, progress: int, message: str) -> None:
+        try:
+            async with AsyncSessionLocal() as session:
+                draft_res = await session.execute(
+                    select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
+                )
+                draft = draft_res.scalar_one_or_none()
+                if draft and draft.status == "generating":
+                    import json
+                    progress_info = {
+                        "progress": progress,
+                        "message": message
+                    }
+                    draft.error_message = json.dumps(progress_info, ensure_ascii=False)
+                    await session.commit()
+        except Exception:
+            pass
+
+    async def converge_shadow_snapshot_task(
+        self,
+        project_id: int,
+        draft_id: str,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model_name: str | None = None,
+    ) -> None:
         """
         Background AsyncIO task worker with isolated database session context.
         """
-        await asyncio.sleep(0.5)  # Let parent request return safely
-        
-        # 1. Fetch Draft and baseline info in a short session
+        token_ctx = None
+        token_web = None
+        if api_url and api_key and model_name:
+            ctx = LLMRequestContext(api_url=api_url, api_key=api_key, model_name=model_name)
+            token_ctx = current_llm_context.set(ctx)
+            token_web = is_web_request_ctx.set(True)
+
         try:
-            async with AsyncSessionLocal() as session:
-                draft_res = await session.execute(
-                    select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
-                )
-                draft = draft_res.scalar_one_or_none()
-                if not draft:
-                    return
-
-                base_snapshot = draft.base_snapshot_json
-                feedback = ""
-                if draft.error_message and draft.error_message.startswith("Regenerating draft with feedback: "):
-                    feedback = draft.error_message[len("Regenerating draft with feedback: "):].strip()
-        except Exception as e:
-            # If draft fetching fails, we can't do anything
-            return
-
-        # 2. Run convergence AI helper to build patch OUTSIDE of any database transaction!
-        try:
-            patch = await self._generate_shadow_patch(
-                project_id=project_id,
-                base_snapshot=base_snapshot,
-                feedback=feedback,
-            )
+            await asyncio.sleep(0.5)  # Let parent request return safely
             
-            # 3. Validate patch
-            ShadowPatchValidator.validate_patch(patch, base_snapshot, project_id)
-            
-            # 4. Construct virtual shadow snapshot (with negative IDs to appease Pydantic type validator)
-            shadow_snapshot, temp_id_to_neg_int = self._apply_patch_to_snapshot(base_snapshot, patch)
-            
-            # 5. Parse shadow_snapshot as ProjectDetailResponse
-            remapped_snapshot = _remap_snapshot_to_pydantic(shadow_snapshot)
-            shadow_detail = ProjectDetailResponse.model_validate(remapped_snapshot)
-            
-            # 6. Generate simulated UI prototype pages using PrototypeGenerationService
-            generator_input = prototype_generation_service._build_generator_input(
-                detail=shadow_detail,
-                gherkin_specs=[]
-            )
-            targets = prototype_generation_service._build_role_feature_targets(
-                generator_input=generator_input,
-                detail=shadow_detail
-            )
-            
-            # Dispatch to the skill-backed generator if available, else fallback
-            if hasattr(prototype_generation_service, '_generate_skill_pages_concurrently'):
-                pages = await prototype_generation_service._generate_skill_pages_concurrently(targets)
-            else:
-                pages = await prototype_generation_service._generate_pages_concurrently(targets)
-            first_page = pages[0] if pages else prototype_generation_service._empty_page(project_id)
-            
-            # Build mock PrototypePreviewResponse payload
-            prototype_preview = {
-                "prototypeId": 0,
-                "projectId": project_id,
-                "html": first_page["html"],
-                "javascript": first_page["javascript"],
-                "css": first_page["css"],
-                "pages": pages,
-                "source": "shadow_project",
-                "status": "ready",
-                "createdAt": beijing_now().isoformat(),
-                "updatedAt": beijing_now().isoformat(),
-                "shadowDraftId": draft_id
-            }
-
-            # Calculate hash of final shadow snapshot
-            shadow_hash = calculate_stable_snapshot_hash(shadow_snapshot)
-
-            # Write results back in a short, atomic write transaction
-            async with AsyncSessionLocal() as session:
-                draft_res = await session.execute(
-                    select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
-                )
-                draft = draft_res.scalar_one_or_none()
-                if draft:
-                    draft.status = "ready"
-                    draft.shadow_snapshot_hash = shadow_hash
-                    draft.shadow_snapshot_json = remapped_snapshot
-                    draft.patch_json = patch
-                    draft.prototype_preview_json = prototype_preview
-                    await session.commit()
-
-        except Exception as e:
-            # Log error and fail gracefully
-            import traceback
-            error_trace = traceback.format_exc()
-            
+            # 1. Fetch Draft and baseline info in a short session
             try:
                 async with AsyncSessionLocal() as session:
                     draft_res = await session.execute(
                         select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
                     )
                     draft = draft_res.scalar_one_or_none()
+                    if not draft:
+                        return
+
+                    # Resolve public_id for client-facing payloads
+                    project_obj = await session.get(ProjectModel, project_id)
+                    project_public_id = project_obj.public_id if project_obj else str(project_id)
+
+                    base_snapshot = draft.base_snapshot_json
+                    feedback = ""
+                    if draft.error_message and draft.error_message.startswith("Regenerating draft with feedback: "):
+                        feedback = draft.error_message[len("Regenerating draft with feedback: "):].strip()
+            except Exception as e:
+                # If draft fetching fails, we can't do anything
+                return
+
+            # 2. Run convergence AI helper to build patch OUTSIDE of any database transaction!
+            try:
+                await self._update_progress(draft_id, 5, "正在初始化影子收敛，加载项目 baseline 数据...")
+                patch = await self._generate_shadow_patch(
+                    project_id=project_id,
+                    base_snapshot=base_snapshot,
+                    feedback=feedback,
+                    draft_id=draft_id,
+                )
+
+                await self._update_progress(draft_id, 85, "AI 影子模型推演完成！正在进行沙盒装配与拓扑校验...")
+                # 3. Validate patch
+                ShadowPatchValidator.validate_patch(patch, base_snapshot, project_public_id)
+
+                # 4. Construct virtual shadow snapshot (with negative IDs to appease Pydantic type validator)
+                shadow_snapshot, temp_id_to_neg_int = self._apply_patch_to_snapshot(base_snapshot, patch)
+
+                # 5. Parse shadow_snapshot as ProjectDetailResponse
+                remapped_snapshot = _remap_snapshot_to_pydantic(shadow_snapshot)
+                shadow_detail = ProjectDetailResponse.model_validate(remapped_snapshot)
+
+                # 6. Generate simulated UI prototype pages using PrototypeGenerationService
+                await self._update_progress(draft_id, 90, "影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...")
+                generator_input = prototype_generation_service._build_generator_input(
+                    detail=shadow_detail,
+                    gherkin_specs=[]
+                )
+                targets = prototype_generation_service._build_role_feature_targets(
+                    generator_input=generator_input,
+                    detail=shadow_detail
+                )
+
+                # Dispatch to the skill-backed generator if available, else fallback
+                if hasattr(prototype_generation_service, '_generate_skill_pages_concurrently'):
+                    pages = await prototype_generation_service._generate_skill_pages_concurrently(targets)
+                else:
+                    pages = await prototype_generation_service._generate_pages_concurrently(targets)
+                first_page = pages[0] if pages else prototype_generation_service._empty_page(project_id)
+
+                # Build mock PrototypePreviewResponse payload
+                prototype_preview = {
+                    "prototypeId": 0,
+                    "projectId": project_public_id,
+                    "html": first_page["html"],
+                    "javascript": first_page["javascript"],
+                    "css": first_page["css"],
+                    "pages": pages,
+                    "source": "shadow_project",
+                    "status": "ready",
+                    "createdAt": beijing_now().isoformat(),
+                    "updatedAt": beijing_now().isoformat(),
+                    "shadowDraftId": draft_id
+                }
+
+                # Calculate hash of final shadow snapshot
+                shadow_hash = calculate_stable_snapshot_hash(shadow_snapshot)
+
+                # Write results back in a short, atomic write transaction
+                async with AsyncSessionLocal() as session:
+                    draft_res = await session.execute(
+                        select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
+                    )
+                    draft = draft_res.scalar_one_or_none()
                     if draft:
-                        draft.status = "failed"
-                        draft.error_message = f"Convergence failed: {str(e)}\n{error_trace}"
+                        draft.status = "ready"
+                        draft.shadow_snapshot_hash = shadow_hash
+                        draft.shadow_snapshot_json = remapped_snapshot
+                        draft.patch_json = patch
+                        draft.prototype_preview_json = prototype_preview
                         await session.commit()
-            except Exception:
-                pass
+
+            except Exception as e:
+                # Log error and fail gracefully
+                import traceback
+                error_trace = traceback.format_exc()
+
+                try:
+                    async with AsyncSessionLocal() as session:
+                        draft_res = await session.execute(
+                            select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
+                        )
+                        draft = draft_res.scalar_one_or_none()
+                        if draft:
+                            draft.status = "failed"
+                            draft.error_message = f"Convergence failed: {str(e)}\n{error_trace}"
+                            await session.commit()
+                except Exception:
+                    pass
+        finally:
+            if token_ctx is not None:
+                current_llm_context.reset(token_ctx)
+            if token_web is not None:
+                is_web_request_ctx.reset(token_web)
     async def _generate_shadow_patch(
         self,
         project_id: int,
         base_snapshot: dict,
         session: AsyncSession = None,
         feedback: str = "",
+        draft_id: str = "",
     ) -> dict:
         """
         Consolidated shadow patch generator. Examines project requirements and baseline
@@ -674,6 +722,7 @@ class PreviewShadowConvergenceService:
             user_requirements = base_snapshot.get("user_requirements", "")
             
             # Generate Actors
+            await self._update_progress(draft_id, 15, "AI 正在智能推演补充 What 阶段设计资产：生成参与者角色...")
             from backend.core.generators.actors_generator import ActorsGenerator, ActorsGeneratorInput
             actors_generator = ActorsGenerator()
             raw_actors = await actors_generator.generate(
@@ -736,6 +785,7 @@ class PreviewShadowConvergenceService:
                 return f"tmp_actor_1" if actor_nodes else ""
 
             # Generate Features tree (Skill-Backed or Legacy)
+            await self._update_progress(draft_id, 25, "AI 正在智能推演补充 What 阶段设计资产：生成系统功能特征树...")
             if hasattr(feature_generation_service, "_skill_generator"):
                 requirement_text = user_requirements
                 if feedback:
@@ -850,6 +900,7 @@ class PreviewShadowConvergenceService:
                         parent_node.childrenIds.append(node.featureId)
 
             # Generate Scenarios and ACs for ALL leaf features to pass What stage gate.
+            await self._update_progress(draft_id, 35, "AI 正在智能推演补充 What 阶段设计资产：生成典型故事场景及 AC...")
             # Rule: one scenario per (leaf_feature × actor) pair to satisfy FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO detector.
             from backend.core.generators.scenarios_generator import ScenariosGenerator, ScenariosGeneratorInput
             from backend.core.generators.acceptance_criteria_generator import AcceptanceCriteriaGenerator, AcceptanceCriteriaGeneratorInput
@@ -975,6 +1026,7 @@ class PreviewShadowConvergenceService:
 
             # Since What was NOT passed, How and Scope must be generated dynamically using our transaction-free patterns
             if not how_passed:
+                await self._update_progress(draft_id, 50, "AI 正在增量推演 How 阶段业务规约：分析核心业务流及数据实体...")
                 from backend.core.generators.flows_generator import FlowsGenerator, FlowsGeneratorInput
                 flows_generator = FlowsGenerator()
                 raw_flows = await flows_generator.generate(
@@ -1174,6 +1226,7 @@ class PreviewShadowConvergenceService:
 
             # CALL THE REAL KANO DECISION GENERATOR OR KANO SKILL!
             if not scope_passed:
+                await self._update_progress(draft_id, 75, "AI 正在评估交付范围：生成 Kano 价值评估与剪裁建议...")
                 leaf_feature_nodes = [node for node in feature_nodes if not node.childrenIds]
                 scopes = await self._generate_scopes_for_features(
                     scope_service=scope_generation_service,
@@ -1237,7 +1290,78 @@ class PreviewShadowConvergenceService:
 
         # 3. What is already converged: use service registry wrappers outside session transactions
         else:
+            await self._update_progress(draft_id, 25, "AI 正在检测并补充 What 阶段缺失的典型故事场景与验收标准（AC）...")
+            # Enforce scenario/AC completeness check for pre-existing features/actors.
+            # Even if 'what' stage passed in the backend (warnings allowed),
+            # the frontend requires every leaf feature and associated actor to have scenarios and ACs.
+            features = base_snapshot.get("features", [])
+            actors = base_snapshot.get("actors", [])
+            
+            # Find leaf features in base_snapshot (a feature is a leaf if it has no children)
+            parent_ids = {f.get("parent_id") for f in features if f.get("parent_id") is not None}
+            leaf_features = [f for f in features if f.get("id") not in parent_ids]
+            
+            sc_counter = 1
+            for lf in leaf_features:
+                lf_id = lf.get("id")
+                lf_name = lf.get("name", "未命名功能")
+                lf_desc = lf.get("description", "")
+                lf_actor_ids = lf.get("actor_ids", [])
+                
+                # Fallback: if no actors are associated, map to first available actor
+                if not lf_actor_ids and actors:
+                    lf_actor_ids = [actors[0].get("id")]
+                
+                scenarios_in_feat = lf.get("scenarios", [])
+                
+                for act_id in lf_actor_ids:
+                    actor_obj = next((a for a in actors if a.get("id") == act_id), None)
+                    act_name = actor_obj.get("name") if actor_obj else f"角色{act_id}"
+                    
+                    exist_scs = [s for s in scenarios_in_feat if s.get("actor_id") == act_id]
+                    
+                    if not exist_scs:
+                        # Missing scenario! Generate a template-based scenario
+                        temp_sc_id = f"tmp_scenario_{sc_counter}"
+                        sc_counter += 1
+                        s_name = f"验证{lf_name}在{act_name}视角下的主干业务场景"
+                        s_content = (
+                            f"As a {act_name}, I want to {lf_desc or lf_name}, "
+                            f"So that 我可以获得预期的系统产出和服务。"
+                        )
+                        patch["scenarios_added"].append({
+                            "temp_id": temp_sc_id,
+                            "name": s_name,
+                            "content": s_content,
+                            "feature_ref": f"feature:{lf_id}",
+                            "actor_ref": f"actor:{act_id}"
+                        })
+                        patch["acceptance_criteria_added"].append({
+                            "scenario_ref": temp_sc_id,
+                            "content": (
+                                f"Given {act_name} 准备使用 {lf_name} 功能, "
+                                f"When {act_name} 触发相关交互操作, "
+                                f"Then 系统应当正确处理并呈现 {lf_name} 的相关界面与数据元。"
+                            ),
+                            "position": 1
+                        })
+                    else:
+                        # Scenario exists, but check if any of them are missing ACs
+                        for esc in exist_scs:
+                            esc_id = esc.get("id") or esc.get("scenario_id")
+                            if not esc.get("acceptance_criteria"):
+                                patch["acceptance_criteria_added"].append({
+                                    "scenario_ref": f"scenario:{esc_id}",
+                                    "content": (
+                                        f"Given {act_name} 准备使用 {lf_name} 功能, "
+                                        f"When {act_name} 触发相关交互操作, "
+                                        f"Then 系统应当正确处理并呈现 {lf_name} 的相关界面与数据元。"
+                                    ),
+                                    "position": 1
+                                })
+
             if not how_passed:
+                await self._update_progress(draft_id, 50, "AI 正在增量推演 How 阶段业务规约：分析核心业务流及数据实体...")
                 # Load context in short session, run generator outside of session
                 async with get_session_ctx() as ctx_session:
                     (
@@ -1375,6 +1499,7 @@ class PreviewShadowConvergenceService:
                         })
 
             if not scope_passed:
+                await self._update_progress(draft_id, 75, "AI 正在评估交付范围：生成 Kano 价值评估与剪裁建议...")
                 # Load context in short session, run generator outside of session
                 async with get_session_ctx() as ctx_session:
                     (
@@ -1674,7 +1799,7 @@ class PreviewShadowConvergenceService:
 
         # 3. Secondary validator check
         patch = draft.patch_json
-        ShadowPatchValidator.validate_patch(patch, current_snapshot, project_id)
+        ShadowPatchValidator.validate_patch(patch, current_snapshot, current_snapshot["project_id"])
 
         # 4. Map temporary string IDs to new database IDs
         actor_id_map: dict[str, int] = {}
@@ -2168,7 +2293,13 @@ class PreviewShadowConvergenceService:
                 )
                 await session.commit()
         except Exception as e:
-            logger.error(f"Post-commit prototype generation failed for project {project_id}: {e}", exc_info=True)
+            import traceback
+            from backend.core.security import sanitize_message
+            tb_str = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+            sanitized_tb = sanitize_message(tb_str)
+            logger.error(
+                f"Post-commit prototype generation failed for project {project_id} ({type(e).__name__}):\n{sanitized_tb}"
+            )
 
 
     @staticmethod

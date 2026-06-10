@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
+from backend.api.dependencies.llm import get_llm_context
+from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.schemas import DraftRegenerateRequest
 from backend.api.schemas.feature_generation_schema import (
     FeatureGenerationConfirmResponse,
@@ -39,11 +43,15 @@ FEATURE_GENERATION_ERRORS = {
 )
 async def create_feature_generation_draft(
     request: FeatureGenerationDraftCreateRequest,
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
+    owned_project = await require_owned_project(request.project_id, user, session)
     try:
         return await feature_generation_service.create_draft(
-            project_id=request.project_id,
+            project_id=owned_project.id,
+            owner_user_id=user.id,
             session=session,
         )
     except ValueError as error:
@@ -60,14 +68,16 @@ async def create_feature_generation_draft(
     response_model=FeatureGenerationDraftResponse,
 )
 async def regenerate_feature_generation_draft(
-    draft_id: str,
     request: DraftRegenerateRequest | None = None,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     user_feedback = request.user_feedback if request else None
     try:
         return await feature_generation_service.regenerate_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             session=session,
             user_feedback=user_feedback,
         )
@@ -90,12 +100,13 @@ async def regenerate_feature_generation_draft(
     response_model=FeatureGenerationConfirmResponse,
 )
 async def confirm_feature_generation_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
 ):
     try:
         return await feature_generation_service.confirm_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             session=session,
         )
     except ValueError as error:
@@ -117,8 +128,9 @@ async def confirm_feature_generation_draft(
     response_model=FeatureGenerationDraftDiscardResponse,
 )
 async def discard_feature_generation_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
 ):
     return await feature_generation_service.discard_draft(
-        draft_id=draft_id,
+        draft_id=draft.draft_id,
+        owner_user_id=draft.owner_user_id,
     )

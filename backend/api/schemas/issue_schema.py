@@ -22,7 +22,7 @@ class IssueResponse(CamelModel):
 
 
 class ProjectIssuesResponse(CamelModel):
-    project_id: int
+    project_id: str
     stage: str
     issues: list[IssueResponse]
 
@@ -41,7 +41,7 @@ class IssueStatusUpdateRequest(CamelModel):
 
 
 class IssueStatusUpdateResponse(CamelModel):
-    project_id: int
+    project_id: str
     issue_id: str
     status: str
 
@@ -56,7 +56,7 @@ class IssueResolutionActionResponse(CamelModel):
 
 
 class IssueResolutionResponse(CamelModel):
-    project_id: int
+    project_id: str
     issue_code: str
     resolution_type: str
     title: str

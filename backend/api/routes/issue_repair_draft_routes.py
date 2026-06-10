@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,7 @@ from backend.api.services.issue_repair_draft_service import (
     IssueRepairDraftService,
 )
 from backend.database.database import get_session
+from backend.api.dependencies.llm import get_llm_context
 
 
 router = APIRouter(
@@ -24,13 +27,13 @@ draft_service = IssueRepairDraftService()
     response_model=IssueRepairDraftActionResponse,
 )
 async def confirm_repair_draft(
-    project_id: int,
+    project_id: str,
     draft_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await draft_service.confirm_draft(
-            project_id=project_id,
+            project_id=owned_project.id,
             draft_id=draft_id,
             session=session,
         )
@@ -46,13 +49,13 @@ async def confirm_repair_draft(
     response_model=IssueRepairDraftActionResponse,
 )
 async def discard_repair_draft(
-    project_id: int,
+    project_id: str,
     draft_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await draft_service.discard_draft(
-            project_id=project_id,
+            project_id=owned_project.id,
             draft_id=draft_id,
             session=session,
         )
@@ -68,14 +71,15 @@ async def discard_repair_draft(
     response_model=IssueRepairDraftResponse,
 )
 async def regenerate_repair_draft(
-    project_id: int,
+    project_id: str,
     draft_id: str,
     session: AsyncSession = Depends(get_session),
-):
+    llm_ctx=Depends(get_llm_context),
+ owned_project: ProjectModel = Depends(require_owned_project)):
     """Re-run AI solver for the old draft's issue and create a new draft."""
     try:
         return await draft_service.regenerate_draft(
-            project_id=project_id,
+            project_id=owned_project.id,
             draft_id=draft_id,
             session=session,
         )

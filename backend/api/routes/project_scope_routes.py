@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +16,12 @@ scope_service = ScopeService()
 
 @router.post("/skip_kano")
 async def skip_kano(
-    project_id: int,
+    project_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scope_service.set_kano_status(
-            project_id=project_id,
+            project_id=owned_project.id,
             status="skipped",
             session=session,
         )
@@ -29,6 +31,8 @@ async def skip_kano(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -38,12 +42,12 @@ async def skip_kano(
 
 @router.post("/reset_kano")
 async def reset_kano(
-    project_id: int,
+    project_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await scope_service.set_kano_status(
-            project_id=project_id,
+            project_id=owned_project.id,
             status="missing",
             session=session,
         )
@@ -53,6 +57,8 @@ async def reset_kano(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

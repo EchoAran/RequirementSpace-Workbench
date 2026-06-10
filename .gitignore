@@ -63,5 +63,4 @@ Thumbs.db
 docs/
 
 # test
-backend/tests/
 pytest.ini

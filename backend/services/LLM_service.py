@@ -7,6 +7,13 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 
+from backend.core.llm_context import (
+    current_llm_context,
+    is_web_request_ctx,
+    LLMContextMissingError,
+    LLMConfigError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,12 +45,57 @@ class LLMHandler:
         model_name: str | None = None,
         temperature: str | None = None,
     ):
-        config = load_llm_config() or {}
+        self._explicit_api_url = api_url
+        self._explicit_api_key = api_key
+        self._explicit_model_name = model_name
 
-        self.api_url = (api_url or config.get("api_url") or "").rstrip("/")
-        self.api_key = api_key or config.get("api_key") or ""
-        self.model_name = model_name or config.get("model_name") or ""
+        config = load_llm_config() or {}
         self.temperature = temperature or config.get("temperature") or ""
+
+    @property
+    def api_url(self) -> str:
+        ctx = current_llm_context.get()
+        if ctx is not None:
+            return ctx.api_url.rstrip("/")
+
+        if is_web_request_ctx.get():
+            raise LLMContextMissingError("LLMRequestContext is missing in Web request")
+
+        if self._explicit_api_url is not None:
+            return self._explicit_api_url.rstrip("/")
+
+        config = load_llm_config() or {}
+        return (config.get("api_url") or "").rstrip("/")
+
+    @property
+    def api_key(self) -> str:
+        ctx = current_llm_context.get()
+        if ctx is not None:
+            return ctx.api_key
+
+        if is_web_request_ctx.get():
+            raise LLMContextMissingError("LLMRequestContext is missing in Web request")
+
+        if self._explicit_api_key is not None:
+            return self._explicit_api_key
+
+        config = load_llm_config() or {}
+        return config.get("api_key") or ""
+
+    @property
+    def model_name(self) -> str:
+        ctx = current_llm_context.get()
+        if ctx is not None:
+            return ctx.model_name
+
+        if is_web_request_ctx.get():
+            raise LLMContextMissingError("LLMRequestContext is missing in Web request")
+
+        if self._explicit_model_name is not None:
+            return self._explicit_model_name
+
+        config = load_llm_config() or {}
+        return config.get("model_name") or ""
 
     def _validate_settings(self) -> bool:
         required_fields = [
@@ -87,12 +139,7 @@ class LLMHandler:
         query = query or ""
 
         if not self._validate_settings():
-            logger.error("[LLM ERROR] The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
-            self._log(
-                print_log,
-                "The LLM settings are incomplete, making it impossible to call the large model.",
-            )
-            return None
+            raise LLMConfigError("The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
 
         try:
             request_data = self._build_request_data(prompt, query)
@@ -124,9 +171,7 @@ class LLMHandler:
         Designed for InterviewStrategy where conversation history needs to be preserved.
         """
         if not self._validate_settings():
-            logger.error("[LLM ERROR] The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
-            self._log(print_log, "The LLM settings are incomplete, making it impossible to call the large model.")
-            return None
+            raise LLMConfigError("The LLM settings are incomplete. Please ensure LLM_API_URL, LLM_API_KEY, LLM_MODEL_NAME, and LLM_TEMPERATURE are set correctly.")
 
         request_data = {
             "model": self.model_name,
@@ -167,13 +212,26 @@ class LLMHandler:
 
             self._log(print_log, f"\n{'---' * 40}")
 
+            from urllib.parse import urlparse
+            from backend.core.security import sanitize_message
+            import time
+            import traceback
+
+            host = urlparse(self.api_url).hostname or self.api_url
+            start_time = time.time()
+
             try:
                 async with httpx.AsyncClient(timeout=100.0, trust_env=False) as client:
                     response = await client.post(url, json=request_data, headers=headers)
 
+                duration = time.time() - start_time
+
                 if response.status_code != 200:
-                    last_error_text = f"{response.status_code} - {response.text}"
-                    logger.error(f"[LLM ERROR] Attempt {attempt} failed: {last_error_text}")
+                    last_error_text = f"API call failed: status_code={response.status_code}"
+                    logger.error(
+                        f"[LLM ERROR] Attempt {attempt} failed: host={host}, status_code={response.status_code}, "
+                        f"attempt={attempt}, duration={duration:.2f}s, response_length={len(response.text)}"
+                    )
                     self._log(print_log, f"The LLM API call failed: {last_error_text}")
                     await self._sleep_before_retry(attempt, attempts, base_delay)
                     continue
@@ -182,30 +240,39 @@ class LLMHandler:
                 content = self._extract_content(result)
 
                 if content is None:
-                    last_error_text = f"LLM response format exception: {result}"
-                    logger.error(f"[LLM ERROR] Attempt {attempt} returned invalid format: {last_error_text}")
+                    last_error_text = "LLM response format exception (invalid structure)"
+                    req_id = response.headers.get("x-request-id") or ""
+                    logger.error(
+                        f"[LLM ERROR] Attempt {attempt} returned invalid response structure: "
+                        f"status_code={response.status_code}, request_id={req_id}"
+                    )
                     self._log(print_log, last_error_text)
                     await self._sleep_before_retry(attempt, attempts, base_delay)
                     continue
 
-                self._log(print_log, f"\n[Response]\n{content}")
+                self._log(print_log, f"\n[Response]\n{content[:200]}")
                 self._log(print_log, f"\n{'---' * 40}")
 
                 return content
 
             except httpx.ConnectError as exc:
-                last_error_text = str(exc)
+                last_error_text = sanitize_message(str(exc))
                 logger.error(f"[LLM ERROR] Connection failed on attempt {attempt}: {last_error_text}")
                 self._log(print_log, f"The LLM API connection failed: {last_error_text}")
 
             except httpx.TimeoutException as exc:
-                last_error_text = str(exc)
+                last_error_text = sanitize_message(str(exc))
                 logger.error(f"[LLM ERROR] Request timed out on attempt {attempt}: {last_error_text}")
                 self._log(print_log, f"The LLM API request timed out: {last_error_text}")
 
             except Exception as exc:
-                last_error_text = f"{exc} ({type(exc).__name__})"
-                logger.exception(f"[LLM ERROR] Unexpected error on attempt {attempt}: {last_error_text}")
+                last_error_text = sanitize_message(f"{exc} ({type(exc).__name__})")
+                tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                sanitized_tb = sanitize_message(tb_str)
+                logger.error(
+                    f"[LLM ERROR] Unexpected error on attempt {attempt}: {last_error_text}\n"
+                    f"Traceback:\n{sanitized_tb}"
+                )
                 self._log(print_log, f"An error occurred when invoking the LLM service: {last_error_text}")
 
             await self._sleep_before_retry(attempt, attempts, base_delay)

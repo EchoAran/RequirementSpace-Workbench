@@ -22,7 +22,7 @@ class PrototypePageResponse(CamelModel):
 
 class PrototypePreviewResponse(CamelModel):
     prototype_id: int
-    project_id: int
+    project_id: str
     html: str
     javascript: str
     css: str
@@ -35,5 +35,5 @@ class PrototypePreviewResponse(CamelModel):
 
 
 class PrototypePreviewNotFoundResponse(CamelModel):
-    project_id: int
+    project_id: str
     message: str = "prototype_preview_not_found"

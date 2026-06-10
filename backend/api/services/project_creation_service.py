@@ -84,6 +84,7 @@ class ProjectCreationService:
     async def create_draft(
             self,
             user_requirements: str,
+            owner_user_id: int,
             session,
             project_name: str | None = None,
             project_description: str | None = None,
@@ -106,6 +107,7 @@ class ProjectCreationService:
             draft_id=draft_id,
             draft_type="project_creation",
             payload=draft_payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -114,10 +116,11 @@ class ProjectCreationService:
     async def regenerate_draft(
             self,
             draft_id: str,
+            owner_user_id: int,
             user_feedback: str | None,
             session,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             user_requirements=draft["user_requirements"],
@@ -143,6 +146,7 @@ class ProjectCreationService:
             draft_id=draft_id,
             draft_type="project_creation",
             payload=draft_payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -151,20 +155,22 @@ class ProjectCreationService:
     async def confirm_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         project = await self._persist_project_creation_draft(
             draft=draft,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.delete_draft(draft_id, session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
 
         return {
-            "project_id": project.id,
+            "project_id": project.public_id,
             "project_name": project.name,
             "project_description": project.description,
             "message": "project_created",
@@ -173,9 +179,10 @@ class ProjectCreationService:
     async def discard_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
     ) -> dict:
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.discard_draft_locally(draft_id)
+        await GenerativeDraftStore.discard_draft_locally(draft_id, owner_user_id)
 
         return {
             "draft_id": draft_id,
@@ -400,10 +407,11 @@ class ProjectCreationService:
     async def _get_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.api.services.draft_store import GenerativeDraftStore
-        return await GenerativeDraftStore.get_draft(draft_id, session)
+        return await GenerativeDraftStore.get_draft(draft_id, owner_user_id, session)
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:
@@ -417,6 +425,7 @@ class ProjectCreationService:
     async def _persist_project_creation_draft(
         self,
         draft: dict,
+        owner_user_id: int,
         session,
     ):
         from backend.database.model import (
@@ -433,6 +442,7 @@ class ProjectCreationService:
             name=project_preview["project_name"],
             description=project_preview["project_description"],
             user_requirements=draft["user_requirements"],
+            owner_user_id=owner_user_id,
         )
 
         session.add(project)

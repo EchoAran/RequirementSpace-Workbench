@@ -76,6 +76,7 @@ class FeatureGenerationService:
     async def create_draft(
         self,
         project_id: int,
+        owner_user_id: int,
         session,
     ) -> dict:
         draft_id = uuid4().hex
@@ -95,6 +96,7 @@ class FeatureGenerationService:
             draft_id=draft_id,
             draft_type="feature",
             payload=draft_payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -103,10 +105,11 @@ class FeatureGenerationService:
     async def regenerate_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         user_feedback: str | None,
         session,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         draft_payload, response_payload = await self._generate_preview(
             project_id=draft["project_id"],
@@ -123,6 +126,7 @@ class FeatureGenerationService:
             draft_id=draft_id,
             draft_type="feature",
             payload=draft_payload,
+            owner_user_id=owner_user_id,
             session=session,
         )
 
@@ -131,9 +135,10 @@ class FeatureGenerationService:
     async def confirm_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
-        draft = await self._get_draft(draft_id, session)
+        draft = await self._get_draft(draft_id, owner_user_id, session)
 
         result = await self._persist_feature_generation_draft(
             draft=draft,
@@ -152,16 +157,17 @@ class FeatureGenerationService:
         )
 
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.delete_draft(draft_id, session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
 
         return result
 
     async def discard_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
     ) -> dict:
         from backend.api.services.draft_store import GenerativeDraftStore
-        await GenerativeDraftStore.discard_draft_locally(draft_id)
+        await GenerativeDraftStore.discard_draft_locally(draft_id, owner_user_id)
 
         return {
             "draft_id": draft_id,
@@ -171,10 +177,11 @@ class FeatureGenerationService:
     async def _get_draft(
         self,
         draft_id: str,
+        owner_user_id: int,
         session,
     ) -> dict:
         from backend.api.services.draft_store import GenerativeDraftStore
-        return await GenerativeDraftStore.get_draft(draft_id, session)
+        return await GenerativeDraftStore.get_draft(draft_id, owner_user_id, session)
 
     async def _generate_preview(
         self,

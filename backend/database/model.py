@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import enum
+import uuid
 
 from sqlalchemy import (
     DateTime,
@@ -42,6 +43,78 @@ class TimestampMixin:
         onupdate=beijing_now,
         nullable=False,
     )
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+class UserModel(TimestampMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default=UserRole.USER.value, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Relationships
+    projects: Mapped[list["ProjectModel"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+    auth_sessions: Mapped[list["AuthSessionModel"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    llm_config: Mapped["UserLLMConfigModel | None"] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    generative_drafts: Mapped[list["GenerativeDraftModel"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserLLMConfigModel(TimestampMixin, Base):
+    __tablename__ = "user_llm_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    api_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key_last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    user: Mapped[UserModel] = relationship(back_populates="llm_config")
+
+
+class AuthSessionModel(TimestampMixin, Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_token_hash: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[UserModel] = relationship(back_populates="auth_sessions")
 
 class ConfirmationStatus(str, enum.Enum):
     """标记对象的确认状态：AI生成、待确认、已确认"""
@@ -147,8 +220,22 @@ class ProjectModel(TimestampMixin, Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+    owner: Mapped[UserModel] = relationship(back_populates="projects")
     user_requirements: Mapped[str] = mapped_column(Text, default="", nullable=False)
     kano_status: Mapped[str] = mapped_column(String(50), default="missing", nullable=False)
     unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
@@ -927,6 +1014,11 @@ class GenerativeDraftModel(TimestampMixin, Base):
     __tablename__ = "generative_drafts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=True,
@@ -937,6 +1029,7 @@ class GenerativeDraftModel(TimestampMixin, Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     project: Mapped[ProjectModel | None] = relationship(back_populates="generative_drafts")
+    owner: Mapped[UserModel] = relationship(back_populates="generative_drafts")
 
 
 class IssueRepairDraftModel(TimestampMixin, Base):

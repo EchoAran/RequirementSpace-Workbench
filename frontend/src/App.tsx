@@ -9,9 +9,15 @@ import { ScopeAndDelivery } from './pages/ScopeAndDelivery';
 import { Preview } from './pages/Preview';
 import { ProjectOnboarding } from './pages/ProjectOnboarding';
 import { Home } from './pages/Home';
-import { useWorkspaceStore, WorkspacePage } from './store/useWorkspaceStore';
+import { useWorkspaceStore, WorkspacePage, getFriendlyErrorMessage } from './store/useWorkspaceStore';
 import { useEffect, useState } from 'react';
 import { buildProjectRoute, extractWorkspacePage, getGuardRedirect } from './core/selectors';
+import { useAuthStore } from './store/useAuthStore';
+import { AuthGuard } from './components/auth/AuthGuard';
+import { GuestGuard } from './components/auth/GuestGuard';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+import { AccountSettings } from './pages/AccountSettings';
 
 function RouterStateSync() {
   const location = useLocation();
@@ -55,26 +61,25 @@ function ProjectRouteBootstrap() {
   const isLoading = useWorkspaceStore((s) => s.isLoading);
   const error = useWorkspaceStore((s) => s.error);
   const setActivePage = useWorkspaceStore((s) => s.setActivePage);
-  const numericProjectId = projectId ? Number(projectId) : NaN;
   const workspacePage = extractWorkspacePage(location.pathname);
 
   useEffect(() => {
-    if (!projectId || Number.isNaN(numericProjectId)) return;
-    if (ir?.projectId === numericProjectId) return;
+    if (!projectId) return;
+    if (ir?.projectId === projectId) return;
     void openWorkspace(projectId);
-  }, [projectId, numericProjectId, ir?.projectId, openWorkspace]);
+  }, [projectId, ir?.projectId, openWorkspace]);
 
   useEffect(() => {
-    if (ir?.projectId !== numericProjectId) return;
+    if (ir?.projectId !== projectId) return;
     if (!workspacePage) return;
     setActivePage(workspacePage);
-  }, [ir?.projectId, numericProjectId, workspacePage, setActivePage]);
+  }, [ir?.projectId, projectId, workspacePage, setActivePage]);
 
-  if (!projectId || Number.isNaN(numericProjectId)) {
+  if (!projectId) {
     return <Navigate to="/home" replace />;
   }
 
-  if (ir?.projectId !== numericProjectId) {
+  if (ir?.projectId !== projectId) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen w-full">
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5">
@@ -120,11 +125,14 @@ function LegacyWorkspaceRedirect({ page }: { page: WorkspacePage }) {
   return <Navigate to={buildProjectRoute(ir.projectId, page)} replace />;
 }
 
-function GlobalToast() {
+export function GlobalToast() {
   const message = useWorkspaceStore((s) => s.lastActionMessage);
   const error = useWorkspaceStore((s) => s.error);
+  const setError = useWorkspaceStore((s) => s.setError);
+  const navigate = useNavigate();
   const [visibleMessage, setVisibleMessage] = useState<string | null>(null);
   const [visibleError, setVisibleError] = useState<string | null>(null);
+  const [rawError, setRawError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!message) return;
@@ -135,18 +143,45 @@ function GlobalToast() {
 
   useEffect(() => {
     if (!error) return;
-    setVisibleError(error);
-    const t = window.setTimeout(() => setVisibleError(null), 4000);
+    setRawError(error);
+    const friendly = getFriendlyErrorMessage(error);
+    setVisibleError(friendly);
+    const t = window.setTimeout(() => {
+      setVisibleError(null);
+      setRawError(null);
+      setError(null);
+    }, 6000); // Give users slightly more time to read and click if it is an error
     return () => window.clearTimeout(t);
-  }, [error]);
+  }, [error, setError]);
 
   if (!visibleMessage && !visibleError) return null;
+
+  const isLlmRequired = rawError === 'llm_config_required' || error === 'llm_config_required';
 
   return (
     <div className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[60] space-y-2 pointer-events-none">
       {visibleError && (
-        <div className="pointer-events-none px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold shadow-sm">
-          {visibleError}
+        <div 
+          onClick={() => {
+            if (isLlmRequired) {
+              navigate('/settings');
+              setError(null);
+              setVisibleError(null);
+              setRawError(null);
+            }
+          }}
+          className={`pointer-events-auto px-4 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold shadow-lg flex items-center gap-2.5 transition-all duration-200 ${
+            isLlmRequired 
+              ? 'cursor-pointer hover:bg-rose-100 hover:shadow-xl active:scale-[0.99] border-rose-300' 
+              : ''
+          }`}
+        >
+          <span>{visibleError}</span>
+          {isLlmRequired && (
+            <span className="bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm transition-all shrink-0">
+              前往设置
+            </span>
+          )}
         </div>
       )}
       {visibleMessage && (
@@ -244,14 +279,28 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
 }
 
 export function App() {
+  const checkAuth = useAuthStore((s) => s.checkAuth);
+
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
+
   return (
     <BrowserRouter>
       <RouterStateSync />
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/onboarding" element={<ProjectOnboarding />} />
-        <Route path="/projects/:projectId" element={<ProjectRouteBootstrap />}>
+        
+        {/* Guest only routes */}
+        <Route path="/login" element={<GuestGuard><Login /></GuestGuard>} />
+        <Route path="/register" element={<GuestGuard><Register /></GuestGuard>} />
+        
+        {/* Protected routes */}
+        <Route path="/home" element={<AuthGuard><Home /></AuthGuard>} />
+        <Route path="/settings" element={<AuthGuard><AccountSettings /></AuthGuard>} />
+        <Route path="/onboarding" element={<AuthGuard><ProjectOnboarding /></AuthGuard>} />
+        
+        <Route path="/projects/:projectId" element={<AuthGuard><ProjectRouteBootstrap /></AuthGuard>}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<Overview />} />
           <Route path="what" element={<WhatToDo />} />
@@ -273,11 +322,14 @@ export function App() {
           />
           <Route path="preview" element={<Preview />} />
         </Route>
-        <Route path="/overview" element={<LegacyWorkspaceRedirect page="/overview" />} />
-        <Route path="/what" element={<LegacyWorkspaceRedirect page="/what" />} />
-        <Route path="/flow" element={<LegacyWorkspaceRedirect page="/flow" />} />
-        <Route path="/scope" element={<LegacyWorkspaceRedirect page="/scope" />} />
-        <Route path="/preview" element={<LegacyWorkspaceRedirect page="/preview" />} />
+        
+        {/* Legacy redirects wrapped in AuthGuard */}
+        <Route path="/overview" element={<AuthGuard><LegacyWorkspaceRedirect page="/overview" /></AuthGuard>} />
+        <Route path="/what" element={<AuthGuard><LegacyWorkspaceRedirect page="/what" /></AuthGuard>} />
+        <Route path="/flow" element={<AuthGuard><LegacyWorkspaceRedirect page="/flow" /></AuthGuard>} />
+        <Route path="/scope" element={<AuthGuard><LegacyWorkspaceRedirect page="/scope" /></AuthGuard>} />
+        <Route path="/preview" element={<AuthGuard><LegacyWorkspaceRedirect page="/preview" /></AuthGuard>} />
+        
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
       <GlobalGenerationConflictDialog />

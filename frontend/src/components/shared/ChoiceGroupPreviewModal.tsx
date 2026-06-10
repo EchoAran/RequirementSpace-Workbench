@@ -19,11 +19,23 @@ function CandidateComparisonView({
   choices,
   draftType,
   onAccept,
+  isWorking,
 }: {
   choices: any[];
   draftType: string;
   onAccept: (choiceId: string) => void | Promise<void>;
+  isWorking: boolean;
 }) {
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+
+  const handleAcceptClick = async (choiceId: string) => {
+    setSubmittingId(choiceId);
+    try {
+      await onAccept(choiceId);
+    } finally {
+      setSubmittingId(null);
+    }
+  };
   const hasActors = choices.some(c => asArray(c.payload?.actors || c.preview?.actors).length > 0);
   const hasFeatures = choices.some(c => asArray(c.payload?.features || c.preview?.features).length > 0);
   const hasFlows = choices.some(c => asArray(c.preview?.flows || c.payload?.flows).length > 0);
@@ -326,11 +338,20 @@ function CandidateComparisonView({
                     </div>
                     <button
                       type="button"
-                      onClick={() => void onAccept(c.id)}
-                      className="inline-flex items-center justify-center gap-1 w-full py-1.5 bg-indigo-600 hover:bg-indigo-750 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm active:scale-[0.98]"
+                      disabled={isWorking}
+                      onClick={() => void handleAcceptClick(c.id)}
+                      className={`inline-flex items-center justify-center gap-1 w-full py-1.5 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm active:scale-[0.98] ${
+                        isWorking
+                          ? 'bg-slate-400 cursor-not-allowed'
+                          : 'bg-indigo-600 hover:bg-indigo-750'
+                      }`}
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      采纳此方案
+                      {isWorking && submittingId === String(c.id) ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      {isWorking && submittingId === String(c.id) ? '正在采纳...' : '采纳此方案'}
                     </button>
                   </div>
                 </th>
@@ -1047,6 +1068,7 @@ export function ChoiceGroupPreviewModal({
               choices={successfulChoices}
               draftType={draftType}
               onAccept={onAccept}
+              isWorking={isWorking}
             />
           ) : (
             activeChoice && (
@@ -1096,14 +1118,16 @@ export function ChoiceGroupPreviewModal({
               <button
                 type="button"
                 onClick={onDefer}
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors shadow-sm"
+                disabled={isWorking}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 shadow-sm"
               >
                 稍后处理
               </button>
               <button
                 type="button"
                 onClick={onDiscard}
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-red-200 bg-white text-xs font-bold text-red-600 hover:bg-red-50 transition-colors shadow-sm"
+                disabled={isWorking}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-red-200 bg-white text-xs font-bold text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 shadow-sm"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 丢弃全部方案
@@ -1128,8 +1152,12 @@ export function ChoiceGroupPreviewModal({
                   disabled={isWorking}
                   className="inline-flex items-center gap-1.5 h-10 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-750 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition-colors disabled:opacity-50 active:scale-[0.98]"
                 >
-                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                  采纳当前选中方案
+                  {isWorking ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  )}
+                  {isWorking ? '正在采纳当前方案...' : '采纳当前选中方案'}
                 </button>
               )}
             </div>

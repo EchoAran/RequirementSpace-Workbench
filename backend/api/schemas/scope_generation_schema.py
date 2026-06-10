@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class ScopeGenerationDraftCreateRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
 
 
 class GeneratedScopePreview(BaseModel):
@@ -20,12 +20,12 @@ class GeneratedScopePreview(BaseModel):
 
 class ScopeGenerationDraftResponse(BaseModel):
     draft_id: str
-    project_id: int
+    project_id: str
     scopes: list[GeneratedScopePreview]
 
 
 class ScopeGenerationConfirmResponse(BaseModel):
-    project_id: int
+    project_id: str
     scope_count: int
     message: str = "scopes_created"
 

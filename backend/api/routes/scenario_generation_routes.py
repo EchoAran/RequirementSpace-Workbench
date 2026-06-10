@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
+from backend.api.dependencies.llm import get_llm_context
+from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.schemas import DraftRegenerateRequest
 from backend.api.schemas.scenario_generation_schema import (
     ScenarioGenerationConfirmRequest,
@@ -52,11 +56,15 @@ SCENARIO_GENERATION_ERRORS = {
 )
 async def create_full_scenario_generation_draft(
     request: ScenarioGenerationFullDraftCreateRequest,
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
+    owned_project = await require_owned_project(request.project_id, user, session)
     try:
         return await scenario_generation_service.create_full_draft(
-            project_id=request.project_id,
+            project_id=owned_project.id,
+            owner_user_id=user.id,
             session=session,
         )
     except ValueError as error:
@@ -74,12 +82,16 @@ async def create_full_scenario_generation_draft(
 )
 async def create_single_scenario_generation_draft(
     request: ScenarioGenerationSingleDraftCreateRequest,
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
+    owned_project = await require_owned_project(request.project_id, user, session)
     try:
         return await scenario_generation_service.create_single_draft(
-            project_id=request.project_id,
+            project_id=owned_project.id,
             feature_id=request.feature_id,
+            owner_user_id=user.id,
             session=session,
         )
     except ValueError as error:
@@ -96,14 +108,16 @@ async def create_single_scenario_generation_draft(
     response_model=ScenarioGenerationDraftResponse,
 )
 async def regenerate_scenario_generation_draft(
-    draft_id: str,
     request: DraftRegenerateRequest | None = None,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     user_feedback = request.user_feedback if request else None
     try:
         return await scenario_generation_service.regenerate_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             session=session,
             user_feedback=user_feedback,
         )
@@ -125,9 +139,10 @@ async def regenerate_scenario_generation_draft(
     response_model=ScenarioGenerationConfirmResponse,
 )
 async def confirm_scenario_generation_draft(
-    draft_id: str,
     request: ScenarioGenerationConfirmRequest | None = Body(default=None),
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     try:
         generate_acceptance_criteria = (
@@ -137,7 +152,8 @@ async def confirm_scenario_generation_draft(
         )
 
         return await scenario_generation_service.confirm_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             session=session,
             generate_acceptance_criteria=generate_acceptance_criteria,
         )
@@ -159,8 +175,9 @@ async def confirm_scenario_generation_draft(
     response_model=ScenarioGenerationDraftDiscardResponse,
 )
 async def discard_scenario_generation_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
 ):
     return await scenario_generation_service.discard_draft(
-        draft_id=draft_id,
+        draft_id=draft.draft_id,
+        owner_user_id=draft.owner_user_id,
     )

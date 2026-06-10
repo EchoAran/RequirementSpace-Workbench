@@ -5,7 +5,7 @@ import re
 
 class ShadowPatchValidator:
     @staticmethod
-    def validate_patch(patch: dict, base_snapshot: dict, project_id: int) -> bool:
+    def validate_patch(patch: dict, base_snapshot: dict, project_id: str) -> bool:
         """
         Validates the generated shadow patch against the base snapshot of the project.
         Enforces schema constraints, temp ID uniqueness, project membership,

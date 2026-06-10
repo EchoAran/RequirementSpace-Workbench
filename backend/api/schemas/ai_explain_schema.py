@@ -11,7 +11,7 @@ class ExplainScope(BaseModel):
 
 
 class ExplainRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
     scope: ExplainScope
     question: str = Field(..., min_length=1)
 

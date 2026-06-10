@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { AppWindow, ArrowRight, Clock, Edit, Plus, Trash2, Sparkles } from 'lucide-react';
+import { useWorkspaceStore, getFriendlyErrorMessage } from '@/store/useWorkspaceStore';
+import { AppWindow, ArrowRight, Clock, Edit, Plus, Trash2, Sparkles, Settings, LogOut, User, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { buildProjectRoute } from '@/core/selectors';
 import { workspaceApi } from '@/lib/api';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function Home() {
   const {
@@ -19,6 +20,7 @@ export function Home() {
     recoverOnboardingChoiceGroup,
     discardOnboardingChoiceGroup,
   } = useWorkspaceStore();
+  const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
   const [editingProject, setEditingProject] = useState<any | null>(null);
@@ -101,7 +103,7 @@ export function Home() {
   const handleDelete = async (project: any) => {
     const ok = window.confirm(`确定删除项目“${project.name}”吗？此操作将永久清除该工作区所有建模数据。`);
     if (!ok) return;
-    await deleteProject(Number(project.id));
+    await deleteProject(project.id);
     await loadWorkspaces();
   };
 
@@ -111,10 +113,40 @@ export function Home() {
 
   return (
     <div className="flex-1 h-[100dvh] bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 relative overflow-hidden">
-      <header className="h-16 border-b border-slate-200/50 bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 sticky top-0 z-20 shadow-sm">
+      <header className="h-16 border-b border-slate-200/50 bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
           <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent">需求空间工作台</span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full text-xs font-bold text-slate-700">
+            {user?.role === 'admin' ? (
+              <Shield className="w-3.5 h-3.5 text-indigo-600" />
+            ) : (
+              <User className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            <span className="max-w-[120px] truncate">{user?.email}</span>
+          </div>
+
+          <button
+            onClick={() => navigate('/settings')}
+            className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all cursor-pointer"
+            title="账户与 LLM 设置"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={async () => {
+              await logout();
+              navigate('/login');
+            }}
+            className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-rose-600 hover:border-rose-200 shadow-sm transition-all cursor-pointer"
+            title="退出登录"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
@@ -234,8 +266,6 @@ export function Home() {
                         <Clock className="h-3.5 w-3.5" />
                         {formatRelativeTime(p.updatedAt)}
                       </div>
-                      <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                      <div>ID: {p.id}</div>
                     </div>
                   </div>
 
@@ -285,7 +315,7 @@ export function Home() {
               )}
             </div>
 
-            {error && <div className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">{error}</div>}
+            {error && <div className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">{getFriendlyErrorMessage(error)}</div>}
           </section>
         </div>
       </main>
@@ -334,7 +364,7 @@ export function Home() {
                     window.alert('项目名称不能为空');
                     return;
                   }
-                  await updateProject(Number(editingProject.id), editName.trim(), editDescription.trim());
+                  await updateProject(editingProject.id, editName.trim(), editDescription.trim());
                   setEditingProject(null);
                   await loadWorkspaces();
                 }}

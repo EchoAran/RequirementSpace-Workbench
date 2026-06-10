@@ -118,10 +118,11 @@ class AIAddSessionService:
 
     async def create_session(
         self,
-        project_id: int,
+        project_id: str,
         target_type: str,
         anchor: dict,
         session,
+        owner_user_id: int,
     ) -> dict:
         """Create a new AI add session. Validates target_type and anchor references."""
         from backend.database.model import AIAddSessionModel, ProjectModel
@@ -130,19 +131,23 @@ class AIAddSessionService:
         if not self._strategy_registry.has_type(target_type):
             raise ValueError(f"unsupported_target_type: {target_type}")
 
-        # Validate project exists
+        # Validate project exists and is owned by the user
         project_result = await session.execute(
-            select(ProjectModel).where(ProjectModel.id == project_id)
+            select(ProjectModel).where(
+                ProjectModel.public_id == project_id,
+                ProjectModel.owner_user_id == owner_user_id,
+            )
         )
-        if project_result.scalar_one_or_none() is None:
+        project = project_result.scalar_one_or_none()
+        if project is None:
             raise ValueError("project_not_found")
 
         # Validate anchor references exist
-        await self._validate_anchor_references(project_id, target_type, anchor, session)
+        await self._validate_anchor_references(project.id, target_type, anchor, session)
 
         # Create session
         db_session = AIAddSessionModel(
-            project_id=project_id,
+            project_id=project.id,
             target_type=target_type,
             anchor_payload=anchor,
             status="active",
@@ -153,12 +158,12 @@ class AIAddSessionService:
 
         logger.info(
             "AI add session created  session_id=%s  project_id=%s  target_type=%s",
-            db_session.id, project_id, target_type,
+            db_session.id, project.public_id, target_type,
         )
 
         return {
             "session_id": db_session.id,
-            "project_id": db_session.project_id,
+            "project_id": project.public_id,
             "target_type": db_session.target_type,
             "anchor_payload": db_session.anchor_payload,
             "status": db_session.status,
@@ -168,13 +173,17 @@ class AIAddSessionService:
 
     async def get_session(self, session_id: int, session) -> dict:
         """Get session details by ID."""
-        from backend.database.model import AIAddSessionModel
+        from backend.database.model import AIAddSessionModel, ProjectModel
 
         db_session = await self._get_session_or_raise(session_id, session)
 
+        project_public_id = (await session.execute(
+            select(ProjectModel.public_id).where(ProjectModel.id == db_session.project_id)
+        )).scalar_one()
+
         return {
             "session_id": db_session.id,
-            "project_id": db_session.project_id,
+            "project_id": project_public_id,
             "target_type": db_session.target_type,
             "anchor_payload": db_session.anchor_payload,
             "status": db_session.status,
@@ -308,7 +317,7 @@ class AIAddSessionService:
             return self._edit_generator_registry.get(target_type)
         return self._generator_registry.get(target_type)
 
-    async def generate_draft(self, session_id: int, db_session) -> dict:
+    async def generate_draft(self, session_id: int, db_session, owner_user_id: int) -> dict:
         """Generate a draft — dispatches to add or edit path based on target_type."""
         from backend.database.model import AIAddSessionModel, ProjectModel
         from backend.api.services.draft_store import GenerativeDraftStore
@@ -336,13 +345,13 @@ class AIAddSessionService:
 
         if ai_session.target_type.startswith("edit_"):
             return await self._generate_edit_draft(
-                ai_session, project, db_session,
+                ai_session, project, owner_user_id, db_session,
             )
         return await self._generate_add_draft(
-            ai_session, project, db_session,
+            ai_session, project, owner_user_id, db_session,
         )
 
-    async def _generate_add_draft(self, ai_session, project, db_session) -> dict:
+    async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
         """Generate an add-mode draft (original Phase 2 logic)."""
         from backend.api.services.draft_store import GenerativeDraftStore
 
@@ -381,6 +390,7 @@ class AIAddSessionService:
                 "preview": preview,
                 "rationale": raw_result.get("rationale", ""),
             },
+            owner_user_id=owner_user_id,
             session=db_session,
         )
 
@@ -388,12 +398,12 @@ class AIAddSessionService:
         await db_session.flush()
 
         return {
-            "draft_id": draft_id, "project_id": ai_session.project_id,
+            "draft_id": draft_id, "project_id": project.public_id,
             "target_type": ai_session.target_type, "preview": preview,
             "message": "draft_created",
         }
 
-    async def _generate_edit_draft(self, ai_session, project, db_session) -> dict:
+    async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
         """Generate an edit-mode draft: load original object, call EditGenerator, validate diff."""
         from backend.api.services.draft_store import GenerativeDraftStore
         from backend.core.generators.single_object.base_edit_generator import EditGeneratorInput
@@ -455,6 +465,7 @@ class AIAddSessionService:
                 "preview": preview,
                 "rationale": rationale,
             },
+            owner_user_id=owner_user_id,
             session=db_session,
         )
 
@@ -462,24 +473,16 @@ class AIAddSessionService:
         await db_session.flush()
 
         return {
-            "draft_id": draft_id, "project_id": ai_session.project_id,
+            "draft_id": draft_id, "project_id": project.public_id,
             "target_type": ai_session.target_type, "preview": preview,
             "message": "draft_created",
         }
 
-        return {
-            "draft_id": draft_id,
-            "project_id": ai_session.project_id,
-            "target_type": ai_session.target_type,
-            "preview": preview,
-            "message": "draft_created",
-        }
-
-    async def confirm_draft(self, draft_id: str, db_session) -> dict:
+    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int) -> dict:
         """Confirm a draft — dispatches to add or edit path based on target_type."""
         from backend.api.services.draft_store import GenerativeDraftStore
 
-        draft = await GenerativeDraftStore.get_draft(draft_id, db_session)
+        draft = await GenerativeDraftStore.get_draft(draft_id, owner_user_id, db_session)
         target_type = draft.get("target_type", "")
         project_id = draft.get("project_id")
         session_id = draft.get("session_id")
@@ -503,7 +506,7 @@ class AIAddSessionService:
             ai_session.closed_at = _beijing_now()
             await db_session.flush()
 
-        await GenerativeDraftStore.delete_draft(draft_id, db_session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
 
         logger.info(
             "AI draft confirmed  draft_id=%s  target_type=%s  project_id=%s  created_id=%s",
@@ -516,12 +519,12 @@ class AIAddSessionService:
             "created_object_id": created_id,
         }
 
-    async def discard_draft(self, draft_id: str, db_session) -> dict:
+    async def discard_draft(self, draft_id: str, db_session, owner_user_id: int) -> dict:
         """Discard a draft without persisting."""
         from backend.api.services.draft_store import GenerativeDraftStore
 
         try:
-            draft = await GenerativeDraftStore.get_draft(draft_id, db_session)
+            draft = await GenerativeDraftStore.get_draft(draft_id, owner_user_id, db_session)
             session_id = draft.get("session_id")
             if session_id:
                 ai_session = await self._get_session_or_raise(session_id, db_session)
@@ -532,7 +535,7 @@ class AIAddSessionService:
         except ValueError:
             pass
 
-        await GenerativeDraftStore.delete_draft(draft_id, db_session)
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
 
         logger.info("AI add draft discarded  draft_id=%s", draft_id)
 

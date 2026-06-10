@@ -1,3 +1,5 @@
+from backend.api.dependencies.ownership import require_owned_project
+from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,14 +21,16 @@ actor_service = ActorService()
 
 @router.get("", response_model=list[ActorResponse])
 async def list_actors(
-    project_id: int,
+    project_id: str,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await actor_service.get_actors(
-            project_id=project_id,
+            project_id=owned_project.id,
             session=session,
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -36,13 +40,13 @@ async def list_actors(
 
 @router.post("", response_model=ActorResponse)
 async def create_actor(
-    project_id: int,
+    project_id: str,
     request: ActorCreateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await actor_service.create_actor(
-            project_id=project_id,
+            project_id=owned_project.id,
             req=request,
             session=session,
         )
@@ -51,6 +55,8 @@ async def create_actor(
             status_code=400,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -60,14 +66,14 @@ async def create_actor(
 
 @router.put("/{actor_id}", response_model=ActorResponse)
 async def update_actor(
-    project_id: int,
+    project_id: str,
     actor_id: int,
     request: ActorUpdateRequest,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await actor_service.update_actor(
-            project_id=project_id,
+            project_id=owned_project.id,
             actor_id=actor_id,
             req=request,
             session=session,
@@ -78,6 +84,8 @@ async def update_actor(
             status_code=status,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -87,13 +95,13 @@ async def update_actor(
 
 @router.delete("/{actor_id}")
 async def delete_actor(
-    project_id: int,
+    project_id: str,
     actor_id: int,
     session: AsyncSession = Depends(get_session),
-):
+ owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         return await actor_service.delete_actor(
-            project_id=project_id,
+            project_id=owned_project.id,
             actor_id=actor_id,
             session=session,
         )
@@ -102,6 +110,8 @@ async def delete_actor(
             status_code=404,
             detail=str(error),
         )
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=500,

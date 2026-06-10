@@ -3,6 +3,10 @@
 允许前端通过 node_kind + node_id 任意修改任一节点的 confirmation_status。
 支持单节点更新和批量更新，每次变更自动记录审计日志。
 """
+from backend.api.dependencies.ownership import require_owned_project
+
+from backend.database.model import ProjectModel
+
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -137,16 +141,17 @@ async def _write_audit_log(
 
 @router.patch("")
 async def update_node_status(
-    project_id: int,
+    project_id: str,
     req: UpdateNodeStatusRequest,
     session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_owned_project)
 ):
     model_class = NODE_KIND_MODEL_MAP.get(req.node_kind)
     if not model_class:
         raise HTTPException(status_code=400, detail=f"Unknown node_kind: {req.node_kind}")
 
     result = await _apply_status_update(
-        model_class, project_id, req.node_id, req.confirmation_status.value, session,
+        model_class, owned_project.id, req.node_id, req.confirmation_status.value, session,
     )
     if result is None:
         raise HTTPException(
@@ -157,7 +162,7 @@ async def update_node_status(
     # 记录审计日志（跳过无变更的情况）
     if not result.get("skipped"):
         await _write_audit_log(
-            project_id, req.node_kind, req.node_id,
+            owned_project.id, req.node_kind, req.node_id,
             result["old_status"], result["new_status"], session,
         )
 
@@ -167,9 +172,10 @@ async def update_node_status(
 
 @router.patch("/batch")
 async def batch_update_node_status(
-    project_id: int,
+    project_id: str,
     req: BatchUpdateNodeStatusRequest,
     session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_owned_project)
 ):
     """批量更新一组节点的确认状态为统一值。"""
     results = []
@@ -183,7 +189,7 @@ async def batch_update_node_status(
             continue
 
         result = await _apply_status_update(
-            model_class, project_id, node_req.node_id,
+            model_class, owned_project.id, node_req.node_id,
             req.confirmation_status.value, session,
         )
         if result is None:
@@ -192,7 +198,7 @@ async def batch_update_node_status(
 
         if not result.get("skipped"):
             await _write_audit_log(
-                project_id, kind, node_req.node_id,
+                owned_project.id, kind, node_req.node_id,
                 result["old_status"], result["new_status"], session,
             )
             results.append({"node_kind": kind, "node_id": node_req.node_id, "status": "updated"})

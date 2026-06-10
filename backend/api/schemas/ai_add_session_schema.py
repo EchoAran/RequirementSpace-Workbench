@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class AIAddSessionCreateRequest(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: str
     target_type: str = Field(..., min_length=1, max_length=50)
     anchor: dict = Field(default_factory=dict)
 
@@ -23,7 +23,7 @@ class AIAddMessageResponse(BaseModel):
 
 class AIAddSessionResponse(BaseModel):
     session_id: int
-    project_id: int
+    project_id: str
     target_type: str
     anchor_payload: dict
     status: str
@@ -54,7 +54,7 @@ class AIAddSessionMessagesResponse(BaseModel):
 
 class AIAddGenerateDraftResponse(BaseModel):
     draft_id: str
-    project_id: int
+    project_id: str
     target_type: str
     preview: dict = Field(default_factory=dict)
     message: str = "draft_created"

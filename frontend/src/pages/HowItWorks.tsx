@@ -1702,7 +1702,7 @@ export function HowItWorks() {
       <AIAddObjectDialog
         isOpen={isAIDialogOpen}
         onClose={() => setAiDialogTarget(null)}
-        projectId={ir?.projectId ?? 0}
+        projectId={ir?.projectId ?? ''}
         targetType={aiDialogTarget?.targetType ?? 'actor'}
         anchor={aiDialogTarget?.anchor}
         onConfirm={async () => {

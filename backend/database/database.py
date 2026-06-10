@@ -20,35 +20,37 @@ except ImportError:
 import os
 import urllib.parse
 
-raw_db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
+from backend.core.config import DATABASE_URL as raw_db_url
 
 if raw_db_url.startswith("postgresql://") or raw_db_url.startswith("postgres://"):
     # Translate scheme to postgresql+asyncpg
     scheme = "postgresql+asyncpg"
     rest = raw_db_url.split("://", 1)[1]
-    
+
     # Automatically strip '-pooler' from Neon connection strings to avoid transaction pooler errors on Alembic migrations
     if "-pooler" in rest:
         rest = rest.replace("-pooler", "")
         print(">>> [DATABASE CONNECTION] Automatically stripped '-pooler' from Neon host to bypass Transaction Pooling migration limits.", flush=True)
-        
+
     # Use dummy scheme http to let urlparse extract netloc correctly
     parsed = urllib.parse.urlparse(f"http://{rest}")
-    
+
     # Strip 'sslmode' and 'channel_binding' as asyncpg does not support them and throws TypeError
     query_params = urllib.parse.parse_qs(parsed.query)
     query_params.pop("sslmode", None)
     query_params.pop("channel_binding", None)
     new_query = urllib.parse.urlencode(query_params, doseq=True)
-    
+
     DATABASE_URL = f"{scheme}://{parsed.netloc}{parsed.path}"
     if new_query:
         DATABASE_URL += f"?{new_query}"
-        
+
     engine: AsyncEngine = create_async_engine(
         DATABASE_URL,
         echo=False,
         future=True,
+        pool_pre_ping=True,
+        pool_recycle=300,
         connect_args={"ssl": True, "timeout": 5}
     )
 else:
@@ -57,6 +59,7 @@ else:
         DATABASE_URL,
         echo=False,
         future=True,
+        pool_pre_ping=True,
     )
 
 
@@ -94,7 +97,7 @@ def run_upgrade() -> None:
     db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
     if "-pooler" in db_url:
         db_url = db_url.replace("-pooler", "")
-        
+
     # Strip 'sslmode' and 'channel_binding' query parameters as psycopg2 does not support them
     if "?" in db_url:
         import urllib.parse
@@ -104,7 +107,7 @@ def run_upgrade() -> None:
         params.pop("channel_binding", None)
         new_query = urllib.parse.urlencode(params, doseq=True)
         db_url = f"{base_part}?{new_query}" if new_query else base_part
-        
+
     # Inspect and print existing tables for debugging migrations
     print(">>> [DATABASE UPGRADE] Inspecting database tables...", flush=True)
     try:
@@ -117,7 +120,7 @@ def run_upgrade() -> None:
         temp_engine.dispose()
     except Exception as ex:
         print(f">>> [DATABASE UPGRADE] Failed to inspect database tables: {str(ex)}", flush=True)
-    
+
     # Obfuscate password in URL for safe logging
     safe_url = db_url
     if "@" in db_url:
@@ -150,7 +153,7 @@ def run_upgrade() -> None:
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
-    
+
     # Convert async engine URL to sync engine URL for Alembic sync migrations
     if db_url.startswith("sqlite+aiosqlite://"):
         alembic_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
@@ -162,9 +165,9 @@ def run_upgrade() -> None:
         alembic_url = db_url.replace("postgres://", "postgresql://")
     else:
         alembic_url = db_url
-        
+
     alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
-    
+
     safe_alembic_url = alembic_url
     if "@" in alembic_url:
         try:
@@ -226,9 +229,109 @@ def run_upgrade() -> None:
             print(f">>> [DATABASE UPGRADE] SQLite data migration failed (non-fatal): {str(ex)}", flush=True)
 
 
-async def init_db() -> None:
+def run_stamp_head() -> None:
+    """Stamp Alembic to head to mark schema as up to date after metadata create_all."""
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic import command
+
+    print(">>> [DATABASE BOOTSTRAP] Stamping Alembic to head...", flush=True)
+    base_dir = Path(__file__).resolve().parents[2]
+    db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
+    if "-pooler" in db_url:
+        db_url = db_url.replace("-pooler", "")
+
+    if "?" in db_url:
+        import urllib.parse
+        base_part, query_part = db_url.split("?", 1)
+        params = urllib.parse.parse_qs(query_part)
+        params.pop("sslmode", None)
+        params.pop("channel_binding", None)
+        new_query = urllib.parse.urlencode(params, doseq=True)
+        db_url = f"{base_part}?{new_query}" if new_query else base_part
+
+    alembic_ini_path = base_dir / "alembic.ini"
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
+
+    if db_url.startswith("sqlite+aiosqlite://"):
+        alembic_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
+    elif db_url.startswith("postgresql+asyncpg://"):
+        alembic_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    elif db_url.startswith("postgresql://"):
+        alembic_url = db_url
+    elif db_url.startswith("postgres://"):
+        alembic_url = db_url.replace("postgres://", "postgresql://")
+    else:
+        alembic_url = db_url
+
+    alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
+
+    try:
+        command.stamp(alembic_cfg, "head")
+        print(">>> [DATABASE BOOTSTRAP] Alembic stamped to head successfully.", flush=True)
+    except Exception as e:
+        print(f">>> [DATABASE BOOTSTRAP] Alembic stamp failed: {str(e)}", flush=True)
+        raise e
+
+
+async def bootstrap_db() -> None:
+    """Bootstrap database schema directly from metadata."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # Stamp Alembic to head to mark database as migrated (makes future runs idempotent)
     import asyncio
-    await asyncio.to_thread(run_upgrade)
+    await asyncio.to_thread(run_stamp_head)
+
+
+async def init_db() -> None:
+    """Initialize database: bootstrap from metadata if database is completely empty.
+    If database contains existing tables but lacks 'users', raise an error to prevent partial schema generation."""
+    project_columns = []
+    try:
+        async with engine.connect() as conn:
+            def inspect_db(sync_conn):
+                from sqlalchemy import inspect
+                inspector = inspect(sync_conn)
+                tables = inspector.get_table_names()
+                columns = []
+                if "projects" in tables:
+                    columns = [c["name"] for c in inspector.get_columns("projects")]
+                return tables, columns
+            tables, project_columns = await conn.run_sync(inspect_db)
+    except Exception as e:
+        print(f">>> [DATABASE INIT] Failed to inspect database tables: {str(e)}. Attempting migrations directly.", flush=True)
+        tables = ["users"]  # Fallback to assume it's already initialized
+        project_columns = ["public_id"]
+
+    # Exclude alembic_version from checking if it exists
+    non_alembic_tables = [t for t in tables if t != "alembic_version"]
+
+    if not non_alembic_tables:
+        print(">>> [DATABASE INIT] Database is empty. Bootstrapping database schema from metadata...", flush=True)
+        await bootstrap_db()
+        print(">>> [DATABASE INIT] Database bootstrapping completed successfully.", flush=True)
+    elif "projects" in non_alembic_tables and "public_id" not in project_columns:
+        raise ValueError(
+            "CRITICAL DATABASE ERROR: The database 'projects' table is missing the 'public_id' column. "
+            "To support project public identifier and URL improvement, you must reset the database.\n"
+            "Please delete the database file ('requirement_space.db', 'requirement_space.db-wal', 'requirement_space.db-shm') "
+            "or recreate your PostgreSQL schema, then restart the application."
+        )
+    elif "users" not in non_alembic_tables:
+        # Database contains old tables, but users table is missing
+        raise ValueError(
+            "CRITICAL DATABASE ERROR: The database contains existing tables from a legacy version, "
+            "but the 'users' table is missing. Because P0 introduces non-nullable owner constraints, "
+            "rebuilding the schema requires a fresh database.\n"
+            "Please delete the database file ('requirement_space.db', 'requirement_space.db-wal', 'requirement_space.db-shm') "
+            "or recreate your PostgreSQL schema, then restart the application."
+        )
+    else:
+        print(">>> [DATABASE INIT] Database already bootstrapped (found 'users' table). Checking migrations...", flush=True)
+        import asyncio
+        await asyncio.to_thread(run_upgrade)
 
 
 async def drop_db() -> None:

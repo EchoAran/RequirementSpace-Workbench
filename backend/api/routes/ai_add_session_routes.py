@@ -1,8 +1,9 @@
-"""API routes for AI-powered conversational single-object addition."""
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_ai_add_session, require_owned_generative_draft
+from backend.database.model import UserModel, AIAddSessionModel, GenerativeDraftModel
 from backend.api.schemas.ai_add_session_schema import (
     AIAddSessionCreateRequest,
     AIAddSessionResponse,
@@ -17,6 +18,7 @@ from backend.api.schemas.ai_add_session_schema import (
 )
 from backend.api.services.ai_add_session_service import AIAddSessionService
 from backend.database.database import get_session
+from backend.api.dependencies.llm import get_llm_context
 
 router = APIRouter(
     prefix="/api/ai_add_sessions",
@@ -76,6 +78,7 @@ def _is_known_error(error_str: str) -> bool:
 @router.post("", response_model=AIAddSessionResponse)
 async def create_ai_add_session(
     request: AIAddSessionCreateRequest,
+    user: UserModel = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
 ):
     """Create a new AI add session for a given target_type (actor, feature_leaf, etc.)."""
@@ -85,10 +88,13 @@ async def create_ai_add_session(
             project_id=request.project_id,
             target_type=request.target_type,
             anchor=request.anchor,
+            owner_user_id=user.id,
             session=db_session,
         )
     except ValueError as error:
         error_str = str(error)
+        if error_str == "project_not_found" or error_str.startswith("project_not_found:"):
+            raise HTTPException(status_code=404, detail="project_not_found")
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise
@@ -96,14 +102,14 @@ async def create_ai_add_session(
 
 @router.get("/{session_id}", response_model=AIAddSessionResponse)
 async def get_ai_add_session(
-    session_id: int,
+    ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
 ):
     """Get session details by ID."""
     try:
         service = _get_service()
         return await service.get_session(
-            session_id=session_id,
+            session_id=ai_session.id,
             session=db_session,
         )
     except ValueError as error:
@@ -114,17 +120,17 @@ async def get_ai_add_session(
 
 @router.get("/{session_id}/messages", response_model=AIAddSessionMessagesResponse)
 async def get_ai_add_session_messages(
-    session_id: int,
+    ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
 ):
     """Get all messages for a session."""
     try:
         service = _get_service()
         messages = await service.get_session_messages(
-            session_id=session_id,
+            session_id=ai_session.id,
             session=db_session,
         )
-        return {"session_id": session_id, "messages": messages}
+        return {"session_id": ai_session.id, "messages": messages}
     except ValueError as error:
         if str(error) == "session_not_found":
             raise HTTPException(status_code=404, detail="session_not_found")
@@ -133,15 +139,16 @@ async def get_ai_add_session_messages(
 
 @router.post("/{session_id}/messages", response_model=AIAddMessageResponse)
 async def send_ai_add_message(
-    session_id: int,
     request: AIAddMessageRequest,
+    ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     """Send a user message in an AI add session and get the assistant's reply."""
     try:
         service = _get_service()
         return await service.append_user_message(
-            session_id=session_id,
+            session_id=ai_session.id,
             content=request.content,
             db_session=db_session,
         )
@@ -156,14 +163,17 @@ async def send_ai_add_message(
 
 @router.post("/{session_id}/generate_draft", response_model=AIAddGenerateDraftResponse)
 async def generate_ai_add_draft(
-    session_id: int,
+    user: UserModel = Depends(get_current_user),
+    ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
 ):
     """Generate a draft from the interview summary (when session is ready)."""
     try:
         service = _get_service()
         return await service.generate_draft(
-            session_id=session_id,
+            session_id=ai_session.id,
+            owner_user_id=user.id,
             db_session=db_session,
         )
     except ValueError as error:
@@ -186,14 +196,15 @@ draft_router = APIRouter(
 
 @draft_router.post("/{draft_id}/confirm", response_model=AIAddConfirmDraftResponse)
 async def confirm_ai_add_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     db_session: AsyncSession = Depends(get_session),
 ):
     """Confirm and persist a generated draft."""
     try:
         service = _get_service()
         return await service.confirm_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             db_session=db_session,
         )
     except ValueError as error:
@@ -207,14 +218,15 @@ async def confirm_ai_add_draft(
 
 @draft_router.delete("/{draft_id}", response_model=AIAddDiscardDraftResponse)
 async def discard_ai_add_draft(
-    draft_id: str,
+    draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     db_session: AsyncSession = Depends(get_session),
 ):
     """Discard a draft without persisting it."""
     try:
         service = _get_service()
         return await service.discard_draft(
-            draft_id=draft_id,
+            draft_id=draft.draft_id,
+            owner_user_id=draft.owner_user_id,
             db_session=db_session,
         )
     except ValueError as error:

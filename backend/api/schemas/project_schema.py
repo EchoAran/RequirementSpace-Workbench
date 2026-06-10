@@ -17,7 +17,7 @@ class ConfirmationStatusEnum(str, Enum):
 
 class ProjectListItemResponse(CamelModel):
     id: str
-    project_id: int
+    project_id: str
     name: str
     idea: str
     description: str
@@ -28,12 +28,12 @@ class ProjectListItemResponse(CamelModel):
     node_count: int
 
 class ProjectDeleteResponse(CamelModel):
-    project_id: int
+    project_id: str
     message: str = "project_deleted"
 
 
 class PerceptionSlotDeleteResponse(CamelModel):
-    project_id: int
+    project_id: str
     message: str = "perception_slot_deleted"
 
 class ProjectUpdateRequest(CamelModel):
@@ -41,7 +41,7 @@ class ProjectUpdateRequest(CamelModel):
     description: str
 
 class ProjectUpdateResponse(CamelModel):
-    project_id: int
+    project_id: str
     name: str
     description: str
     message: str = "project_updated"
@@ -142,7 +142,7 @@ class FlowDetail(CamelModel):
 
 class ProjectDetailResponse(CamelModel):
     kind: str = "requirement_space"
-    project_id: int
+    project_id: str
     project_name: str
     project_description: str
     user_requirements: str

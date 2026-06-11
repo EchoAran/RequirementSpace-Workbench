@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, Response, Cookie
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.config import AUTH_COOKIE_SECURE, AUTH_SESSION_EXPIRE_DAYS
+from backend.core.config import (
+    AUTH_COOKIE_SECURE,
+    AUTH_SESSION_EXPIRE_DAYS,
+    AUTH_COOKIE_SAMESITE,
+    AUTH_COOKIE_DOMAIN,
+)
 from backend.database.database import get_session
 from backend.database.model import UserModel
 from backend.api.schemas.auth_schema import RegisterRequest, LoginRequest, UserResponse
@@ -12,14 +17,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def set_session_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key="auth_session",
-        value=token,
-        httponly=True,
-        secure=AUTH_COOKIE_SECURE,
-        samesite="lax",
-        max_age=AUTH_SESSION_EXPIRE_DAYS * 24 * 3600
-    )
+    cookie_kwargs = {
+        "key": "auth_session",
+        "value": token,
+        "httponly": True,
+        "secure": AUTH_COOKIE_SECURE,
+        "samesite": AUTH_COOKIE_SAMESITE,
+        "max_age": AUTH_SESSION_EXPIRE_DAYS * 24 * 3600
+    }
+    if AUTH_COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = AUTH_COOKIE_DOMAIN
+    response.set_cookie(**cookie_kwargs)
 
 
 @router.post("/register", response_model=UserResponse)
@@ -54,12 +62,15 @@ async def logout(
 ):
     if auth_session:
         await AuthService.revoke_session(auth_session, session)
-    response.delete_cookie(
-        key="auth_session",
-        httponly=True,
-        secure=AUTH_COOKIE_SECURE,
-        samesite="lax"
-    )
+    cookie_kwargs = {
+        "key": "auth_session",
+        "httponly": True,
+        "secure": AUTH_COOKIE_SECURE,
+        "samesite": AUTH_COOKIE_SAMESITE
+    }
+    if AUTH_COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = AUTH_COOKIE_DOMAIN
+    response.delete_cookie(**cookie_kwargs)
     return {"status": "success", "message": "logged_out"}
 
 

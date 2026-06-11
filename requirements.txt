@@ -1,15 +1,14 @@
-# Backend runtime
+# Web runtime
 fastapi==0.136.1
 uvicorn[standard]==0.47.0
 pydantic==2.13.4
 
-# Database and migrations
+# Database
 SQLAlchemy==2.0.49
 aiosqlite==0.22.1
 alembic==1.18.4
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
-
 
 # LLM and HTTP clients
 httpx==0.28.1
@@ -23,9 +22,9 @@ inflection==0.5.1
 # Chart rendering (Kano analysis)
 matplotlib==3.9.4
 
-# Windows zoneinfo support (used implicitly by zoneinfo.ZoneInfo)
+# Windows zoneinfo support
 tzdata
 
-# Security and encryption (Added in P0)
+# Authentication and encryption
 argon2-cffi==23.1.0
 cryptography==44.0.0

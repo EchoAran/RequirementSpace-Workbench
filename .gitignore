@@ -22,6 +22,7 @@ __pycache__/
 htmlcov/
 .coverage
 .coverage.*
+coverage.xml
 build/
 dist/
 *.egg-info/
@@ -29,11 +30,12 @@ dist/
 
 # Local SQLite runtime data
 requirement_space.db
+*.db
+*.db-shm
+*.db-wal
 *.db-journal
 *.sqlite
 *.sqlite3
-requirement_space.db-shm
-requirement_space.db-wal
 
 # Frontend dependencies and generated output
 node_modules/
@@ -59,8 +61,6 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# dev documents
-docs/
 
-# test
-pytest.ini
+# develop a document
+docs/

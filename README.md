@@ -170,6 +170,8 @@ npm run dev
 | `ADMIN_INVITE_CODE_HASH` | 否 | 管理员邀请码的 Argon2 哈希；为空时不能注册管理员 |
 | `AUTH_SESSION_EXPIRE_DAYS` | 否 | Session 有效天数，默认 30 |
 | `AUTH_COOKIE_SECURE` | 生产必需 | 生产环境必须为 `true`，并配合 HTTPS |
+| `AUTH_COOKIE_SAMESITE` | 否 | Cookie 的 SameSite 属性，默认 `lax`，跨域部署时需设为 `none` |
+| `AUTH_COOKIE_DOMAIN` | 否 | Cookie 作用域名限制，默认无限制 |
 | `ALLOWED_ORIGINS` | 是 | 允许携带 Cookie 的前端来源，逗号分隔 |
 | `LLM_API_URL` | 管理员 AI 必需 | 管理员使用的 OpenAI 兼容服务根地址，不含 `/v1/chat/completions` |
 | `LLM_API_KEY` | 管理员 AI 必需 | 管理员使用的服务器 API Key |
@@ -210,7 +212,15 @@ Remove-Item requirement_space.db, requirement_space.db-wal, requirement_space.db
 
 通过 `DATABASE_URL` 配置连接。全新部署应使用空数据库或空 schema，启动时会创建完整结构并标记 Alembic 版本。
 
-重置生产数据库属于破坏性操作，执行前必须备份，并确认所有应用实例已经停止。
+重置生产数据库属于破坏性操作，执行前必须备份，并确认所有应用实例已经停止。在云端 PostgreSQL 数据库（如 Neon）中，可以通过重建 `public` 架构（Schema）来进行快速重置：
+
+```sql
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO public;
+```
+
+重置完成后重新启动应用，系统检测到空数据库将自动创建最新版本的完整表结构。
 
 ## 安全配置
 

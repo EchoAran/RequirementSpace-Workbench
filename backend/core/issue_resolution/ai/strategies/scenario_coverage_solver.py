@@ -10,11 +10,11 @@ import json
 
 from sqlalchemy import select
 
-from backend.core.detectors.issue_solvers.ai_issue_solver import (
+from backend.core.issue_resolution.ai.base_ai_solver import (
     BaseIssueAISolver,
     RepairResult,
 )
-from backend.core.detectors.issue_solvers.prompts.scenario_coverage_repair_prompt import (
+from backend.core.issue_resolution.ai.prompts.scenario_coverage_repair_prompt import (
     SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
 )

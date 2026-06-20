@@ -12,11 +12,13 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
         self,
         project_id: int,
         session,
+        public_project_id: str | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
         )
+        pub_id = public_project_id or str(project_id)
 
         if not context.actors:
             return NextSuggestion(
@@ -29,7 +31,7 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
                     "draft_type": "actor_generation",
                     "endpoint": "/api/actor_generation_drafts",
                     "payload": {
-                        "project_id": project_id,
+                        "project_id": pub_id,
                     },
                 },
             )
@@ -45,7 +47,7 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
                     "draft_type": "feature_generation",
                     "endpoint": "/api/feature_generation_drafts",
                     "payload": {
-                        "project_id": project_id,
+                        "project_id": pub_id,
                     },
                 },
             )
@@ -66,7 +68,7 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
                 },
                 action={
                     "kind": "open_panel",
-                    "route": f"/projects/{project_id}/what",
+                    "route": f"/projects/{pub_id}/what",
                     "panel": "feature",
                     "payload": {
                         "feature_id": first_bad.feature_id,
@@ -85,7 +87,24 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
                     "draft_type": "scenario_generation",
                     "endpoint": "/api/scenario_generation_drafts/full",
                     "payload": {
-                        "project_id": project_id,
+                        "project_id": pub_id,
+                    },
+                },
+            )
+        # Check if scenarios exist but total AC count is 0
+        total_ac = sum(s.acceptance_criteria_count for s in context.scenarios)
+        if total_ac == 0:
+            return NextSuggestion(
+                sourceType="generator",
+                code="GENERATE_ACCEPTANCE_CRITERIA",
+                title="生成验收标准",
+                description="典型成功场景已生成，建议补充对应的验收标准。",
+                action={
+                    "kind": "create_draft",
+                    "draft_type": "acceptance_criteria_generation",
+                    "endpoint": "/api/acceptance_criteria_generation_drafts/full",
+                    "payload": {
+                        "project_id": pub_id,
                     },
                 },
             )
@@ -99,6 +118,6 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
             description="What 阶段已有基础内容，可以继续梳理流程与业务对象。",
             action={
                 "kind": "navigate",
-                "route": f"/projects/{project_id}/how",
+                "route": f"/projects/{pub_id}/how",
             },
         )

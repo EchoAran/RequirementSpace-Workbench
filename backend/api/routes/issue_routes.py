@@ -1,14 +1,11 @@
 from backend.api.dependencies.ownership import require_owned_project
 from backend.database.model import ProjectModel
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.schemas.issue_schema import (
     IssueResolutionResponse,
     IssueResolveRequest,
-    IssueStatusUpdateRequest,
-    IssueStatusUpdateResponse,
-    ProjectIssuesResponse,
 )
 from backend.api.services.issue_service import IssueService
 from backend.database.database import get_session
@@ -61,35 +58,6 @@ ISSUE_ERRORS = {
 }
 
 
-@router.get(
-    "",
-    response_model=ProjectIssuesResponse,
-)
-async def list_project_issues(
-    project_id: str,
-    stage: str = Query(pattern="^(what|how|scope|preview)$"),
-    session: AsyncSession = Depends(get_session),
- owned_project: ProjectModel = Depends(require_owned_project)):
-    try:
-        return await issue_service.list_issues(
-            project_id=owned_project.id,
-            stage=stage,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        if str(error) in ISSUE_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
-            )
-        raise
-
-
 @router.post(
     "/resolve",
     response_model=IssueResolutionResponse,
@@ -101,7 +69,7 @@ async def resolve_project_issue(
     llm_ctx=Depends(get_llm_context),
  owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        return await issue_service.resolve_issue(
+        res = await issue_service.resolve_issue(
             project_id=owned_project.id,
             issue_id=request.issue_id,
             issue_code=request.issue_code,
@@ -114,36 +82,21 @@ async def resolve_project_issue(
             metadata=request.metadata,
             session=session,
         )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        if str(error) in ISSUE_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
-            )
-        raise
-
-
-@router.put(
-    "/status",
-    response_model=IssueStatusUpdateResponse,
-)
-async def update_project_issue_status(
-    project_id: str,
-    request: IssueStatusUpdateRequest,
-    session: AsyncSession = Depends(get_session),
- owned_project: ProjectModel = Depends(require_owned_project)):
-    try:
-        return await issue_service.set_issue_status(
-            project_id=owned_project.id,
-            issue_id=request.issue_id,
-            status=request.status,
-            session=session,
-        )
+        res["project_id"] = owned_project.public_id
+        if "action" in res and isinstance(res["action"], dict):
+            act = res["action"]
+            if "route" in act and isinstance(act["route"], str):
+                act["route"] = act["route"].replace(f"/projects/{owned_project.id}", f"/projects/{owned_project.public_id}")
+            if "payload" in act and isinstance(act["payload"], dict):
+                if act["payload"].get("project_id") == owned_project.id:
+                    act["payload"]["project_id"] = owned_project.public_id
+                if "draft" in act["payload"] and isinstance(act["payload"]["draft"], dict):
+                    if act["payload"]["draft"].get("project_id") == owned_project.id:
+                        act["payload"]["draft"]["project_id"] = owned_project.public_id
+        if "draft" in res and isinstance(res["draft"], dict):
+            if res["draft"].get("project_id") == owned_project.id:
+                res["draft"]["project_id"] = owned_project.public_id
+        return res
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(

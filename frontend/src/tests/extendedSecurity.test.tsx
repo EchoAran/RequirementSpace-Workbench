@@ -36,7 +36,6 @@ vi.mock('../lib/api', () => {
       delete: vi.fn(),
       updateProject: vi.fn(),
       listChoiceGroups: vi.fn(),
-      listIssues: vi.fn(),
     }
   };
 });

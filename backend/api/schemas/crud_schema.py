@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ==========================================
@@ -15,13 +15,12 @@ class ActorUpdateRequest(BaseModel):
 
 
 class ActorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     actor_id: int
     name: str
     description: str
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -40,6 +39,8 @@ class FeatureUpdateRequest(BaseModel):
 
 
 class FeatureResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     feature_id: int
     name: str
     description: str
@@ -47,9 +48,6 @@ class FeatureResponse(BaseModel):
     child_ids: list[int] = []
     actor_ids: list[int] = []
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -65,14 +63,13 @@ class ACUpdateRequest(BaseModel):
 
 
 class ACResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     criterion_id: int
     scenario_id: int
     content: str
     position: int
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -91,6 +88,8 @@ class ScenarioUpdateRequest(BaseModel):
 
 
 class ScenarioResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     scenario_id: int
     feature_id: int
     actor_id: int
@@ -98,9 +97,6 @@ class ScenarioResponse(BaseModel):
     content: str
     acceptance_criteria: list[ACResponse] = []
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -121,15 +117,14 @@ class BOAttributeUpdateRequest(BaseModel):
 
 
 class BOAttributeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     attribute_id: int
     business_object_id: int
     name: str
     description: str
     data_type: str
     example: str
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -146,14 +141,13 @@ class BOUpdateRequest(BaseModel):
 
 
 class BOResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     business_object_id: int
     name: str
     description: str
     attributes: list[BOAttributeResponse] = []
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -180,6 +174,8 @@ class FlowStepUpdateRequest(BaseModel):
 
 
 class FlowStepResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     step_id: int
     flow_id: int
     position: int
@@ -190,9 +186,6 @@ class FlowStepResponse(BaseModel):
     input_business_object_ids: list[int] = []
     output_business_object_ids: list[int] = []
     next_step_ids: list[int] = []
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -215,15 +208,14 @@ class FlowStepsReorderRequest(BaseModel):
 
 
 class FlowResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     flow_id: int
     name: str
     description: str
     feature_ids: list[int] = []
     steps: list[FlowStepResponse] = []
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 # ==========================================
@@ -237,6 +229,8 @@ class ScopeUpdateRequest(BaseModel):
 
 
 class ScopeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     scope_id: int
     feature_id: int
     status: str
@@ -248,6 +242,3 @@ class ScopeResponse(BaseModel):
     kano_category: str | None = None
     kano_category_name: str | None = None
     confirmation_status: str | None = None
-
-    class Config:
-        from_attributes = True

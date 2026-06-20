@@ -28,6 +28,7 @@ from backend.api.schemas.choice_schema import (
     ChoiceResponse,
     GenerationCandidateError,
 )
+from backend.core.ai_operation_monitor import log_ai_operation_result
 from backend.database.model import ChoiceGroupModel, ChoiceModel
 
 logger = logging.getLogger(__name__)
@@ -356,6 +357,13 @@ class GenerationChoiceService:
         user_feedback: str | None = None,
         session: AsyncSession | None = None,
         progress_callback: ProgressCallback | None = None,
+        # P4 issue repair fields
+        issue_code: str | None = None,
+        issue_id: str | None = None,
+        stage: str | None = None,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        context_hash: str | None = None,
     ) -> dict:
         """
         创建一个 generation choice group：
@@ -427,7 +435,8 @@ class GenerationChoiceService:
         status_detail["duration_ms"] = result.duration_ms
 
         # 计算 context hash
-        context_hash = adapter.compute_context_hash(target, session) if session else None
+        if context_hash is None and session:
+            context_hash = adapter.compute_context_hash(target, session)
 
         # 写入 choice_group (即使失败也创建，status="failed")
         group = ChoiceGroupModel(
@@ -441,6 +450,12 @@ class GenerationChoiceService:
             success_count=len(deduped),
             failure_count=result.failure_count,
             status_detail=status_detail if status_detail else None,
+            # P4 issue repair fields
+            issue_code=issue_code,
+            issue_id=issue_id,
+            stage=stage,
+            source_type=source_type,
+            source_id=source_id,
         )
         if session:
             session.add(group)
@@ -483,6 +498,17 @@ class GenerationChoiceService:
 
         if session:
             await session.flush()
+
+        log_ai_operation_result(
+            "generation_choice_group",
+            project_id=project_id,
+            generation_type=generation_type,
+            issue_code=issue_code,
+            duration_ms=result.duration_ms,
+            success_count=result.success_count,
+            failure_count=result.failure_count,
+            status=group.status,
+        )
 
         # Phase 6: audit log
         if session:

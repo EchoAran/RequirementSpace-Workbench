@@ -14,6 +14,7 @@ import {
   selectActors, 
   selectPageHealth,
 } from '@/store/useWorkspaceStore';
+import { findingTargetIds } from '@/core/findingPresentation';
 import {
   buildProjectRoute,
   getStageIssues,
@@ -284,11 +285,11 @@ export function WhatToDo() {
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
     updateScenario, updateAcceptanceCriterion,
     setNodeStatus,
-    deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate,
+    deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate, triggerGateCheck,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
-    createSlotFromIssue, updateIssueAttributes, clearPerceptionSlot
+    executeFindingIssueResolution, updateIssueAttributes, clearPerceptionSlot
   } = useWorkspaceStore();
   
   const actors = useWorkspaceStore(selectActors);
@@ -428,14 +429,14 @@ export function WhatToDo() {
 
   const handleIssueClick = (issue: any) => {
     setSelectedObject(issue);
-    const targetId = issue.relatedNodeIds?.[0];
+    const targetId = findingTargetIds(issue)[0];
     if (targetId) {
       setHighlightTarget(targetId);
     }
   };
 
   const openIssueFlow = async (issue: any) => {
-    const slotId = await createSlotFromIssue(issue.id);
+    const slotId = await executeFindingIssueResolution(issue.findingId);
     if (slotId) {
       await expandSlot(slotId);
     }
@@ -545,17 +546,7 @@ export function WhatToDo() {
           <div className="grid grid-cols-12 gap-6 h-full content-start">
             
             <div className="col-span-12">
-              <StageGuidanceBanner 
-                slot={pageHealth.nextSlot} 
-                issues={whatIssues as any}
-                onManualAction={handleManualAction} 
-                onAIAction={handleAIAction}
-                onReDiagnose={runDiagnosis}
-                onIssueClick={handleIssueClick}
-                onIssueCreateSlot={(issue) => void openIssueFlow(issue)}
-                onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
-                isWorking={isGenerating || isLoading || isDiagnosing}
-              />
+              <StageGuidanceBanner stage="what" />
             </div>
 
             {/* AI Actor Draft Preview Banner */}
@@ -904,17 +895,6 @@ export function WhatToDo() {
                             </div>
                             <div>
                               <h4 className="font-bold text-slate-800 text-sm tracking-wide">{actor.title}</h4>
-                              <span className="text-[10px] text-slate-400">
-                                {actor.scopeStatus === 'in_scope'
-                                  ? '本期覆盖'
-                                  : actor.scopeStatus === 'external_dependency'
-                                    ? '外部依赖'
-                                    : actor.scopeStatus === 'deferred'
-                                      ? '暂缓'
-                                      : actor.status === 'excluded' || actor.scopeStatus === 'out_of_scope'
-                                        ? '不在范围'
-                                        : '待确认范围'}
-                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -1985,8 +1965,12 @@ export function WhatToDo() {
         }}
         onForceUnlock={async () => {
           setIsTransitionModalOpen(false);
-          await unlockStageGate('what');
-          navigate(buildProjectRoute(ir?.projectId, '/flow'));
+          const targetPath = buildProjectRoute(ir?.projectId, '/flow');
+          triggerGateCheck('enter_how', () => {
+            unlockStageGate('how').then(() => {
+              navigate(targetPath);
+            });
+          });
         }}
       />
 

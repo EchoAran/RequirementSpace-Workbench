@@ -1,16 +1,17 @@
 import React from 'react';
-import { Issue } from '@/core/schema';
+import { Finding } from '@/core/schema';
 import { cn } from '@/lib/utils';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { getFindingCapability, useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { findingSeverityLabel, findingTargetIds } from '@/core/findingPresentation';
 
 export interface IssueCardProps {
-  issue: Issue;
-  onClick: (issue: Issue) => void;
-  onCreateSlot: (issue: Issue) => void;
-  onIgnore: (issue: Issue) => void;
+  issue: Finding;
+  onClick: (issue: Finding) => void;
+  onCreateSlot: (issue: Finding) => void;
+  onIgnore: (issue: Finding) => void;
 }
 
-const severityText: Record<Issue['severity'], string> = {
+const severityText = {
   high: '高风险',
   medium: '需处理',
   low: '提示',
@@ -18,17 +19,20 @@ const severityText: Record<Issue['severity'], string> = {
 
 export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSlot, onIgnore }) => {
   const ir = useWorkspaceStore((state) => state.ir);
-  const relatedNodeTitles = issue.relatedNodeIds
+  const severity = findingSeverityLabel(issue);
+  const relatedNodeTitles = findingTargetIds(issue)
     .map((nodeId) => ir?.nodes[nodeId]?.title)
     .filter((title): title is string => Boolean(title));
+
+  const { actionLabel, enabled } = getFindingCapability(issue);
 
   return (
     <div
       className={cn(
         'flex flex-col rounded-xl shadow-sm border border-slate-200 transition-all bg-white group',
-        issue.severity === 'high'
+        severity === 'high'
           ? 'border-l-4 border-l-rose-500 hover:ring-2 hover:ring-rose-500/20'
-          : issue.severity === 'medium'
+          : severity === 'medium'
             ? 'border-l-4 border-l-amber-400 hover:ring-2 hover:ring-amber-500/20'
             : 'border-l-4 border-l-slate-400 hover:ring-2 hover:ring-slate-500/20',
       )}
@@ -39,14 +43,14 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
           <span
             className={cn(
               'px-1.5 py-0.5 text-[10px] font-black rounded shrink-0 ml-2',
-              issue.severity === 'high'
+              severity === 'high'
                 ? 'bg-rose-50 text-rose-600'
-                : issue.severity === 'medium'
+                : severity === 'medium'
                   ? 'bg-amber-50 text-amber-600'
                   : 'bg-slate-50 text-slate-600',
             )}
           >
-            {severityText[issue.severity]}
+            {severityText[severity]}
           </span>
         </div>
         <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">{issue.description}</p>
@@ -69,11 +73,17 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onCreateSlot(issue);
+            if (enabled) onCreateSlot(issue);
           }}
-          className="flex-1 py-1.5 text-xs font-bold bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-colors shadow-sm"
+          disabled={!enabled}
+          className={cn(
+            'flex-1 py-1.5 text-xs font-bold rounded-md transition-colors shadow-sm',
+            enabled
+              ? 'bg-slate-900 text-white hover:bg-slate-800'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed',
+          )}
         >
-          AI 处理
+          {actionLabel}
         </button>
         <button
           onClick={(e) => {

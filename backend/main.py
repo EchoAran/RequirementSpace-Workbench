@@ -37,6 +37,9 @@ from backend.api.routes.acceptance_criteria_generation_routes import (
 from backend.api.routes.scope_generation_routes import (
     router as scope_generation_router,
 )
+from backend.api.routes.finding_routes import (
+    router as finding_router,
+)
 from backend.api.routes.issue_routes import (
     router as issue_router,
 )
@@ -364,6 +367,7 @@ app.include_router(flow_generation_router)
 app.include_router(scenario_generation_router)
 app.include_router(acceptance_criteria_generation_router)
 app.include_router(scope_generation_router)
+app.include_router(finding_router, dependencies=[Depends(require_owned_project)])
 app.include_router(issue_router, dependencies=[Depends(require_owned_project)])
 app.include_router(issue_repair_draft_router, dependencies=[Depends(require_owned_project)])
 app.include_router(quality_metrics_router, dependencies=[Depends(require_owned_project)])

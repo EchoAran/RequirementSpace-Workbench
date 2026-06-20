@@ -7,11 +7,18 @@ Replaces IssueService.resolve_issue() as the orchestrator:
   4. Dispatch to strategy (registry or AI solver)
   5. Return unified response
 
-P2 AI solver dispatch:
-  - SCOPE_WITHOUT_REASON → ScopeReasonSolver → repair_draft
-  - LEAF_FEATURE_WITHOUT_ACTOR → ActorFeatureCoverageSolver → repair_draft or manual_action
-  - Other codes → registry (manual_action / generation_draft / unsupported)
+Dispatch is guided by the capability registry (backend/core/issue_capabilities.py):
+  - ai_repair    → _AI_SOLVERS → AI repair draft / choice group
+  - generation_draft → IssueSolverRegistry → generation draft / choice group
+  - open_panel   → IssueSolverRegistry → open panel action
+  - unsupported  → unsupported resolution
+
+职责边界：
+  本服务是待处理问题（FindingType.ISSUE / GATE_CONDITION）执行实际AI/手动修复方案生成的唯一入口。
+  它通过调度对应的 Solver 处理问题。本服务与阶段级下一步建议（NextSuggestion）完全解耦，NextSuggestion API 绝对不应调用本服务或混用其修复语义。
 """
+
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,38 +28,59 @@ from backend.core.detectors import (
     ScopeIssueDetector,
     WhatIssueDetector,
 )
-from backend.core.detectors.issue_solvers import IssueSolverRegistry
-from backend.core.detectors.issue_solvers.ai_issue_solver import (
+from backend.core.issue_resolution import IssueSolverRegistry
+from backend.core.issue_resolution.ai.base_ai_solver import (
     RepairProposal,
     RepairResult,
 )
-from backend.core.detectors.issue_solvers.draft_factory import (
+from backend.core.issue_resolution.draft_factory import (
     IssueResolutionDraftFactory,
 )
-from backend.core.detectors.issue_solvers.repair_fingerprint import (
+from backend.core.issue_resolution.fingerprint import (
     build_issue_fingerprint,
     compute_context_hash,
     load_target_entity_snapshot,
 )
-from backend.core.detectors.issue_solvers.repair_validator import (
+from backend.core.issue_resolution.validator import (
     RepairValidator,
 )
-from backend.core.detectors.issue_solvers.strategies.scope_reason_solver import (
+from backend.core.issue_resolution.ai.strategies.scope_reason_solver import (
     ScopeReasonSolver,
 )
-from backend.core.detectors.issue_solvers.strategies.actor_feature_coverage_solver import (
+from backend.core.issue_resolution.ai.strategies.actor_feature_coverage_solver import (
     ActorFeatureCoverageSolver,
 )
-from backend.core.detectors.issue_solvers.strategies.business_object_attribute_solver import (
+from backend.core.issue_resolution.ai.strategies.business_object_attribute_solver import (
     BusinessObjectAttributeSolver,
 )
-from backend.core.detectors.issue_solvers.strategies.flow_feature_coverage_solver import (
+from backend.core.issue_resolution.ai.strategies.flow_feature_coverage_solver import (
     FlowFeatureCoverageSolver,
 )
-from backend.core.detectors.issue_solvers.strategies.scenario_coverage_solver import (
+from backend.core.issue_resolution.ai.strategies.scenario_coverage_solver import (
     ScenarioCoverageSolver,
 )
+from backend.core.issue_resolution.ai.strategies.actor_feature_reverse_coverage_solver import (
+    ActorFeatureReverseCoverageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.scenario_actor_consistency_solver import (
+    ScenarioActorConsistencySolver,
+)
+from backend.core.issue_resolution.ai.strategies.duplicate_scenario_name_solver import (
+    DuplicateScenarioNameSolver,
+)
+from backend.core.issue_resolution.ai.strategies.flow_without_steps_solver import (
+    FlowWithoutStepsSolver,
+)
+from backend.core.issue_resolution.ai.strategies.business_object_without_usage_solver import (
+    BusinessObjectWithoutUsageSolver,
+)
 from backend.schemas import Issue, IssueStage, IssueTarget
+from backend.core.issue_capabilities import (
+    IssueCapabilityKind,
+    get_issue_capability,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Map stage names to detector instances
@@ -94,7 +122,23 @@ _AI_SOLVERS: dict[str, object] = {
     "LEAF_FEATURE_WITHOUT_FLOW": FlowFeatureCoverageSolver(),
     "FLOW_WITHOUT_FEATURE": FlowFeatureCoverageSolver(),
     "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": ScenarioCoverageSolver(),
+    # P4 P1: Relationship solvers
+    "ACTOR_WITHOUT_FEATURE": ActorFeatureReverseCoverageSolver(),
+    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS": ScenarioActorConsistencySolver(),
+    "DUPLICATE_SCENARIO_NAME": DuplicateScenarioNameSolver(),
+    # P4 P3: Flow solvers
+    "FLOW_WITHOUT_STEPS": FlowWithoutStepsSolver(),
+    "BUSINESS_OBJECT_WITHOUT_USAGE": BusinessObjectWithoutUsageSolver(),
 }
+
+
+def get_ai_solver_codes() -> set[str]:
+    """返回所有注册了 AI solver 的 issue code 集合。
+
+    供 capability 一致性测试使用，确保 capability registry 与
+    实际 AI solver 调度表保持一致。
+    """
+    return set(_AI_SOLVERS.keys())
 
 
 class IssueRepairService:
@@ -172,36 +216,53 @@ class IssueRepairService:
         issue_fp = self._build_fingerprint(resolved_stage, issue_code, matched_issue.target)
         context_hash = await self._build_context_hash(project_id, matched_issue, session)
 
-        # 8. Check if this issue code has an AI solver (P2)
-        ai_solver = _AI_SOLVERS.get(issue_code)
+        # 8. Look up capability from registry to drive dispatch
+        cap = get_issue_capability(issue_code)
 
-        if ai_solver is not None:
-            # P2: AI solver path
-            return await self._resolve_with_ai(
-                project_id=project_id,
-                issue_code=issue_code,
-                issue_id=matched_issue.issueId,
-                target=issue_target_dict,
-                issue_target=issue_target,
-                stage=resolved_stage,
-                matched_issue=matched_issue,
-                issue_fp=issue_fp,
-                context_hash=context_hash,
-                ai_solver=ai_solver,
-                metadata=metadata or {},
-                session=session,
-            )
+        # 9. AI solver path (ai_repair capability)
+        if cap.kind == IssueCapabilityKind.AI_REPAIR:
+            ai_solver = _AI_SOLVERS.get(issue_code)
+            if ai_solver is None:
+                # Production safety: capability says ai_repair but no solver registered.
+                # Test layer (test_ai_repair_codes_have_ai_solver) catches this in CI.
+                logger.warning(
+                    "Issue code %s declared ai_repair in capability registry "
+                    "but no AI solver found; falling through to registry.",
+                    issue_code,
+                )
+            else:
+                return await self._resolve_with_ai(
+                    project_id=project_id,
+                    issue_code=issue_code,
+                    issue_id=matched_issue.issueId,
+                    target=issue_target_dict,
+                    issue_target=issue_target,
+                    stage=resolved_stage,
+                    matched_issue=matched_issue,
+                    issue_fp=issue_fp,
+                    context_hash=context_hash,
+                    ai_solver=ai_solver,
+                    metadata=metadata or {},
+                    session=session,
+                )
 
-        # 9. Fallback to registry (manual_action / generation_draft / unsupported)
+        # 10. Registry path (generation_draft / open_panel / unsupported)
+        registry_metadata = {
+            **(metadata or {}),
+            "issue_id": matched_issue.issueId if matched_issue else None,
+            "stage": resolved_stage,
+            "issue_fingerprint": issue_fp,
+            "context_hash": context_hash,
+        }
         resolution = await self._solver_registry.resolve(
             project_id=project_id,
             issue_code=issue_code,
             target=issue_target,
-            metadata=metadata or {},
+            metadata=registry_metadata,
             session=session,
         )
 
-        # 10. If generation_draft, create the actual draft
+        # 11. If generation_draft, create the actual draft
         if resolution.resolutionType == "generation_draft":
             resolution = await self._draft_factory.create_draft(
                 project_id=project_id,
@@ -209,7 +270,7 @@ class IssueRepairService:
                 session=session,
             )
 
-        # 11. Build unified response dict
+        # 12. Build unified response dict
         result = resolution.to_dict()
         result["project_id"] = project_id
         result["issue_fingerprint"] = issue_fp
@@ -521,10 +582,8 @@ class IssueRepairService:
 
     @staticmethod
     def _is_known_code(issue_code: str) -> bool:
-        """Check if an issue code is known to any solver (registry or AI)."""
-        from backend.core.detectors.issue_solvers.issue_solver_registry import (
-            KNOWN_ISSUE_CODES,
-        )
+        """Check if an issue code is known to any solver or capability registry."""
+        from backend.core.issue_capabilities import KNOWN_ISSUE_CODES
         return issue_code in _AI_SOLVERS or issue_code in KNOWN_ISSUE_CODES
 
     @staticmethod

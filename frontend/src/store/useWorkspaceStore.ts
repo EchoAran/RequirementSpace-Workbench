@@ -12,7 +12,9 @@ import {
   FlowStepNode,
   PerceptionSlot,
   ScopeStatus,
-  Issue,
+  Finding,
+  FindingType,
+  BlockingScope,
   Choice,
   ChoiceGroup,
   GoalNode,
@@ -26,7 +28,8 @@ import {
   PendingManualAction,
 } from '@/core/schema';
 import { workspaceApi } from '@/lib/api';
-import { buildPageHealth, detectIssues, detectStageIssues } from '@/core/selectors';
+import { buildPageHealth } from '@/core/selectors';
+import { getNextSuggestionPresentation } from '@/core/nextSuggestionPresentation';
 
 const getConfirmationStatus = (value: unknown): NodeStatus => {
   return value === 'confirmed' || value === 'needs_confirmation' || value === 'ai_assumption'
@@ -42,45 +45,6 @@ export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overvi
 // -------------------------------------------------------------
 // Unified Normalization Helper for Backend Data Synchronization
 // -------------------------------------------------------------
-const mapBackendIssueToCompatible = (issue: any): Issue => {
-  let suggestedProjection: 'goal' | 'role' | 'system' | 'data' | 'ui' = 'goal';
-  const stage = issue.stage || '';
-  if (stage === 'what') {
-    suggestedProjection = 'role';
-  } else if (stage === 'how') {
-    suggestedProjection = 'system';
-  } else if (stage === 'scope') {
-    suggestedProjection = 'data';
-  }
-
-  const relatedNodeIds: string[] = [];
-  if (issue.target && issue.target.targetId) {
-    relatedNodeIds.push(issue.target.targetId.toString());
-  }
-
-  return {
-    id: issue.issueId || issue.id,
-    title: issue.title,
-    description: issue.description,
-    severity: (
-      issue.severity?.toLowerCase() === 'high' || issue.severity?.toLowerCase() === 'blocking'
-        ? 'high'
-        : issue.severity?.toLowerCase() === 'medium' || issue.severity?.toLowerCase() === 'warning'
-        ? 'medium'
-        : 'low'
-    ) as any,
-    status: 'open',
-    relatedNodeIds,
-    suggestedProjection,
-    stage,
-    domain: issue.domain || issue.metadata?.domain,
-    category: issue.code,
-    backendIssueCode: issue.code,
-    backendTarget: issue.target,
-    backendMetadata: issue.metadata
-  };
-};
-
 const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
   return {
     id: cg.id.toString(),
@@ -127,7 +91,63 @@ const mapResolutionDraftType = (draftType?: string): 'project' | 'actor' | 'feat
   return 'actor';
 };
 
+/**
+ * 从 Finding 对象获取处理能力（优先使用后端返回的 capability）。
+ *
+ * 任何时候优先信任后端 capability 字段；缺失时使用安全回退（manual_action），
+ * 不由前端 code 推导 AI capability。
+ */
+export function getFindingCapability(finding: { code: string; capability?: any; type?: string }): {
+  kind: string;
+  actionLabel: string;
+  enabled: boolean;
+} {
+  // 1. 优先使用后端返回的 capability
+  if (finding.capability) {
+    return {
+      kind: finding.capability.kind || 'manual_action',
+      actionLabel: finding.capability.action_label || '查看处理建议',
+      enabled: finding.capability.enabled !== false,
+    };
+  }
+
+  // 2. 无 capability 时（旧缓存/旧响应），使用安全回退
+  //    禁止由 code 推导 AI capability，统一降级为 manual_action
+  console.warn(
+    `getFindingCapability: Finding ${finding.code} (${finding.type}) missing backend capability. ` +
+    'Using safe fallback manual_action. Check if backend returned capability field.',
+  );
+  return {
+    kind: 'manual_action',
+    actionLabel: '查看处理建议',
+    enabled: true,
+  };
+}
+
 export const getFriendlyErrorMessage = (rawError: string): string => {
+  const normalizedError = (rawError || '').toLowerCase();
+  if (
+    normalizedError.includes('timeout') ||
+    normalizedError.includes('timed out') ||
+    normalizedError.includes('request timed out')
+  ) {
+    return '⚠️ AI 服务响应超时，请稍后重试；如果持续出现，请检查模型服务连接状态。';
+  }
+  if (
+    normalizedError.includes('quota') ||
+    normalizedError.includes('rate limit') ||
+    normalizedError.includes('429')
+  ) {
+    return '⚠️ AI 服务调用额度或频率已受限，请稍后重试或检查 API 配额。';
+  }
+  if (
+    normalizedError.includes('invalid api key') ||
+    normalizedError.includes('unauthorized') ||
+    normalizedError.includes('401')
+  ) {
+    return '⚠️ AI 服务鉴权失败，请检查账户设置中的 API 密钥是否有效。';
+  }
+
   switch (rawError) {
     case 'llm_config_required':
       return '⚠️ 您尚未配置大语言模型连接信息！请前往【账户设置】填写您的 API 密钥以启用 AI 推演。';
@@ -170,30 +190,55 @@ const getVisibleIssueStages = (unlockedStages?: string[]): Array<'what' | 'how' 
   return stages;
 };
 
-const loadBackendIssues = async (projectId: string, unlockedStages?: string[]): Promise<Issue[]> => {
-  const stages = getVisibleIssueStages(unlockedStages);
-  const results = await Promise.allSettled(
-    stages.map(stage => workspaceApi.listIssues(projectId, stage))
-  );
+const loadBackendFindingsAndViews = async (
+  projectId: string
+): Promise<{
+  backendFindings: Finding[];
+  findingsByView: {
+    issues: Finding[];
+    next_action: Finding[];
+    gate: Finding[];
+    health: Finding[];
+  };
+}> => {
+  try {
+    const [issuesRes, nextRes, gateRes, healthRes] = await Promise.all([
+      workspaceApi.listFindings(projectId, { view: 'issues', stage: 'all' }),
+      workspaceApi.listFindings(projectId, { view: 'next_action', stage: 'all' }),
+      workspaceApi.listFindings(projectId, { view: 'gate', stage: 'all' }),
+      workspaceApi.listFindings(projectId, { view: 'health', stage: 'all' })
+    ]);
 
-  const allIssues: Issue[] = [];
-  results.forEach((res, idx) => {
-    if (res.status === 'fulfilled' && res.value && Array.isArray(res.value.issues)) {
-      res.value.issues.forEach((bi: any) => {
-        allIssues.push(mapBackendIssueToCompatible(bi));
-      });
-    } else {
-      console.warn(`Failed to fetch issues for stage ${stages[idx]}:`, res.status === 'rejected' ? res.reason : 'unknown');
-    }
-  });
-  return allIssues;
+    const findings_issues = issuesRes?.findings || [];
+    const findings_next = nextRes?.findings || [];
+    const findings_gate = gateRes?.findings || [];
+    const findings_health = healthRes?.findings || [];
+
+    const allFindings = [...findings_issues, ...findings_next, ...findings_gate, ...findings_health];
+
+    return {
+      backendFindings: allFindings,
+      findingsByView: {
+        issues: findings_issues,
+        next_action: findings_next,
+        gate: findings_gate,
+        health: findings_health
+      }
+    };
+  } catch (err) {
+    console.error('Failed to load findings in loadBackendFindingsAndViews:', err);
+    return {
+      backendFindings: [],
+      findingsByView: { issues: [], next_action: [], gate: [], health: [] }
+    };
+  }
 };
 
 export const normalizeRequirementSpace = (
   space: RequirementSpace | null,
-  backendIssues?: Issue[] | null,
+  issueFindings?: Finding[] | null,
   backendChoiceGroups?: Record<string, ChoiceGroup>,
-  backendIssuesLoaded?: boolean
+  backendFindingsLoaded?: boolean
 ): RequirementSpace | null => {
   console.log('normalizeRequirementSpace called with space:', space?.projectName, 'has_space:', !!space);
   if (!space) return null;
@@ -375,12 +420,12 @@ export const normalizeRequirementSpace = (
     flows,
     perceptionSlot
   };
-  const issuesList = backendIssuesLoaded && backendIssues
-    ? backendIssues.filter((issue) => !issue.stage || visibleIssueStages.has(issue.stage as any))
-    : getVisibleIssueStages(space.unlockedStages).flatMap((stage) => detectStageIssues(normalizedSpaceForRules, stage));
+  const issuesList = backendFindingsLoaded && issueFindings
+    ? issueFindings.filter((finding) => finding.type === 'issue' && visibleIssueStages.has(finding.stage as any))
+    : [];
   const issuesRecord: Record<string, any> = {};
-  issuesList.forEach(i => {
-    issuesRecord[i.id] = i;
+  issuesList.forEach((finding) => {
+    issuesRecord[finding.findingId] = finding;
   });
 
   // 6. Slots (Perception Slot)
@@ -445,10 +490,10 @@ export const normalizeRequirementSpace = (
     issues: issuesRecord,
     slots: slotsRecord,
     choiceGroups: choiceGroupsRecord,
+    findings: issuesList,
     // Stable Selector Cache Fields
     actorsCompatible,
     flowStepsCompatible,
-    issuesCompatible: issuesList,
     linksCompatible: linksList,
     goalsCompatible,
     capabilitiesCompatible,
@@ -514,6 +559,17 @@ const findConflictingChoiceGroup = (
 
 const GENERATION_CONFLICT_PENDING_ERROR = 'generation_choice_conflict_pending';
 
+const buildInitialChoiceProgress = (candidateCount?: number) => {
+  const totalCandidates = candidateCount || 2;
+  return {
+    totalCandidates,
+    completedCandidates: 0,
+    candidateStatuses: Object.fromEntries(
+      Array.from({ length: totalCandidates }, (_, index) => [index, 'pending'])
+    ) as Record<number, 'pending' | 'generating' | 'complete' | 'failed'>,
+  };
+};
+
 type PendingGenerationConflict =
   | {
       action: 'generateActors';
@@ -571,10 +627,17 @@ export interface WorkspaceState {
   highlightedNodeIds: string[];
 
   ir: RequirementSpace | null; // Unified project space matching state.ir for backwards compatibility
-  backendIssues: Issue[];
-  backendIssuesLoaded: boolean;
+  backendFindings: Finding[];
+  backendFindingsLoaded: boolean;
+  findingsByView: {
+    issues: Finding[];
+    next_action: Finding[];
+    gate: Finding[];
+    health: Finding[];
+  };
   backendChoiceGroups: Record<string, ChoiceGroup>;
   isDiagnosing: boolean;
+  /** @deprecated Legacy cache used only by runDiagnosis polling. UI should read findingsByView.next_action instead. */
   nextSuggestions: Record<string, any>;
 
   // Draft Generative States
@@ -731,15 +794,13 @@ export interface WorkspaceState {
   clearStaleChoice: () => void;
   regenerateChoiceGroup: (groupId: number, feedback?: string) => Promise<void>;
   regenerateChoice: (choiceId: number, feedback?: string) => Promise<void>;
-  createSlotFromIssue: (issueId: string) => Promise<string | null>;
-  resolveIssue: (issueId: string) => Promise<string | null>;
+  executeFindingIssueResolution: (issueId: string) => Promise<string | null>;
   confirmRepairDraft: (draftId: string) => Promise<any>;
   discardRepairDraft: (draftId: string) => Promise<void>;
   regenerateRepairDraft: (draftId: string) => Promise<void>;
   setNodeStatus: (nodeId: string, nodeKind: string, status: NodeStatus) => Promise<void>;
   setScopeStatus: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
   runDiagnosis: (scope?: any) => Promise<void>;
-  executeNextSuggestion: (stage: string) => Promise<void>;
   rewrite: (scope: any, instruction: string) => Promise<void>;
   explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
   updateNodeAttributes: (nodeId: string, updates: Partial<BaseNode> & Record<string, any>) => Promise<void>;
@@ -763,6 +824,19 @@ export interface WorkspaceState {
   commitShadowDraft: (draftId: string) => Promise<void>;
   regenerateShadowDraft: (draftId: string, feedback?: string) => Promise<any>;
   unlockStageGate: (stage: string) => Promise<void>;
+
+  // Phase 3: Gate and Suggestion Convergence
+  activeGateCheck: {
+    action: string;
+    findings: Finding[];
+    onPass: () => void;
+    onCancel: () => void;
+  } | null;
+  snoozedGateFindingIds: Record<string, string>; // Maps key to context hash
+  triggerGateCheck: (action: string, onPass: () => void, onCancel?: () => void) => Promise<void>;
+  snoozeGateFinding: (action: string, finding: Finding) => void;
+  startFindingSuggestion: (finding: Finding) => Promise<void>;
+  executeGateFindingAction: (finding: Finding) => Promise<void>;
 }
 
 const buildSelectedScopeObject = (feature: any) => {
@@ -842,9 +916,7 @@ const findSelectedObjectInIr = (
     if (step) return step;
   }
 
-  // Search dynamic issues
-  const issues = detectIssues(ir);
-  const matchedIssue = issues.find(i => i.id === selectedId);
+  const matchedIssue = (ir.findings || []).find((finding) => finding.findingId === selectedId);
   if (matchedIssue) return matchedIssue;
 
   return null;
@@ -857,6 +929,57 @@ const withWorkspaceId = (state: WorkspaceState): string => {
   return state.ir.projectId;
 };
 
+const getGateFindingContextHash = (finding: any): string => {
+  if (!finding || !finding.metadata) return '';
+
+  if (finding.metadata.missing_pairs) {
+    const pairs = [...finding.metadata.missing_pairs];
+    pairs.sort((a: any, b: any) => {
+      const keyA = `${a.feature_id}:${a.actor_id}`;
+      const keyB = `${b.feature_id}:${b.actor_id}`;
+      return keyA.localeCompare(keyB);
+    });
+    return JSON.stringify(pairs);
+  }
+
+  if (finding.metadata.missing_features) {
+    const features = [...finding.metadata.missing_features];
+    features.sort((a: any, b: any) => (a.feature_id || 0) - (b.feature_id || 0));
+    return JSON.stringify(features);
+  }
+
+  return '';
+};
+
+const loadSnoozedGatesFromSession = (): Record<string, string> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const data = sessionStorage.getItem('rs_workbench_snoozed_gates');
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+};
+
+function buildAggregateTarget(finding: Finding): any {
+  const meta = finding.metadata || {};
+  if (finding.code === 'FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO') {
+    const pairs = meta.missing_pairs || [];
+    if (pairs.length > 0) {
+      return {
+        target_type: 'feature_actor_pair',
+        target_id: `${pairs[0].feature_id}:${pairs[0].actor_id}`,
+      };
+    }
+  }
+  if (finding.code === 'LEAF_FEATURE_WITHOUT_FLOW' || finding.code === 'LEAF_FEATURE_WITHOUT_SCOPE') {
+    const features = meta.missing_features || [];
+    if (features.length > 0) {
+      return { target_type: 'feature', target_id: features[0].feature_id };
+    }
+  }
+  return finding.target || null;
+}
 export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   const set = (update: any, replace?: boolean) => {
     console.log('Store set called. Update type:', typeof update, 'keys:', typeof update === 'object' && update !== null ? Object.keys(update) : 'function');
@@ -864,22 +987,264 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       (rawSet as any)((state: WorkspaceState) => {
         const next = update(state);
         if (next && 'ir' in next && next.ir !== undefined) {
-          const issuesToUse = next.backendIssues || state.backendIssues || [];
+          const findingsToUse = next.findingsByView?.issues || state.findingsByView.issues || [];
           const choiceGroupsToUse = next.backendChoiceGroups || state.backendChoiceGroups || {};
-          const loadedToUse = next.backendIssuesLoaded !== undefined ? next.backendIssuesLoaded : state.backendIssuesLoaded;
-          next.ir = normalizeRequirementSpace(next.ir, issuesToUse, choiceGroupsToUse, loadedToUse);
+          const loadedToUse = next.backendFindingsLoaded !== undefined ? next.backendFindingsLoaded : state.backendFindingsLoaded;
+          next.ir = normalizeRequirementSpace(next.ir, findingsToUse, choiceGroupsToUse, loadedToUse);
         }
         return next;
       }, replace);
     } else {
       if (update && 'ir' in update && update.ir !== undefined) {
-        const issuesToUse = update.backendIssues || get()?.backendIssues || [];
+        const findingsToUse = update.findingsByView?.issues || get()?.findingsByView.issues || [];
         const choiceGroupsToUse = update.backendChoiceGroups || get()?.backendChoiceGroups || {};
-        const loadedToUse = update.backendIssuesLoaded !== undefined ? update.backendIssuesLoaded : get()?.backendIssuesLoaded;
-        update.ir = normalizeRequirementSpace(update.ir, issuesToUse, choiceGroupsToUse, loadedToUse);
+        const loadedToUse = update.backendFindingsLoaded !== undefined ? update.backendFindingsLoaded : get()?.backendFindingsLoaded;
+        update.ir = normalizeRequirementSpace(update.ir, findingsToUse, choiceGroupsToUse, loadedToUse);
       }
       (rawSet as any)(update, replace);
     }
+  };
+
+  const executeProcessorAction = async (
+    action: any,
+    context: { stage?: string; findingCode?: string; target?: any },
+    version: number
+  ) => {
+    if (!action) return;
+
+    const kind = action.kind;
+
+    if (kind === 'create_draft') {
+      const draftType = action.draft_type || action.draftType;
+      const code = context.findingCode || '';
+
+      if (code === 'GENERATE_ACTORS' || draftType === 'actor_generation') {
+        await get().generateActors(false);
+      } else if (code === 'GENERATE_FEATURES' || draftType === 'feature_generation') {
+        await get().generateFeatures(false);
+      } else if (code === 'GENERATE_SCENARIOS' || draftType === 'scenario_generation') {
+        let featureIds: any = undefined;
+        if (action.payload?.feature_id) {
+          featureIds = [action.payload.feature_id];
+        } else if (action.payload?.feature_ids) {
+          featureIds = action.payload.feature_ids;
+        } else if (context.target && (context.target.type === 'feature' || context.target.targetType === 'feature')) {
+          const id = context.target.id || context.target.targetId;
+          if (id) {
+            featureIds = [parseInt(id.toString(), 10)];
+          }
+        }
+        await get().generateScenarios(featureIds, false);
+      } else if (code === 'GENERATE_ACCEPTANCE_CRITERIA' || draftType === 'acceptance_criteria_generation') {
+        let scenarioIds: any = undefined;
+        if (action.payload?.scenario_ids) {
+          scenarioIds = action.payload.scenario_ids;
+        }
+        await get().generateAcceptanceCriteria(scenarioIds, false);
+      } else if (code === 'GENERATE_FLOWS_AND_BUSINESS_OBJECTS' || draftType === 'flow_generation' || draftType === 'flows_and_business_objects_generation') {
+        await get().generateFlowsAndObjects(false);
+      } else if (code === 'GENERATE_SCOPE' || draftType === 'scope_generation') {
+        await get().generateScope(false);
+      }
+    } else if (kind === 'navigate') {
+      const route = action.route || '';
+      let page: any = null;
+      if (route.endsWith('/what') || route === 'what' || route.endsWith('/projects/what')) {
+        page = '/what';
+      } else if (
+        route.endsWith('/how') ||
+        route.endsWith('/flow') ||
+        route === 'how' ||
+        route === 'flow' ||
+        route.endsWith('/projects/how') ||
+        route.endsWith('/projects/flow')
+      ) {
+        page = '/flow';
+      } else if (route.endsWith('/scope') || route === 'scope' || route.endsWith('/projects/scope')) {
+        page = '/scope';
+      } else if (route.endsWith('/preview') || route === 'preview' || route.endsWith('/projects/preview')) {
+        page = '/preview';
+      }
+
+      if (page) {
+        get().setActivePage(page);
+      }
+    } else if (kind === 'wait') {
+      set({ lastActionMessage: '后台分析正在运行，请稍后刷新或重新诊断。' });
+      await get().refreshWorkspace();
+    } else if (kind === 'retry') {
+      const stage = context.stage || 'what';
+      const projectId = get().ir?.projectId;
+      if (projectId) {
+        await workspaceApi.rediagnoseNextSuggestion(projectId, stage);
+        await get().runDiagnosis(stage);
+      }
+    } else if (kind === 'open_panel') {
+      const panel = action.panel;
+      const payload = action.payload || {};
+      let found = false;
+
+      if (panel === 'perception_slot') {
+        const jobId = payload.perception_job_id || payload.perceptionJobId;
+        if (jobId) {
+          await get().expandSlot(jobId.toString());
+          found = true;
+        }
+      } else if (panel === 'feature') {
+        const featId = (payload.feature_id || payload.featureId)?.toString();
+        if (featId) {
+          const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
+          if (featObj) {
+            get().setSelectedObject({ ...featObj, kind: 'feature' });
+            found = true;
+          }
+        }
+      } else if (panel === 'actor') {
+        const actorId = (payload.actor_id || payload.actorId)?.toString();
+        if (actorId) {
+          const actObj = get().ir?.actors?.find((a: any) => a.actorId.toString() === actorId);
+          if (actObj) {
+            get().setSelectedObject({ ...actObj, kind: 'actor' });
+            found = true;
+          }
+        }
+      } else if (panel === 'scenario') {
+        const scenarioId = (payload.scenario_id || payload.scenarioId)?.toString();
+        if (scenarioId) {
+          let scenarioObj: any = null;
+          get().ir?.features?.forEach((f: any) => {
+            const s = f.scenarios?.find((sc: any) => sc.scenarioId.toString() === scenarioId);
+            if (s) scenarioObj = s;
+          });
+          if (scenarioObj) {
+            get().setSelectedObject({ ...scenarioObj, kind: 'scenario' });
+            found = true;
+          }
+        }
+      } else if (panel === 'flow' || panel === 'flow_editor') {
+        const flowId = (payload.flow_id || payload.flowId)?.toString();
+        if (flowId) {
+          const flowObj = get().ir?.flows?.find((fl: any) => fl.flowId.toString() === flowId);
+          if (flowObj) {
+            get().setSelectedObject({ ...flowObj, kind: 'flow' });
+            found = true;
+          }
+        }
+        if (!found) {
+          // Navigate to How page as fallback
+          get().setActivePage('/flow');
+          found = true;
+        }
+      } else if (panel === 'business_object') {
+        const boId = (payload.business_object_id || payload.businessObjectId)?.toString();
+        if (boId) {
+          const boObj = get().ir?.businessObjects?.find((bo: any) => bo.businessObjectId.toString() === boId);
+          if (boObj) {
+            get().setSelectedObject({ ...boObj, kind: 'business_object' });
+            found = true;
+          }
+        }
+      } else if (panel === 'scope') {
+        const featId = (payload.feature_id || payload.featureId || payload.scopeId || payload.scope_id)?.toString();
+        if (featId) {
+          const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
+          if (featObj) {
+            get().setSelectedObject({ ...featObj, kind: 'scope' });
+            found = true;
+          }
+        }
+      }
+
+      if (!found) {
+        // Fallback: Check action.route
+        let routed = false;
+        if (action.route) {
+          const route = action.route;
+          let page: any = null;
+          if (route.endsWith('/what') || route === 'what' || route.endsWith('/projects/what')) page = '/what';
+          else if (
+            route.endsWith('/how') ||
+            route.endsWith('/flow') ||
+            route === 'how' ||
+            route === 'flow' ||
+            route.endsWith('/projects/how') ||
+            route.endsWith('/projects/flow')
+          )
+            page = '/flow';
+          else if (route.endsWith('/scope') || route === 'scope' || route.endsWith('/projects/scope')) page = '/scope';
+          else if (route.endsWith('/preview') || route === 'preview' || route.endsWith('/projects/preview')) page = '/preview';
+
+          if (page) {
+            get().setActivePage(page);
+            routed = true;
+            set({ lastActionMessage: `无法定位目标对象，已导航到对应页面：${page}` });
+          }
+        }
+        if (!routed) {
+          set({ lastActionMessage: '无法定位目标对象，请重新诊断或手动定位。' });
+        }
+      }
+    }
+  };
+
+  const executeIssueResolution = async (res: any, issue: any, version: number) => {
+    const type = resolutionType(res);
+
+    if (type === 'already_resolved') {
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      set({ isLoading: false, lastActionMessage: '该问题已解决。' });
+      return;
+    }
+
+    if (type === 'open_panel') {
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      if (res.action) {
+        await executeProcessorAction(res.action, { stage: issue.stage, target: issue.target }, version);
+      }
+      set({ isLoading: false, lastActionMessage: res.title || '已打开对应操作面板。', lastIssueResolution: res });
+      return;
+    }
+
+    if (type === 'manual_action') {
+      set({ isLoading: false, lastActionMessage: res.title || '请手动处理该问题。', lastIssueResolution: res });
+      return;
+    }
+
+    if (type === 'unsupported') {
+      set({ isLoading: false, lastActionMessage: res.title || '暂不支持自动修复。', lastIssueResolution: res });
+      return;
+    }
+
+    if (type === 'repair_draft') {
+      set({
+        activeDraft: res.draft || res,
+        activeDraftType: 'repair',
+        lastActionMessage: `已生成修复建议：${res.title}`,
+        isLoading: false
+      });
+      return;
+    }
+
+    if (type === 'choice_group') {
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      set({ isLoading: false, lastActionMessage: '已加入方案决策队列，请选择处理方案。' });
+      return;
+    }
+
+    // Default / standard path
+    await get().refreshWorkspace();
+    if (get().sessionVersion !== version) return;
+    if (res.draftId || res.draft_id) {
+      set({
+        activeDraft: res.draft,
+        activeDraftType: mapResolutionDraftType(res.action?.draftType || res.action?.draft_type),
+        lastActionMessage: `已触发处理：${res.title}`
+      });
+    }
+    set({ isLoading: false });
   };
 
   const syncChoiceGroupToWorkspace = (group: any, state: WorkspaceState) => {
@@ -947,8 +1312,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   highlightedNodeIds: [],
 
   ir: null,
-  backendIssues: [],
-  backendIssuesLoaded: false,
+  backendFindings: [],
+  backendFindingsLoaded: false,
+  findingsByView: {
+    issues: [],
+    next_action: [],
+    gate: [],
+    health: []
+  },
   backendChoiceGroups: {},
   auditLogs: [],
   lastImpactPreview: null,
@@ -967,6 +1338,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   openOnboardingChoiceGroups: [],
   pendingGenerationConflict: null,
   activeStaleChoice: null,
+
+  // Phase 3: Gate and Suggestion Convergence
+  activeGateCheck: null,
+  snoozedGateFindingIds: loadSnoozedGatesFromSession(),
 
   highlightTarget: null,
   setHighlightTarget: (id) => set({ highlightTarget: id }),
@@ -1005,10 +1380,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         if (get().sessionVersion !== version) return;
         const projectId = space.projectId;
 
-        let issues: Issue[] = [];
         let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
 
-        issues = await loadBackendIssues(projectId, space.unlockedStages);
+        const findingsData = await loadBackendFindingsAndViews(projectId);
         if (get().sessionVersion !== version) return;
         try {
           const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
@@ -1027,8 +1401,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           currentSystemView: 'workspace',
           activePage: '/overview',
           initialPrompt: space.userRequirements,
-          backendIssues: issues,
-          backendIssuesLoaded: true,
+          ...findingsData,
+          backendFindingsLoaded: true,
           backendChoiceGroups: choiceGroupsRecord,
           ir: space,
           selectedObject: null,
@@ -1056,40 +1430,39 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       const projectId = space.projectId;
       
-      let issues: Issue[] = [];
       let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
       
-      issues = await loadBackendIssues(projectId, space.unlockedStages);
-      if (get().sessionVersion !== version) return;
-      try {
-        const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
+        const findingsData = await loadBackendFindingsAndViews(projectId);
         if (get().sessionVersion !== version) return;
-        groups.forEach((cg: any) => {
-          const compatible = mapBackendChoiceGroupToCompatible(cg);
-          choiceGroupsRecord[compatible.id] = compatible;
-        });
-      } catch (cgErr) {
-        console.warn('Failed to load choice groups:', cgErr);
-      }
-      await get().loadAuditLogs(projectId);
-      if (get().sessionVersion !== version) return;
+        try {
+          const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
+          if (get().sessionVersion !== version) return;
+          groups.forEach((cg: any) => {
+            const compatible = mapBackendChoiceGroupToCompatible(cg);
+            choiceGroupsRecord[compatible.id] = compatible;
+          });
+        } catch (cgErr) {
+          console.warn('Failed to load choice groups:', cgErr);
+        }
+        await get().loadAuditLogs(projectId);
+        if (get().sessionVersion !== version) return;
 
-      set({
-        currentSystemView: 'workspace',
-        activePage: '/overview',
-        initialPrompt: space.userRequirements,
-        backendIssues: issues,
-        backendIssuesLoaded: true,
-        backendChoiceGroups: choiceGroupsRecord,
-        ir: space,
-        selectedObject: null,
-        selectedObjectId: null,
-        selectedNodeId: null,
-        selectedSlotId: null,
-        highlightTarget: null,
-        pendingManualAction: null,
-        isLoading: false
-      });
+        set({
+          currentSystemView: 'workspace',
+          activePage: '/overview',
+          initialPrompt: space.userRequirements,
+          ...findingsData,
+          backendFindingsLoaded: true,
+          backendChoiceGroups: choiceGroupsRecord,
+          ir: space,
+          selectedObject: null,
+          selectedObjectId: null,
+          selectedNodeId: null,
+          selectedSlotId: null,
+          highlightTarget: null,
+          pendingManualAction: null,
+          isLoading: false
+        });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '打开工作区失败', isLoading: false });
@@ -1104,10 +1477,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const space = await workspaceApi.getById(id);
       if (get().sessionVersion !== version) return;
       
-      let issues: Issue[] = [];
       let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
       
-      issues = await loadBackendIssues(id, space.unlockedStages);
+      const findingsData = await loadBackendFindingsAndViews(id);
       if (get().sessionVersion !== version) return;
       try {
         const groups = await workspaceApi.listChoiceGroups(id, 'open');
@@ -1123,8 +1495,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
 
       set((s) => ({
-        backendIssues: issues,
-        backendIssuesLoaded: true,
+        ...findingsData,
+        backendFindingsLoaded: true,
         backendChoiceGroups: choiceGroupsRecord,
         ir: space,
         selectedObject: findSelectedObjectInIr(space, s.selectedObjectId, s.selectedObject)
@@ -1152,6 +1524,145 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  triggerGateCheck: async (action: string, onPass: () => void, onCancel?: () => void) => {
+    const version = get().sessionVersion;
+    const projectId = get().ir?.projectId;
+    if (!projectId) {
+      onPass();
+      return;
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const res = await workspaceApi.listFindings(projectId, { view: 'gate', action });
+      const findings = Array.isArray(res) ? res : (res?.findings || []);
+      if (get().sessionVersion !== version) return;
+      set({ isLoading: false });
+
+      const snoozed = get().snoozedGateFindingIds || {};
+      const activeFindings = findings.filter((finding: Finding) => {
+        const key = `${projectId}:${action}:${finding.findingId}`;
+        const storedHash = snoozed[key];
+        if (!storedHash) return true;
+        const currentHash = getGateFindingContextHash(finding);
+        return storedHash !== currentHash;
+      });
+
+      if (activeFindings.length > 0) {
+        set({
+          activeGateCheck: {
+            action,
+            findings: activeFindings,
+            onPass: () => {
+              set({ activeGateCheck: null });
+              onPass();
+            },
+            onCancel: () => {
+              set({ activeGateCheck: null });
+              if (onCancel) onCancel();
+            }
+          }
+        });
+      } else {
+        onPass();
+      }
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : '检查门禁失败', isLoading: false });
+    }
+  },
+
+  snoozeGateFinding: (action: string, finding: Finding) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    const hash = getGateFindingContextHash(finding);
+    const key = `${projectId}:${action}:${finding.findingId}`;
+    const nextSnoozed = {
+      ...get().snoozedGateFindingIds,
+      [key]: hash,
+    };
+    set({ snoozedGateFindingIds: nextSnoozed });
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('rs_workbench_snoozed_gates', JSON.stringify(nextSnoozed));
+      } catch (e) {
+        console.error('Failed to save snoozed gates to sessionStorage', e);
+      }
+    }
+  },
+
+  startFindingSuggestion: async (finding: Finding) => {
+    const version = get().sessionVersion;
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+
+    const presentation = getNextSuggestionPresentation(finding);
+    const isGlobalLoading = presentation.icon === 'generate' || presentation.icon === 'retry';
+
+    set({
+      isLoading: true,
+      error: null,
+      ...(isGlobalLoading ? { isGenerating: true, lastActionMessage: presentation.loadingLabel } : {})
+    });
+    try {
+      const target =
+        finding.metadata?.target ||
+        (finding.target
+          ? {
+              type: finding.target.targetType || finding.target.type,
+              id: finding.target.targetId || finding.target.id,
+              parentType: finding.target.parentType,
+              parentId: finding.target.parentId,
+            }
+          : null);
+
+      const action = finding.metadata?.action;
+      if (action) {
+        await executeProcessorAction(action, { stage: finding.stage, findingCode: finding.code, target }, version);
+      } else {
+        throw new Error(`下一步建议「${finding.code}」缺少可执行 action`);
+      }
+      set({ isLoading: false, isGenerating: false });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : '启动建议失败', isLoading: false, isGenerating: false });
+    }
+  },
+
+/** Build a target from aggregate gate metadata for the resolve API. */
+
+  executeGateFindingAction: async (finding: Finding) => {
+    const version = get().sessionVersion;
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      // Gate aggregate findings lack individual targets. Build one from
+      // metadata so the backend IssueRepairService can dispatch correctly.
+      const gateTarget = buildAggregateTarget(finding);
+
+      const res = await workspaceApi.resolveIssue(projectId, {
+        issue_id: finding.findingId,
+        issue_code: finding.code,
+        stage: finding.stage,
+        target: gateTarget,
+        metadata: finding.metadata || {}
+      });
+      if (get().sessionVersion !== version) return;
+
+      // Pass the finding directly as the context for executeIssueResolution
+      await executeIssueResolution(res, finding, version);
+
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      const msg = err instanceof Error ? err.message : '自动处理缺陷失败';
+      set({ error: msg, isLoading: false });
+      throw err;
+    }
+  },
+
   exitWorkspace: () => {
     set((state: any) => ({
       sessionVersion: state.sessionVersion + 1,
@@ -1171,12 +1682,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       isGeneratingChoices: false,
       generatingChoiceGroupType: null,
       choiceGroupGenerationProgress: null,
+      activeGateCheck: null,
       pendingGenerationConflict: null,
       activeChoiceGroup: null,
       activeStaleChoice: null,
       activeShadowDraft: null,
-      backendIssues: [],
-      backendIssuesLoaded: false,
+      backendFindings: [],
+      backendFindingsLoaded: false,
+      findingsByView: { issues: [], next_action: [], gate: [], health: [] },
       backendChoiceGroups: {},
       isDiagnosing: false,
       nextSuggestions: {},
@@ -1568,7 +2081,22 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
 
     const conflictingGroup = findConflictingChoiceGroup(get().backendChoiceGroups, generationType, target);
-    if (conflictingGroup && !forceReplace) {
+    if (conflictingGroup && !forceReplace && !userFeedback) {
+      set({
+        activeChoiceGroup: conflictingGroup,
+        activeDraft: null,
+        activeDraftType: null,
+        pendingGenerationConflict: null,
+        choiceGroupGenerationProgress: null,
+        error: null,
+        isGeneratingChoices: false,
+        isGenerating: false,
+        lastActionMessage: `已打开现有${getGenerationTypeLabel(generationType)}候选方案，可继续选择或重新生成。`,
+      });
+      return conflictingGroup;
+    }
+
+    if (conflictingGroup && !forceReplace && userFeedback) {
       set({
         pendingGenerationConflict: {
           action: conflictAction || 'generateFeatures',
@@ -1586,6 +2114,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     set({
       isGeneratingChoices: true,
       error: null,
+      choiceGroupGenerationProgress: buildInitialChoiceProgress(candidateCount),
       lastActionMessage: `正在生成 ${generationType} 候选方案...`,
     });
     try {
@@ -1616,18 +2145,20 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         activeDraft: null,
         activeDraftType: null,
         pendingGenerationConflict: null,
+        choiceGroupGenerationProgress: null,
         lastActionMessage: `已生成 ${group.successCount || group.success_count || 0} 套候选方案`,
       }));
       return group;
     } catch (err) {
       if (get().sessionVersion !== version) return null;
       if (err instanceof Error && err.message === GENERATION_CONFLICT_PENDING_ERROR) {
-        set({ isGeneratingChoices: false });
+        set({ isGeneratingChoices: false, choiceGroupGenerationProgress: null });
         return null;
       }
       set({
         error: err instanceof Error ? err.message : '生成候选方案失败',
         isGeneratingChoices: false,
+        choiceGroupGenerationProgress: null,
       });
       return null;
     }
@@ -1690,7 +2221,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       // Fallback: old single-draft flow
       const draft = await workspaceApi.createActorGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
-      set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessage: '🤖 AI 推荐的角色列表已生成！' });
+      set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessage: '角色列表已生成。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       const errMsg = err instanceof Error ? err.message : '生成角色失败';
@@ -1703,7 +2234,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的最新意见调整重构角色列表，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见调整重构角色列表，请稍候...' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -1774,7 +2305,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const draft = await workspaceApi.createFeatureGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: draft, activeDraftType: 'feature', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessage: '🤖 AI 推荐的核心功能架构树已生成！',
+        lastActionMessage: '核心功能架构树已生成。',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
@@ -1788,7 +2319,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的反馈意见重新调整分解功能树，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新调整功能分解树，请稍候...' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -1859,7 +2390,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const draft = await workspaceApi.createFlowGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: draft, activeDraftType: 'flow', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessage: '🤖 AI 推荐的核心泳道步骤与核心数据对象已生成！',
+        lastActionMessage: '核心泳道步骤与核心数据对象已生成。',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
@@ -1873,7 +2404,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的意见重新推演流程与业务对象，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新推演流程与业务对象，请稍候...' });
     try {
       const updated = isSlotFillingDraft(draft)
         ? await workspaceApi.regenerateSlotFillingDraft(draftId, feedback)
@@ -1952,17 +2483,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
 
     // ── Fallback / full / batch: old draft path ──────────────
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在智能推演具体功能节点在业务场景下的典型成功场景...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在生成场景草稿，请稍候...' });
     try {
       if (Array.isArray(featureIds)) {
         if (featureIds.length === 0) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId);
           if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
         } else if (featureIds.length === 1) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds[0]);
           if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
         } else {
           const drafts = await Promise.all(
             featureIds.map(fId => workspaceApi.createScenarioGenerationDraft(pId, fId))
@@ -1977,12 +2508,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
             scenarios: combinedScenarios,
             draft_id: draftIds[0],
           };
-          set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: `🤖 AI 智能场景推演成功！针对选定的 ${featureIds.length} 个功能模块共生成了 ${combinedScenarios.length} 个场景，已在上方提供预览。` });
+          set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: `场景草稿生成成功！针对选定的 ${featureIds.length} 个功能模块共生成了 ${combinedScenarios.length} 个场景，已在上方提供预览。` });
         }
       } else {
         const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds);
         if (get().sessionVersion !== version) return;
-        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '🤖 AI 智能场景推演成功！已在上方提供完整场景列表，可查看其详细交互 and AC验收条件。' });
+        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
       }
     } catch (err) {
       if (get().sessionVersion !== version) return;
@@ -1996,7 +2527,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的具体修改反馈，重新演练场景详情，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据反馈重新演练场景详情，请稍候...' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2082,7 +2613,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const draft = await workspaceApi.createAcceptanceCriteriaGenerationDraft(pId, scenarioIds);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: draft, activeDraftType: 'ac', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessage: '🤖 AI 推荐的验收标准 (AC) 已精细推演成功！',
+        lastActionMessage: '成功标准 (AC) 已生成。',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
@@ -2096,7 +2627,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据调整意见重新演练优化验收标准 (AC) 检查项，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据调整意见重新演练优化成功标准 (AC) 检查项，请稍候...' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2167,7 +2698,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const draft = await workspaceApi.createScopeGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: draft, activeDraftType: 'scope', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessage: '🤖 AI Kano 范围与发布优先级 analysis 推演成功！',
+        lastActionMessage: 'Kano 范围与发布优先级分析已成功。',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
@@ -2180,7 +2711,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || !draft.draft_id) return;
-    set({ isGenerating: true, error: null, lastActionMessage: '🤖 AI 正在根据您的最新指导意见，重新推算评估功能卡片优先级与 Kano 归属，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新评估功能卡片优先级与 Kano 归属，请稍候...' });
     try {
       const updated = await workspaceApi.regenerateScopeGenerationDraft(draft.draft_id, feedback);
       if (get().sessionVersion !== version) return;
@@ -3022,54 +3553,29 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  createSlotFromIssue: async (issueId) => {
+  executeFindingIssueResolution: async (issueId) => {
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return null;
-    const issue = get().ir?.issuesCompatible?.find(i => i.id === issueId);
-    if (!issue) return null;
+    const issue = get().findingsByView.issues.find((finding) => finding.findingId === issueId);
+    if (!issue) {
+      set({ error: '找不到对应问题，请重新诊断后再试。', lastActionMessage: '找不到对应问题，请重新诊断后再试。', isLoading: false });
+      return null;
+    }
 
     set({ isLoading: true, error: null });
     try {
       const res = await workspaceApi.resolveIssue(projectId, {
-        issue_id: issue.id,
-        issue_code: issue.backendIssueCode || issue.category || '',
+        issue_id: issue.findingId,
+        issue_code: issue.code,
         stage: issue.stage,
-        target: issue.backendTarget || null,
-        metadata: issue.backendMetadata || {}
+        target: issue.target || null,
+        metadata: issue.metadata || {}
       });
       if (get().sessionVersion !== version) return null;
 
-      if (resolutionType(res) === 'already_resolved') {
-        await get().refreshWorkspace();
-        if (get().sessionVersion !== version) return null;
-        set({ isLoading: false, lastActionMessage: '该问题已解决。' });
-        return null;
-      }
+      await executeIssueResolution(res, issue, version);
 
-      if (resolutionType(res) === 'open_panel' || resolutionType(res) === 'manual_action' || resolutionType(res) === 'unsupported') {
-        set({ isLoading: false, lastActionMessage: res.title || '请手动处理该问题。', lastIssueResolution: res });
-        return null;
-      }
-
-      if (resolutionType(res) === 'repair_draft') {
-        set({ activeDraft: res.draft || res, activeDraftType: 'repair', lastActionMessage: `已生成修复建议：${res.title}`, isLoading: false });
-        return null;
-      }
-
-      if (resolutionType(res) === 'choice_group') {
-        await get().refreshWorkspace();
-        if (get().sessionVersion !== version) return null;
-        set({ isLoading: false, lastActionMessage: '已加入方案决策队列，请选择处理方案。' });
-        return null;
-      }
-
-      await get().refreshWorkspace();
-      if (get().sessionVersion !== version) return null;
-      if (res.draftId || res.draft_id) {
-        set({ activeDraft: res.draft, activeDraftType: mapResolutionDraftType(res.action?.draftType || res.action?.draft_type), lastActionMessage: `已触发处理：${res.title}` });
-      }
-      set({ isLoading: false });
       if (res.action?.payload?.perception_job_id) {
         return res.action.payload.perception_job_id.toString();
       }
@@ -3081,9 +3587,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ error: msg, lastActionMessage: msg, isLoading: false });
       return null;
     }
-  },
-  resolveIssue: async (issueId) => {
-    return get().createSlotFromIssue(issueId);
   },
   confirmRepairDraft: async (draftId) => {
     const version = get().sessionVersion;
@@ -3244,50 +3747,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     }
   },
-  executeNextSuggestion: async (stage: string) => {
-    const version = get().sessionVersion;
-    const projectId = get().ir?.projectId;
-    if (!projectId) return;
-    const suggestion = get().nextSuggestions[stage];
-    if (!suggestion) return;
-
-    set({ isLoading: true, error: null });
-    try {
-      const res = await workspaceApi.startNextSuggestion(projectId, {
-        stage,
-        suggestion_code: suggestion.code,
-        target: suggestion.target || null,
-        query: null
-      });
-      if (get().sessionVersion !== version) return;
-
-      await get().refreshWorkspace();
-      if (get().sessionVersion !== version) return;
-
-      const action = res.action;
-      if (action) {
-        if (action.kind === 'open_panel') {
-          if (action.panel === 'perception_slot') {
-            const perceptionJobId = action.payload?.perception_job_id;
-            if (perceptionJobId) {
-              await get().expandSlot(perceptionJobId.toString());
-              if (get().sessionVersion !== version) return;
-            }
-          } else if (action.panel === 'feature' && action.payload?.feature_id) {
-            const featId = action.payload.feature_id.toString();
-            const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
-            if (featObj) {
-              get().setSelectedObject(featObj);
-            }
-          }
-        }
-      }
-      set({ isLoading: false, lastActionMessage: `已执行“${suggestion.title}”建议。` });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '执行建议失败', isLoading: false });
-    }
-  },
   rewrite: async (scope, instruction) => {
     const version = get().sessionVersion;
     set({ isLoading: true, error: null });
@@ -3410,12 +3869,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
     if (projectId && updates?.status && ['open', 'ignored', 'resolved'].includes(updates.status)) {
       try {
-        await workspaceApi.updateIssueStatus(projectId, issueId, updates.status);
+        await workspaceApi.updateFindingStatus(projectId, issueId, updates.status);
         if (get().sessionVersion !== version) return;
       } catch (err) {
         if (get().sessionVersion !== version) return;
         set({
-          error: err instanceof Error ? err.message : '更新 Issue 状态失败',
+          error: err instanceof Error ? err.message : '更新 Finding 状态失败',
         });
         throw err;
       }
@@ -3423,10 +3882,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
     if (get().sessionVersion !== version) return;
 
-    const currentIssues = get().backendIssues || [];
-    const nextIssues = currentIssues.map((issue) =>
-      issue.id === issueId ? { ...issue, ...updates } : issue
+    const currentFindings = get().backendFindings || [];
+    const nextFindings = currentFindings.map((finding) =>
+      finding.findingId === issueId ? { ...finding, ...updates } : finding
     );
+
+    const nextFindingsByView = {
+      issues: get().findingsByView.issues.map((f) => f.findingId === issueId ? { ...f, ...updates } : f),
+      next_action: get().findingsByView.next_action.map((f) => f.findingId === issueId ? { ...f, ...updates } : f),
+      gate: get().findingsByView.gate.map((f) => f.findingId === issueId ? { ...f, ...updates } : f),
+      health: get().findingsByView.health.map((f) => f.findingId === issueId ? { ...f, ...updates } : f),
+    };
 
     const currentSelectedObject = get().selectedObject;
     const nextSelectedObject =
@@ -3435,8 +3901,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         : currentSelectedObject;
 
     set({
-      backendIssues: nextIssues,
-      backendIssuesLoaded: get().backendIssuesLoaded,
+      backendFindings: nextFindings,
+      backendFindingsLoaded: get().backendFindingsLoaded,
+      findingsByView: nextFindingsByView,
       ir: get().ir,
       selectedObject: nextSelectedObject,
       lastActionMessage:
@@ -3583,8 +4050,7 @@ export const selectFlowSteps = (state: WorkspaceState) => {
 };
 
 export const selectIssues = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as Issue[];
-  return (state.ir as any).issuesCompatible || emptyArray;
+  return state.findingsByView.issues || emptyArray;
 };
 
 export const selectChoices = (state: WorkspaceState) => {

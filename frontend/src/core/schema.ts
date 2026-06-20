@@ -191,7 +191,7 @@ export interface StageGateResult {
   stage: Stage;
   mandatoryChecksPassed: boolean;
   passed: boolean;
-  issues: Issue[];
+  issues: Finding[];
   activeSlot?: PerceptionSlot;
   blockingSlot?: PerceptionSlot;
   missingKinds: string[];
@@ -269,11 +269,11 @@ export interface RequirementSpace {
   issues?: Record<string, any>;
   slots?: Record<string, any>;
   choiceGroups?: Record<string, any>;
+  findings?: Finding[];
 
   // Compatible properties for selector caching
   actorsCompatible?: any[];
   flowStepsCompatible?: any[];
-  issuesCompatible?: any[];
   linksCompatible?: any[];
   goalsCompatible?: any[];
   capabilitiesCompatible?: any[];
@@ -326,35 +326,36 @@ export const PerceptionKindToText: Record<PerceptionKindType, string> = {
 // -------------------------------------------------------------
 // Compatibility Types for existing codebases
 // -------------------------------------------------------------
-export interface Issue {
-  id: string;
+export type FindingType = 'issue' | 'next_suggestion' | 'gate_condition' | 'quality_hint';
+export type BlockingScope = 'none' | 'stage_transition' | 'preview' | 'export' | 'checkpoint';
+
+export type IssueCapabilityKind =
+  | 'ai_repair'
+  | 'generation_draft'
+  | 'open_panel'
+  | 'manual_action'
+  | 'unsupported';
+
+export interface IssueCapability {
+  kind: IssueCapabilityKind;
+  action_label: string;
+  enabled: boolean;
+}
+
+export interface Finding {
+  findingId: string;
+  type: FindingType;
+  stage: 'what' | 'how' | 'scope' | 'preview' | 'all';
+  code: string;
   title: string;
   description: string;
-  severity: 'high' | 'medium' | 'low';
-  status: 'open' | 'ignored' | 'resolved';
-  relatedNodeIds: string[];
-  suggestedProjection: 'goal' | 'role' | 'system' | 'data' | 'ui';
-  category?: string;
-  backendIssueCode?: string;
-  backendTarget?: any;
-  backendMetadata?: any;
-
-  // 新增分阶段隔离的属性
-  stage?: 'what' | 'how' | 'scope';
-  domain?:
-    | 'actor'
-    | 'feature'
-    | 'feature_actor_binding'
-    | 'scenario'
-    | 'ac'
-    | 'flow'
-    | 'step'
-    | 'business_object'
-    | 'business_object_attribute'
-    | 'scope_decision'
-    | 'kano';
-  blocking?: boolean;
-  suggestedActionKind?: string;
+  severity: 'blocking' | 'warning' | 'info';
+  target?: any;
+  blockingScope: BlockingScope;
+  actionCode?: string;
+  metadata?: Record<string, any>;
+  capability?: IssueCapability | null;
+  status?: 'open' | 'ignored' | 'resolved';
 }
 
 export type RequirementNode =

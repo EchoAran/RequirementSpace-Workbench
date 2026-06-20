@@ -1,34 +1,14 @@
-from backend.core.detectors.issue_solvers.base_issue_solver import (
+from backend.core.issue_resolution.base_solver import (
     BaseIssueSolver,
 )
-from backend.core.detectors.issue_solvers.generation_draft_issue_solver import (
+from backend.core.issue_resolution.generation_draft_solver import (
     GenerationDraftIssueSolver,
 )
-from backend.core.detectors.issue_solvers.open_panel_issue_solver import (
+from backend.core.issue_resolution.open_panel_solver import (
     OpenPanelIssueSolver,
 )
+from backend.core.issue_capabilities import KNOWN_ISSUE_CODES
 from backend.schemas import IssueResolution, IssueTarget
-
-
-# Set of all known issue codes for quick lookup
-KNOWN_ISSUE_CODES: set[str] = {
-    "ACTOR_WITHOUT_FEATURE",
-    "LEAF_FEATURE_WITHOUT_ACTOR",
-    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO",
-    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS",
-    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA",
-    "DUPLICATE_SCENARIO_NAME",
-    "LEAF_FEATURE_WITHOUT_FLOW",
-    "FLOW_WITHOUT_FEATURE",
-    "FLOW_WITHOUT_STEPS",
-    "ACTOR_ACTION_STEP_WITHOUT_ACTOR",
-    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
-    "UNREACHABLE_FLOW_STEP",
-    "BUSINESS_OBJECT_WITHOUT_USAGE",
-    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES",
-    "LEAF_FEATURE_WITHOUT_SCOPE",
-    "SCOPE_WITHOUT_REASON",
-}
 
 
 class IssueSolverRegistry:

@@ -13,6 +13,7 @@ import {
   selectSelectedObject,
   selectPageHealth,
 } from '@/store/useWorkspaceStore';
+import { findingProjection, findingTargetIds } from '@/core/findingPresentation';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 
 
@@ -103,7 +104,7 @@ export function HowItWorks() {
     highlightTarget,
     setSelectedObject,
     setHighlightTarget,
-    createSlotFromIssue,
+    executeFindingIssueResolution,
     expandSlot,
     updateIssueAttributes,
     openSlot,
@@ -126,6 +127,7 @@ export function HowItWorks() {
     deleteFlowStep,
     runDiagnosis,
     unlockStageGate,
+    triggerGateCheck,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
@@ -425,7 +427,7 @@ export function HowItWorks() {
   const businessObjects = ir?.businessObjects || [];
 
   const openIssueFlow = async (issueId: string) => {
-    const slotId = await createSlotFromIssue(issueId);
+    const slotId = await executeFindingIssueResolution(issueId);
     if (slotId) {
       await expandSlot(slotId);
     }
@@ -437,12 +439,11 @@ export function HowItWorks() {
 
   const handleIssueClick = (issue: any) => {
     setSelectedObject(issue as any);
-    if (issue.relatedNodeIds?.[0]) {
-      setHighlightTarget(issue.relatedNodeIds[0]);
+    const targetId = findingTargetIds(issue)[0];
+    if (targetId) {
+      setHighlightTarget(targetId);
     }
-    if (issue.suggestedProjection) {
-      jumpToProjection(issue.suggestedProjection);
-    }
+    jumpToProjection(findingProjection(issue));
   };
 
   return (
@@ -466,30 +467,7 @@ export function HowItWorks() {
 
           <div className="flex flex-col gap-6 h-full content-start">
 
-            {pageHealth.nextSlot && (
-              <StageGuidanceBanner
-                slot={pageHealth.nextSlot}
-                issues={howIssues as any}
-                onManualAction={handleManualAction}
-                onAIAction={handleAIAction}
-                onReDiagnose={runDiagnosis}
-                onIssueClick={handleIssueClick}
-                onIssueCreateSlot={(issue) => { void openIssueFlow(issue.id); }}
-                onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
-                isWorking={isGenerating || isLoading}
-              />
-            )}
-
-            {!pageHealth.nextSlot && (
-              <StageGuidanceBanner
-                issues={howIssues as any}
-                onReDiagnose={runDiagnosis}
-                onIssueClick={handleIssueClick}
-                onIssueCreateSlot={(issue) => { void openIssueFlow(issue.id); }}
-                onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
-                isWorking={isGenerating || isLoading}
-              />
-            )}
+            <StageGuidanceBanner stage="how" />
 
             {/* AI Flow Draft Preview Banner */}
             {activeDraft && activeDraftType === 'flow' && (
@@ -1723,8 +1701,12 @@ export function HowItWorks() {
         }}
         onForceUnlock={async () => {
           setIsTransitionModalOpen(false);
-          await unlockStageGate('how');
-          navigate(buildProjectRoute(ir?.projectId, '/scope'));
+          const targetPath = buildProjectRoute(ir?.projectId, '/scope');
+          triggerGateCheck('enter_scope', () => {
+            unlockStageGate('scope').then(() => {
+              navigate(targetPath);
+            });
+          });
         }}
       />
 
@@ -1748,4 +1730,3 @@ export function HowItWorks() {
     </div>
   );
 }
-

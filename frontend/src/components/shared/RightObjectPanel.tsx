@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Choice, ChoiceGroup, Issue, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText } from '@/core/schema';
+import { Choice, ChoiceGroup, Finding, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPanel } from '../right-panel/ChoiceGroupPanel';
 import { ChoicePanel } from '../right-panel/ChoicePanel';
@@ -1051,7 +1051,7 @@ export function RightObjectPanel() {
         return <NodePanel node={ir.nodes[objId]} ir={ir} />;
       }
       if (ir.issues && ir.issues[objId]) {
-        return <IssuePanel issue={ir.issues[objId] as Issue} ir={ir} />;
+        return <IssuePanel issue={ir.issues[objId] as Finding} ir={ir} />;
       }
       if (ir.slots && ir.slots[objId]) {
         return <SlotPanel slot={ir.slots[objId] as RequirementSlot} ir={ir} />;

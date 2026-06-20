@@ -115,7 +115,7 @@ export function Home() {
     <div className="flex-1 h-[100dvh] bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 relative overflow-hidden">
       <header className="h-16 border-b border-slate-200/50 bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
-          <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
+          <img src={`${import.meta.env.BASE_URL}plume-gradient.svg`} alt="Plume" className="w-7 h-7 shrink-0" />
           <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent">需求空间工作台</span>
         </div>
 

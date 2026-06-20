@@ -2,22 +2,36 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate, Outle
 import { Layout } from './components/layout/Layout';
 import { ScopedAIBar } from './components/shared/ScopedAIBar';
 import { GenerationConflictDialog } from './components/shared/GenerationConflictDialog';
-import { Overview } from './pages/Overview';
-import { WhatToDo } from './pages/WhatToDo';
-import { HowItWorks } from './pages/HowItWorks';
-import { ScopeAndDelivery } from './pages/ScopeAndDelivery';
-import { Preview } from './pages/Preview';
-import { ProjectOnboarding } from './pages/ProjectOnboarding';
-import { Home } from './pages/Home';
+import GateCheckModal from './components/shared/GateCheckModal';
 import { useWorkspaceStore, WorkspacePage, getFriendlyErrorMessage } from './store/useWorkspaceStore';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { buildProjectRoute, extractWorkspacePage, getGuardRedirect } from './core/selectors';
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { GuestGuard } from './components/auth/GuestGuard';
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
-import { AccountSettings } from './pages/AccountSettings';
+
+const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })));
+const WhatToDo = lazy(() => import('./pages/WhatToDo').then((module) => ({ default: module.WhatToDo })));
+const HowItWorks = lazy(() => import('./pages/HowItWorks').then((module) => ({ default: module.HowItWorks })));
+const ScopeAndDelivery = lazy(() => import('./pages/ScopeAndDelivery').then((module) => ({ default: module.ScopeAndDelivery })));
+const Preview = lazy(() => import('./pages/Preview').then((module) => ({ default: module.Preview })));
+const ProjectOnboarding = lazy(() => import('./pages/ProjectOnboarding').then((module) => ({ default: module.ProjectOnboarding })));
+const Home = lazy(() => import('./pages/Home').then((module) => ({ default: module.Home })));
+const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
+const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
+const AccountSettings = lazy(() => import('./pages/AccountSettings').then((module) => ({ default: module.AccountSettings })));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 p-6">
+      <div className="h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
+    </div>
+  );
+}
+
+function LazyRoute({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
+}
 
 function RouterStateSync() {
   const location = useLocation();
@@ -199,7 +213,18 @@ function GlobalTaskStatus() {
 
   if (!isGenerating) return null;
 
-  const message = lastActionMessage || 'AI 正在执行任务，请稍候...';
+  const message = lastActionMessage || '正在执行操作，请稍候...';
+
+  let title = '任务执行中';
+  if (message.includes('生成') && message.includes('草稿')) {
+    title = '正在生成草稿';
+  } else if (message.includes('诊断') || message.includes('分析') || message.includes('重新诊断')) {
+    title = '正在重新诊断';
+  } else if (message.includes('修复') || message.includes('AI 正在生成修复')) {
+    title = 'AI 正在生成修复方案';
+  } else if (message.includes('AI') || message.includes('智能') || message.includes('推演')) {
+    title = 'AI 任务执行中';
+  }
 
   return (
     <div className="fixed inset-0 z-[80] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-6">
@@ -208,7 +233,7 @@ function GlobalTaskStatus() {
           <div className="h-16 w-16 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
         </div>
         <div className="space-y-2">
-          <div className="text-xs font-black tracking-[0.2em] text-indigo-600">AI 任务执行中</div>
+          <div className="text-xs font-black tracking-[0.2em] text-indigo-600">{title}</div>
           <div className="text-sm font-bold text-slate-900 leading-relaxed">{message}</div>
           <div className="text-xs text-slate-500 leading-relaxed">
             页面会在任务完成后自动刷新当前结果，您无需重复点击按钮。
@@ -239,19 +264,62 @@ function GlobalGenerationConflictDialog() {
 function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage: 'flow' | 'scope' }) {
   const ir = useWorkspaceStore((s) => s.ir);
   const setError = useWorkspaceStore((s) => s.setError);
+  const gateFindings = useWorkspaceStore((s) => s.findingsByView.gate || []);
+  const snoozedGateFindingIds = useWorkspaceStore((s) => s.snoozedGateFindingIds || {});
   const navigate = useNavigate();
 
+  const projectId = ir?.projectId;
   const path = stage === 'flow' ? '/flow' : '/scope';
+  const action = stage === 'flow' ? 'enter_how' : 'enter_scope';
+
+  const getGateFindingContextHash = (finding: any): string => {
+    if (!finding || !finding.metadata) return '';
+    if (finding.metadata.missing_pairs) {
+      const pairs = [...finding.metadata.missing_pairs];
+      pairs.sort((a: any, b: any) => {
+        const keyA = `${a.feature_id}:${a.actor_id}`;
+        const keyB = `${b.feature_id}:${b.actor_id}`;
+        return keyA.localeCompare(keyB);
+      });
+      return JSON.stringify(pairs);
+    }
+    if (finding.metadata.missing_features) {
+      const features = [...finding.metadata.missing_features];
+      features.sort((a: any, b: any) => (a.feature_id || 0) - (b.feature_id || 0));
+      return JSON.stringify(features);
+    }
+    return '';
+  };
+
+  const activeBlockingGates = projectId
+    ? gateFindings.filter((finding) => {
+        let isBlocking = false;
+        if (action === "enter_how") {
+          isBlocking = (finding.stage === "what" && finding.blockingScope === "stage_transition");
+        } else if (action === "enter_scope") {
+          isBlocking = (finding.stage === "how" && finding.blockingScope === "stage_transition");
+        }
+        if (!isBlocking) return false;
+
+        const key = `${projectId}:${action}:${finding.findingId}`;
+        const storedHash = snoozedGateFindingIds[key];
+        if (!storedHash) return true;
+        return storedHash !== getGateFindingContextHash(finding);
+      })
+    : [];
+
+  const isSnoozed = projectId && gateFindings.length > 0 && activeBlockingGates.length === 0;
+
   const redirect = getGuardRedirect(path, ir);
 
   useEffect(() => {
-    if (redirect) {
+    if (redirect && !isSnoozed) {
       setError(redirect.errorToast);
       navigate(buildProjectRoute(ir?.projectId, redirect.targetRoute as WorkspacePage), { replace: true });
     }
-  }, [redirect, setError, navigate, ir?.projectId]);
+  }, [redirect, isSnoozed, setError, navigate, ir?.projectId]);
 
-  if (redirect) {
+  if (redirect && !isSnoozed) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full">
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5 animate-in fade-in duration-300">
@@ -285,30 +353,33 @@ export function App() {
     void checkAuth();
   }, [checkAuth]);
 
+  // 根据 Vite base 自动匹配基准路由路径（去除末尾斜杠）
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <RouterStateSync />
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
         
         {/* Guest only routes */}
-        <Route path="/login" element={<GuestGuard><Login /></GuestGuard>} />
-        <Route path="/register" element={<GuestGuard><Register /></GuestGuard>} />
+        <Route path="/login" element={<GuestGuard><LazyRoute><Login /></LazyRoute></GuestGuard>} />
+        <Route path="/register" element={<GuestGuard><LazyRoute><Register /></LazyRoute></GuestGuard>} />
         
         {/* Protected routes */}
-        <Route path="/home" element={<AuthGuard><Home /></AuthGuard>} />
-        <Route path="/settings" element={<AuthGuard><AccountSettings /></AuthGuard>} />
-        <Route path="/onboarding" element={<AuthGuard><ProjectOnboarding /></AuthGuard>} />
+        <Route path="/home" element={<AuthGuard><LazyRoute><Home /></LazyRoute></AuthGuard>} />
+        <Route path="/settings" element={<AuthGuard><LazyRoute><AccountSettings /></LazyRoute></AuthGuard>} />
+        <Route path="/onboarding" element={<AuthGuard><LazyRoute><ProjectOnboarding /></LazyRoute></AuthGuard>} />
         
         <Route path="/projects/:projectId" element={<AuthGuard><ProjectRouteBootstrap /></AuthGuard>}>
           <Route index element={<Navigate to="overview" replace />} />
-          <Route path="overview" element={<Overview />} />
-          <Route path="what" element={<WhatToDo />} />
+          <Route path="overview" element={<LazyRoute><Overview /></LazyRoute>} />
+          <Route path="what" element={<LazyRoute><WhatToDo /></LazyRoute>} />
           <Route
             path="flow"
             element={
               <StageRouteGuard stage="flow">
-                <HowItWorks />
+                <LazyRoute><HowItWorks /></LazyRoute>
               </StageRouteGuard>
             }
           />
@@ -316,11 +387,11 @@ export function App() {
             path="scope"
             element={
               <StageRouteGuard stage="scope">
-                <ScopeAndDelivery />
+                <LazyRoute><ScopeAndDelivery /></LazyRoute>
               </StageRouteGuard>
             }
           />
-          <Route path="preview" element={<Preview />} />
+          <Route path="preview" element={<LazyRoute><Preview /></LazyRoute>} />
         </Route>
         
         {/* Legacy redirects wrapped in AuthGuard */}
@@ -333,6 +404,7 @@ export function App() {
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
       <GlobalGenerationConflictDialog />
+      <GateCheckModal />
       <GlobalTaskStatus />
       <GlobalToast />
     </BrowserRouter>

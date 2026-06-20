@@ -1,14 +1,13 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class LLMConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     configured: bool
     source: str | None = None  # "personal" | "server" | None
     api_url: str | None = None
     model_name: str | None = None
     api_key_last4: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class LLMConfigRequest(BaseModel):

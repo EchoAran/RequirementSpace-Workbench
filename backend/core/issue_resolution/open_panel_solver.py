@@ -1,4 +1,4 @@
-from backend.core.detectors.issue_solvers.base_issue_solver import (
+from backend.core.issue_resolution.base_solver import (
     BaseIssueSolver,
 )
 from backend.schemas import IssueResolution, IssueTarget

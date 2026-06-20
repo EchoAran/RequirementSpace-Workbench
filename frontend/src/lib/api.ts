@@ -268,12 +268,12 @@ export const workspaceApi = {
   listAuditLogs: async (projectId: string): Promise<any[]> => {
     return http.get<any[]>(`/projects/${projectId}/audit-logs`);
   },
-  listIssues: async (projectId: string, stage: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/issues`, { stage });
+  listFindings: async (projectId: string, params: { stage?: string; view?: string; action?: string }): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/findings`, params);
   },
-  updateIssueStatus: async (projectId: string, issueId: string, status: string): Promise<any> => {
-    return http.put<any>(`/projects/${projectId}/issues/status`, {
-      issue_id: issueId,
+  updateFindingStatus: async (projectId: string, findingId: string, status: string): Promise<any> => {
+    return http.put<any>(`/projects/${projectId}/findings/status`, {
+      finding_id: findingId,
       status,
     });
   },
@@ -285,9 +285,6 @@ export const workspaceApi = {
   },
   rediagnoseNextSuggestion: async (projectId: string, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/next-suggestion/rediagnose`, { stage });
-  },
-  startNextSuggestion: async (projectId: string, payload: { stage: string; suggestion_code: string; target?: any | null; query?: string | null }): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/next-suggestion/start`, payload);
   },
   createSlotFillingDraft: async (projectId: string, perceptionJobId: number, fillerKind: string): Promise<any> => {
     const kind = fillerKind === 'ac' || fillerKind === 'acceptanceCriteria' || fillerKind === 'acceptance_criterion'

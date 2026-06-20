@@ -57,7 +57,7 @@ class WhatIssueDetector(BaseIssueDetector):
                     targetType="actor",
                     targetId=actor.actor_id,
                 ),
-                resolverCode="open_actor_feature_relation_panel",
+                actionCode="open_actor_feature_relation_panel",
             )
             for actor in context.actors
             if actor_feature_count.get(actor.actor_id, 0) == 0
@@ -67,6 +67,14 @@ class WhatIssueDetector(BaseIssueDetector):
     def _detect_leaf_feature_without_actor(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        leaf_features = context.leaf_features
+        with_actor = [f for f in leaf_features if f.actor_ids]
+
+        # Non-equilibrium: if all leaf features lack actors (or there are no leaf features),
+        # do not report issues; suggest role-binding / actor-generation instead.
+        if len(leaf_features) > 0 and len(with_actor) == 0:
+            return []
+
         return [
             Issue(
                 code="LEAF_FEATURE_WITHOUT_ACTOR",
@@ -78,9 +86,9 @@ class WhatIssueDetector(BaseIssueDetector):
                     targetType="feature",
                     targetId=feature.feature_id,
                 ),
-                resolverCode="open_feature_actor_relation_panel",
+                actionCode="open_feature_actor_relation_panel",
             )
-            for feature in context.leaf_features
+            for feature in leaf_features
             if len(feature.actor_ids) == 0
         ]
 
@@ -88,6 +96,11 @@ class WhatIssueDetector(BaseIssueDetector):
     def _detect_feature_actor_pair_without_scenario(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        # Non-equilibrium: if there are no scenarios at all, do not report pair issues;
+        # let suggestion policy recommend GENERATE_SCENARIOS.
+        if not context.scenarios:
+            return []
+
         scenario_pair_set = {
             (
                 scenario.feature_id,
@@ -126,7 +139,7 @@ class WhatIssueDetector(BaseIssueDetector):
                                 f"{feature.feature_id}:{actor_id}"
                             ),
                         ),
-                        resolverCode=(
+                        actionCode=(
                             "create_single_scenario_generation_draft"
                         ),
                         metadata={
@@ -176,7 +189,7 @@ class WhatIssueDetector(BaseIssueDetector):
                         targetType="scenario",
                         targetId=scenario.scenario_id,
                     ),
-                    resolverCode="open_scenario_relation_panel",
+                    actionCode="open_scenario_relation_panel",
                     metadata={
                         "feature_id": scenario.feature_id,
                         "actor_id": scenario.actor_id,
@@ -190,6 +203,15 @@ class WhatIssueDetector(BaseIssueDetector):
     def _detect_scenario_without_acceptance_criteria(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        # Non-equilibrium: if there are no scenarios or no scenarios have any AC,
+        # do not report individual issues; let suggestion policy handle it.
+        if not context.scenarios:
+            return []
+
+        total_ac = sum(s.acceptance_criteria_count for s in context.scenarios)
+        if total_ac == 0:
+            return []
+
         return [
             Issue(
                 code="SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA",
@@ -201,7 +223,7 @@ class WhatIssueDetector(BaseIssueDetector):
                     targetType="scenario",
                     targetId=scenario.scenario_id,
                 ),
-                resolverCode="create_acceptance_criteria_generation_draft",
+                actionCode="create_acceptance_criteria_generation_draft",
             )
             for scenario in context.scenarios
             if scenario.acceptance_criteria_count == 0
@@ -258,7 +280,7 @@ class WhatIssueDetector(BaseIssueDetector):
                             for scenario_id in scenario_ids
                         ),
                     ),
-                    resolverCode="open_scenario_merge_panel",
+                    actionCode="open_scenario_merge_panel",
                     metadata={
                         "feature_id": feature_id,
                         "actor_id": actor_id,

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.database.model import ChoiceGroupModel, ChoiceModel, AuditLogModel
@@ -10,7 +10,7 @@ from backend.api.schemas.choice_schema import (
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
 )
-from backend.core.detectors.issue_solvers.ai_issue_solver import RepairProposal
+from backend.core.issue_resolution.ai.base_ai_solver import RepairProposal
 from backend.core.engines.patch_engine import GraphPatchEngine
 
 # Phase 1: generation choice 依赖
@@ -71,7 +71,7 @@ class ChoiceService:
                 apply_mode="patch",
             )
             # P5: generate impact preview for each candidate
-            from backend.core.detectors.issue_solvers.impact_preview import build_impact_preview
+            from backend.core.issue_resolution.impact_preview import build_impact_preview
             try:
                 preview = await build_impact_preview(
                     c.patch, project_id, issue_code or "", session,
@@ -238,7 +238,7 @@ class ChoiceService:
                     group.status_detail = {
                         **(group.status_detail or {}),
                         "stale_reason": stale_reason,
-                        "stale_at": str(datetime.utcnow()),
+                        "stale_at": str(datetime.now(UTC)),
                     }
                     # Phase 6: stale audit log
                     session.add(AuditLogModel(
@@ -408,7 +408,7 @@ class ChoiceService:
         resolved_ids, remaining_ids, new_ids = [], [], []
         is_partial = False
         if group.source_type == "issue_repair" and group.stage and group.issue_id and group.issue_code:
-            from backend.core.detectors.issue_solvers.issue_resolution_verifier import (
+            from backend.core.issue_resolution.resolution_verifier import (
                 verify_issue_resolved,
             )
             from backend.core.detectors import HowIssueDetector, ScopeIssueDetector, WhatIssueDetector

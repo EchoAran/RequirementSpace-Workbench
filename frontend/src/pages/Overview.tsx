@@ -14,13 +14,14 @@ import {
 } from '@/store/useWorkspaceStore';
 import { RefreshCw } from 'lucide-react';
 import { NodeKindToRoute, NodeKindToText } from '@/core/schema';
+import { findingProjection } from '@/core/findingPresentation';
 
 export function Overview() {
   const {
     setSelectedObject,
     acceptChoice,
     rejectChoice,
-    createSlotFromIssue,
+    executeFindingIssueResolution,
     expandSlot,
     updateIssueAttributes,
     refreshWorkspace,
@@ -118,7 +119,7 @@ export function Overview() {
   }, []);
 
   const openIssueFlow = async (issueId: string) => {
-    const slotId = await createSlotFromIssue(issueId);
+    const slotId = await executeFindingIssueResolution(issueId);
     if (slotId) {
       await expandSlot(slotId);
     }
@@ -244,11 +245,11 @@ export function Overview() {
                   <div className="grid max-h-[68vh] grid-cols-1 gap-4 overflow-y-auto pr-1 md:grid-cols-2">
                     {openIssues.map(issue => (
                       <IssueCard
-                        key={issue.id}
+                        key={issue.findingId}
                         issue={issue as any}
-                        onClick={() => { setSelectedObject(issue as any); jumpToProjection((issue as any).suggestedProjection); }}
-                        onCreateSlot={(nextIssue) => void openIssueFlow(nextIssue.id)}
-                        onIgnore={(nextIssue) => void updateIssueAttributes(nextIssue.id, { status: 'ignored' })}
+                        onClick={() => { setSelectedObject(issue); jumpToProjection(findingProjection(issue)); }}
+                        onCreateSlot={(nextIssue) => void openIssueFlow(nextIssue.findingId)}
+                        onIgnore={(nextIssue) => void updateIssueAttributes(nextIssue.findingId, { status: 'ignored' })}
                       />
                     ))}
                     {openIssues.length === 0 && (

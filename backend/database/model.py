@@ -301,6 +301,10 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    finding_overrides: Mapped[list["FindingOverrideModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     ai_add_sessions: Mapped[list["AIAddSessionModel"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
@@ -1081,6 +1085,45 @@ class IssueOverrideModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ignored")
 
     project: Mapped[ProjectModel] = relationship(back_populates="issue_overrides")
+
+
+class FindingOverrideModel(TimestampMixin, Base):
+    __tablename__ = "finding_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "finding_id",
+            name="uq_finding_override_project_finding",
+        ),
+        Index(
+            "ix_finding_overrides_project_type_status",
+            "project_id",
+            "finding_type",
+            "status",
+        ),
+        Index(
+            "ix_finding_overrides_project_status",
+            "project_id",
+            "status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    finding_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    finding_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    project: Mapped[ProjectModel] = relationship(back_populates="finding_overrides")
+
 
 
 class AIAddSessionModel(TimestampMixin, Base):

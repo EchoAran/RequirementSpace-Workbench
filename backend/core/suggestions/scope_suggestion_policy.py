@@ -12,11 +12,13 @@ class ScopeSuggestionPolicy(StageSuggestionPolicy):
         self,
         project_id: int,
         session,
+        public_project_id: str | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
         )
+        pub_id = public_project_id or str(project_id)
 
         if not context.scopes:
             return NextSuggestion(
@@ -29,7 +31,7 @@ class ScopeSuggestionPolicy(StageSuggestionPolicy):
                     "draft_type": "scope_generation",
                     "endpoint": "/api/scope_generation_drafts",
                     "payload": {
-                        "project_id": project_id,
+                        "project_id": pub_id,
                     },
                 },
             )
@@ -41,6 +43,6 @@ class ScopeSuggestionPolicy(StageSuggestionPolicy):
             description="范围结论已存在，可以进入预览阶段。",
             action={
                 "kind": "navigate",
-                "route": f"/projects/{project_id}/preview",
+                "route": f"/projects/{pub_id}/preview",
             },
         )

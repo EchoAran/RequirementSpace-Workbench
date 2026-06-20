@@ -17,12 +17,12 @@ from sqlalchemy.orm import selectinload
 from backend.api.services.perception_job_invalidation_service import (
     mark_perception_jobs_stale,
 )
-from backend.core.detectors.issue_solvers.repair_fingerprint import (
+from backend.core.issue_resolution.fingerprint import (
     build_issue_fingerprint,
     compute_context_hash,
     load_target_entity_snapshot,
 )
-from backend.core.detectors.issue_solvers.repair_validator import (
+from backend.core.issue_resolution.validator import (
     RepairValidator,
 )
 from backend.core.engines.patch_engine import GraphPatchEngine
@@ -89,7 +89,7 @@ class IssueRepairDraftService:
 
         # P5: generate impact preview from patch
         if draft.patch:
-            from backend.core.detectors.issue_solvers.impact_preview import build_impact_preview
+            from backend.core.issue_resolution.impact_preview import build_impact_preview
             try:
                 preview = await build_impact_preview(
                     draft.patch, draft.project_id, draft.issue_code, session,
@@ -360,7 +360,7 @@ class IssueRepairDraftService:
         session: AsyncSession,
     ) -> tuple[list[str], list[str]]:
         """Delegates to the public verifier shared with P3 ChoiceService."""
-        from backend.core.detectors.issue_solvers.issue_resolution_verifier import (
+        from backend.core.issue_resolution.resolution_verifier import (
             verify_issue_resolved,
         )
         return await verify_issue_resolved(

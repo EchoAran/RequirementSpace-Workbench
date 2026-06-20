@@ -44,9 +44,7 @@ from backend.api.schemas.scenario_generation_schema import (
 from backend.api.schemas.issue_schema import (
     IssueResolutionResponse,
     IssueResolveRequest,
-    IssueResponse,
     IssueTargetResponse,
-    ProjectIssuesResponse,
 )
 from backend.api.schemas.issue_repair_draft_schema import (
     IssueRepairDraftActionResponse,
@@ -56,8 +54,6 @@ from backend.api.schemas.next_suggestion_schema import (
     NextSuggestionRediagnoseRequest,
     NextSuggestionResponse,
     NextSuggestionResponseItem,
-    NextSuggestionStartRequest,
-    NextSuggestionStartResponse,
 )
 from backend.api.schemas.perception_slot_filling_schema import (
     PerceptionSlotFilledActorPreview,
@@ -184,13 +180,9 @@ __all__ = [
     "ProjectPreview",
     "IssueResolutionResponse",
     "IssueResolveRequest",
-    "IssueResponse",
     "IssueTargetResponse",
-    "ProjectIssuesResponse",
     "NextSuggestionResponse",
     "NextSuggestionResponseItem",
-    "NextSuggestionStartRequest",
-    "NextSuggestionStartResponse",
     "PerceptionSlotFilledActorPreview",
     "PerceptionSlotFilledFeaturePreview",
     "PerceptionSlotFillingConfirmResponse",

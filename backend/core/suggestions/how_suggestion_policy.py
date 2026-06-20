@@ -12,11 +12,13 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
         self,
         project_id: int,
         session,
+        public_project_id: str | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
         )
+        pub_id = public_project_id or str(project_id)
 
         if not context.flows or not context.business_objects:
             return NextSuggestion(
@@ -29,7 +31,30 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
                     "draft_type": "flow_generation",
                     "endpoint": "/api/flow_generation_drafts",
                     "payload": {
-                        "project_id": project_id,
+                        "project_id": pub_id,
+                    },
+                },
+            )
+
+        # Non-equilibrium: all flows exist but none have steps.
+        # Instead of suggesting ENTER_SCOPE, guide the user to complete flow steps.
+        flows_with_steps = [flow for flow in context.flows if flow.steps]
+        if context.flows and not flows_with_steps:
+            return NextSuggestion(
+                sourceType="predefined",
+                code="COMPLETE_FLOW_STEPS",
+                title="完善流程步骤",
+                description="当前流程尚未包含可执行步骤，建议先补充流程步骤再进入 Scope。",
+                target={
+                    "type": "flow",
+                    "id": context.flows[0].flow_id,
+                },
+                action={
+                    "kind": "open_panel",
+                    "route": f"/projects/{pub_id}/how",
+                    "panel": "flow_editor",
+                    "payload": {
+                        "flow_id": context.flows[0].flow_id,
                     },
                 },
             )
@@ -43,6 +68,6 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
             description="How 阶段已有流程和业务对象，可以继续判断功能范围。",
             action={
                 "kind": "navigate",
-                "route": f"/projects/{project_id}/scope",
+                "route": f"/projects/{pub_id}/scope",
             },
         )

@@ -54,7 +54,7 @@ export function Login() {
         {/* Header/Logo */}
         <div className="text-center space-y-3">
           <div className="mx-auto w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center shadow-sm">
-            <img src="/plume-gradient.svg" alt="Plume" className="w-6 h-6" />
+            <img src={`${import.meta.env.BASE_URL}plume-gradient.svg`} alt="Plume" className="w-6 h-6" />
           </div>
           <div className="space-y-1">
             <h1 className="text-2xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight">

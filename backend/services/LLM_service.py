@@ -13,6 +13,7 @@ from backend.core.llm_context import (
     LLMContextMissingError,
     LLMConfigError,
 )
+from backend.core.ai_operation_monitor import monitor_ai_operation
 
 logger = logging.getLogger(__name__)
 
@@ -221,8 +222,9 @@ class LLMHandler:
             start_time = time.time()
 
             try:
-                async with httpx.AsyncClient(timeout=100.0, trust_env=False) as client:
-                    response = await client.post(url, json=request_data, headers=headers)
+                with monitor_ai_operation("llm_api_call", attempt=attempt):
+                    async with httpx.AsyncClient(timeout=100.0, trust_env=False) as client:
+                        response = await client.post(url, json=request_data, headers=headers)
 
                 duration = time.time() - start_time
 

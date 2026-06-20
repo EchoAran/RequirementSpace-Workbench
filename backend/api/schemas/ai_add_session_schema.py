@@ -1,7 +1,7 @@
 """Schemas for AI-powered conversational single-object addition sessions."""
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AIAddSessionCreateRequest(BaseModel):
@@ -22,6 +22,8 @@ class AIAddMessageResponse(BaseModel):
 
 
 class AIAddSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     session_id: int
     project_id: str
     target_type: str
@@ -32,19 +34,15 @@ class AIAddSessionResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
-
 
 class AIAddMessageItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     role: str
     content: str
     extra: dict | None = None
     created_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class AIAddSessionMessagesResponse(BaseModel):

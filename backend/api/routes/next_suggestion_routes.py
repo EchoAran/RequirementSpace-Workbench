@@ -8,8 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.schemas.next_suggestion_schema import (
     NextSuggestionRediagnoseRequest,
     NextSuggestionResponse,
-    NextSuggestionStartRequest,
-    NextSuggestionStartResponse,
 )
 from backend.api.services.next_suggestion_service import (
     NextSuggestionService,
@@ -27,7 +25,6 @@ next_suggestion_service = NextSuggestionService()
 NEXT_SUGGESTION_ERRORS = {
     "project_not_found",
     "invalid_stage",
-    "unsupported_suggestion_code",
     "stage_not_unlocked",
 }
 
@@ -50,6 +47,7 @@ async def get_next_suggestion(
                 stage=stage,
                 session=session,
                 background_tasks=background_tasks,
+                public_project_id=owned_project.public_id,
             )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -63,7 +61,6 @@ async def get_next_suggestion(
                 detail=str(error),
             )
         raise
-
 
 @router.post(
     "/rediagnose",
@@ -83,40 +80,7 @@ async def rediagnose_next_suggestion(
                 stage=request.stage,
                 session=session,
                 background_tasks=background_tasks,
-            )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        if str(error) in NEXT_SUGGESTION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
-            )
-        raise
-
-
-@router.post(
-    "/start",
-    response_model=NextSuggestionStartResponse,
-)
-async def start_next_suggestion(
-    project_id: str,
-    request: NextSuggestionStartRequest,
-    session: AsyncSession = Depends(get_session),
-    user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_owned_project)):
-    try:
-        async with llm_context_manager(user, session):
-            return await next_suggestion_service.start_next_suggestion(
-                project_id=owned_project.id,
-                stage=request.stage,
-                suggestion_code=request.suggestion_code,
-                target=request.target,
-                query=request.query,
-                session=session,
+                public_project_id=owned_project.public_id,
             )
     except ValueError as error:
         if str(error) == "project_not_found":

@@ -1,69 +1,71 @@
 import { useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronUp, LocateFixed, RefreshCw, Sparkles, X } from 'lucide-react';
-import { Issue, PerceptionSlot } from '@/core/schema';
+import { useWorkspaceStore, getFindingCapability } from '@/store/useWorkspaceStore';
+import { ArrowRight, ChevronDown, ChevronUp, LocateFixed, RefreshCw, Sparkles, X, Heart, Cpu } from 'lucide-react';
+import { Finding } from '@/core/schema';
 import { cn } from '@/lib/utils';
+import { getNextSuggestionPresentation } from '@/core/nextSuggestionPresentation';
+import { findingTargetIds } from '@/core/findingPresentation';
 
 interface StageGuidanceBannerProps {
-  slot?: PerceptionSlot;
-  issues?: Issue[];
-  onManualAction?: (slot: PerceptionSlot) => void;
-  onAIAction?: (slot: PerceptionSlot) => void;
-  onReDiagnose?: () => void;
-  onIssueClick?: (issue: Issue) => void;
-  onIssueCreateSlot?: (issue: Issue) => void;
-  onIssueIgnore?: (issue: Issue) => void;
-  isWorking?: boolean;
+  stage: 'what' | 'how' | 'scope';
 }
 
-const severityLabel: Record<Issue['severity'], string> = {
+const severityLabel: Record<string, string> = {
   high: '高风险',
   medium: '需处理',
   low: '提示',
 };
 
-const severityClass: Record<Issue['severity'], string> = {
+const severityClass: Record<string, string> = {
   high: 'bg-rose-50 text-rose-700 border-rose-200',
   medium: 'bg-amber-50 text-amber-700 border-amber-200',
   low: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
-export function StageGuidanceBanner({
-  slot,
-  issues = [],
-  onManualAction,
-  onAIAction,
-  onReDiagnose,
-  onIssueClick,
-  onIssueCreateSlot,
-  onIssueIgnore,
-  isWorking = false,
-}: StageGuidanceBannerProps) {
-  const openIssues = issues.filter((issue) => issue.status === 'open');
-  const [expanded, setExpanded] = useState(false);
-  const hideSlotActions = slot?.kind === 'how_onboarding';
-  const isPerceptionSlot = slot?.kind === 'generative_perception_slot';
-  const isStageTransitionSuggestion = slot?.kind === 'stage_gate_transition_confirm';
-  const hasAiDiagnoseAction = Boolean(slot?.actions?.ai?.label?.includes('诊断'));
-  const showReDiagnoseButton = Boolean(
-    onReDiagnose && !hideSlotActions && (!slot || isPerceptionSlot) && (!slot || !hasAiDiagnoseAction)
-  );
+export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
+  const ir = useWorkspaceStore((s) => s.ir);
+  const findingsByView = useWorkspaceStore((s) => s.findingsByView) || { issues: [], next_action: [], gate: [], health: [] };
+  const startFindingSuggestion = useWorkspaceStore((s) => s.startFindingSuggestion);
+  const executeFindingIssueResolution = useWorkspaceStore((s) => s.executeFindingIssueResolution);
+  const expandSlot = useWorkspaceStore((s) => s.expandSlot);
+  const updateIssueAttributes = useWorkspaceStore((s) => s.updateIssueAttributes);
+  const runDiagnosis = useWorkspaceStore((s) => s.runDiagnosis);
+  const setSelectedObject = useWorkspaceStore((s) => s.setSelectedObject);
+  const setHighlightTarget = useWorkspaceStore((s) => s.setHighlightTarget);
 
-  if (!slot && openIssues.length === 0 && onReDiagnose) {
+  const isLoading = useWorkspaceStore((s) => s.isLoading);
+  const isGenerating = useWorkspaceStore((s) => s.isGenerating);
+  const isDiagnosing = useWorkspaceStore((s) => s.isDiagnosing);
+  const isWorking = isLoading || isGenerating || isDiagnosing;
+
+  const [issuesExpanded, setIssuesExpanded] = useState(false);
+  const [healthExpanded, setHealthExpanded] = useState(false);
+
+  if (!ir) return null;
+
+  // Filter findings by current stage
+  const nextAction = (findingsByView.next_action || []).find((f) => f.stage === stage);
+  const stageIssues = (findingsByView.issues || []).filter((f) => f.stage === stage);
+  const stageHealthHints = (findingsByView.health || []).filter((f) => f.stage === stage);
+
+  const totalActionable = (nextAction ? 1 : 0) + stageIssues.length + stageHealthHints.length;
+
+  if (totalActionable === 0) {
     return (
-      <div className="rounded-lg border border-emerald-100 border-l-4 border-l-emerald-500 bg-emerald-50/40 p-3">
+      <div className="rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-500 bg-emerald-50/40 p-4 shadow-sm">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold leading-relaxed text-slate-600">
-              当前阶段暂未发现待处理 Issue，可以继续完善当前内容，或重新发起诊断。
+              当前阶段暂未发现待处理问题，模型结构健康。可以继续完善建模，或重新发起诊断。
             </p>
           </div>
           <button
             type="button"
-            onClick={onReDiagnose}
+            onClick={() => void runDiagnosis()}
             disabled={isWorking}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50"
           >
-            <RefreshCw className={cn('h-3 w-3', isWorking && 'animate-spin')} />
+            <RefreshCw className={cn('h-3.5 w-3.5', isWorking && 'animate-spin')} />
             重新诊断
           </button>
         </div>
@@ -71,158 +73,213 @@ export function StageGuidanceBanner({
     );
   }
 
-  if (!slot && openIssues.length === 0) return null;
+  const handleIssueClick = (issue: Finding) => {
+    setSelectedObject(issue);
+    const targetId = issue.metadata?.target_id || findingTargetIds(issue)[0];
+    if (targetId) {
+      setHighlightTarget(targetId);
+    }
+  };
 
-  const isBlocking = Boolean(slot?.blocking || openIssues.some((issue) => issue.severity === 'high'));
+  const handleIssueRepair = async (issue: Finding) => {
+    const slotId = await executeFindingIssueResolution(issue.findingId);
+    if (slotId) {
+      await expandSlot(slotId);
+    }
+  };
+
+  const handleIgnoreIssue = async (issue: Finding) => {
+    await updateIssueAttributes(issue.findingId, { status: 'ignored' });
+  };
+
+  const hasHighRisk = stageIssues.some((issue) => issue.severity === 'blocking');
 
   return (
     <div
       className={cn(
-        'rounded-lg border border-l-4 bg-white p-4 shadow-sm',
-        isBlocking ? 'border-rose-100 border-l-rose-500' : 'border-amber-100 border-l-amber-500',
+        'rounded-2xl border border-l-4 bg-white p-5 shadow-sm space-y-4',
+        hasHighRisk ? 'border-rose-100 border-l-rose-500' : 'border-amber-100 border-l-amber-500',
       )}
     >
-      <div className="flex flex-col gap-4">
-        {slot && (
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0 space-y-1">
-              <span
-                className={cn(
-                  'inline-flex rounded border px-2 py-0.5 text-[10px] font-black',
-                  slot.blocking
-                    ? 'border-rose-200 bg-rose-50 text-rose-800'
-                    : 'border-indigo-200 bg-indigo-50 text-indigo-800',
-                )}
-              >
+      {/* 1. Next Action (Next suggestion) */}
+      {nextAction && (() => {
+        const presentation = getNextSuggestionPresentation(nextAction);
+        return (
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-slate-50/50 p-3.5 rounded-xl border border-slate-100">
+            <div className="min-w-0 space-y-1.5">
+              <span className="inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700 border border-indigo-100">
+                <Cpu className="w-3 h-3" />
                 下一步建议
               </span>
-              <p className="text-xs font-semibold leading-relaxed text-slate-700">
-                {slot.description}
+              <h4 className="text-xs font-black text-slate-800">{nextAction.title}</h4>
+              <p className="text-xs font-medium leading-relaxed text-slate-500">
+                {nextAction.description}
               </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-2 self-end md:self-center">
-              {showReDiagnoseButton && (
-                <button
-                  type="button"
-                  onClick={onReDiagnose}
-                  disabled={isWorking}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <RefreshCw className={cn('h-3 w-3', isWorking && 'animate-spin')} />
-                  重新诊断
-                </button>
-              )}
-              {!hideSlotActions && slot.actions?.ai && onAIAction && (
-                <button
-                  type="button"
-                  onClick={() => onAIAction(slot)}
-                  disabled={isWorking}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-black text-white transition-colors disabled:opacity-50',
-                    slot.blocking ? 'bg-rose-600 hover:bg-rose-500' : 'bg-indigo-600 hover:bg-indigo-500',
-                  )}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  {slot.actions.ai.label}
-                </button>
-              )}
-              {!hideSlotActions && (isPerceptionSlot || isStageTransitionSuggestion) && slot.actions?.manual && onManualAction && (
-                <button
-                  type="button"
-                  onClick={() => onManualAction(slot)}
-                  disabled={isWorking}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {isPerceptionSlot ? <X className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                  {isPerceptionSlot ? '忽略' : '进入下一阶段'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void startFindingSuggestion(nextAction)}
+                disabled={isWorking}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-500 shadow-sm transition-all disabled:opacity-50 active:scale-95"
+              >
+                {presentation.icon === 'generate' && <Sparkles className="h-3.5 w-3.5" />}
+                {presentation.icon === 'navigate' && <ArrowRight className="h-3.5 w-3.5" />}
+                {presentation.icon === 'open' && <LocateFixed className="h-3.5 w-3.5" />}
+                {presentation.icon === 'wait' && <Cpu className="h-3.5 w-3.5 animate-pulse" />}
+                {presentation.icon === 'retry' && <RefreshCw className="h-3.5 w-3.5" />}
+                <span>{presentation.label}</span>
+              </button>
             </div>
           </div>
-        )}
+        );
+      })()}
 
-        {openIssues.length > 0 && (
-          <div className={cn(slot && 'border-t border-slate-100 pt-3')}>
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="flex w-full items-center justify-between gap-3 text-left"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-black text-slate-900">
-                  仍有 {openIssues.length} 个 Issue 待处理
-                </div>
-                <div className="truncate text-xs text-slate-500">
-                  {openIssues[0]?.title}
-                </div>
+      {/* 2. Issues list */}
+      {stageIssues.length > 0 && (
+        <div className={cn(nextAction && 'border-t border-slate-100 pt-3.5')}>
+          <button
+            type="button"
+            onClick={() => setIssuesExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 text-left hover:opacity-85 transition-opacity"
+          >
+            <div className="min-w-0">
+              <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping" />
+                <span>仍有 {stageIssues.length} 个待处理问题</span>
               </div>
-              {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-            </button>
+              {!issuesExpanded && (
+                <div className="truncate text-[11px] text-slate-400 font-medium mt-0.5">
+                  {stageIssues[0]?.title}
+                </div>
+              )}
+            </div>
+            {issuesExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
 
-            {expanded && (
-              <div className="mt-3 space-y-2">
-                {openIssues.map((issue) => (
-                  <div
-                    key={issue.id}
-                    className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50/60 p-3 md:flex-row md:items-start md:justify-between"
-                  >
+          {issuesExpanded && (
+            <div className="mt-3.5 space-y-3.5">
+              {stageIssues.map((issue) => (
+                <div
+                  key={issue.findingId}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200/60 bg-slate-50/50 p-4 md:flex-row md:items-start md:justify-between hover:border-slate-300 transition-colors"
+                >
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn('rounded border px-1.5 py-0.5 text-[9px] font-black', severityClass[issue.severity])}>
+                        {severityLabel[issue.severity] || issue.severity}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {issue.code}
+                      </span>
+                    </div>
+                    <div className="text-xs font-black text-slate-800">{issue.title}</div>
+                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{issue.description}</div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 self-end md:self-start mt-2 md:mt-0">
                     <button
                       type="button"
-                      onClick={() => onIssueClick?.(issue)}
-                      className="min-w-0 flex-1 text-left"
+                      onClick={() => handleIssueClick(issue)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
                     >
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-black', severityClass[issue.severity])}>
-                          {severityLabel[issue.severity]}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                          {issue.domain || issue.category || issue.stage || 'issue'}
-                        </span>
-                      </div>
-                      <div className="text-sm font-bold text-slate-900">{issue.title}</div>
-                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{issue.description}</div>
+                      <LocateFixed className="h-3.5 w-3.5" />
+                      <span>定位</span>
                     </button>
-
-                    <div className="flex shrink-0 items-center gap-2 self-end md:self-start">
-                      <button
-                        type="button"
-                        onClick={() => onIssueClick?.(issue)}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-                      >
-                        <LocateFixed className="h-3 w-3" />
-                        定位
-                      </button>
-                      {onIssueCreateSlot && (
+                    {(() => {
+                      const cap = getFindingCapability(issue);
+                      return (
                         <button
                           type="button"
-                          onClick={() => onIssueCreateSlot(issue)}
-                          disabled={isWorking}
-                          className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
+                          onClick={() => void handleIssueRepair(issue)}
+                          disabled={isWorking || !cap.enabled}
+                          className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
                         >
-                          <Sparkles className="h-3 w-3" />
-                          AI 处理
+                          <Cpu className="h-3.5 w-3.5" />
+                          <span>{cap.actionLabel}</span>
                         </button>
-                      )}
-                      {onIssueIgnore && (
-                        <button
-                          type="button"
-                          onClick={() => onIssueIgnore(issue)}
-                          disabled={isWorking}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50"
-                          title="忽略"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                      );
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => void handleIgnoreIssue(issue)}
+                      disabled={isWorking}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-600 shadow-sm transition-colors disabled:opacity-50"
+                      title="忽略"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Health hints list */}
+      {stageHealthHints.length > 0 && (
+        <div className="border-t border-slate-100 pt-3.5">
+          <button
+            type="button"
+            onClick={() => setHealthExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 text-left hover:opacity-85 transition-opacity"
+          >
+            <div className="min-w-0">
+              <div className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                <Heart className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>空间健康：{stageHealthHints.length} 条可优化建议</span>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+            {healthExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
+
+          {healthExpanded && (
+            <div className="mt-3.5 space-y-3.5">
+              {stageHealthHints.map((hint) => (
+                <div
+                  key={hint.findingId}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200/60 bg-emerald-50/10 p-4 md:flex-row md:items-start md:justify-between hover:border-slate-300 transition-colors"
+                >
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded border border-emerald-100 bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[9px] font-black">
+                        健康建议
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {hint.code}
+                      </span>
+                    </div>
+                    <div className="text-xs font-black text-slate-800">{hint.title}</div>
+                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{hint.description}</div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 self-end md:self-start mt-2 md:mt-0">
+                    <button
+                      type="button"
+                      onClick={() => handleIssueClick(hint)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+                    >
+                      <LocateFixed className="h-3.5 w-3.5" />
+                      <span>定位</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleIgnoreIssue(hint)}
+                      disabled={isWorking}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-600 shadow-sm transition-colors disabled:opacity-50"
+                      title="忽略"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

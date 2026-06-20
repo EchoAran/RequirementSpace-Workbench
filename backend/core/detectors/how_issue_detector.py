@@ -35,6 +35,10 @@ class HowIssueDetector(BaseIssueDetector):
     def _detect_leaf_feature_without_flow(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        # Non-equilibrium: if there are no flows, suggestion policy will handle GENERATE_FLOWS.
+        if not context.flows:
+            return []
+
         flow_feature_ids = {
             feature_id
             for flow in context.flows
@@ -52,7 +56,7 @@ class HowIssueDetector(BaseIssueDetector):
                     targetType="feature",
                     targetId=feature.feature_id,
                 ),
-                resolverCode="open_flow_feature_panel",
+                actionCode="open_flow_feature_panel",
             )
             for feature in context.leaf_features
             if feature.feature_id not in flow_feature_ids
@@ -73,7 +77,7 @@ class HowIssueDetector(BaseIssueDetector):
                     targetType="flow",
                     targetId=flow.flow_id,
                 ),
-                resolverCode="open_flow_feature_panel",
+                actionCode="open_flow_feature_panel",
             )
             for flow in context.flows
             if len(flow.feature_ids) == 0
@@ -83,6 +87,11 @@ class HowIssueDetector(BaseIssueDetector):
     def _detect_flow_without_steps(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        # Non-equilibrium: if all flows lack steps (e.g. freshly created), do not report issues yet.
+        flows_with_steps = [flow for flow in context.flows if flow.steps]
+        if context.flows and not flows_with_steps:
+            return []
+
         return [
             Issue(
                 code="FLOW_WITHOUT_STEPS",
@@ -94,7 +103,7 @@ class HowIssueDetector(BaseIssueDetector):
                     targetType="flow",
                     targetId=flow.flow_id,
                 ),
-                resolverCode="open_flow_editor",
+                actionCode="open_flow_editor",
             )
             for flow in context.flows
             if len(flow.steps) == 0
@@ -127,7 +136,7 @@ class HowIssueDetector(BaseIssueDetector):
                             parentType="flow",
                             parentId=flow.flow_id,
                         ),
-                        resolverCode="open_flow_step_actor_panel",
+                        actionCode="open_flow_step_actor_panel",
                     )
                 )
 
@@ -163,7 +172,7 @@ class HowIssueDetector(BaseIssueDetector):
                             parentType="flow",
                             parentId=flow.flow_id,
                         ),
-                        resolverCode="open_flow_step_next_panel",
+                        actionCode="open_flow_step_next_panel",
                     )
                 )
 
@@ -201,7 +210,7 @@ class HowIssueDetector(BaseIssueDetector):
                             parentType="flow",
                             parentId=flow.flow_id,
                         ),
-                        resolverCode="open_flow_editor",
+                        actionCode="open_flow_editor",
                     )
                 )
 
@@ -256,7 +265,7 @@ class HowIssueDetector(BaseIssueDetector):
                     targetType="business_object",
                     targetId=item.business_object_id,
                 ),
-                resolverCode="open_business_object_usage_panel",
+                actionCode="open_business_object_usage_panel",
             )
             for item in context.business_objects
             if item.usage_count == 0
@@ -277,7 +286,7 @@ class HowIssueDetector(BaseIssueDetector):
                     targetType="business_object",
                     targetId=item.business_object_id,
                 ),
-                resolverCode="open_business_object_attribute_panel",
+                actionCode="open_business_object_attribute_panel",
             )
             for item in context.business_objects
             if item.attribute_count == 0

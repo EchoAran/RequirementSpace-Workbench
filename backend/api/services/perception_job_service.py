@@ -58,6 +58,7 @@ class PerceptionJobService:
         project_id: int,
         session,
         background_tasks: BackgroundTasks | None = None,
+        public_project_id: str | None = None,
     ) -> NextSuggestion | None:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -79,6 +80,7 @@ class PerceptionJobService:
                 ),
                 session=session,
                 background_tasks=background_tasks,
+                public_project_id=public_project_id,
             )
 
             if suggestion is not None:
@@ -101,6 +103,7 @@ class PerceptionJobService:
                     ),
                     session=session,
                     background_tasks=background_tasks,
+                    public_project_id=public_project_id,
                 )
 
                 if suggestion is not None:
@@ -113,6 +116,7 @@ class PerceptionJobService:
         project_id: int,
         session,
         background_tasks: BackgroundTasks | None = None,
+        public_project_id: str | None = None,
     ) -> NextSuggestion | None:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -133,6 +137,7 @@ class PerceptionJobService:
             ),
             session=session,
             background_tasks=background_tasks,
+            public_project_id=public_project_id,
         )
 
     async def _get_perception_suggestion(
@@ -146,6 +151,7 @@ class PerceptionJobService:
         context_hash: str,
         session,
         background_tasks: BackgroundTasks | None,
+        public_project_id: str | None = None,
     ) -> NextSuggestion | None:
         from backend.database.model import PerceptionJobModel
 
@@ -246,6 +252,7 @@ class PerceptionJobService:
             return self._build_slot_suggestion(
                 project_id=project_id,
                 job=job,
+                public_project_id=public_project_id,
             )
 
         if job.status == PerceptionJobStatus.FAILED.value:
@@ -1006,12 +1013,14 @@ class PerceptionJobService:
     def _build_slot_suggestion(
         project_id: int,
         job,
+        public_project_id: str | None = None,
     ) -> NextSuggestion:
         slot_payload = job.result_slot_payload or {}
         perception_kind_code = slot_payload.get(
             "perception_kind_code",
             job.perception_kind,
         )
+        pub_id = public_project_id or str(project_id)
 
         return NextSuggestion(
             sourceType="perception_slot",
@@ -1025,7 +1034,7 @@ class PerceptionJobService:
             },
             action={
                 "kind": "open_panel",
-                "route": f"/projects/{project_id}/{job.stage}",
+                "route": f"/projects/{pub_id}/{job.stage}",
                 "panel": "perception_slot",
                 "payload": {
                     "perception_job_id": job.id,

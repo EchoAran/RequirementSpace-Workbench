@@ -143,10 +143,12 @@ export function ActionButton({
   onClick,
   children,
   variant = 'primary',
+  disabled,
 }: {
   onClick: () => void;
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger';
+  disabled?: boolean;
 }) {
   const className =
     variant === 'primary'
@@ -155,11 +157,14 @@ export function ActionButton({
         ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200'
         : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200';
 
+  const disabledClass = disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${className}`}
+      disabled={disabled}
+      className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${className} ${disabledClass}`}
     >
       {children}
     </button>

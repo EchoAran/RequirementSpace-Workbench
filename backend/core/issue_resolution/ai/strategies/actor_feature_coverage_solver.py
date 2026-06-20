@@ -7,8 +7,8 @@ import json
 
 from sqlalchemy import select
 
-from backend.core.detectors.issue_solvers.ai_issue_solver import BaseIssueAISolver, RepairResult, RepairProposal
-from backend.core.detectors.issue_solvers.prompts.actor_feature_coverage_repair_prompt import (
+from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult, RepairProposal
+from backend.core.issue_resolution.ai.prompts.actor_feature_coverage_repair_prompt import (
     ACTOR_FEATURE_COVERAGE_SYSTEM_PROMPT,
     ACTOR_FEATURE_COVERAGE_USER_PROMPT_TEMPLATE,
 )

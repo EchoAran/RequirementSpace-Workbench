@@ -15,6 +15,7 @@ import {
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 
 import { buildProjectRoute, getStageIssues, groupScopeItems } from '@/core/selectors';
+import { findingTargetIds } from '@/core/findingPresentation';
 
 const SCOPE_COLUMNS = [
   { key: 'undecided', label: '未交付决策', warning: true },
@@ -33,7 +34,7 @@ export function ScopeAndDelivery() {
     activeDraft, activeDraftType, isGenerating, isLoading,
     setPendingManualAction, resetKano, runDiagnosis,
     confirmRepairDraft, discardRepairDraft, regenerateRepairDraft,
-    createSlotFromIssue, expandSlot, updateIssueAttributes, clearPerceptionSlot,
+    executeFindingIssueResolution, expandSlot, updateIssueAttributes, clearPerceptionSlot,
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress, acceptChoice, discardChoiceGroup
   } = useWorkspaceStore();
   
@@ -258,13 +259,14 @@ export function ScopeAndDelivery() {
 
   const handleIssueClick = (issue: any) => {
     setSelectedObject(issue);
-    if (issue.relatedNodeIds?.[0]) {
-      setHighlightTarget(issue.relatedNodeIds[0]);
+    const targetId = findingTargetIds(issue)[0];
+    if (targetId) {
+      setHighlightTarget(targetId);
     }
   };
 
   const openIssueFlow = async (issue: any) => {
-    const slotId = await createSlotFromIssue(issue.id);
+    const slotId = await executeFindingIssueResolution(issue.findingId);
     if (slotId) {
       await expandSlot(slotId);
     }
@@ -275,31 +277,7 @@ export function ScopeAndDelivery() {
       <div className="flex-1 p-6 pb-24 overflow-y-auto">
         <div className="max-w-[1200px] mx-auto space-y-8 animate-in fade-in">
           
-          {pageHealth.nextSlot && (
-            <div className="space-y-3">
-              <StageGuidanceBanner 
-                slot={pageHealth.nextSlot} 
-                issues={scopeIssues as any}
-                onManualAction={handleManualAction} 
-                onAIAction={handleAIAction}
-                onIssueClick={handleIssueClick}
-                onIssueCreateSlot={(issue) => void openIssueFlow(issue)}
-                onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
-                isWorking={isWorking}
-              />
-            </div>
-          )}
-
-          {!pageHealth.nextSlot && (
-            <StageGuidanceBanner
-              issues={scopeIssues as any}
-              onReDiagnose={runDiagnosis}
-              onIssueClick={handleIssueClick}
-              onIssueCreateSlot={(issue) => void openIssueFlow(issue)}
-              onIssueIgnore={(issue) => void updateIssueAttributes(issue.id, { status: 'ignored' })}
-              isWorking={isWorking}
-            />
-          )}
+          <StageGuidanceBanner stage="scope" />
 
           {/* AI Scope Draft Preview Banner */}
           {false && activeDraft && activeDraftType === 'scope' && (

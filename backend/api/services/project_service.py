@@ -88,26 +88,19 @@ class ProjectService:
         project: ProjectModel,
         session: AsyncSession,
     ) -> int:
-        hidden_issue_ids = await self._load_hidden_issue_ids(
-            project.id,
-            session,
-        )
+        from backend.api.services.finding_service import FindingService
+        finding_service = FindingService()
+
         issue_count = 0
-
         for stage in self._get_visible_issue_stages(project.unlocked_stages):
-            detector = self._get_issue_detectors().get(stage)
-            if detector is None:
-                continue
-
-            issues = await detector.detect(
+            findings = await finding_service.list_findings(
                 project_id=project.id,
+                stage=stage,
+                view="issues",
+                action=None,
                 session=session,
             )
-            issue_count += sum(
-                1
-                for issue in issues
-                if issue.issueId not in hidden_issue_ids
-            )
+            issue_count += len(findings)
 
         return issue_count
 
@@ -174,20 +167,7 @@ class ProjectService:
             "scope": ScopeIssueDetector(),
         }
 
-    @staticmethod
-    async def _load_hidden_issue_ids(
-        project_id: int,
-        session: AsyncSession,
-    ) -> set[str]:
-        from backend.database.model import IssueOverrideModel
 
-        result = await session.execute(
-            select(IssueOverrideModel.issue_id).where(
-                IssueOverrideModel.project_id == project_id,
-                IssueOverrideModel.status.in_(("ignored", "resolved")),
-            )
-        )
-        return {issue_id for issue_id in result.scalars().all() if issue_id}
 
     async def get_project_detail(self, project_id: int, session: AsyncSession) -> ProjectDetailResponse:
         stmt = (
@@ -364,6 +344,28 @@ class ProjectService:
 
         unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
 
+        # Get unresolved gates for export action
+        from backend.api.services.finding_service import FindingService
+        from backend.api.schemas.project_schema import UnresolvedGateResponse
+        finding_service = FindingService()
+        gate_findings = await finding_service.list_findings(
+            project_id=p.id,
+            stage="all",
+            view="gate",
+            action="export",
+            session=session,
+        )
+        unresolved_gates_list = [
+            UnresolvedGateResponse(
+                finding_id=gf.findingId,
+                title=gf.title,
+                description=gf.description,
+                stage=gf.stage.value,
+                code=gf.code,
+            )
+            for gf in gate_findings
+        ]
+
         return ProjectDetailResponse(
             project_id=p.public_id,
             project_name=p.name,
@@ -376,6 +378,7 @@ class ProjectService:
             flows=flows_list,
             kano_status=p.kano_status,
             unlocked_stages=unlocked_list,
+            unresolved_gates=unresolved_gates_list,
         )
 
     async def unlock_stage(self, project_id: int, stage: str, session: AsyncSession) -> dict:
@@ -613,6 +616,22 @@ class ProjectService:
                         if output_bo_names:
                             md.append(f"  - *输出数据*: {', '.join(output_bo_names)}")
                 md.append("")
+        # Fetch gate findings for export action
+        from backend.api.services.finding_service import FindingService
+        finding_service = FindingService()
+        gate_findings = await finding_service.list_findings(
+            project_id=project_id,
+            stage="all",
+            view="gate",
+            action="export",
+            session=session,
+        )
+        if gate_findings:
+            md.append("## 附录：未处理阶段检查项 (Gates)")
+            md.append("⚠️ 以下项在导出时仍未通过阶段检查约束：")
+            for gf in gate_findings:
+                md.append(f"- **[{gf.title}]**: {gf.description}")
+            md.append("")
 
         return "\n".join(md)
 

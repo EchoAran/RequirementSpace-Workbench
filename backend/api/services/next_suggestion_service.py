@@ -29,16 +29,19 @@ class NextSuggestionService:
         stage: str,
         session,
         background_tasks: BackgroundTasks | None = None,
+        public_project_id: str | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
+        pub_id = public_project_id or str(project_id)
 
         if not await self._is_stage_visible(project_id, stage, session):
             return {
-                "project_id": project_id,
+                "project_id": pub_id,
                 "stage": stage,
                 "suggestion": self._build_locked_stage_suggestion(
                     project_id=project_id,
                     stage=stage,
+                    public_project_id=pub_id,
                 ).to_dict(),
             }
 
@@ -53,13 +56,14 @@ class NextSuggestionService:
                 description="当前已处于预览阶段。",
                 action={
                     "kind": "navigate",
-                    "route": f"/projects/{project_id}/preview",
+                    "route": f"/projects/{pub_id}/preview",
                 },
             ).to_dict()
         else:
             suggestion_node = await policy.get_next(
                 project_id=project_id,
                 session=session,
+                public_project_id=pub_id,
             )
 
             if stage == "what" and suggestion_node.code == "ENTER_HOW":
@@ -69,6 +73,7 @@ class NextSuggestionService:
                     project_id=project_id,
                     session=session,
                     background_tasks=background_tasks,
+                    public_project_id=pub_id,
                 )
 
                 if perception_suggestion is not None:
@@ -81,6 +86,7 @@ class NextSuggestionService:
                     project_id=project_id,
                     session=session,
                     background_tasks=background_tasks,
+                    public_project_id=pub_id,
                 )
 
                 if perception_suggestion is not None:
@@ -88,8 +94,23 @@ class NextSuggestionService:
 
             suggestion = suggestion_node.to_dict()
 
+            # Defensive assertion checks for internal ID leakage
+            if "action" in suggestion and isinstance(suggestion["action"], dict):
+                act = suggestion["action"]
+                if "route" in act and isinstance(act["route"], str):
+                    if f"/projects/{project_id}/" in act["route"] or act["route"].endswith(f"/projects/{project_id}"):
+                        raise AssertionError(
+                            f"Internal integer project ID {project_id} leaked in route: {act['route']}"
+                        )
+                if "payload" in act and isinstance(act["payload"], dict):
+                    val = act["payload"].get("project_id")
+                    if val == project_id or val == str(project_id):
+                        raise AssertionError(
+                            f"Internal integer project ID {project_id} leaked in payload: {act['payload']}"
+                        )
+
         return {
-            "project_id": project_id,
+            "project_id": pub_id,
             "stage": stage,
             "suggestion": suggestion,
         }
@@ -100,17 +121,20 @@ class NextSuggestionService:
         stage: str,
         session,
         background_tasks: BackgroundTasks | None = None,
+        public_project_id: str | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
         await self._ensure_project_exists(project_id, session)
+        pub_id = public_project_id or str(project_id)
 
         if not await self._is_stage_visible(project_id, stage, session):
             return {
-                "project_id": project_id,
+                "project_id": pub_id,
                 "stage": stage,
                 "suggestion": self._build_locked_stage_suggestion(
                     project_id=project_id,
                     stage=stage,
+                    public_project_id=pub_id,
                 ).to_dict(),
             }
 
@@ -128,37 +152,8 @@ class NextSuggestionService:
             stage=stage,
             session=session,
             background_tasks=background_tasks,
+            public_project_id=pub_id,
         )
-
-    async def start_next_suggestion(
-        self,
-        project_id: int,
-        stage: str,
-        suggestion_code: str,
-        target: dict | None,
-        query: str | None,
-        session,
-    ) -> dict:
-        stage = self._normalize_stage(stage)
-        await self._ensure_project_exists(project_id, session)
-
-        if not await self._is_stage_visible(project_id, stage, session):
-            raise ValueError("stage_not_unlocked")
-
-        action = self._build_start_action(
-            project_id=project_id,
-            suggestion_code=suggestion_code,
-            target=target or {},
-            query=query,
-        )
-
-        return {
-            "project_id": project_id,
-            "stage": stage,
-            "suggestion_code": suggestion_code,
-            "action_type": action["kind"],
-            "action": action,
-        }
 
     @staticmethod
     def _normalize_stage(stage: str) -> str:
@@ -235,12 +230,15 @@ class NextSuggestionService:
     def _build_locked_stage_suggestion(
         project_id: int,
         stage: str,
+        public_project_id: str | None = None,
     ) -> NextSuggestion:
         previous_stage = {
             "how": "what",
             "scope": "how",
             "preview": "scope",
         }.get(stage, "what")
+
+        pub_id = public_project_id or str(project_id)
 
         return NextSuggestion(
             sourceType="predefined",
@@ -250,108 +248,6 @@ class NextSuggestionService:
             status="blocked",
             action={
                 "kind": "navigate",
-                "route": f"/projects/{project_id}/{previous_stage}",
+                "route": f"/projects/{pub_id}/{previous_stage}",
             },
         )
-
-    @staticmethod
-    def _build_start_action(
-        project_id: int,
-        suggestion_code: str,
-        target: dict,
-        query: str | None,
-    ) -> dict:
-        payload = {
-            "project_id": project_id,
-        }
-
-        if query is not None:
-            payload["query"] = query
-
-        generator_action_map = {
-            "GENERATE_ACTORS": (
-                "actor_generation",
-                "/api/actor_generation_drafts",
-            ),
-            "GENERATE_FEATURES": (
-                "feature_generation",
-                "/api/feature_generation_drafts",
-            ),
-            "GENERATE_SCENARIOS": (
-                "scenario_generation",
-                "/api/scenario_generation_drafts/full",
-            ),
-            "GENERATE_FLOWS_AND_BUSINESS_OBJECTS": (
-                "flow_generation",
-                "/api/flow_generation_drafts",
-            ),
-            "GENERATE_SCOPE": (
-                "scope_generation",
-                "/api/scope_generation_drafts",
-            ),
-        }
-
-        generator_action = generator_action_map.get(suggestion_code)
-
-        if generator_action is not None:
-            draft_type, endpoint = generator_action
-            return {
-                "kind": "create_draft",
-                "draft_type": draft_type,
-                "endpoint": endpoint,
-                "payload": payload,
-            }
-
-        if suggestion_code == "ENTER_HOW":
-            return {
-                "kind": "navigate",
-                "route": f"/projects/{project_id}/how",
-            }
-
-        if suggestion_code == "ENTER_SCOPE":
-            return {
-                "kind": "navigate",
-                "route": f"/projects/{project_id}/scope",
-            }
-
-        if suggestion_code == "ENTER_PREVIEW":
-            return {
-                "kind": "navigate",
-                "route": f"/projects/{project_id}/preview",
-            }
-
-        if suggestion_code.endswith("_PERCEPTION_RUNNING"):
-            return {
-                "kind": "wait",
-            }
-
-        if suggestion_code.endswith("_PERCEPTION_FAILED"):
-            return {
-                "kind": "retry",
-                "payload": target,
-            }
-
-        if suggestion_code.endswith("_SLOT"):
-            # Slot filler draft generation is intentionally a separate step:
-            # the first action opens the target panel and lets the user choose
-            # manual handling or AI filling.
-            route_stage = "how" if suggestion_code == "FLOW_SLOT" else "what"
-            return {
-                "kind": "open_panel",
-                "route": f"/projects/{project_id}/{route_stage}",
-                "panel": "perception_slot",
-                "payload": target,
-            }
-
-        if suggestion_code == "BIND_ACTORS_TO_FEATURE":
-            feature_id = target.get("id") if target else None
-            return {
-                "kind": "open_panel",
-                "route": f"/projects/{project_id}/what",
-                "panel": "feature",
-                "payload": {
-                    "feature_id": feature_id,
-                },
-            }
-
-        raise ValueError("unsupported_suggestion_code")

@@ -208,6 +208,22 @@ class IssueStage(str, Enum):
     PREVIEW = "preview"
 
 
+class FindingType(str, Enum):
+    ISSUE = "issue"
+    NEXT_SUGGESTION = "next_suggestion"
+    GATE_CONDITION = "gate_condition"
+    QUALITY_HINT = "quality_hint"
+
+
+class BlockingScope(str, Enum):
+    NONE = "none"
+    STAGE_TRANSITION = "stage_transition"
+    PREVIEW = "preview"
+    EXPORT = "export"
+    CHECKPOINT = "checkpoint"
+
+
+
 @node_dataclass
 class IssueTarget(BaseNode):
     kind: str = field(default="issue_target", init=False)
@@ -246,13 +262,32 @@ class Issue(BaseNode):
     title: str
     description: str
     target: Optional[IssueTarget] = None
-    resolverCode: Optional[str] = None
+    actionCode: Optional[str] = None
     metadata: dict = field(default_factory=dict)
 
     @property
     def issueId(self) -> str:
         target_key = self.target.key() if self.target is not None else "project"
         return f"{self.stage.value}:{self.code}:{target_key}"
+
+
+@node_dataclass
+class Finding(BaseNode):
+    kind: str = field(default="finding", init=False)
+
+    findingId: str
+    type: FindingType
+    stage: IssueStage
+    code: str
+    severity: IssueSeverity
+    title: str
+    description: str
+    target: Optional[IssueTarget] = None
+    blockingScope: BlockingScope = BlockingScope.NONE
+    actionCode: Optional[str] = None
+    metadata: dict = field(default_factory=dict)
+    capability: Optional[dict] = None
+
 
 
 @node_dataclass

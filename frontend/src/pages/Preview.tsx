@@ -79,6 +79,7 @@ export function Preview() {
   const discardShadowDraft = useWorkspaceStore((state) => state.discardShadowDraft);
   const commitShadowDraft = useWorkspaceStore((state) => state.commitShadowDraft);
   const regenerateShadowDraft = useWorkspaceStore((state) => state.regenerateShadowDraft);
+  const triggerGateCheck = useWorkspaceStore((state) => state.triggerGateCheck);
 
   const [activeRoleIndex, setActiveRoleIndex] = useState(0);
   const [exportState, setExportState] = useState<'idle' | 'exporting' | 'success'>('idle');
@@ -489,7 +490,7 @@ export function Preview() {
             nextStepIds: step.nextStepIds || step.next_step_ids || []
           })) || []
         })) || [],
-        issuesCompatible: [],
+        findings: [],
         perceptionSlot: null
       };
     }
@@ -502,7 +503,7 @@ export function Preview() {
   const isPreviewReady = isWhatComplete && isHowComplete && isScopeComplete;
 
   const actors = useMemo(() => spaceToUse?.actorsCompatible || [], [spaceToUse]);
-  const issues = useMemo(() => spaceToUse?.issuesCompatible || [], [spaceToUse]);
+  const issues = useMemo(() => spaceToUse?.findings || [], [spaceToUse]);
   const activeRole = actors[activeRoleIndex];
   
   const pages = useMemo(() => {
@@ -510,7 +511,7 @@ export function Preview() {
     return buildRolePages(spaceToUse as any, activeRole.id);
   }, [activeRole, spaceToUse]);
 
-  const unresolvedIssues = issues.filter((issue: any) => issue.status === 'open');
+  const unresolvedIssues = issues.filter((finding: any) => (finding.status || 'open') === 'open');
   const system = useMemo(() => buildSystemProjection(spaceToUse as any), [spaceToUse]);
   
   const rolePrototypePages = useMemo(() => {
@@ -561,22 +562,24 @@ export function Preview() {
     }
   }, [activePrototypePageId, rolePrototypePages]);
 
-  const handleExport = async (format: 'json' | 'markdown') => {
-    if (!spaceToUse?.projectId) return;
-    setExportState('exporting');
-    try {
-      if (format === 'markdown') {
-        const md = await workspaceApi.exportMarkdown(spaceToUse.projectId);
-        downloadFile(`${spaceToUse.projectName || spaceToUse.projectId || 'requirement-space'}.md`, md, 'text/markdown;charset=utf-8');
-      } else {
-        const data = await workspaceApi.exportJson(spaceToUse.projectId);
-        downloadFile(`${data.projectName || data.projectId || 'requirement-space'}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+  const handleExport = (format: 'json' | 'markdown') => {
+    triggerGateCheck('export', async () => {
+      if (!spaceToUse?.projectId) return;
+      setExportState('exporting');
+      try {
+        if (format === 'markdown') {
+          const md = await workspaceApi.exportMarkdown(spaceToUse.projectId);
+          downloadFile(`${spaceToUse.projectName || spaceToUse.projectId || 'requirement-space'}.md`, md, 'text/markdown;charset=utf-8');
+        } else {
+          const data = await workspaceApi.exportJson(spaceToUse.projectId);
+          downloadFile(`${data.projectName || data.projectId || 'requirement-space'}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+        }
+        setExportState('success');
+        setTimeout(() => setExportState('idle'), 1500);
+      } catch {
+        setExportState('idle');
       }
-      setExportState('success');
-      setTimeout(() => setExportState('idle'), 1500);
-    } catch {
-      setExportState('idle');
-    }
+    });
   };
 
   const exportAuditLog = async () => {
@@ -596,17 +599,19 @@ export function Preview() {
   };
 
   const generatePrototype = async () => {
-    if (!spaceToUse?.projectId) return;
-    setPrototypeState('loading');
-    setPrototypeError(null);
-    try {
-      const result = await workspaceApi.generatePrototypePreview(spaceToUse.projectId, true);
-      setPrototype(result);
-      setPrototypeState('ready');
-    } catch (error) {
-      setPrototypeState('error');
-      setPrototypeError(error instanceof Error ? error.message : '界面原型推演失败');
-    }
+    triggerGateCheck('generate_preview', async () => {
+      if (!spaceToUse?.projectId) return;
+      setPrototypeState('loading');
+      setPrototypeError(null);
+      try {
+        const result = await workspaceApi.generatePrototypePreview(spaceToUse.projectId, true);
+        setPrototype(result);
+        setPrototypeState('ready');
+      } catch (error) {
+        setPrototypeState('error');
+        setPrototypeError(error instanceof Error ? error.message : '界面原型推演失败');
+      }
+    });
   };
 
   const openPrototypeInWindow = () => {

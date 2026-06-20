@@ -140,6 +140,13 @@ class FlowDetail(CamelModel):
     flow_steps: list[FlowStepDetail] = []
     confirmation_status: str | None = None
 
+class UnresolvedGateResponse(CamelModel):
+    finding_id: str
+    title: str
+    description: str
+    stage: str
+    code: str
+
 class ProjectDetailResponse(CamelModel):
     kind: str = "requirement_space"
     project_id: str
@@ -153,6 +160,7 @@ class ProjectDetailResponse(CamelModel):
     flows: list[FlowDetail] = []
     kano_status: str = "missing"
     unlocked_stages: list[str] = []
+    unresolved_gates: list[UnresolvedGateResponse] = []
 
 class UnlockStageRequest(CamelModel):
     stage: str

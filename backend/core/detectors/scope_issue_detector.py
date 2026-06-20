@@ -28,6 +28,10 @@ class ScopeIssueDetector(BaseIssueDetector):
     def _detect_leaf_feature_without_scope(
         context: IssueProjectContext,
     ) -> list[Issue]:
+        # Non-equilibrium: if scopes are completely empty, let ScopeSuggestionPolicy recommend GENERATE_SCOPE.
+        if not context.scopes:
+            return []
+
         scoped_feature_ids = {
             scope.feature_id
             for scope in context.scopes
@@ -44,7 +48,7 @@ class ScopeIssueDetector(BaseIssueDetector):
                     targetType="feature",
                     targetId=feature.feature_id,
                 ),
-                resolverCode="create_scope_generation_draft",
+                actionCode="create_scope_generation_draft",
             )
             for feature in context.leaf_features
             if feature.feature_id not in scoped_feature_ids
@@ -65,7 +69,7 @@ class ScopeIssueDetector(BaseIssueDetector):
                     targetType="scope",
                     targetId=scope.scope_id,
                 ),
-                resolverCode="open_scope_reason_panel",
+                actionCode="open_scope_reason_panel",
             )
             for scope in context.scopes
             if not scope.reason.strip()

@@ -1,0 +1,68 @@
+"""System and user prompt templates for SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS AI repair."""
+
+SCENARIO_ACTOR_CONSISTENCY_SYSTEM_PROMPT = """你是一个需求场景参与者一致性分析助手。
+
+你的任务是解决场景（Scenario）参与角色与父功能（Feature）参与角色不一致的问题。
+只输出 JSON，不要任何额外文本。
+"""
+
+SCENARIO_ACTOR_CONSISTENCY_USER_PROMPT_TEMPLATE = """## 目标场景与功能
+场景名称: {scenario_name}
+场景所属功能名称: {feature_name}
+场景当前引用的参与角色: {scenario_actor_name} (描述: {scenario_actor_description})
+
+## 父功能已有的参与角色列表
+{feature_actors_json}
+
+## 项目中所有可选的参与角色列表
+{all_project_actors_json}
+
+## 要求
+1. 孤立地分析这三种修复可能性，并在 candidates 中输出：
+   - 方案 A（将场景当前引用的角色绑定到父功能）：适合此角色确实应该参与该功能的情况。
+   - 方案 B（将场景改绑为父功能中已有的其他合适角色）：适合当前场景引用的角色是错误的，且父功能中已存在更合适角色。
+2. 给出这两种方案的置信度和详细理由。
+3. 如果无可靠候选，设置 fallback。
+
+输出 JSON 格式:
+{{
+  "candidates": [
+    {{
+      "repair_type": "bind_actor_to_feature",
+      "title": "将角色「{scenario_actor_name}」加入功能「{feature_name}」的参与者中",
+      "rationale": "解释为什么此角色应该参与该功能",
+      "confidence": 0.85,
+      "patch": {{
+        "addLinks": [
+          {{
+            "type": "feature_actor_relation",
+            "source_id": {feature_id},
+            "target_id": {scenario_actor_id}
+          }}
+        ]
+      }},
+      "requires_user_decision": true
+    }},
+    {{
+      "repair_type": "change_scenario_actor",
+      "title": "将场景角色修改为「新角色名称」",
+      "rationale": "解释为什么该新角色更符合场景上下文",
+      "confidence": 0.7,
+      "patch": {{
+        "updateNodes": [
+          {{
+            "kind": "scenario",
+            "id": {scenario_id},
+            "actor_id": <new_actor_id>
+          }}
+        ]
+      }},
+      "requires_user_decision": true
+    }}
+  ],
+  "fallback": {{
+    "kind": "manual_action",
+    "reason": "无法确定一致性修复方案，请手动处理"
+  }}
+}}
+"""

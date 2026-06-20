@@ -9,24 +9,6 @@ class IssueTargetResponse(CamelModel):
     parent_id: int | str | None = None
 
 
-class IssueResponse(CamelModel):
-    issue_id: str
-    code: str
-    stage: str
-    severity: str
-    title: str
-    description: str
-    target: IssueTargetResponse | None = None
-    resolver_code: str | None = None
-    metadata: dict = Field(default_factory=dict)
-
-
-class ProjectIssuesResponse(CamelModel):
-    project_id: str
-    stage: str
-    issues: list[IssueResponse]
-
-
 class IssueResolveRequest(CamelModel):
     issue_id: str | None = None
     issue_code: str
@@ -35,15 +17,6 @@ class IssueResolveRequest(CamelModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class IssueStatusUpdateRequest(CamelModel):
-    issue_id: str
-    status: str
-
-
-class IssueStatusUpdateResponse(CamelModel):
-    project_id: str
-    issue_id: str
-    status: str
 
 
 class IssueResolutionActionResponse(CamelModel):

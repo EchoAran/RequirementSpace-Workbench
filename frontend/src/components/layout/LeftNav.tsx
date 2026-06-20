@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Target, Activity, CheckSquare, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { 
@@ -10,6 +10,7 @@ import { buildProjectRoute, buildReadiness, extractWorkspacePage } from '@/core/
 
 export function LeftNav() {
   const location = useLocation();
+  const navigate = useNavigate();
   const ir = useWorkspaceStore(s => s.ir);
   const activePage = useWorkspaceStore(s => s.activePage);
   const [collapsed, setCollapsed] = useState(false);
@@ -42,7 +43,7 @@ export function LeftNav() {
       </button>
 
       <div className={cn("h-16 border-b border-slate-200 flex flex-shrink-0 items-center transition-all", collapsed ? "justify-center px-0" : "px-6 gap-3")}>
-        <img src="/plume-gradient.svg" alt="Plume" className="w-7 h-7 shrink-0" />
+        <img src={`${import.meta.env.BASE_URL}plume-gradient.svg`} alt="Plume" className="w-7 h-7 shrink-0" />
         {!collapsed && <span className="font-bold text-lg tracking-tight italic text-slate-800">需求空间工作台</span>}
       </div>
       <div className={cn("flex-1 space-y-1 overflow-y-auto overflow-x-hidden", collapsed ? "p-2" : "p-4")}>
@@ -90,7 +91,7 @@ export function LeftNav() {
                       statusLabel
                     ) : (
                       <>
-                        {issueCount > 0 && `${issueCount} 缺陷`}
+                        {issueCount > 0 && `${issueCount} 待处理`}
                         {issueCount > 0 && hasBlockingSlot && ' / '}
                         {hasBlockingSlot && '有阻塞建议'}
                       </>
@@ -112,7 +113,13 @@ export function LeftNav() {
               onClick={(e) => {
                 if (disabled) {
                   e.preventDefault();
-                  useWorkspaceStore.getState().setError(disabledReason || '该阶段尚未解锁');
+                  const action = item.page === '/flow' ? 'enter_how' : 'enter_scope';
+                  useWorkspaceStore.getState().triggerGateCheck(action, () => {
+                    const stageName = item.page === '/flow' ? 'how' : 'scope';
+                    useWorkspaceStore.getState().unlockStageGate(stageName).then(() => {
+                      navigate(to);
+                    });
+                  });
                 }
               }}
               className={cn(

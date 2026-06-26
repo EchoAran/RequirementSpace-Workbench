@@ -6,7 +6,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from backend.api.services.acceptance_criteria_generation_service import (
+from backend.api.modules.requirements_core.public import (
     AcceptanceCriteriaGenerationService,
 )
 from backend.integration.skill_backed_services.gherkin_adapter import GherkinAdapter

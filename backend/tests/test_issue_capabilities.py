@@ -159,7 +159,7 @@ class TestIssueCapabilitiesImportIsolation:
             "backend.core.detectors.issue_solvers",
             "backend.core.findings",
             "backend.core.issue_resolution",
-            "backend.api.services",
+            "backend.api",
             "backend.database",
             "backend.services.LLM",
         ]
@@ -181,7 +181,7 @@ class TestIssueCapabilitiesConsistencyWithIssueRepairService:
         """Every code with an AI solver must be ai_repair in capability registry.
         Every ai_repair code must have an AI solver registered.
         """
-        from backend.api.services.issue_repair_service import get_ai_solver_codes
+        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import get_ai_solver_codes
 
         ai_solver_codes = get_ai_solver_codes()
         ai_cap_codes = codes_with_capability(IssueCapabilityKind.AI_REPAIR)
@@ -198,7 +198,7 @@ class TestIssueCapabilitiesConsistencyWithIssueRepairService:
 
     def test_ai_solver_codes_subset_of_known(self):
         """All AI solver codes must be in KNOWN_ISSUE_CODES."""
-        from backend.api.services.issue_repair_service import get_ai_solver_codes
+        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import get_ai_solver_codes
 
         ai_solver_codes = get_ai_solver_codes()
         unknown = ai_solver_codes - KNOWN_ISSUE_CODES

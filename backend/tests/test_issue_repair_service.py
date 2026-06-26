@@ -9,7 +9,7 @@ from backend.database.model import (
     FlowModel, FlowStepModel, BusinessObjectModel, BusinessObjectAttributeModel,
     feature_actor_table, flow_feature_table
 )
-from backend.api.services.issue_repair_service import IssueRepairService
+from backend.api.modules.diagnosis_quality.public import IssueRepairService
 
 @pytest.fixture
 async def db_session():
@@ -309,7 +309,7 @@ async def test_scenario_without_acceptance_criteria_choice_group_metadata(db_ses
 
     # Mock GenerationChoiceService.create_choice_group to return a mocked choice group
     # but verify the arguments passed to it!
-    from backend.api.services.generation_choice_service import GenerationChoiceService, GenerationChoiceSettings
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationChoiceService, GenerationChoiceSettings
     with patch.object(GenerationChoiceService, "create_choice_group", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {
             "id": 123,

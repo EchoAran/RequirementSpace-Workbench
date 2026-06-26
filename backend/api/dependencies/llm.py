@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from backend.api.dependencies.auth import get_current_user
 from backend.database.model import UserModel
-from backend.api.services.llm_config_service import LLMConfigService
+from backend.api.modules.auth_account.public import LLMConfigService
 from backend.database.database import get_session
 from backend.core.llm_context import current_llm_context, LLMRequestContext
 

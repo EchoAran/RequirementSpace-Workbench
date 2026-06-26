@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.api.services.scope_generation_service import ScopeGenerationService
+from backend.api.modules.requirements_core.public import ScopeGenerationService
 from backend.integration.skill_backed_services.kano_scope_adapter import KanoScopeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SyncSkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module

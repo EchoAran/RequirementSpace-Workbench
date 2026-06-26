@@ -40,7 +40,19 @@ export const selectAllNodes = (space: RequirementSpace | null): any[] => {
   const list: any[] = [];
   (space.actors || []).forEach(a => list.push({ ...a, id: a.actorId.toString(), title: a.actorName, description: a.actorDescription, status: getConfirmationStatus((a as any).confirmationStatus), scopeStatus: 'in_scope' }));
   (space.features || []).forEach(f => list.push({ ...f, id: f.featureId.toString(), title: f.featureName, description: f.featureDescription, status: getConfirmationStatus((f as any).confirmationStatus), scopeStatus: f.scope?.scopeStatus || 'in_scope' }));
-  (space.businessObjects || []).forEach(b => list.push({ ...b, id: b.businessObjectId.toString(), title: b.businessObjectName, description: b.businessObjectDescription, status: getConfirmationStatus((b as any).confirmationStatus), scopeStatus: 'in_scope' }));
+  (space.businessObjects || []).forEach(b => {
+    list.push({ ...b, id: b.businessObjectId.toString(), title: b.businessObjectName, description: b.businessObjectDescription, status: getConfirmationStatus((b as any).confirmationStatus), scopeStatus: 'in_scope' });
+    (b.businessObjectAttributes || []).forEach(attr => {
+      list.push({
+        ...attr,
+        id: attr.businessObjectAttributeId.toString(),
+        title: attr.businessObjectAttributeName,
+        description: attr.businessObjectAttributeDescription,
+        status: getConfirmationStatus((attr as any).confirmationStatus),
+        scopeStatus: 'in_scope',
+      });
+    });
+  });
   (space.flows || []).forEach(fl => {
     list.push({ ...fl, id: fl.flowId.toString(), title: fl.flowName, description: fl.flowDescription, status: getConfirmationStatus((fl as any).confirmationStatus), scopeStatus: 'in_scope' });
     (fl.flowSteps || []).forEach(st => {
@@ -925,10 +937,28 @@ export const buildOverviewModel = (space: RequirementSpace | null, auditLogs: an
   });
   (space.businessObjects || []).forEach((b: any) => {
     pushLedger('business_object', b.businessObjectId, b.businessObjectName, b.businessObjectDescription, b.confirmationStatus);
+    (b.businessObjectAttributes || []).forEach((attr: any) => {
+      pushLedger(
+        'business_object_attribute',
+        attr.businessObjectAttributeId,
+        attr.businessObjectAttributeName,
+        attr.businessObjectAttributeDescription,
+        attr.confirmationStatus,
+      );
+    });
   });
-  (space.flows || []).forEach((fl: any) =>
-    pushLedger('flow', fl.flowId, fl.flowName, fl.flowDescription, fl.confirmationStatus)
-  );
+  (space.flows || []).forEach((fl: any) => {
+    pushLedger('flow', fl.flowId, fl.flowName, fl.flowDescription, fl.confirmationStatus);
+    (fl.flowSteps || []).forEach((step: any) => {
+      pushLedger(
+        'flow_step',
+        step.stepId,
+        step.stepName,
+        step.stepDescription,
+        step.confirmationStatus,
+      );
+    });
+  });
 
   const choicesCompatible = (space as any).choicesCompatible || [];
   const recentChoices = choicesCompatible.filter((c: any) => c.status === 'candidate').slice(0, 3);

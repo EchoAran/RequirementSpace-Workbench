@@ -6,7 +6,7 @@ validation and preview-building methods of AIAddSessionService directly.
 """
 
 import pytest
-from backend.api.services.ai_add_session_service import AIAddSessionService
+from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 
 
 # ---------------------------------------------------------------------------

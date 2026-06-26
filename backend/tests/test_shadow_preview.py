@@ -8,7 +8,7 @@ import os
 import sys
 
 os.environ["REQUIREMENTSPACE_GENERATION_BACKEND"] = "legacy"
-for mod in ["backend.api.services.service_registry", "backend.api.services.preview_shadow_convergence_service"]:
+for mod in ["backend.api.bootstrap", "backend.api.modules.preview_convergence.application.shadow_convergence"]:
     if mod in sys.modules:
         del sys.modules[mod]
 
@@ -30,8 +30,10 @@ from backend.database.model import (
     PreviewShadowDraftModel,
     feature_actor_table,
 )
-from backend.api.services.preview_shadow_convergence_service import (
+from backend.api.modules.preview_convergence.application.shadow_convergence import (
     PreviewShadowConvergenceService,
+)
+from backend.api.modules.preview_convergence.application.shadow_project_creator import (
     build_project_snapshot,
     calculate_stable_snapshot_hash,
 )
@@ -247,9 +249,10 @@ async def test_full_empty_project_shadow_workflow(db_session, seeded_project):
 
         # Step 4: Verify transaction merge/write-back (Commit)
         # Mock prototype_generation_service preview generator called post-commit
-        from backend.api.services.service_registry import prototype_generation_service
+        from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
+        prototype_gen_service = get_prototype_generation_service()
         import asyncio
-        with patch.object(prototype_generation_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
+        with patch.object(prototype_gen_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
             await service.commit_shadow_draft(seeded_project, draft_id, db_session)
             await asyncio.sleep(0.05)
             m_gen_prev.assert_called_once()
@@ -405,9 +408,10 @@ async def test_semi_converged_project_preservation_workflow(db_session, seeded_p
         await db_session.flush()
 
         # Step 4: Verify transaction merge/write-back (Commit)
-        from backend.api.services.service_registry import prototype_generation_service
+        from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
+        prototype_gen_service = get_prototype_generation_service()
         import asyncio
-        with patch.object(prototype_generation_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
+        with patch.object(prototype_gen_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
             await service.commit_shadow_draft(seeded_project, draft_id, db_session)
             await asyncio.sleep(0.05)
             m_gen_prev.assert_called_once()
@@ -599,8 +603,9 @@ async def test_empty_project_shadow_numeric_mapping(db_session, seeded_project):
         db_session.add(draft)
         await db_session.flush()
 
-        from backend.api.services.service_registry import prototype_generation_service
-        with patch.object(prototype_generation_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
+        from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
+        prototype_gen_service = get_prototype_generation_service()
+        with patch.object(prototype_gen_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
             await service.commit_shadow_draft(seeded_project, draft_id, db_session)
             m_gen_prev.assert_called_once()
 
@@ -845,8 +850,9 @@ async def test_what_converged_missing_scenarios_workflow(db_session, seeded_proj
         await db_session.flush()
 
         # Commit to verify database write-back
-        from backend.api.services.service_registry import prototype_generation_service
-        with patch.object(prototype_generation_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
+        from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
+        prototype_gen_service = get_prototype_generation_service()
+        with patch.object(prototype_gen_service, "generate_preview", new_callable=AsyncMock) as m_gen_prev:
             await service.commit_shadow_draft(seeded_project, draft_id, db_session)
             m_gen_prev.assert_called_once()
 

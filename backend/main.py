@@ -10,116 +10,167 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.dependencies.ownership import require_owned_project
 
-from backend.api.routes.project_creation_routes import (
+from backend.api.modules.project_lifecycle.routes.creation import (
     router as project_creation_router,
 )
-from backend.api.routes.project_creation_choice_routes import (
+from backend.api.modules.project_lifecycle.routes.creation_choice import (
     router as project_creation_choice_router,
 )
-from backend.api.routes.blank_project_routes import (
+from backend.api.modules.project_lifecycle.routes.blank import (
     router as blank_project_router,
 )
-from backend.api.routes.actor_generation_routes import (
-    router as actor_generation_router,
-)
-from backend.api.routes.feature_generation_routes import (
-    router as feature_generation_router,
-)
-from backend.api.routes.flow_generation_routes import (
-    router as flow_generation_router,
-)
-from backend.api.routes.scenario_generation_routes import (
-    router as scenario_generation_router,
-)
-from backend.api.routes.acceptance_criteria_generation_routes import (
-    router as acceptance_criteria_generation_router,
-)
-from backend.api.routes.scope_generation_routes import (
-    router as scope_generation_router,
-)
-from backend.api.routes.finding_routes import (
-    router as finding_router,
-)
-from backend.api.routes.issue_routes import (
-    router as issue_router,
-)
-from backend.api.routes.issue_repair_draft_routes import (
-    router as issue_repair_draft_router,
-)
-from backend.api.routes.quality_metrics_routes import (
-    router as quality_metrics_router,
-)
-from backend.api.routes.next_suggestion_routes import (
-    router as next_suggestion_router,
-)
-from backend.api.routes.perception_slot_filling_routes import (
-    router as perception_slot_filling_router,
-)
-from backend.api.routes.actor_routes import (
+from backend.api.modules.requirements_core.actor.routes import (
     router as actor_router,
+    generation_router as actor_generation_router,
 )
-from backend.api.routes.feature_routes import (
+from backend.api.modules.requirements_core.feature.routes import (
     router as feature_router,
+    generation_router as feature_generation_router,
 )
-from backend.api.routes.scenario_routes import (
+from backend.api.modules.requirements_core.scenario.routes import (
     router as scenario_router,
+    generation_router as scenario_generation_router,
+    ac_generation_router as acceptance_criteria_generation_router,
 )
-from backend.api.routes.business_object_routes import (
+from backend.api.modules.requirements_core.flow.routes import (
+    router as flow_router,
+    generation_router as flow_generation_router,
+)
+from backend.api.modules.requirements_core.scope.routes import (
+    router as scope_router,
+    project_scope_router as project_scope_router,
+    generation_router as scope_generation_router,
+)
+from backend.api.modules.requirements_core.business_object.routes import (
     router as business_object_router,
 )
-from backend.api.routes.flow_routes import (
-    router as flow_router,
+from backend.api.modules.requirements_core.node_status.routes import (
+    router as node_status_router,
 )
-from backend.api.routes.scope_routes import (
-    router as scope_router,
+from backend.api.modules.diagnosis_quality.finding.routes import (
+    router as finding_router,
 )
-from backend.api.routes.choice_routes import (
+from backend.api.modules.diagnosis_quality.issue_compat.routes import (
+    router as issue_router,
+)
+from backend.api.modules.diagnosis_quality.issue_repair.routes import (
+    router as issue_repair_draft_router,
+)
+from backend.api.modules.diagnosis_quality.quality_metrics.routes import (
+    router as quality_metrics_router,
+)
+from backend.api.modules.diagnosis_quality.next_suggestion.routes import (
+    router as next_suggestion_router,
+)
+from backend.api.modules.diagnosis_quality.perception.routes import (
+    router as perception_slot_filling_router,
+)
+from backend.api.modules.decision_workflow.choice_group.routes import (
     router as choice_router,
 )
-from backend.api.routes.project_requirements_routes import (
+from backend.api.modules.project_lifecycle.routes.requirements import (
     router as project_requirements_router,
 )
-from backend.api.routes.project_routes import (
+from backend.api.modules.project_lifecycle.routes.project import (
     router as project_router,
 )
-from backend.api.routes.prototype_generation_routes import (
+from backend.api.modules.preview_convergence.routes.prototype import (
     router as prototype_generation_router,
 )
-from backend.api.routes.project_scope_routes import (
-    router as project_scope_router,
-)
-from backend.api.routes.preview_shadow_routes import (
+from backend.api.modules.preview_convergence.routes.shadow_preview import (
     router as preview_shadow_router,
 )
-from backend.api.routes.ai_add_session_routes import (
+from backend.api.modules.ai_interaction.ai_add.routes import (
     router as ai_add_session_router,
     draft_router as ai_object_generation_draft_router,
 )
-from backend.api.routes.ai_explain_routes import (
+from backend.api.modules.ai_interaction.ai_explain.routes import (
     router as ai_explain_router,
 )
-from backend.api.routes.project_interview_routes import (
+from backend.api.modules.project_lifecycle.routes.interview import (
     router as project_interview_router,
 )
-from backend.api.routes.node_status_routes import (
-    router as node_status_router,
-)
-from backend.api.routes.auth_routes import (
+from backend.api.modules.auth_account.routes.auth import (
     router as auth_router,
 )
-from backend.api.routes.account_routes import (
+from backend.api.modules.auth_account.routes.llm_config import (
     router as account_router,
 )
 
 from backend.database.database import init_db
-from backend.api.services import service_registry
+
+
+from backend.api.modules.requirements_core.ports import set_notifier
+
+class PerceptionStaleNotifier:
+    async def mark_stale(
+        self,
+        project_id: int,
+        stages: set[str],
+        session,
+        perception_kinds: set[str] | None = None,
+        clear_active_slot: bool = True,
+    ) -> None:
+        from backend.api.modules.diagnosis_quality.public import (
+            mark_perception_jobs_stale,
+        )
+        await mark_perception_jobs_stale(
+            project_id=project_id,
+            stages=stages,
+            session=session,
+            perception_kinds=perception_kinds,
+            clear_active_slot=clear_active_slot,
+        )
 
 
 logger = logging.getLogger("uvicorn.error")
 
 
+class ConcreteGenerationDraftCreator:
+    async def create_scenario_draft(
+        self,
+        project_id: int,
+        feature_id: int,
+        actor_id: int,
+        session,
+    ) -> dict:
+        from backend.api.modules.requirements_core.public import ScenarioGenerationService
+        return await ScenarioGenerationService().create_pair_draft(
+            project_id=project_id,
+            feature_id=feature_id,
+            actor_id=actor_id,
+            session=session,
+        )
+
+    async def create_ac_draft(
+        self,
+        project_id: int,
+        scenario_id: int,
+        session,
+    ) -> dict:
+        from backend.api.modules.requirements_core.public import AcceptanceCriteriaGenerationService
+        return await AcceptanceCriteriaGenerationService().create_single_draft(
+            project_id=project_id,
+            scenario_id=scenario_id,
+            session=session,
+        )
+
+    async def create_scope_draft(
+        self,
+        project_id: int,
+        session,
+    ) -> dict:
+        from backend.api.modules.requirements_core.public import ScopeGenerationService
+        return await ScopeGenerationService().create_draft(
+            project_id=project_id,
+            session=session,
+        )
+
+
 @asynccontextmanager
 async def lifespan(fast_api: FastAPI):
+    from backend.api.bootstrap import bootstrap_services
+    registry = bootstrap_services()
     try:
         logger.info("Starting database initialization...")
         await init_db()
@@ -128,11 +179,29 @@ async def lifespan(fast_api: FastAPI):
         logger.exception("CRITICAL: Database initialization failed during lifespan startup!")
         raise e
 
+    set_notifier(PerceptionStaleNotifier())
+
+    from backend.api.modules.decision_workflow.ports.ports import ChoiceAdapterRegistry
+    from backend.api.bootstrap import register_choice_adapters
+    register_choice_adapters(ChoiceAdapterRegistry())
+
+    # Blocker 2: Register ports
+    from backend.api.modules.decision_workflow.public import GenerationChoiceService
+    from backend.core.issue_resolution.ports import (
+        set_choice_group_creator,
+        set_choice_group_settings,
+        set_generation_draft_creator,
+    )
+    choice_service = GenerationChoiceService()
+    set_choice_group_creator(choice_service)
+    set_choice_group_settings(choice_service.settings)
+    set_generation_draft_creator(ConcreteGenerationDraftCreator())
+
     logger.info(
         "RequirementSpace generation backend: %s; scope service: %s.%s",
-        service_registry.generation_backend,
-        type(service_registry.scope_generation_service).__module__,
-        type(service_registry.scope_generation_service).__name__,
+        registry.generation_backend,
+        type(registry.scope_generation_service).__module__,
+        type(registry.scope_generation_service).__name__,
     )
     yield
     # 【应用关闭时执行】（可选）

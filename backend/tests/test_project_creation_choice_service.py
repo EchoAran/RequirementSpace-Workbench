@@ -14,11 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, GenerativeDraftModel
-from backend.api.services.project_creation_choice_service import (
+from backend.api.modules.project_lifecycle.application.creation_choice_service import (
     ProjectCreationChoiceGroupService,
     ProjectCreationChoiceAdapter,
 )
-from backend.api.services.generation_choice_service import (
+from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     CandidateContext,
     GenerationChoiceSettings,
 )
@@ -37,6 +37,30 @@ async def db_session():
     async with factory() as session:
         yield session
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def mock_generators():
+    from unittest.mock import AsyncMock, patch
+    mock_blank_ret = {"project_name": "测试项目", "project_description": "测试项目描述"}
+    mock_actors_ret = {"actors": [{"actor_name": "用户", "actor_description": "系统用户"}]}
+    mock_features_ret = {
+        "features": [
+            {
+                "feature_number": "F001",
+                "feature_name": "系统管理",
+                "feature_description": "管理系统基础配置",
+                "actor_ids": [1],
+            }
+        ]
+    }
+    with patch("backend.core.generators.blank_project_generator.BlankProjectGenerator.generate", new_callable=AsyncMock) as m_blank, \
+         patch("backend.core.generators.actors_generator.ActorsGenerator.generate", new_callable=AsyncMock) as m_actors, \
+         patch("backend.core.generators.features_generator.FeaturesGenerator.generate", new_callable=AsyncMock) as m_features:
+        m_blank.return_value = mock_blank_ret
+        m_actors.return_value = mock_actors_ret
+        m_features.return_value = mock_features_ret
+        yield
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -212,7 +236,7 @@ class TestProjectCreationChoiceGroupService:
 
 def _make_candidate(project_name, actors=None, features=None):
     """Create a GenerationCandidate with the given project structure."""
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title=project_name,
         rationale="",

@@ -15,8 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ProjectModel, AIAddSessionModel, AIAddMessageModel
-from backend.api.services.ai_add_session_service import AIAddSessionService
-from backend.api.services.ai_add_interview_strategy import (
+from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
+from backend.api.modules.ai_interaction.ai_add.application.interview_strategy import (
     InterviewStrategyRegistry,
     BaseInterviewStrategy,
 )
@@ -379,7 +379,7 @@ async def test_get_session_and_messages(service, db_session, seeded_project_publ
 
 def test_strategy_registry_dispatch():
     """Strategy registry returns correct strategy for target_type."""
-    from backend.api.services.ai_add_interview_strategy import create_default_registry
+    from backend.api.modules.ai_interaction.ai_add.application.interview_strategy import create_default_registry
     registry = create_default_registry()
     strategy = registry.get("actor")
     assert strategy.target_type == "actor"
@@ -387,7 +387,7 @@ def test_strategy_registry_dispatch():
 
 def test_strategy_registry_unsupported():
     """Strategy registry raises ValueError for unsupported target_type."""
-    from backend.api.services.ai_add_interview_strategy import InterviewStrategyRegistry
+    from backend.api.modules.ai_interaction.ai_add.application.interview_strategy import InterviewStrategyRegistry
     registry = InterviewStrategyRegistry()
     with pytest.raises(ValueError, match="unsupported_target_type"):
         registry.get("nonexistent")
@@ -631,7 +631,7 @@ async def test_business_object_full_lifecycle(service, db_session, seeded_projec
 
 def test_generator_registry_dispatch():
     """SingleObjectGeneratorRegistry correctly maps target_type to generators."""
-    from backend.api.services.ai_add_generator_registry import create_default_generator_registry
+    from backend.api.modules.ai_interaction.ai_add.application.generator_registry import create_default_generator_registry
     from backend.core.generators.single_object.single_actor_generator import SingleActorGenerator
 
     registry = create_default_generator_registry()
@@ -641,7 +641,7 @@ def test_generator_registry_dispatch():
 
 def test_generator_registry_unsupported():
     """Generator registry raises ValueError for unknown target_type."""
-    from backend.api.services.ai_add_generator_registry import SingleObjectGeneratorRegistry
+    from backend.api.modules.ai_interaction.ai_add.application.generator_registry import SingleObjectGeneratorRegistry
     registry = SingleObjectGeneratorRegistry()
     with pytest.raises(ValueError, match="unsupported_target_type"):
         registry.get("nonexistent")
@@ -818,7 +818,7 @@ async def test_edit_business_object_full_lifecycle(service, db_session, seeded_p
 
 def test_edit_generator_registry_dispatch():
     """EditGeneratorRegistry maps edit_* target_type to generators."""
-    from backend.api.services.ai_edit_generator_registry import create_default_edit_generator_registry
+    from backend.api.modules.ai_interaction.ai_add.application.generator_registry import create_default_edit_generator_registry
 
     registry = create_default_edit_generator_registry()
     gen = registry.get("edit_actor")
@@ -827,7 +827,7 @@ def test_edit_generator_registry_dispatch():
 
 def test_edit_generator_registry_unsupported():
     """EditGeneratorRegistry raises for unknown target_type."""
-    from backend.api.services.ai_edit_generator_registry import EditGeneratorRegistry
+    from backend.api.modules.ai_interaction.ai_add.application.generator_registry import EditGeneratorRegistry
 
     registry = EditGeneratorRegistry()
     with pytest.raises(ValueError, match="unsupported_target_type"):

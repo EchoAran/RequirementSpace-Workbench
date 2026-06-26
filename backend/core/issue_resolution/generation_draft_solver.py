@@ -47,60 +47,62 @@ class GenerationDraftIssueSolver(BaseIssueSolver):
 
         # P2 Upgrade: Attempt to generate choice group if enabled
         if issue_code in ("SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA", "LEAF_FEATURE_WITHOUT_SCOPE"):
-            from backend.api.services.generation_choice_service import GenerationChoiceService
-            gen_service = GenerationChoiceService()
-            gen_type = {
-                "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": "acceptance_criteria",
-                "LEAF_FEATURE_WITHOUT_SCOPE": "scope",
-            }[issue_code]
+            from backend.core.issue_resolution.ports import get_choice_group_creator, get_choice_group_settings
+            creator = get_choice_group_creator()
+            settings = get_choice_group_settings()
+            if creator is not None and settings is not None:
+                gen_type = {
+                    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": "acceptance_criteria",
+                    "LEAF_FEATURE_WITHOUT_SCOPE": "scope",
+                }[issue_code]
 
-            # Map target
-            gen_target = {}
-            if target is not None and target.targetId is not None:
+                # Map target
+                gen_target = {}
+                if target is not None and target.targetId is not None:
+                    try:
+                        target_id = int(target.targetId)
+                        if issue_code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
+                            gen_target = {"scenario_id": target_id}
+                        elif issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
+                            gen_target = {"feature_id": target_id}
+                    except (ValueError, TypeError):
+                        pass
+
                 try:
-                    target_id = int(target.targetId)
-                    if issue_code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
-                        gen_target = {"scenario_id": target_id}
-                    elif issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
-                        gen_target = {"feature_id": target_id}
-                except (ValueError, TypeError):
+                    # check if choice group is enabled for this type
+                    if settings.is_generation_type_enabled(gen_type):
+                        issue_id = metadata.get("issue_id")
+                        stage = metadata.get("stage")
+                        issue_fp = metadata.get("issue_fingerprint")
+                        context_hash = metadata.get("context_hash")
+
+                        choice_group = await creator.create_choice_group(
+                            project_id=project_id,
+                            generation_type=gen_type,
+                            target=gen_target,
+                            session=session,
+                            issue_code=issue_code,
+                            issue_id=issue_id,
+                            stage=stage,
+                            source_type="issue_repair",
+                            source_id=issue_fp,
+                            context_hash=context_hash,
+                        )
+                        # Return choice_group resolution
+                        return IssueResolution(
+                            issueCode=issue_code,
+                            resolutionType="choice_group",
+                            title="选择处理方案",
+                            description=f"AI 找到 {len(choice_group.get('choices', []))} 个可行方案，请选择。",
+                            action={
+                                "kind": "open_choice_group",
+                                "choice_group_id": choice_group["id"],
+                                "payload": {"choice_group": choice_group},
+                            },
+                        )
+                except Exception as e:
+                    # Log and fallback to old draft generation
                     pass
-
-            try:
-                # check if choice group is enabled for this type
-                if gen_service.settings.is_generation_type_enabled(gen_type):
-                    issue_id = metadata.get("issue_id")
-                    stage = metadata.get("stage")
-                    issue_fp = metadata.get("issue_fingerprint")
-                    context_hash = metadata.get("context_hash")
-
-                    choice_group = await gen_service.create_choice_group(
-                        project_id=project_id,
-                        generation_type=gen_type,
-                        target=gen_target,
-                        session=session,
-                        issue_code=issue_code,
-                        issue_id=issue_id,
-                        stage=stage,
-                        source_type="issue_repair",
-                        source_id=issue_fp,
-                        context_hash=context_hash,
-                    )
-                    # Return choice_group resolution
-                    return IssueResolution(
-                        issueCode=issue_code,
-                        resolutionType="choice_group",
-                        title="选择处理方案",
-                        description=f"AI 找到 {len(choice_group.get('choices', []))} 个可行方案，请选择。",
-                        action={
-                            "kind": "open_choice_group",
-                            "choice_group_id": choice_group["id"],
-                            "payload": {"choice_group": choice_group},
-                        },
-                    )
-            except Exception as e:
-                # Log and fallback to old draft generation
-                pass
 
         payload = {
             "project_id": project_id,

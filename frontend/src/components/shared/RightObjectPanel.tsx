@@ -66,7 +66,7 @@ class PanelErrorBoundary extends React.Component<
 const CONFIRMATION_STATUS_OPTIONS = [
   { value: 'confirmed', label: '已确认' },
   { value: 'needs_confirmation', label: '待确认' },
-  { value: 'ai_assumption', label: 'AI 推测' },
+  { value: 'ai_assumption', label: 'AI 假设' },
 ];
 
 const SCOPE_DECISION_OPTIONS = [
@@ -103,7 +103,7 @@ function ConfirmationStatusSection({
     }
     const nodeId = selectedObject.actorId ?? selectedObject.featureId ?? selectedObject.scenarioId
       ?? selectedObject.criterionId ?? selectedObject.businessObjectId ?? selectedObject.flowId
-      ?? selectedObject.scopeId;
+      ?? selectedObject.businessObjectAttributeId ?? selectedObject.stepId ?? selectedObject.scopeId;
     if (nodeId != null) {
       void setNodeStatus(nodeId.toString(), nodeKind, nextValue as NodeStatus);
     }
@@ -524,7 +524,7 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
         />
         {!scopeId && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 leading-relaxed">
-            当前功能尚未生成独立的范围记录。首次选择交付范围后，会自动创建该 `scope` 记录，并默认标记为 `AI 推测`。
+            当前功能尚未生成独立的范围记录。首次选择交付范围后，会自动创建该 `scope` 记录，并默认标记为 `AI 假设`。
           </div>
         )}
         <ActionRow>
@@ -578,7 +578,10 @@ function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
               <div key={attr.businessObjectAttributeId} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-1.5 shadow-sm">
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-800 text-xs">{attr.businessObjectAttributeName}</span>
-                  <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-500 font-bold">{attr.businessObjectAttributeType}</span>
+                  <div className="flex items-center gap-1.5">
+                    <StatusBadge status={attr.confirmationStatus || 'ai_assumption'} />
+                    <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-500 font-bold">{attr.businessObjectAttributeType}</span>
+                  </div>
                 </div>
                 <div className="text-xs text-slate-500 font-medium leading-relaxed">{attr.businessObjectAttributeDescription}</div>
                 {attr.businessObjectAttributeExample && (
@@ -590,6 +593,30 @@ function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
             ))}
           </div>
         )}
+      </Section>
+    </PanelShell>
+  );
+}
+
+function BusinessObjectAttributePanel({ selectedObject }: { selectedObject: any }) {
+  return (
+    <PanelShell title={selectedObject.businessObjectAttributeName || '未命名属性'} subtitle="业务对象属性">
+      <ConfirmationStatusSection nodeKind="business_object_attribute" selectedObject={selectedObject} />
+      <Section title="属性详情">
+        <div className="space-y-3 text-xs text-slate-600">
+          <div>
+            <div className="font-bold text-slate-400">属性类型</div>
+            <div className="mt-1 font-mono text-slate-800">{selectedObject.businessObjectAttributeType || '-'}</div>
+          </div>
+          <div>
+            <div className="font-bold text-slate-400">属性说明</div>
+            <div className="mt-1 leading-relaxed text-slate-800">{selectedObject.businessObjectAttributeDescription || '-'}</div>
+          </div>
+          <div>
+            <div className="font-bold text-slate-400">示例值</div>
+            <div className="mt-1 font-mono text-indigo-700">{selectedObject.businessObjectAttributeExample || '-'}</div>
+          </div>
+        </div>
       </Section>
     </PanelShell>
   );
@@ -647,6 +674,7 @@ function FlowStepObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: 
 
   return (
     <PanelShell title={stepName} subtitle="流程步骤结点">
+      <ConfirmationStatusSection nodeKind="flow_step" selectedObject={selectedObject} />
       <Section title="流程步骤基本属性">
         <TextField label="步骤名称" value={stepName} onChange={setStepName} />
         <SelectField 
@@ -1011,6 +1039,7 @@ export function RightObjectPanel() {
       selectedObject.actorId !== undefined ? 'actor' :
       selectedObject.featureId !== undefined ? 'feature' :
       selectedObject.businessObjectId !== undefined ? 'business_object' :
+      selectedObject.businessObjectAttributeId !== undefined ? 'business_object_attribute' :
       selectedObject.stepId !== undefined ? 'flow_step' :
       selectedObject.flowId !== undefined ? 'flow' : undefined
     );
@@ -1035,6 +1064,9 @@ export function RightObjectPanel() {
     }
     if (kind === 'business_object') {
       return <BusinessObjectPanel selectedObject={selectedObject} />;
+    }
+    if (kind === 'business_object_attribute') {
+      return <BusinessObjectAttributePanel selectedObject={selectedObject} />;
     }
     if (kind === 'flow_step') {
       return <FlowStepObjectPanel selectedObject={selectedObject} ir={ir} />;

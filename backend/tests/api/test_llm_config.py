@@ -11,7 +11,7 @@ from backend.main import app
 from backend.database.database import get_session, Base
 from backend.database.model import UserRole, UserLLMConfigModel
 from backend.core.security.encryption import decrypt_llm_api_key
-from backend.api.services.llm_config_service import validate_llm_url, sanitize_secrets
+from backend.api.modules.auth_account.application.llm_config_service import validate_llm_url, sanitize_secrets
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -151,12 +151,12 @@ def test_regular_user_llm_config_crud(llm_test_db):
 
 def test_admin_llm_config_crud_blocked_and_server_fallback(llm_test_db, monkeypatch):
     # Setup admin register invite code
+    import backend.api.modules.auth_account.application.auth_service as auth_service
     from backend.core.security import hash_password
-    import backend.api.services.auth_service
-
+    
     invite_code = "admin_invite_code_secret"
     hashed_code = hash_password(invite_code)
-    monkeypatch.setattr(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
+    monkeypatch.setattr(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
 
     # Set server environment configs
     monkeypatch.setenv("LLM_API_URL", "https://env-llm-server.com/")
@@ -307,13 +307,12 @@ def test_llm_connectivity_checks(llm_test_db, monkeypatch):
 
 
 def test_admin_bypass_test_blocked(llm_test_db, monkeypatch):
-    # Setup admin register invite code
+    import backend.api.modules.auth_account.application.auth_service as auth_service
     from backend.core.security import hash_password
-    import backend.api.services.auth_service
 
     invite_code = "admin_invite_code_secret"
     hashed_code = hash_password(invite_code)
-    monkeypatch.setattr(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
+    monkeypatch.setattr(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
 
     # Set server environment configs
     monkeypatch.setenv("LLM_API_URL", "https://env-llm-server.com")
@@ -376,7 +375,7 @@ def test_exception_sanitization_leak_protection(llm_test_db, monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post_with_key)
 
     # Capture logs to verify sanitization
-    logger = logging.getLogger("backend.api.services.llm_config_service")
+    logger = logging.getLogger("backend.api.modules.auth_account.application.llm_config_service")
     orig_level = logger.level
     logger.setLevel(logging.INFO)
     log_messages = []

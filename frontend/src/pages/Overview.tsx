@@ -376,7 +376,7 @@ export function Overview() {
                 <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 md:flex-row md:items-end md:justify-between">
                   <div>
                     <h2 className="text-lg font-black text-slate-900">
-                      AI 推测待确认
+                      AI 假设待确认
                       {overview.aiAssumptionLedger.length > 0 && (
                         <span className="ml-2 text-sm font-bold text-slate-400">{overview.aiAssumptionLedger.length}</span>
                       )}
@@ -421,7 +421,7 @@ export function Overview() {
                         <p className="text-sm text-slate-400">
                           {(ir?.actors?.length || ir?.features?.length || ir?.businessObjects?.length || ir?.flows?.length)
                             ? '所有节点已确认，暂无待确认条目'
-                            : '当前没有 AI 推测节点'}
+                            : '当前没有 AI 假设节点'}
                         </p>
                       </div>
                     )}

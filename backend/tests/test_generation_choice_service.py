@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ChoiceGroupModel, ChoiceModel, ProjectModel
-from backend.api.services.generation_choice_service import (
+from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     GenerationChoiceSettings,
     GenerationCandidate,
     CandidateContext,
@@ -28,7 +28,7 @@ from backend.api.services.generation_choice_service import (
     get_adapter,
     GenerationChoiceService,
 )
-from backend.api.services.choice_service import ChoiceService
+from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
 
 
 # ═══════════════════════════════════════════════════════════════════

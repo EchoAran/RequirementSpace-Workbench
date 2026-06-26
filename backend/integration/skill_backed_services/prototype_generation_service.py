@@ -4,9 +4,9 @@ import asyncio
 import json
 from typing import Any
 
-from backend.api.schemas.prototype_generation_schema import PrototypePreviewResponse
-from backend.api.services.prototype_generation_service import PrototypeGenerationService
-from backend.database.model import PrototypePreviewModel
+from backend.api.modules.preview_convergence.ports.preview_generator import PrototypePageGeneratorPort
+from backend.api.modules.preview_convergence.public import PrototypeGenerationService
+from backend.core.generators.prototype_generator import PrototypeGenerator
 from backend.integration.skill_backed_services.llm_json_client import (
     SkillBackedLLMJsonClient,
     render_prompt,
@@ -14,23 +14,24 @@ from backend.integration.skill_backed_services.llm_json_client import (
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 
 
-class SkillBackedPrototypeGenerationService(PrototypeGenerationService):
-    def __init__(self, session_factory=None) -> None:
-        super().__init__(session_factory=session_factory)
+class SkillBackedPrototypePageGenerator(PrototypePageGeneratorPort):
+    def __init__(self) -> None:
         gherkin2code_core = import_skill_module(
             "gherkin-code-skill",
             "gherkin2code_skill.core",
         )
         self._skill_generator = gherkin2code_core.Gherkin2Code()
         self._llm_json_client = SkillBackedLLMJsonClient()
+        self._generator = PrototypeGenerator()
+        self._max_concurrency = 5
 
-    async def _generate_pages(
+    async def generate_pages(
         self,
         targets: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         return await self._generate_skill_pages_concurrently(targets)
 
-    def _preview_source(self) -> str:
+    def preview_source(self) -> str:
         return "role_feature_pages"
 
     async def _generate_skill_pages_concurrently(
@@ -50,7 +51,7 @@ class SkillBackedPrototypeGenerationService(PrototypeGenerationService):
                 except Exception:
                     code = await self._generator.generate_page(target["input"])
                     source = "placeholder_fallback"
-                return self._page_payload(
+                return PrototypeGenerationService._page_payload(
                     target=target,
                     code=code,
                     source=source,

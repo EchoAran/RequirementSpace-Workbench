@@ -16,13 +16,13 @@ def bypass_auth():
 
 # Test 1: Real CRUD route throwing unhandled Exception (via mock get_actors)
 def test_real_route_exception_returns_clean_500(monkeypatch):
-    from backend.api.routes.actor_routes import actor_service
+    from backend.api.modules.requirements_core.actor.routes import actor_service
     
     # Mock get_actors to raise an exception containing sensitive database URL
     async def mock_get_actors(*args, **kwargs):
         raise ValueError("database connection failure to postgresql://admin:db-secret@localhost/private api_key=plain-secret")
         
-    monkeypatch.setattr(actor_service, "get_actors", mock_get_actors)
+    monkeypatch.setattr(actor_service, "list_actors", mock_get_actors)
     
     client = TestClient(app, raise_server_exceptions=False)
     
@@ -45,7 +45,7 @@ def test_real_route_exception_returns_clean_500(monkeypatch):
 
 # Test 2: Route throwing HTTPException status >= 500
 def test_http_exception_500_returns_clean_500(monkeypatch):
-    from backend.api.routes.actor_routes import actor_service
+    from backend.api.modules.requirements_core.actor.routes import actor_service
     
     # Mock get_actors to raise HTTPException(500)
     async def mock_get_actors(*args, **kwargs):
@@ -54,7 +54,7 @@ def test_http_exception_500_returns_clean_500(monkeypatch):
             detail="Failed to retrieve postgresql://admin:db-secret@localhost/private api_key=plain-secret"
         )
         
-    monkeypatch.setattr(actor_service, "get_actors", mock_get_actors)
+    monkeypatch.setattr(actor_service, "list_actors", mock_get_actors)
     
     client = TestClient(app, raise_server_exceptions=False)
     
@@ -72,7 +72,7 @@ def test_http_exception_500_returns_clean_500(monkeypatch):
 
 # Test 3: Route throwing HTTPException status < 500 (e.g. 400, 401, 404) preserves detail and headers
 def test_http_exception_4xx_preserves_detail_and_headers(monkeypatch):
-    from backend.api.routes.actor_routes import actor_service
+    from backend.api.modules.requirements_core.actor.routes import actor_service
     
     # Test 400 with a dictionary detail
     async def mock_get_actors_400(*args, **kwargs):
@@ -82,7 +82,7 @@ def test_http_exception_4xx_preserves_detail_and_headers(monkeypatch):
             headers={"X-Custom-Header": "custom-value"}
         )
         
-    monkeypatch.setattr(actor_service, "get_actors", mock_get_actors_400)
+    monkeypatch.setattr(actor_service, "list_actors", mock_get_actors_400)
     
     client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/api/projects/123/actors")

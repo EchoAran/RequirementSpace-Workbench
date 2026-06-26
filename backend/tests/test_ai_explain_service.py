@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, FeatureRelationModel
-from backend.api.services.ai_explain_service import AIExplainService
+from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
 
 
 # ---------------------------------------------------------------------------

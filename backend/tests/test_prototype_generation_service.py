@@ -4,8 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, GherkinSpecModel, PrototypePreviewModel
-from backend.api.services.prototype_generation_service import PrototypeGenerationService
-from backend.integration.skill_backed_services.prototype_generation_service import SkillBackedPrototypeGenerationService
+from backend.api.modules.preview_convergence.public import PrototypeGenerationService
+from backend.integration.skill_backed_services.prototype_generation_service import SkillBackedPrototypePageGenerator
 
 
 @pytest.fixture
@@ -74,12 +74,16 @@ async def test_legacy_prototype_generation(test_session_factory, seeded_project)
 @pytest.mark.asyncio
 async def test_skill_backed_prototype_generation(test_session_factory, seeded_project):
     """Test skill-backed prototype generation logic and response structure."""
-    service = SkillBackedPrototypeGenerationService(session_factory=test_session_factory)
+    page_gen = SkillBackedPrototypePageGenerator()
+    service = PrototypeGenerationService(
+        session_factory=test_session_factory,
+        page_generator=page_gen,
+    )
     project_id, public_id = seeded_project
 
     # Mock SkillBackedLLMJsonClient to return code payload
     mock_code = {"HTML": "<h1>Skill</h1>", "CSS": "h1 {color: red;}", "Javascript": "alert(1);"}
-    with patch.object(service._llm_json_client, "ask_json", new_callable=AsyncMock) as mock_ask:
+    with patch.object(page_gen._llm_json_client, "ask_json", new_callable=AsyncMock) as mock_ask:
         mock_ask.return_value = mock_code
 
         response = await service.generate_preview(

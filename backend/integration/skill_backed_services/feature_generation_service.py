@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.api.services.feature_generation_service import FeatureGenerationService
+from backend.api.modules.requirements_core.public import FeatureGenerationService
 from backend.integration.skill_backed_services.feature_tree_adapter import FeatureTreeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module

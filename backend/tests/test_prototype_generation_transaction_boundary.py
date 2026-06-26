@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, PrototypePreviewModel
-from backend.api.services.prototype_generation_service import PrototypeGenerationService
+from backend.api.modules.preview_convergence.application.prototype_generation import PrototypeGenerationService
 
 
 @pytest.fixture

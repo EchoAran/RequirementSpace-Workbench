@@ -10,7 +10,7 @@ from backend.database.model import (
     ScenarioAcceptanceCriterionModel, FlowModel, FlowStepModel, ScopeModel,
     feature_actor_table,
 )
-from backend.api.services.generation_choice_service import (
+from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     GenerationChoiceService, CandidateContext, get_adapter,
 )
 
@@ -207,7 +207,7 @@ class TestScopeIntegration:
 # ═══════════════════════════════════════════════════════════════════
 
 def _make_ac_candidate(contents):
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test", rationale="",
         payload={"acceptance_criteria": [{"criterion_content": c} for c in contents]},
@@ -216,7 +216,7 @@ def _make_ac_candidate(contents):
 
 
 def _make_feature_candidate(names):
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test", rationale="",
         payload={"features": [{"feature_name": n, "feature_description": ""} for n in names]},
@@ -225,7 +225,7 @@ def _make_feature_candidate(names):
 
 
 def _make_flow_candidate(names):
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test", rationale="",
         payload={"flows": [{"flow_name": n, "flow_steps": []} for n in names]},
@@ -234,7 +234,7 @@ def _make_flow_candidate(names):
 
 
 def _make_scope_candidate(entries):
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test", rationale="",
         payload={"scopes": [{"feature_id": fid, "scope_status": st} for fid, st in entries]},

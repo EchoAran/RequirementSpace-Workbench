@@ -10,7 +10,7 @@ from backend.core.generators.single_object.base_edit_generator import (
 from backend.core.generators.single_object.prompts.edit_feature_prompt import (
     EDIT_FEATURE_GENERATE_PROMPT,
 )
-from backend.api.services.ai_edit_field_permissions import EDITABLE_FIELDS
+from backend.core.rules import EDITABLE_FIELDS
 
 
 class EditFeatureGenerator(BaseEditGenerator):

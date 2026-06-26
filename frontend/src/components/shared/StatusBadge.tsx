@@ -14,6 +14,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     
     'ai_assumption': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
     'AI 假设': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
+    'AI 推测': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
 
     'needs_confirmation': 'bg-amber-50 text-amber-700 border-amber-200 border',
     '待确认': 'bg-amber-50 text-amber-700 border-amber-200 border',

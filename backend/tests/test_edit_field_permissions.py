@@ -5,8 +5,8 @@ Pure logic tests that don't require database access.
 """
 
 import pytest
-from backend.api.services.ai_edit_field_permissions import EDITABLE_FIELDS
-from backend.api.services.ai_add_session_service import AIAddSessionService
+from backend.api.modules.ai_interaction.public import EDITABLE_FIELDS
+from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 
 
 # ---------------------------------------------------------------------------

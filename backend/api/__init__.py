@@ -1,1 +1,1 @@
-from backend.api.schemas import *
+# Empty init file for package declaration.

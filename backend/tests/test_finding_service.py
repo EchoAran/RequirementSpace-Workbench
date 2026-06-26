@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import select, text
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, FindingOverrideModel, feature_actor_table, ScenarioModel
-from backend.api.services.finding_service import FindingService
+from backend.api.modules.diagnosis_quality.finding.application.finding_service import FindingService
 from backend.schemas import FindingType, BlockingScope, IssueStage, IssueSeverity
 
 @pytest.fixture

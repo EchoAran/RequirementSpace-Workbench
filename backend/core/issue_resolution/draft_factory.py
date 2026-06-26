@@ -4,11 +4,7 @@ Extracted from IssueService._create_resolution_draft() to avoid circular
 dependency when IssueRepairService needs the same logic.
 """
 
-from backend.api.services.service_registry import (
-    acceptance_criteria_generation_service,
-    scenario_generation_service,
-    scope_generation_service,
-)
+from backend.core.issue_resolution.ports import get_generation_draft_creator
 from backend.schemas import IssueResolution
 
 
@@ -50,7 +46,11 @@ class IssueResolutionDraftFactory:
         if feature_id is None or actor_id is None:
             raise ValueError("invalid_resolution_payload")
 
-        draft = await scenario_generation_service.create_pair_draft(
+        creator = get_generation_draft_creator()
+        if creator is None:
+            raise ValueError("generation_draft_creator_not_registered")
+
+        draft = await creator.create_scenario_draft(
             project_id=project_id,
             feature_id=int(feature_id),
             actor_id=int(actor_id),
@@ -69,7 +69,11 @@ class IssueResolutionDraftFactory:
         if scenario_id is None:
             raise ValueError("invalid_resolution_payload")
 
-        draft = await acceptance_criteria_generation_service.create_single_draft(
+        creator = get_generation_draft_creator()
+        if creator is None:
+            raise ValueError("generation_draft_creator_not_registered")
+
+        draft = await creator.create_ac_draft(
             project_id=project_id,
             scenario_id=int(scenario_id),
             session=session,
@@ -83,7 +87,11 @@ class IssueResolutionDraftFactory:
         payload: dict,
         session,
     ) -> IssueResolution:
-        draft = await scope_generation_service.create_draft(
+        creator = get_generation_draft_creator()
+        if creator is None:
+            raise ValueError("generation_draft_creator_not_registered")
+
+        draft = await creator.create_scope_draft(
             project_id=project_id,
             session=session,
         )

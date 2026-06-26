@@ -124,6 +124,7 @@ export interface BusinessObjectAttributeNode {
   businessObjectAttributeDescription: string;
   businessObjectAttributeType: string;
   businessObjectAttributeExample: string;
+  confirmationStatus?: NodeStatus;
 
   // Compatibility properties for legacy components
   id?: string;
@@ -159,6 +160,7 @@ export interface FlowStepNode {
   inputBusinessObjectIds: number[];
   outputBusinessObjectIds: number[];
   nextStepIds: number[];
+  confirmationStatus?: NodeStatus;
   
   // Compatibility properties for legacy components
   id?: string;
@@ -435,7 +437,7 @@ export type LinkType = string;
 export const NodeStatusToText: Record<string, string> = {
   confirmed: '已确认',
   needs_confirmation: '待确认',
-  ai_assumption: 'AI 推测',
+  ai_assumption: 'AI 假设',
   excluded: '已排除',
 };
 

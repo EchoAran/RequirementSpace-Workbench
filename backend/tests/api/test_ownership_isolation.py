@@ -302,13 +302,13 @@ def test_llm_test_endpoint_requires_auth(isolation_test_db):
 
     # 3. Authenticated admin user gets response (200, 409 or 500 depending on env LLM config)
     from unittest.mock import patch
+    import backend.api.modules.auth_account.application.auth_service as auth_service
     from backend.core.security import hash_password
-    import backend.api.services.auth_service
 
     invite_code = "admin_secret_999"
     hashed_code = hash_password(invite_code)
 
-    with patch.object(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code):
+    with patch.object(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code):
         client.cookies.clear()
         res = client.post("/api/auth/register", json={
             "email": "admin_test@iso.test",

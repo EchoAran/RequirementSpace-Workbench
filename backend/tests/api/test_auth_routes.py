@@ -96,8 +96,8 @@ def test_admin_registration_with_invite_code(auth_test_db, monkeypatch):
     hashed_code = hash_password(invite_code)
 
     # Mock configuration's ADMIN_INVITE_CODE_HASH
-    import backend.api.services.auth_service
-    monkeypatch.setattr(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
+    import backend.api.modules.auth_account.application.auth_service as auth_service
+    monkeypatch.setattr(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
 
     client = TestClient(app)
 
@@ -155,16 +155,16 @@ def test_login_invalid_credentials(auth_test_db):
 
 
 def test_login_timing_attack_protection(auth_test_db, monkeypatch):
-    import backend.api.services.auth_service
+    import backend.api.modules.auth_account.application.auth_service as auth_service
 
     verify_calls = []
-    orig_verify = backend.api.services.auth_service.verify_password
+    orig_verify = auth_service.verify_password
 
     def mock_verify(password, password_hash):
         verify_calls.append((password, password_hash))
         return orig_verify(password, password_hash)
 
-    monkeypatch.setattr(backend.api.services.auth_service, "verify_password", mock_verify)
+    monkeypatch.setattr(auth_service, "verify_password", mock_verify)
 
     client = TestClient(app)
 

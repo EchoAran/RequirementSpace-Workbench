@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from unittest.mock import patch
 
 from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel
-from backend.api.services.project_service import ProjectService
-from backend.api.services.finding_service import FindingService
+from backend.api.modules.project_lifecycle.application.project_service import ProjectService
+from backend.api.modules.diagnosis_quality.finding.application.finding_service import FindingService
 from backend.schemas import Finding, FindingType, BlockingScope, IssueStage, IssueSeverity
 
 @pytest.fixture

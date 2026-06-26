@@ -112,7 +112,7 @@ def test_resolve_issue_repair_draft(client_with_auth):
         "context_hash": "hash-123"
     }
 
-    with patch("backend.api.services.issue_repair_service.IssueRepairService.resolve", return_value=mock_response):
+    with patch("backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service.IssueRepairService.resolve", return_value=mock_response):
         payload = {
             "issue_id": "what:SCOPE_WITHOUT_REASON:feature:1",
             "issue_code": "SCOPE_WITHOUT_REASON",

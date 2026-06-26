@@ -778,6 +778,13 @@ class BusinessObjectAttributeModel(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     data_type: Mapped[str] = mapped_column(String(100), nullable=False)
     example: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     business_object: Mapped[BusinessObjectModel] = relationship(back_populates="attributes")
 
@@ -831,6 +838,13 @@ class FlowStepModel(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     step_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # 确认状态：ai_assumption / needs_confirmation / confirmed
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
 
     flow: Mapped[FlowModel] = relationship(back_populates="steps")
     actors: Mapped[list[ActorModel]] = relationship(

@@ -5,13 +5,11 @@ import json
 import logging
 from uuid import uuid4
 
-from backend.api.services.acceptance_criteria_generation_service import (
+from backend.api.modules.requirements_core.public import (
     AcceptanceCriteriaGenerationService,
+    ScenarioGenerationService,
+    get_notifier,
 )
-from backend.api.services.perception_job_invalidation_service import (
-    mark_perception_jobs_stale,
-)
-from backend.api.services.scenario_generation_service import ScenarioGenerationService
 from backend.integration.skill_backed_services.gherkin_adapter import GherkinAdapter
 from backend.integration.skill_backed_services.llm_json_client import (
     SkillBackedLLMJsonClient,
@@ -116,7 +114,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft_payload["draft_id"] = draft_id
         response_payload["draft_id"] = draft_id
 
-        from backend.api.services.draft_store import GenerativeDraftStore
+        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.save_draft(
             project_id=draft["project_id"],
             draft_id=draft_id,
@@ -182,7 +180,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             draft=draft,
             session=session,
         )
-        await mark_perception_jobs_stale(
+        await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
@@ -224,7 +222,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         else:
             result["acceptance_criterion_count"] = 0
 
-        from backend.api.services.draft_store import GenerativeDraftStore
+        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
         return result
 

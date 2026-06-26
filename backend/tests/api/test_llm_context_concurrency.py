@@ -36,7 +36,7 @@ from backend.database.model import (
     ChoiceModel,
     GenerativeDraftModel,
 )
-from backend.api.schemas.choice_schema import ChoiceActionResponse
+from backend.api.modules.decision_workflow.public import ChoiceActionResponse
 from backend.api.dependencies.llm import get_llm_context
 from backend.core.llm_context import (
     current_llm_context, is_web_request_ctx,
@@ -234,12 +234,11 @@ async def test_concurrent_isolation_intercepts_upstream(llm_test_db):
 async def test_admin_user_concurrent_isolation(llm_test_db, monkeypatch):
     """Admin resolves from .env; regular user resolves from DB.
     Concurrent requests must never leak credentials."""
+    import backend.api.modules.auth_account.application.auth_service as auth_service
     from backend.core.security import hash_password
-    import backend.api.services.auth_service
-
     invite_code = "admin_invite_secret_42"
     hashed_code = hash_password(invite_code)
-    monkeypatch.setattr(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
+    monkeypatch.setattr(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
 
     monkeypatch.setenv("LLM_API_URL", "https://api.server-admin.com")
     monkeypatch.setenv("LLM_API_KEY", "sk-server-admin-key")
@@ -431,7 +430,7 @@ async def test_scenario_choice_accept_uses_scoped_context(llm_test_db):
         )
 
     with patch(
-        "backend.api.routes.choice_routes.choice_service.accept_choice",
+        "backend.api.modules.decision_workflow.choice_group.routes.choice_service.accept_choice",
         side_effect=_accept_with_context,
     ):
         client.cookies.clear()
@@ -470,7 +469,7 @@ async def test_blank_project_ai_branch_uses_scoped_context(llm_test_db):
         }
 
     with patch(
-        "backend.api.routes.blank_project_routes.blank_project_service.create_project",
+        "backend.api.modules.project_lifecycle.routes.blank.blank_project_service.create_project",
         side_effect=_create_with_context,
     ):
         client.cookies.clear()
@@ -565,7 +564,7 @@ async def test_next_suggestion_background_task_keeps_scoped_context(llm_test_db)
         }
 
     with patch(
-        "backend.api.routes.next_suggestion_routes.next_suggestion_service.get_next_suggestion",
+        "backend.api.modules.diagnosis_quality.next_suggestion.routes.next_suggestion_service.get_next_suggestion",
         side_effect=_get_suggestion,
     ):
         client.cookies.clear()
@@ -744,12 +743,11 @@ def test_llm_handler_context_missing_error_inside_web():
 async def test_llm_test_does_not_leak_config(llm_test_db, monkeypatch):
     """Even for a configured user, the response must NOT contain the raw
     api_url, api_key preview, model_name, or temperature values."""
+    import backend.api.modules.auth_account.application.auth_service as auth_service
     from backend.core.security import hash_password
-    import backend.api.services.auth_service
-
     invite_code = "admin_invite_secret_42"
     hashed_code = hash_password(invite_code)
-    monkeypatch.setattr(backend.api.services.auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
+    monkeypatch.setattr(auth_service, "ADMIN_INVITE_CODE_HASH", hashed_code)
 
     monkeypatch.setenv("LLM_API_URL", "https://api.secret-server.com")
     monkeypatch.setenv("LLM_API_KEY", "sk-supersecretkey1234567890")

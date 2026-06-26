@@ -19,7 +19,7 @@ from backend.database.model import (
     Base, ProjectModel, ActorModel, FeatureModel,
     ScenarioModel, ScenarioAcceptanceCriterionModel, feature_actor_table,
 )
-from backend.api.services.generation_choice_service import (
+from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     GenerationChoiceService,
     CandidateContext,
     get_adapter,
@@ -39,6 +39,36 @@ async def db_session():
     async with factory() as session:
         yield session
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def mock_generators():
+    mock_actors_ret = {"actors": [{"actor_name": "普通用户", "actor_description": "普通系统用户"}]}
+    mock_scenarios_ret = {
+        "scenarios": [
+            {
+                "scenario_name": "查询用户",
+                "scenario_content": "Given 管理员已登录, When 查询用户列表, Then 展现所有注册用户",
+            }
+        ]
+    }
+    mock_ac_ret = {
+        "scenario_acceptance_criteria": [
+            {
+                "scenario_id": 1,
+                "acceptance_criteria": [
+                    "列表加载不超过500ms"
+                ]
+            }
+        ]
+    }
+    with patch("backend.core.generators.actors_generator.ActorsGenerator.generate", new_callable=AsyncMock) as m_actors, \
+         patch("backend.core.generators.scenarios_generator.ScenariosGenerator.generate", new_callable=AsyncMock) as m_scenarios, \
+         patch("backend.core.generators.acceptance_criteria_generator.AcceptanceCriteriaGenerator.generate", new_callable=AsyncMock) as m_ac:
+        m_actors.return_value = mock_actors_ret
+        m_scenarios.return_value = mock_scenarios_ret
+        m_ac.return_value = mock_ac_ret
+        yield
 
 
 @pytest.fixture
@@ -186,7 +216,7 @@ class TestActorChoiceGroupIntegration:
         )
         choice_id = result["choices"][0]["id"]
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         accept_result = await cs.accept_choice(
             project_id=seeded_project,
@@ -217,7 +247,7 @@ class TestActorChoiceGroupIntegration:
         )
         group_id = result["id"]
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         discard_result = await cs.discard_choice_group(
             project_id=seeded_project, group_id=group_id, session=db_session,
@@ -270,7 +300,7 @@ class TestScenarioChoiceGroupIntegration:
         )
         choice_id = result["choices"][0]["id"]
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         accept_result = await cs.accept_choice(
             project_id=seeded_project,
@@ -311,7 +341,7 @@ class TestScenarioChoiceGroupIntegration:
         )
         group_id = result["id"]
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         discard_result = await cs.discard_choice_group(
             project_id=seeded_project, group_id=group_id, session=db_session,
@@ -348,7 +378,7 @@ class TestScenarioStaleDetection:
             await db_session.delete(feature)
             await db_session.flush()
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         accept_result = await cs.accept_choice(
             project_id=seeded_project,
@@ -372,7 +402,7 @@ class TestScenarioStaleDetection:
         )
         choice_id = result["choices"][0]["id"]
 
-        from backend.api.services.choice_service import ChoiceService
+        from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
         cs = ChoiceService()
         # force=True 且 feature 存在 → 正常采纳
         accept_result = await cs.accept_choice(
@@ -392,7 +422,7 @@ class TestScenarioStaleDetection:
 
 def _make_actor_candidate(names: list[str]):
     """Create a GenerationCandidate with given actor names."""
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test",
         rationale="",
@@ -407,7 +437,7 @@ def _make_actor_candidate(names: list[str]):
 
 def _make_scenario_candidate(names: list[str]):
     """Create a GenerationCandidate with given scenario names."""
-    from backend.api.services.generation_choice_service import GenerationCandidate
+    from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import GenerationCandidate
     return GenerationCandidate(
         title="test",
         rationale="",

@@ -19,7 +19,7 @@ from backend.database.model import (
     ProjectModel,
     PreviewShadowDraftModel,
 )
-from backend.api.services.preview_shadow_convergence_service import (
+from backend.api.modules.preview_convergence.application.shadow_convergence import (
     build_project_snapshot,
 )
 
@@ -90,7 +90,7 @@ async def test_ai_add_create_session_returns_404_for_unknown_project(db_session,
     the route should raise HTTPException(404), not 400.
     """
     from fastapi import HTTPException
-    from backend.api.services.ai_add_session_service import AIAddSessionService
+    from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 
     service = AIAddSessionService()
     fake_public_id = str(uuid.uuid4())
@@ -105,7 +105,7 @@ async def test_ai_add_create_session_returns_404_for_unknown_project(db_session,
         )
 
     # Verify the route handler maps this to 404
-    from backend.api.routes.ai_add_session_routes import _is_known_error
+    from backend.api.modules.ai_interaction.ai_add.routes import _is_known_error
     assert _is_known_error("project_not_found") is True
 
     # Simulate route error handling logic

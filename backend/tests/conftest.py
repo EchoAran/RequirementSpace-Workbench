@@ -1,4 +1,5 @@
 import os
+import pytest
 from sqlalchemy import event
 
 # Seed a valid dummy encryption key for test run stability
@@ -48,9 +49,9 @@ def set_default_draft_owner_for_tests(target, args, kwargs):
 
 # Monkeypatch AIAddSessionService, ProjectCreationChoiceGroupService, and GenerativeDraftStore
 # to inject owner_user_id=1 for legacy test compatibility.
-from backend.api.services.ai_add_session_service import AIAddSessionService
-from backend.api.services.project_creation_choice_service import ProjectCreationChoiceGroupService
-from backend.api.services.draft_store import GenerativeDraftStore
+from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
+from backend.api.modules.project_lifecycle.application.creation_choice_service import ProjectCreationChoiceGroupService
+from backend.api.modules.decision_workflow.draft_store import GenerativeDraftStore
 
 # 1. GenerativeDraftStore patcher
 _orig_store_save_draft = GenerativeDraftStore.save_draft
@@ -132,3 +133,52 @@ ProjectCreationChoiceGroupService.list_open_choice_groups = patch_pcg_list_open_
 ProjectCreationChoiceGroupService.accept_choice = patch_pcg_accept_choice
 ProjectCreationChoiceGroupService.discard_choice_group = patch_pcg_discard_choice_group
 ProjectCreationChoiceGroupService.defer_choice_group = patch_pcg_defer_choice_group
+
+
+class TestPerceptionStaleNotifier:
+    async def mark_stale(
+        self,
+        project_id: int,
+        stages: set[str],
+        session,
+        perception_kinds: set[str] | None = None,
+        clear_active_slot: bool = True,
+    ) -> None:
+        from backend.api.modules.diagnosis_quality.public import (
+            mark_perception_jobs_stale,
+        )
+        await mark_perception_jobs_stale(
+            project_id=project_id,
+            stages=stages,
+            session=session,
+            perception_kinds=perception_kinds,
+            clear_active_slot=clear_active_slot,
+        )
+
+from backend.api.modules.requirements_core.ports import set_notifier
+set_notifier(TestPerceptionStaleNotifier())
+
+# Setup ChoiceAdapterRegistry for testing
+from backend.api.modules.decision_workflow.ports.ports import ChoiceAdapterRegistry
+from backend.api.bootstrap import register_choice_adapters
+register_choice_adapters(ChoiceAdapterRegistry())
+
+# Blocker 2: Setup ChoiceGroupCreator and GenerationDraftCreator for testing
+from backend.main import ConcreteGenerationDraftCreator
+from backend.api.modules.decision_workflow.public import GenerationChoiceService
+from backend.core.issue_resolution.ports import (
+    set_choice_group_creator,
+    set_choice_group_settings,
+    set_generation_draft_creator,
+)
+choice_service_test = GenerationChoiceService()
+set_choice_group_creator(choice_service_test)
+set_choice_group_settings(choice_service_test.settings)
+set_generation_draft_creator(ConcreteGenerationDraftCreator())
+
+
+# Setup ports for testing before each test
+@pytest.fixture(autouse=True)
+def register_ports_before_each_test():
+    from backend.api.bootstrap import bootstrap_services
+    bootstrap_services()

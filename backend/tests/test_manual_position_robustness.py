@@ -6,10 +6,9 @@ from backend.database.model import (
     Base, ProjectModel, ActorModel, FeatureModel, FeatureRelationModel,
     ScenarioModel, ScenarioAcceptanceCriterionModel, FlowModel, FlowStepModel
 )
-from backend.api.services.scenario_service import ScenarioService
-from backend.api.services.feature_service import FeatureService
-from backend.api.services.flow_service import FlowService
-from backend.api.schemas.crud_schema import ACCreateRequest, FeatureCreateRequest, FlowStepCreateRequest
+from backend.api.modules.requirements_core.public import ScenarioService, FeatureService, FlowService, ACCreateRequest
+from backend.api.modules.requirements_core.feature.schemas import FeatureCreateRequest
+from backend.api.modules.requirements_core.flow.schemas import FlowStepCreateRequest
 
 @pytest.fixture
 async def db_session():

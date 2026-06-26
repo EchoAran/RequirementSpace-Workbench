@@ -1,24 +1,53 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from backend.api.services.project_creation_service import ProjectCreationService
-from backend.core.generators.actors_generator import ActorsGeneratorInput
+from backend.api.modules.project_lifecycle.ports import ActorFeaturePreviewGeneratorPort
+from backend.core.generators.actors_generator import ActorsGenerator, ActorsGeneratorInput
 from backend.integration.skill_backed_services.feature_tree_adapter import FeatureTreeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.schemas import ActorNode
 
 
-class SkillBackedProjectCreationService(ProjectCreationService):
+_feature_number_pattern = re.compile(r"^F\d{3}(?:-\d{3})*$")
+
+def _get_parent_feature_number(feature_number: str) -> str | None:
+    if "-" not in feature_number:
+        return None
+    return feature_number.rsplit("-", 1)[0]
+
+def _validate_feature_tree_by_number(features: list[dict]) -> None:
+    if len(features) == 0:
+        raise ValueError("empty_features")
+    feature_numbers = [feature["feature_number"] for feature in features]
+    feature_number_set = set(feature_numbers)
+    if len(feature_number_set) != len(feature_numbers):
+        raise ValueError("duplicate_feature_number")
+    root_numbers = []
+    for feature_number in feature_numbers:
+        if _feature_number_pattern.match(feature_number) is None:
+            raise ValueError("invalid_feature_number_format")
+        parent_number = _get_parent_feature_number(feature_number)
+        if parent_number is None:
+            root_numbers.append(feature_number)
+            continue
+        if parent_number not in feature_number_set:
+            raise ValueError("missing_parent_feature")
+    if len(root_numbers) != 1:
+        raise ValueError("invalid_root_feature_count")
+
+
+class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
     def __init__(self):
-        super().__init__()
         core = import_skill_module("feature-tree-skill", "feature_tree_skill.core")
         self._feature_tree_skill = core.NL2FeaturesGeneration()
         self._feature_tree_adapter = FeatureTreeAdapter()
         self._llm_json_client = SkillBackedLLMJsonClient()
+        self._actors_generator = ActorsGenerator()
 
-    async def _generate_actor_and_feature_previews(
+    async def generate_actor_and_feature_previews(
         self,
         user_requirements: str,
         user_feedback: str | None,
@@ -67,7 +96,7 @@ class SkillBackedProjectCreationService(ProjectCreationService):
             actors=actor_nodes,
         )
 
-        self._validate_feature_tree_by_number(raw_features)
+        _validate_feature_tree_by_number(raw_features)
 
         id_to_actor_number = {
             index: actor["actor_number"]
@@ -124,3 +153,4 @@ class SkillBackedProjectCreationService(ProjectCreationService):
             feature_previews_for_draft,
             feature_previews_for_response,
         )
+

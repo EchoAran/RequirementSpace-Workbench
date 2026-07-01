@@ -11,6 +11,7 @@ No sessions, no drafts, no persistence.
 from __future__ import annotations
 
 import logging
+import time
 from sqlalchemy import select
 
 from backend.api.modules.ai_interaction.ai_explain.application.context import (
@@ -18,8 +19,10 @@ from backend.api.modules.ai_interaction.ai_explain.application.context import (
     _load_projection_context,
     _load_workspace_context,
 )
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AIExplainService:
@@ -33,6 +36,7 @@ class AIExplainService:
         db_session,
     ) -> dict:
         """Answer a question within the given scope context."""
+        start_time = time.perf_counter()
         if not question or not question.strip():
             raise ValueError("empty_question")
 
@@ -86,14 +90,39 @@ class AIExplainService:
         )
 
         llm = self._get_llm_handler()
-        answer = await llm.call_chat([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ])
+        try:
+            answer = await llm.call_chat([
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question},
+            ])
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "domain",
+                AI_EXPLAIN_FAILED,
+                "AI explain failed",
+                project_id=project_id,
+                target_type=scope.get("target_type"),
+                target_id=scope.get("target_id"),
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc)),
+                duration_ms=int((time.perf_counter() - start_time) * 1000),
+            )
+            raise
 
-        logger.info(
-            "AI explain  project_id=%s  scope_kind=%s  scope_label=%s",
-            project_id, scope_kind, scope_label,
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_EXPLAIN_COMPLETED,
+            "AI explain completed",
+            project_id=project_id,
+            target_type=scope.get("target_type"),
+            target_id=scope.get("target_id"),
+            duration_ms=int((time.perf_counter() - start_time) * 1000),
+            scope_kind=scope_kind,
+            object_count=len(objects_loaded),
         )
 
         return {

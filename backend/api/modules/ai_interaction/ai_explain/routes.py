@@ -48,7 +48,8 @@ async def explain(
     llm_ctx=Depends(get_llm_context),
 ):
     """Answer a question about the project within the given scope."""
-    owned_project = await require_owned_project(request.project_id, user, db_session)
+    from backend.api.dependencies.project_access import require_project_member
+    owned_project = await require_project_member(request.project_id, user, db_session)
     try:
         service = _get_service()
         return await service.explain(

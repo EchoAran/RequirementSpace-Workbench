@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project
+from backend.api.dependencies.project_access import require_project_member, require_project_role
 from backend.database.model import UserModel, ProjectModel
 from backend.api.modules.project_lifecycle.schemas.project import (
     ProjectListItemResponse,
@@ -39,7 +40,7 @@ async def list_projects(
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    return await project_service.list_projects(owner_user_id=user.id, session=session)
+    return await project_service.list_projects(user_id=user.id, session=session)
 
 
 @router.get(
@@ -48,14 +49,21 @@ async def list_projects(
 )
 async def get_project_detail(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    request: Request,
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_project_member),
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        return await project_service.get_project_detail(
+        detail = await project_service.get_project_detail(
             project_id=owned_project.id,
             session=session,
         )
+        cache_key = f"project_member:{project_id}:{user.id}"
+        cached = getattr(request.state, cache_key, None)
+        if cached:
+            detail.current_user_role = cached[1].role
+        return detail
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(
@@ -119,7 +127,7 @@ async def delete_perception_slot(
 )
 async def delete_project(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_role("owner")),
     session: AsyncSession = Depends(get_session),
 ):
     try:
@@ -211,7 +219,7 @@ async def export_project_markdown(
 async def preview_scope_impact(
     project_id: str,
     request: ScopeImpactPreviewRequest,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
     session: AsyncSession = Depends(get_session),
 ):
     try:

@@ -1,11 +1,17 @@
+import logging
+
 from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.security import hash_session_token
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import AUTH_PERMISSION_DENIED
 from backend.database.database import get_session
 from backend.database.model import UserModel, AuthSessionModel, UserRole, beijing_now
+
+logger = get_logger(__name__)
 
 
 async def get_optional_user(
@@ -48,5 +54,15 @@ async def require_admin(
     user: UserModel = Depends(get_current_user)
 ) -> UserModel:
     if user.role != UserRole.ADMIN.value:
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth",
+            AUTH_PERMISSION_DENIED,
+            "Auth permission denied",
+            user_id=user.id,
+            required_role=UserRole.ADMIN.value,
+            actual_role=user.role,
+        )
         raise HTTPException(status_code=403, detail="forbidden")
     return user

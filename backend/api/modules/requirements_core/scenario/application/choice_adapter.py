@@ -122,7 +122,6 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         """Persist scenario payload to ScenarioModel (append mode) and automatically generate AC."""
-        # Reuse the existing persist method
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,
             session=session,

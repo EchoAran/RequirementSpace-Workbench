@@ -1,6 +1,8 @@
 from backend.api.dependencies.ownership import require_owned_project
 from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends, HTTPException
+from backend.api.dependencies.actor_context import get_actor_context
+from backend.core.actor_context import ActorContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.modules.project_lifecycle.schemas.audit import (
@@ -29,17 +31,30 @@ PROJECT_REQUIREMENTS_ERRORS = {
 }
 
 
+from fastapi import Query
+
 @router.get(
     "/audit-logs",
     response_model=list[AuditLogResponse],
 )
 async def list_audit_logs(
     project_id: str,
+    actor_user_id: int | None = Query(None),
+    actor_type: str | None = Query(None),
+    action_type: str | None = Query(None),
+    target_type: str | None = Query(None),
+    task_id: int | None = Query(None),
     session: AsyncSession = Depends(get_session),
- owned_project: ProjectModel = Depends(require_owned_project)):
+    owned_project: ProjectModel = Depends(require_owned_project)
+):
     return await _service.list_audit_logs(
         project_id=owned_project.id,
         session=session,
+        actor_user_id=actor_user_id,
+        actor_type=actor_type,
+        action_type=action_type,
+        target_type=target_type,
+        task_id=task_id,
     )
 
 
@@ -50,12 +65,15 @@ async def list_audit_logs(
 async def update_user_requirements(
     project_id: str,
     request: UserRequirementsUpdateRequest,
+    actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
- owned_project: ProjectModel = Depends(require_owned_project)):
+    owned_project: ProjectModel = Depends(require_owned_project)
+):
     try:
         return await _service.update_user_requirements(
             project_id=owned_project.id,
             user_requirements=request.user_requirements,
+            actor=actor,
             session=session,
         )
     except ValueError as error:
@@ -79,13 +97,18 @@ async def update_user_requirements(
 async def refine_user_requirements(
     project_id: str,
     request: UserRequirementsRefineRequest,
+    actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
     llm_ctx=Depends(get_llm_context),
- owned_project: ProjectModel = Depends(require_owned_project)):
+    owned_project: ProjectModel = Depends(require_owned_project)
+):
     try:
+        # Convert user actor context to AI actor type for logging AI refinements
+        ai_actor = ActorContext.ai(user_id=actor.user_id, request_id=actor.request_id)
         return await _service.refine_user_requirements(
             project_id=owned_project.id,
             user_feedback=request.user_feedback,
+            actor=ai_actor,
             session=session,
         )
     except ValueError as error:

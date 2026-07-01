@@ -7,6 +7,9 @@ from backend.database.model import (
     AuditLogModel,
     ConfirmationStatus,
 )
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.feature.schemas import (
     FeatureCreateRequest,
@@ -93,14 +96,15 @@ class FeatureService:
             await session.flush()
 
         # 审计日志: 新增功能
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_feature",
             summary=f"手动新增功能: {feature.name}",
             target_type="feature",
-            target_id=str(feature.id),
-            payload={},
-        ))
+            target_id=feature.id,
+            diff={"name": feature.name, "description": feature.description, "confirmation_status": confirmation_status},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -164,6 +168,13 @@ class FeatureService:
         if feature is None:
             raise ValueError("feature_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "feature", feature, req.last_seen_updated_at)
+
+        old_name = feature.name
+        old_description = feature.description
+        old_actor_ids = [actor.id for actor in feature.actors]
+
         if req.name is not None:
             feature.name = req.name
         if req.description is not None:
@@ -187,14 +198,24 @@ class FeatureService:
         await session.flush()
 
         # 审计日志: 更新功能
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != feature.name:
+            diff["name"] = {"before": old_name, "after": feature.name}
+        if old_description != feature.description:
+            diff["description"] = {"before": old_description, "after": feature.description}
+        new_actor_ids = [actor.id for actor in feature.actors]
+        if old_actor_ids != new_actor_ids:
+            diff["actor_ids"] = {"before": old_actor_ids, "after": new_actor_ids}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_feature",
             summary=f"手动更新功能: {feature.name}",
             target_type="feature",
-            target_id=str(feature.id),
-            payload={},
-        ))
+            target_id=feature.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -207,6 +228,9 @@ class FeatureService:
             },
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "feature", feature)
 
         return FeatureResponse(
             feature_id=feature.id,
@@ -245,14 +269,15 @@ class FeatureService:
         await self._delete_feature_recursive(feature_id, session)
 
         # 审计日志: 删除功能
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_feature",
             summary=f"手动删除功能: {feature_name}",
             target_type="feature",
-            target_id=str(feature_id),
-            payload={},
-        ))
+            target_id=feature_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,

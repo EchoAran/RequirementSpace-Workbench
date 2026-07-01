@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 from backend.api.base_schema import CamelModel
 
 
@@ -19,6 +20,9 @@ class ProjectListItemResponse(CamelModel):
     status: str
     issue_count: int
     node_count: int
+    membership_role: str
+    owner_user_id: int
+    member_count: int
 
 class ProjectDeleteResponse(CamelModel):
     project_id: str
@@ -54,6 +58,7 @@ class ActorDetail(CamelModel):
     actor_name: str
     actor_description: str
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class ScopeDetail(CamelModel):
     kind: str = "scope"
@@ -67,12 +72,14 @@ class ScopeDetail(CamelModel):
     kano_category: str | None = None
     kano_category_name: str | None = None
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class AcceptanceCriterionDetail(CamelModel):
     kind: str = "acceptance_criterion"
     criterion_id: int
     criterion_content: str
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class ScenarioDetail(CamelModel):
     kind: str = "scenario"
@@ -83,6 +90,7 @@ class ScenarioDetail(CamelModel):
     actor_id: int
     acceptance_criteria: list[AcceptanceCriterionDetail] = []
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class FeatureDetail(CamelModel):
     kind: str = "feature"
@@ -95,6 +103,7 @@ class FeatureDetail(CamelModel):
     scenarios: list[ScenarioDetail] = []
     scope: ScopeDetail | None = None
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class BusinessObjectAttributeDetail(CamelModel):
     kind: str = "business_object_attribute"
@@ -104,6 +113,7 @@ class BusinessObjectAttributeDetail(CamelModel):
     business_object_attribute_type: str
     business_object_attribute_example: str
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class BusinessObjectDetail(CamelModel):
     kind: str = "business_object"
@@ -112,6 +122,7 @@ class BusinessObjectDetail(CamelModel):
     business_object_description: str
     business_object_attributes: list[BusinessObjectAttributeDetail] = []
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class FlowStepDetail(CamelModel):
     kind: str = "flow_step"
@@ -125,6 +136,7 @@ class FlowStepDetail(CamelModel):
     output_business_object_ids: list[int] = []
     next_step_ids: list[int] = []
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class FlowDetail(CamelModel):
     kind: str = "flow"
@@ -134,6 +146,7 @@ class FlowDetail(CamelModel):
     feature_ids: list[int] = []
     flow_steps: list[FlowStepDetail] = []
     confirmation_status: str | None = None
+    updated_at: datetime
 
 class UnresolvedGateResponse(CamelModel):
     finding_id: str
@@ -156,6 +169,8 @@ class ProjectDetailResponse(CamelModel):
     kano_status: str = "missing"
     unlocked_stages: list[str] = []
     unresolved_gates: list[UnresolvedGateResponse] = []
+    current_user_role: Optional[str] = None
+    members_summary: Optional[list[dict]] = None
 
 class UnlockStageRequest(CamelModel):
     stage: str

@@ -8,6 +8,9 @@ from backend.database.model import (
     AuditLogModel,
     ConfirmationStatus,
 )
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.scenario.schemas import (
     ScenarioCreateRequest,
@@ -59,14 +62,15 @@ class ScenarioService:
         await session.flush()
 
         # 审计日志: 新增场景
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_scenario",
             summary=f"手动新增场景: {scenario.name}",
             target_type="scenario",
-            target_id=str(scenario.id),
-            payload={},
-        ))
+            target_id=scenario.id,
+            diff={"name": scenario.name, "content": scenario.content, "confirmation_status": confirmation_status},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -105,6 +109,12 @@ class ScenarioService:
         if scenario is None:
             raise ValueError("scenario_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "scenario", scenario, req.last_seen_updated_at)
+
+        old_name = scenario.name
+        old_content = scenario.content
+
         if req.name is not None:
             scenario.name = req.name
         if req.content is not None:
@@ -113,14 +123,21 @@ class ScenarioService:
         await session.flush()
 
         # 审计日志: 更新场景
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != scenario.name:
+            diff["name"] = {"before": old_name, "after": scenario.name}
+        if old_content != scenario.content:
+            diff["content"] = {"before": old_content, "after": scenario.content}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_scenario",
             summary=f"手动更新场景: {scenario.name}",
             target_type="scenario",
-            target_id=str(scenario.id),
-            payload={},
-        ))
+            target_id=scenario.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -128,6 +145,9 @@ class ScenarioService:
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "scenario", scenario)
 
         return ScenarioResponse(
             scenario_id=scenario.id,
@@ -168,14 +188,15 @@ class ScenarioService:
         await session.flush()
 
         # 审计日志: 删除场景
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_scenario",
             summary=f"手动删除场景: {scenario_name}",
             target_type="scenario",
-            target_id=str(scenario_id),
-            payload={},
-        ))
+            target_id=scenario_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -228,14 +249,15 @@ class ScenarioService:
         await session.flush()
 
         # 审计日志: 新增验收标准
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_ac",
             summary=f"手动新增验收标准: {ac.content[:50]}...",
             target_type="acceptance_criterion",
-            target_id=str(ac.id),
-            payload={},
-        ))
+            target_id=ac.id,
+            diff={"content": ac.content, "position": ac.position, "confirmation_status": confirmation_status},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -280,18 +302,28 @@ class ScenarioService:
         if ac is None:
             raise ValueError("acceptance_criterion_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "acceptance_criterion", ac, req.last_seen_updated_at)
+
+        old_content = ac.content
+
         ac.content = req.content
         await session.flush()
 
         # 审计日志: 更新验收标准
-        session.add(AuditLogModel(
+        diff = {}
+        if old_content != ac.content:
+            diff["content"] = {"before": old_content, "after": ac.content}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_ac",
             summary=f"手动更新验收标准: {ac.content[:50]}...",
             target_type="acceptance_criterion",
-            target_id=str(ac.id),
-            payload={},
-        ))
+            target_id=ac.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -299,6 +331,9 @@ class ScenarioService:
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "acceptance_criterion", ac)
 
         return AcceptanceCriterionResponse(
             criterion_id=ac.id,
@@ -339,14 +374,15 @@ class ScenarioService:
         await session.flush()
 
         # 审计日志: 删除验收标准
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_ac",
             summary=f"手动删除验收标准: ID {ac_id}",
             target_type="acceptance_criterion",
-            target_id=str(ac_id),
-            payload={},
-        ))
+            target_id=ac_id,
+            diff={"status": "deleted"},
+        )
 
         # Re-index remaining criteria position to prevent unique constraint failures
         list_res = await session.execute(

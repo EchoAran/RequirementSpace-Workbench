@@ -6,9 +6,26 @@ import socket
 # Set a global default socket timeout of 5.0 seconds to prevent any connection or SSL handshake from hanging.
 socket.setdefaulttimeout(5.0)
 
+from backend.core.logging import (
+    clear_log_context,
+    configure_logging,
+    get_logger,
+    log_event,
+    sanitize_message,
+    set_log_context,
+)
+from backend.core.logging.events import (
+    GLOBAL_EXCEPTION_CAUGHT,
+    HTTP_EXCEPTION_CAUGHT,
+    HTTP_REQUEST_COMPLETED,
+)
+
+configure_logging()
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.dependencies.ownership import require_owned_project
+from backend.api.dependencies.project_access import require_project_member
 
 from backend.api.modules.project_lifecycle.routes.creation import (
     router as project_creation_router,
@@ -74,6 +91,12 @@ from backend.api.modules.project_lifecycle.routes.requirements import (
 from backend.api.modules.project_lifecycle.routes.project import (
     router as project_router,
 )
+from backend.api.modules.project_lifecycle.routes.members import (
+    router as project_members_router,
+)
+from backend.api.modules.project_lifecycle.routes.llm_config import (
+    router as project_llm_config_router,
+)
 from backend.api.modules.preview_convergence.routes.prototype import (
     router as prototype_generation_router,
 )
@@ -89,6 +112,14 @@ from backend.api.modules.ai_interaction.ai_explain.routes import (
 )
 from backend.api.modules.project_lifecycle.routes.interview import (
     router as project_interview_router,
+)
+from backend.api.modules.collaboration.routes.tasks import (
+    router as collaboration_tasks_router,
+    summary_router as collaboration_summary_router,
+    me_router as user_tasks_router,
+)
+from backend.api.modules.collaboration.routes.notifications import (
+    router as notifications_router,
 )
 from backend.api.modules.auth_account.routes.auth import (
     router as auth_router,
@@ -123,7 +154,7 @@ class PerceptionStaleNotifier:
         )
 
 
-logger = logging.getLogger("uvicorn.error")
+logger = get_logger("backend.main")
 
 
 class ConcreteGenerationDraftCreator:
@@ -207,9 +238,12 @@ async def lifespan(fast_api: FastAPI):
     # 【应用关闭时执行】（可选）
     # await close_db()
 
+from backend.api.dependencies.actor_context import get_actor_context
+
 app = FastAPI(
     title="Requirement Space Workbench API",
-    lifespan=lifespan  # 绑定生命周期
+    lifespan=lifespan,  # 绑定生命周期
+    dependencies=[Depends(get_actor_context)]
 )
 
 # CORS 跨域配置
@@ -250,21 +284,50 @@ from fastapi.responses import JSONResponse
 import traceback
 from backend.core.llm_context import is_web_request_ctx
 
+
+def _request_log_path(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    if route_path:
+        return route_path
+    return request.url.path
+
+
 @app.middleware("http")
 async def web_request_context_middleware(request: Request, call_next):
+    import uuid
+    import time
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    set_log_context(request_id=request_id)
     token = is_web_request_ctx.set(True)
+    started = time.perf_counter()
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        log_event(
+            logger,
+            logging.INFO,
+            "request",
+            HTTP_REQUEST_COMPLETED,
+            "HTTP request completed",
+            method=request.method,
+            path=_request_log_path(request),
+            status_code=response.status_code,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            client_host=request.client.host if request.client else None,
+        )
+        return response
     finally:
         is_web_request_ctx.reset(token)
+        clear_log_context()
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import uuid
-    import traceback
-    from backend.core.security import sanitize_message
     
-    request_id = str(uuid.uuid4())
+    request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
+    set_log_context(request_id=request_id)
     
     # Format raw traceback into string
     tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
@@ -272,8 +335,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Sanitize traceback to prevent secrets from entering logs
     sanitized_tb = sanitize_message(tb_str)
     
-    logger.error(
-        f"[GLOBAL EXCEPTION] Request ID: {request_id}. Unhandled error ({type(exc).__name__}) caught by global handler:\n{sanitized_tb}"
+    log_event(
+        logger,
+        logging.ERROR,
+        "request",
+        GLOBAL_EXCEPTION_CAUGHT,
+        "Unhandled exception caught by global handler",
+        method=request.method,
+        path=_request_log_path(request),
+        status_code=500,
+        error_type=type(exc).__name__,
+        sanitized_traceback=sanitized_tb,
     )
 
     # Get request origin to echo it back in CORS headers
@@ -291,6 +363,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
     # Force inject CORS headers to bypass browser blocks on 500 errors
+    response.headers["X-Request-ID"] = request_id
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Credentials"] = "true" if allow_credentials else "false"
     response.headers["Access-Control-Allow-Methods"] = "*"
@@ -301,15 +374,23 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     import uuid
-    from backend.core.security import sanitize_message
 
     if exc.status_code >= 500:
-        request_id = str(uuid.uuid4())
+        request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
+        set_log_context(request_id=request_id)
         
         # Log the sanitized detail server-side for diagnostics
-        logger.error(
-            f"[GLOBAL EXCEPTION] Request ID: {request_id}. "
-            f"HTTP {exc.status_code} detail: {sanitize_message(str(exc.detail))}"
+        log_event(
+            logger,
+            logging.ERROR,
+            "request",
+            HTTP_EXCEPTION_CAUGHT,
+            "HTTP exception caught",
+            method=request.method,
+            path=_request_log_path(request),
+            status_code=exc.status_code,
+            error_type=type(exc).__name__,
+            error_detail=sanitize_message(str(exc.detail)),
         )
         
         # Get request origin to echo it back in CORS headers
@@ -328,6 +409,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         )
         
         # Force inject CORS headers to bypass browser blocks on 500 errors
+        response.headers["X-Request-ID"] = request_id
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true" if allow_credentials else "false"
         response.headers["Access-Control-Allow-Methods"] = "*"
@@ -436,28 +518,34 @@ app.include_router(flow_generation_router)
 app.include_router(scenario_generation_router)
 app.include_router(acceptance_criteria_generation_router)
 app.include_router(scope_generation_router)
-app.include_router(finding_router, dependencies=[Depends(require_owned_project)])
-app.include_router(issue_router, dependencies=[Depends(require_owned_project)])
-app.include_router(issue_repair_draft_router, dependencies=[Depends(require_owned_project)])
-app.include_router(quality_metrics_router, dependencies=[Depends(require_owned_project)])
-app.include_router(next_suggestion_router, dependencies=[Depends(require_owned_project)])
+app.include_router(finding_router, dependencies=[Depends(require_project_member)])
+app.include_router(issue_router, dependencies=[Depends(require_project_member)])
+app.include_router(issue_repair_draft_router, dependencies=[Depends(require_project_member)])
+app.include_router(quality_metrics_router, dependencies=[Depends(require_project_member)])
+app.include_router(next_suggestion_router, dependencies=[Depends(require_project_member)])
 app.include_router(perception_slot_filling_router)
-app.include_router(actor_router, dependencies=[Depends(require_owned_project)])
-app.include_router(feature_router, dependencies=[Depends(require_owned_project)])
-app.include_router(scenario_router, dependencies=[Depends(require_owned_project)])
-app.include_router(business_object_router, dependencies=[Depends(require_owned_project)])
-app.include_router(flow_router, dependencies=[Depends(require_owned_project)])
-app.include_router(scope_router, dependencies=[Depends(require_owned_project)])
-app.include_router(project_scope_router, dependencies=[Depends(require_owned_project)])
+app.include_router(actor_router, dependencies=[Depends(require_project_member)])
+app.include_router(feature_router, dependencies=[Depends(require_project_member)])
+app.include_router(scenario_router, dependencies=[Depends(require_project_member)])
+app.include_router(business_object_router, dependencies=[Depends(require_project_member)])
+app.include_router(flow_router, dependencies=[Depends(require_project_member)])
+app.include_router(scope_router, dependencies=[Depends(require_project_member)])
+app.include_router(project_scope_router, dependencies=[Depends(require_project_member)])
 app.include_router(choice_router)
-app.include_router(project_requirements_router, dependencies=[Depends(require_owned_project)])
+app.include_router(project_requirements_router, dependencies=[Depends(require_project_member)])
 app.include_router(project_router)
-app.include_router(prototype_generation_router, dependencies=[Depends(require_owned_project)])
-app.include_router(preview_shadow_router, dependencies=[Depends(require_owned_project)])
+app.include_router(project_members_router)
+app.include_router(project_llm_config_router)
+app.include_router(prototype_generation_router, dependencies=[Depends(require_project_member)])
+app.include_router(preview_shadow_router, dependencies=[Depends(require_project_member)])
 app.include_router(ai_add_session_router)
 app.include_router(ai_object_generation_draft_router)
 app.include_router(ai_explain_router)
 app.include_router(project_interview_router)
 app.include_router(node_status_router, dependencies=[Depends(require_owned_project)])
+app.include_router(collaboration_summary_router, dependencies=[Depends(require_project_member)])
+app.include_router(collaboration_tasks_router, dependencies=[Depends(require_project_member)])
+app.include_router(user_tasks_router)
+app.include_router(notifications_router)
 app.include_router(auth_router)
 app.include_router(account_router)

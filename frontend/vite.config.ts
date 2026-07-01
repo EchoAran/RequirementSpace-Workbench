@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
     test: {
       globals: true,
       environment: 'happy-dom',
+      setupFiles: './src/tests/setup.ts',
     },
     build: {
       rollupOptions: {

@@ -5,8 +5,8 @@ import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewM
 import { StaleChoiceDialog } from '@/components/shared/StaleChoiceDialog';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useNavigate } from 'react-router-dom';
-import { useState, useCallback } from 'react';
-import { workspaceApi } from '@/lib/api';
+import { ConfirmationWorkspace } from '@/components/collaboration/ConfirmationWorkspace';
+import { useState, useCallback, useMemo } from 'react';
 import { buildOverviewModel, buildPageHealth, buildProjectRoute, projectionPath } from '@/core/selectors';
 import {
   useWorkspaceStore,
@@ -15,6 +15,67 @@ import {
 import { RefreshCw } from 'lucide-react';
 import { NodeKindToRoute, NodeKindToText } from '@/core/schema';
 import { findingProjection } from '@/core/findingPresentation';
+
+const auditActionTypeLabels: Record<string, string> = {
+  update_confirmation_status: '更新确认状态',
+  batch_update_confirmation_status: '批量更新确认状态',
+  update_user_requirements: '更新用户需求',
+  refine_user_requirements: 'AI 精炼用户需求',
+  create_actor: '新增参与者',
+  update_actor: '更新参与者',
+  delete_actor: '删除参与者',
+  create_feature: '新增功能',
+  update_feature: '更新功能',
+  delete_feature: '删除功能',
+  create_scenario: '新增场景',
+  update_scenario: '更新场景',
+  delete_scenario: '删除场景',
+  create_acceptance_criterion: '新增验收标准',
+  update_acceptance_criterion: '更新验收标准',
+  delete_acceptance_criterion: '删除验收标准',
+  update_scope: '更新范围决策',
+  skip_kano: '跳过 Kano 分析',
+  create_business_object: '新增业务对象',
+  update_business_object: '更新业务对象',
+  delete_business_object: '删除业务对象',
+  create_business_object_attribute: '新增对象属性',
+  update_business_object_attribute: '更新对象属性',
+  delete_business_object_attribute: '删除对象属性',
+  create_flow: '新增业务流',
+  update_flow: '更新业务流',
+  delete_flow: '删除业务流',
+  create_flow_step: '新增流程步骤',
+  update_flow_step: '更新流程步骤',
+  delete_flow_step: '删除流程步骤',
+  create_choice_group: '生成方案组',
+  accept_choice: '采纳方案',
+  reject_choice: '拒绝方案',
+  discard_choice_group: '丢弃方案组',
+  regenerate_choice_group: '重新生成方案组',
+  create_task: '创建任务',
+  task_created: '创建任务',
+  approve_task: '审批通过',
+  task_approved: '审批通过',
+  reject_task: '审批驳回',
+  task_rejected: '审批驳回',
+  task_superseded: '任务已冲销',
+  create_confirmation_task: '创建确认任务',
+  update_confirmation_task: '更新确认任务',
+  complete_confirmation_task: '完成确认任务',
+  supersede_confirmation_task: '替换确认任务',
+  unlock_stage_gate: '解锁阶段门',
+  commit_shadow_draft: '提交影子草稿',
+  discard_shadow_draft: '丢弃影子草稿',
+  regenerate_shadow_draft: '重新生成影子草稿',
+  member_added: '成员加入',
+  member_removed: '成员移除',
+  member_role_updated: '成员角色更新',
+  member_invitation_accepted: '成员邀请接受',
+  member_invitation_declined: '成员邀请拒绝',
+  member_invitation_revoked: '成员邀请撤销',
+};
+
+const getAuditActionTypeLabel = (actionType: string) => auditActionTypeLabels[actionType] || actionType;
 
 export function Overview() {
   const {
@@ -56,39 +117,27 @@ export function Overview() {
   const activeSuggestionEntry = stageHealths.find((item) => item.health.nextSlot);
   const nextSlot = activeSuggestionEntry?.health.nextSlot;
 
-  // 账本批量选择状态
-  const [selectedLedgerIds, setSelectedLedgerIds] = useState<Set<string>>(new Set());
   const [previewChoiceId, setPreviewChoiceId] = useState<string | number | null>(null);
+  const [selectedAuditActionTypes, setSelectedAuditActionTypes] = useState<string[]>([]);
 
-  const toggleLedgerItem = useCallback((id: string) => {
-    setSelectedLedgerIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const auditActionTypes = useMemo(() => {
+    return Array.from(new Set(auditLogs.map((log: any) => log.actionType).filter(Boolean))).sort();
+  }, [auditLogs]);
+
+  const filteredAuditOperations = useMemo(() => {
+    const selectedTypes = new Set(selectedAuditActionTypes);
+    return [...auditLogs]
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .filter((operation: any) => selectedTypes.size === 0 || selectedTypes.has(operation.actionType));
+  }, [auditLogs, selectedAuditActionTypes]);
+
+  const toggleAuditActionType = useCallback((actionType: string) => {
+    setSelectedAuditActionTypes((current) =>
+      current.includes(actionType)
+        ? current.filter((item) => item !== actionType)
+        : [...current, actionType]
+    );
   }, []);
-
-  const toggleSelectAllLedger = useCallback(() => {
-    if (selectedLedgerIds.size === overview.aiAssumptionLedger.length) {
-      setSelectedLedgerIds(new Set());
-    } else {
-      setSelectedLedgerIds(new Set(overview.aiAssumptionLedger.map((i: any) => i.id)));
-    }
-  }, [overview.aiAssumptionLedger, selectedLedgerIds]);
-
-  const batchUpdateLedgerStatus = useCallback(async (status: string) => {
-    if (!ir?.projectId || selectedLedgerIds.size === 0) return;
-    const nodes = overview.aiAssumptionLedger
-      .filter((item: any) => selectedLedgerIds.has(item.id))
-      .map((item: any) => ({ node_kind: item.kind, node_id: item.nodeId }));
-    try {
-      await workspaceApi.batchUpdateNodeConfirmationStatus(ir.projectId, nodes, status);
-      setSelectedLedgerIds(new Set());
-      await refreshWorkspace();
-    } catch (err) {
-      console.error('Batch update failed:', err);
-    }
-  }, [ir?.projectId, overview.aiAssumptionLedger, selectedLedgerIds, refreshWorkspace]);
 
   const openChoiceGroupPreview = useCallback((group: any, choiceId?: string | number | null) => {
     if (!group) return;
@@ -124,12 +173,6 @@ export function Overview() {
       await expandSlot(slotId);
     }
   };
-
-  const readinessItems = overview.readiness.dimensions.map((d) => ({
-    label: `${d.title} ${d.score}%`,
-    checked: d.checked,
-    type: d.checked ? undefined : ('blocking' as 'blocking'),
-  }));
 
   const jumpToProjection = (projection: any) => {
     return navigate(buildProjectRoute(ir?.projectId, projectionPath(projection)));
@@ -194,7 +237,7 @@ export function Overview() {
   return (
     <div className="flex-1 flex w-full relative">
       <div className="flex-1 overflow-y-auto bg-slate-50/70 p-6 pb-24 w-full">
-        <div className="mx-auto max-w-[1320px] animate-in fade-in duration-500">
+        <div className="mx-auto max-w-[1320px] animate-in fade-in duration-500 flex flex-col gap-6">
           <section className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div className="max-w-3xl">
@@ -230,10 +273,10 @@ export function Overview() {
             </div>
           </section>
 
-          <section className="mt-5 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-12">
-              <div className="col-span-12 border-b border-slate-200 xl:col-span-8 xl:border-b-0 xl:border-r">
-                <div className="flex items-start justify-between gap-4 px-6 py-5">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <div className="xl:col-span-8 flex flex-col">
+              <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden h-[600px]">
+                <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-slate-100 shrink-0">
                   <h2 className="text-lg font-black text-slate-900">待处理问题</h2>
                   {highRiskIssues.length > 0 && (
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-700">
@@ -241,8 +284,8 @@ export function Overview() {
                     </span>
                   )}
                 </div>
-                <div className="px-6 pb-6">
-                  <div className="grid max-h-[68vh] grid-cols-1 gap-4 overflow-y-auto pr-1 md:grid-cols-2">
+                <div className="p-6 overflow-y-auto flex-1">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {openIssues.map(issue => (
                       <IssueCard
                         key={issue.findingId}
@@ -259,11 +302,12 @@ export function Overview() {
                     )}
                   </div>
                 </div>
-              </div>
+              </section>
+            </div>
 
-              <div className="col-span-12 xl:col-span-4">
-                <div className="flex h-full max-h-[68vh] flex-col overflow-hidden">
-                <div className="px-6 py-5">
+            <div className="xl:col-span-4 flex flex-col">
+              <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden h-[600px]">
+                <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-lg font-black text-slate-900">当前推进状态</div>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
@@ -272,7 +316,7 @@ export function Overview() {
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 px-6 py-5">
+                <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/30 shrink-0">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-bold text-slate-900">下一步建议</div>
                   </div>
@@ -286,32 +330,32 @@ export function Overview() {
                             navigate(buildProjectRoute(ir?.projectId, activeSuggestionEntry.route));
                           }
                         }}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/40"
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
                       >
-                        <div className="mt-3 text-sm font-bold text-slate-900">
+                        <div className="mt-2 text-sm font-bold text-slate-900">
                           {nextSlot.actions.manual?.label || nextSlot.actions.ai?.label || '继续处理当前建议'}
                         </div>
-                        <div className="mt-2 max-h-[18vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
+                        <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
                           {nextSlot.description}
                         </div>
                       </button>
                     ) : (
-                      <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-400">
+                      <div className="rounded-2xl bg-white border border-slate-200 px-4 py-5 text-sm text-slate-400">
                         当前没有建议。
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 px-6 py-5">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 flex flex-col px-6 py-5 overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="text-sm font-bold text-slate-900">待决策方案</div>
                     <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700">
                       {decisionQueue.length} 组
                     </span>
                   </div>
 
-                  <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                  <div className="flex-1 overflow-y-auto pr-1 space-y-3">
                     {decisionQueue.length === 0 && (
                       <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-400">
                         当前没有待决策方案。
@@ -324,7 +368,7 @@ export function Overview() {
                         onClick={() => {
                           openChoiceGroupPreview(item.original || item);
                         }}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:border-sky-300 hover:bg-sky-50/60"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-sky-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
@@ -340,153 +384,22 @@ export function Overview() {
                     ))}
                   </div>
                 </div>
-                </div>
-              </div>
+              </section>
             </div>
+          </div>
 
-            <div className="grid grid-cols-12 border-t border-slate-200">
-              <div className="col-span-12 border-b border-slate-200 xl:col-span-4 xl:border-b-0 xl:border-r">
-                <div className="px-6 py-5">
-                  <h2 className="text-lg font-black text-slate-900">结构覆盖检查</h2>
-                </div>
-                <div className="space-y-3 px-6 pb-6">
-                  {readinessItems.map((item) => (
-                    <div
-                      key={item.label}
-                      className={`rounded-2xl border px-4 py-3 ${
-                        item.checked ? 'border-emerald-100 bg-emerald-50/60' : 'border-slate-200 bg-slate-50/70'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className={`text-sm font-semibold ${item.checked ? 'text-emerald-800' : 'text-slate-800'}`}>
-                          {item.label}
-                        </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          item.checked ? 'bg-white text-emerald-700' : 'bg-white text-slate-500'
-                        }`}>
-                          {item.checked ? '已达标' : '待补齐'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+             <ConfirmationWorkspace />
+          </section>
 
-              <div className="col-span-12 xl:col-span-8">
-                <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 md:flex-row md:items-end md:justify-between">
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">
-                      AI 假设待确认
-                      {overview.aiAssumptionLedger.length > 0 && (
-                        <span className="ml-2 text-sm font-bold text-slate-400">{overview.aiAssumptionLedger.length}</span>
-                      )}
-                    </h2>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {overview.aiAssumptionLedger.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={toggleSelectAllLedger}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
-                      >
-                        {selectedLedgerIds.size === overview.aiAssumptionLedger.length ? '取消全选' : '全选'}
-                      </button>
-                    )}
-                    {selectedLedgerIds.size > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => batchUpdateLedgerStatus('confirmed')}
-                          className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
-                        >
-                          全部确认 ({selectedLedgerIds.size})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => batchUpdateLedgerStatus('needs_confirmation')}
-                          className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100"
-                        >
-                          标记待确认 ({selectedLedgerIds.size})
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="px-6 py-5">
-                  <div className="max-h-[58vh] min-h-[32vh] space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                    {overview.aiAssumptionLedger.length === 0 && (
-                      <div className="flex min-h-[220px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50/70">
-                        <p className="text-sm text-slate-400">
-                          {(ir?.actors?.length || ir?.features?.length || ir?.businessObjects?.length || ir?.flows?.length)
-                            ? '所有节点已确认，暂无待确认条目'
-                            : '当前没有 AI 假设节点'}
-                        </p>
-                      </div>
-                    )}
-                    {overview.aiAssumptionLedger.map((item: any) => {
-                      const routeFn = NodeKindToRoute[item.kind];
-                      const isSelected = selectedLedgerIds.has(item.id);
-                      return (
-                        <div
-                          key={item.id}
-                          className={`rounded-2xl border transition-colors ${
-                            isSelected ? 'border-indigo-300 bg-indigo-50/50' : 'border-slate-200 bg-slate-50/70 hover:border-indigo-300'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              if (e.shiftKey || e.ctrlKey || e.metaKey) {
-                                toggleLedgerItem(item.id);
-                                return;
-                              }
-                              if (routeFn && ir?.projectId) {
-                                navigate(`${routeFn(ir.projectId)}?highlight=${item.kind}-${item.nodeId}`);
-                              }
-                            }}
-                            onContextMenu={(e) => { e.preventDefault(); toggleLedgerItem(item.id); }}
-                            className="w-full px-4 py-3 text-left"
-                          >
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="flex min-w-0 items-start gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleLedgerItem(item.id)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <StatusBadge status={item.status || 'ai_assumption'} />
-                                    <span className="text-[11px] font-medium text-slate-400">
-                                      {NodeKindToText[item.kind as keyof typeof NodeKindToText] || item.kind}
-                                    </span>
-                                  </div>
-                                  <div className="mt-2 text-sm font-bold text-slate-900">{item.title}</div>
-                                  <div className="mt-1 text-xs leading-relaxed text-slate-500 line-clamp-2">{item.source}</div>
-                                </div>
-                              </div>
-                              <div className="text-[11px] font-medium text-slate-400">点击定位</div>
-                            </div>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-12 border-t border-slate-200">
-              <div className="col-span-12 border-b border-slate-200 xl:col-span-6 xl:border-b-0 xl:border-r">
-                <div className="px-6 py-5">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <div className="xl:col-span-6 flex flex-col">
+              <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
+                <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                   <h2 className="text-lg font-black text-slate-900">最近生成方案</h2>
                 </div>
-                <div className="px-6 pb-6">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="flex-1 p-6 overflow-y-auto">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {recentChoices.map(c => (
                       <ChoiceCard
                         key={c.id}
@@ -504,35 +417,90 @@ export function Overview() {
                     )}
                   </div>
                 </div>
+              </section>
+            </div>
 
-              </div>
-
-              <div className="col-span-12 xl:col-span-6">
-                <div className="px-6 py-5">
-                  <h2 className="text-lg font-black text-slate-900">最近变更记录</h2>
+            <div className="xl:col-span-6 flex flex-col">
+              <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
+                <div className="px-6 py-5 border-b border-slate-100 shrink-0">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-lg font-black text-slate-900">最近变更记录</h2>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                      {filteredAuditOperations.length}/{auditLogs.length} 条
+                    </span>
+                  </div>
+                  {auditActionTypes.length > 1 && (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAuditActionTypes([])}
+                        className={`rounded-full border px-3 py-1 text-xs font-bold transition-colors ${
+                          selectedAuditActionTypes.length === 0
+                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        全部
+                      </button>
+                      {auditActionTypes.map((actionType) => {
+                        const checked = selectedAuditActionTypes.includes(actionType);
+                        const actionLabel = getAuditActionTypeLabel(actionType);
+                        return (
+                          <label
+                            key={actionType}
+                            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold transition-colors ${
+                              checked
+                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-3 w-3 accent-sky-600"
+                              checked={checked}
+                              onChange={() => toggleAuditActionType(actionType)}
+                            />
+                            <span title={actionType}>{actionLabel}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2 px-6 pb-6">
-                  {overview.recentAuditOperations.length === 0 && (
+                <div className="h-[540px] overflow-y-auto p-6 space-y-3">
+                  {filteredAuditOperations.length === 0 && (
                     <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-400">
                       尚无变更记录。
                     </div>
                   )}
-                  {overview.recentAuditOperations.map((operation) => (
-                    <div key={operation.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                  {filteredAuditOperations.map((operation) => (
+                    <div key={operation.id} className="min-h-[72px] rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                          {operation.actionType}
+                        <span className="text-xs font-black text-slate-500" title={operation.actionType}>
+                          {getAuditActionTypeLabel(operation.actionType)}
                         </span>
                         <span className="text-[11px] text-slate-400">{new Date(operation.timestamp).toLocaleString()}</span>
                       </div>
                       <div className="mt-2 text-sm font-semibold text-slate-900">{operation.summary || '应用变更'}</div>
-                      <div className="mt-1 text-xs text-slate-500">影响 {operation.targetIds?.length || 0} 个对象</div>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
+                        <span>影响 {operation.targetIds?.length || 0} 个对象</span>
+                        {operation.actorType && (
+                          <span className="text-slate-400">
+                            操作者: <span className="font-semibold text-slate-600">{operation.actorEmail || (operation.actorType === 'system' ? '系统' : '未知')}</span>
+                            {operation.actorType === 'ai' && (
+                              <span className="ml-1 inline-flex items-center rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-600 ring-1 ring-inset ring-indigo-500/10">
+                                AI
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             </div>
-          </section>
+          </div>
         </div>
       </div>
 

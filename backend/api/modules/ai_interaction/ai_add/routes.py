@@ -95,6 +95,8 @@ async def create_ai_add_session(
         error_str = str(error)
         if error_str == "project_not_found" or error_str.startswith("project_not_found:"):
             raise HTTPException(status_code=404, detail="project_not_found")
+        if error_str == "insufficient_project_role":
+            raise HTTPException(status_code=403, detail="insufficient_project_role")
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise

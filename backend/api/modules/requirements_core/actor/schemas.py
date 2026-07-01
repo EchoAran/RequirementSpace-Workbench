@@ -1,4 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 # CRUD Models
 class ActorCreateRequest(BaseModel):
@@ -6,9 +8,10 @@ class ActorCreateRequest(BaseModel):
     description: str = Field(default="")
 
 
-class ActorUpdateRequest(BaseModel):
+class ActorUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class ActorResponse(BaseModel):

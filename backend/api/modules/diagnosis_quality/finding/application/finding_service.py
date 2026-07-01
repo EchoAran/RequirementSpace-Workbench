@@ -1,4 +1,5 @@
 import logging
+import time
 from sqlalchemy import select
 from fastapi import BackgroundTasks
 
@@ -16,9 +17,15 @@ from backend.core.findings.scope_finding_policy import ScopeFindingPolicy
 from backend.core.issue_capabilities import (
     get_issue_capability,
 )
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import (
+    FINDING_DETECTION_COMPLETED,
+    FINDING_DETECTION_FAILED,
+    FINDING_DETECTION_STARTED,
+)
 from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import NextSuggestionService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class FindingService:
     def __init__(self):
@@ -60,11 +67,47 @@ class FindingService:
 
             for s in stages_to_run:
                 policy = self._policies[s]
+                policy_start = time.perf_counter()
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "domain",
+                    FINDING_DETECTION_STARTED,
+                    "Finding detection started",
+                    project_id=project_id,
+                    stage=s,
+                    view=view_clean,
+                )
                 try:
                     s_findings = await policy.get_findings(project_id, session)
                     findings.extend(s_findings)
                 except Exception as e:
-                    logger.exception(f"Error executing finding policy for stage {s}: {e}")
+                    log_event(
+                        logger,
+                        logging.WARNING,
+                        "domain",
+                        FINDING_DETECTION_FAILED,
+                        "Finding detection failed",
+                        project_id=project_id,
+                        stage=s,
+                        view=view_clean,
+                        error_type=type(e).__name__,
+                        error_message=sanitize_message(str(e)),
+                        duration_ms=int((time.perf_counter() - policy_start) * 1000),
+                    )
+                else:
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "domain",
+                        FINDING_DETECTION_COMPLETED,
+                        "Finding detection completed",
+                        project_id=project_id,
+                        stage=s,
+                        view=view_clean,
+                        finding_count=len(s_findings),
+                        duration_ms=int((time.perf_counter() - policy_start) * 1000),
+                    )
 
             # Apply overrides filter (ignored or resolved findings)
             overrides = await self._load_overrides(project_id, session)

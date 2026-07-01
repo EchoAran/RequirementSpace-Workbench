@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from pydantic import Field
 from backend.api.base_schema import CamelModel
 
@@ -73,6 +73,8 @@ class ChoiceActionResponse(CamelModel):
         default=None,
         description="用户可读的行为说明，如'将替换现有的 3 名参与者'",
     )
+
+
 
 
 # === Phase 1: Generation Choice Group 专用 Schema ===

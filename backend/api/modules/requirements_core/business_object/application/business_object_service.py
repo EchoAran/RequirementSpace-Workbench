@@ -8,6 +8,9 @@ from backend.database.model import (
     flow_step_input_business_object_table,
     flow_step_output_business_object_table,
 )
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.business_object.schemas import (
     BusinessObjectCreateRequest,
@@ -37,14 +40,15 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 新增业务对象
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_business_object",
             summary=f"手动新增业务对象: {bo.name}",
             target_type="business_object",
-            target_id=str(bo.id),
-            payload={},
-        ))
+            target_id=bo.id,
+            diff={"name": bo.name, "description": bo.description, "confirmation_status": confirmation_status},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -81,6 +85,12 @@ class BusinessObjectService:
         if bo is None:
             raise ValueError("business_object_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "business_object", bo, req.last_seen_updated_at)
+
+        old_name = bo.name
+        old_description = bo.description
+
         if req.name is not None:
             bo.name = req.name
         if req.description is not None:
@@ -89,14 +99,21 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 更新业务对象
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != bo.name:
+            diff["name"] = {"before": old_name, "after": bo.name}
+        if old_description != bo.description:
+            diff["description"] = {"before": old_description, "after": bo.description}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_business_object",
             summary=f"手动更新业务对象: {bo.name}",
             target_type="business_object",
-            target_id=str(bo.id),
-            payload={},
-        ))
+            target_id=bo.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -104,6 +121,9 @@ class BusinessObjectService:
             perception_kinds={"FLOW"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "business_object", bo)
 
         return BusinessObjectResponse(
             business_object_id=bo.id,
@@ -162,14 +182,15 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 删除业务对象
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_business_object",
             summary=f"手动删除业务对象: {bo_name}",
             target_type="business_object",
-            target_id=str(bo_id),
-            payload={},
-        ))
+            target_id=bo_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -212,14 +233,15 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 新增数据属性
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_business_object_attribute",
             summary=f"手动新增数据属性: {attr.name}",
             target_type="business_object_attribute",
-            target_id=str(attr.id),
-            payload={},
-        ))
+            target_id=attr.id,
+            diff={"name": attr.name, "description": attr.description, "data_type": attr.data_type, "example": attr.example},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -267,6 +289,14 @@ class BusinessObjectService:
         if attr is None:
             raise ValueError("attribute_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "business_object_attribute", attr, req.last_seen_updated_at)
+
+        old_name = attr.name
+        old_description = attr.description
+        old_data_type = attr.data_type
+        old_example = attr.example
+
         if req.name is not None:
             attr.name = req.name
         if req.description is not None:
@@ -279,14 +309,25 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 更新数据属性
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != attr.name:
+            diff["name"] = {"before": old_name, "after": attr.name}
+        if old_description != attr.description:
+            diff["description"] = {"before": old_description, "after": attr.description}
+        if old_data_type != attr.data_type:
+            diff["data_type"] = {"before": old_data_type, "after": attr.data_type}
+        if old_example != attr.example:
+            diff["example"] = {"before": old_example, "after": attr.example}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_business_object_attribute",
             summary=f"手动更新数据属性: {attr.name}",
             target_type="business_object_attribute",
-            target_id=str(attr.id),
-            payload={},
-        ))
+            target_id=attr.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -294,6 +335,9 @@ class BusinessObjectService:
             perception_kinds={"FLOW"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "business_object_attribute", attr)
 
         return BusinessObjectAttributeResponse(
             attribute_id=attr.id,
@@ -337,14 +381,15 @@ class BusinessObjectService:
         await session.flush()
 
         # 审计日志: 删除数据属性
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_business_object_attribute",
             summary=f"手动删除数据属性: ID {attr_id}",
             target_type="business_object_attribute",
-            target_id=str(attr_id),
-            payload={},
-        ))
+            target_id=attr_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,

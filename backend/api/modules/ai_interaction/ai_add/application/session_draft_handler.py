@@ -18,8 +18,14 @@ from backend.api.modules.requirements_core.public import (
     FlowUpdateRequest,
     BOUpdateRequest,
 )
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import (
+    AI_ADD_DRAFT_CREATED,
+    AI_ADD_DRAFT_DISCARDED,
+    AI_ADD_LLM_PARSE_FAILED,
+)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -87,8 +93,22 @@ class AIAddDraftHandler:
         try:
             raw_result = await generator.generate(gen_input)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            logger.error("AI add generator LLM parse failed  session_id=%s  error=%s", ai_session.id, exc)
+            log_event(
+                logger,
+                logging.WARNING,
+                "domain",
+                AI_ADD_LLM_PARSE_FAILED,
+                "AI add LLM parse failed",
+                project_id=ai_session.project_id,
+                session_id=ai_session.id,
+                target_type=ai_session.target_type,
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc)),
+            )
             raise ValueError("generator_output_parse_failed") from exc
+
+        from backend.core.issue_resolution.fingerprint import compute_context_hash
+        context_hash = compute_context_hash(project_context)
 
         validated = self._validate_generated_object(ai_session.target_type, raw_result, project_context)
         preview = self._build_preview(ai_session.target_type, validated)
@@ -105,13 +125,42 @@ class AIAddDraftHandler:
                 "generated_object": validated,
                 "preview": preview,
                 "rationale": raw_result.get("rationale", ""),
+                "context_hash": context_hash,
             },
             owner_user_id=owner_user_id,
             session=db_session,
         )
 
+        # Record audit log
+        from backend.services.audit_service import AuditService
+        audit_service = AuditService()
+        await audit_service.record(
+            session=db_session,
+            project_id=ai_session.project_id,
+            action_type="ai_draft_generated",
+            summary=f"AI 生成了建议: 创建 {ai_session.target_type}",
+            target_type="draft",
+            target_id=draft_id,
+            payload={
+                "target_type": ai_session.target_type,
+                "context_hash": context_hash,
+            }
+        )
+
         ai_session.status = "draft_created"
         await db_session.flush()
+
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_ADD_DRAFT_CREATED,
+            "AI add draft created",
+            project_id=ai_session.project_id,
+            session_id=ai_session.id,
+            draft_id=draft_id,
+            target_type=ai_session.target_type,
+        )
 
         return {
             "draft_id": draft_id, "project_id": project.public_id,
@@ -153,7 +202,18 @@ class AIAddDraftHandler:
         try:
             raw_result = await generator.generate(gen_input)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            logger.error("AI edit generator LLM parse failed  session_id=%s  error=%s", ai_session.id, exc)
+            log_event(
+                logger,
+                logging.WARNING,
+                "domain",
+                AI_ADD_LLM_PARSE_FAILED,
+                "AI add LLM parse failed",
+                project_id=ai_session.project_id,
+                session_id=ai_session.id,
+                target_type=ai_session.target_type,
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc)),
+            )
             raise ValueError("generator_output_parse_failed") from exc
 
         # Validate edit diff
@@ -166,6 +226,9 @@ class AIAddDraftHandler:
         preview = {}
         for field, change in diff.items():
             preview[field] = {"old": change.get("old", ""), "new": change.get("new", "")}
+
+        from backend.core.issue_resolution.fingerprint import compute_context_hash
+        context_hash = compute_context_hash(project_context)
 
         draft_id = uuid4().hex
         await GenerativeDraftStore.save_draft(
@@ -180,13 +243,42 @@ class AIAddDraftHandler:
                 "diff": diff,
                 "preview": preview,
                 "rationale": rationale,
+                "context_hash": context_hash,
             },
             owner_user_id=owner_user_id,
             session=db_session,
         )
 
+        # Record audit log
+        from backend.services.audit_service import AuditService
+        audit_service = AuditService()
+        await audit_service.record(
+            session=db_session,
+            project_id=ai_session.project_id,
+            action_type="ai_draft_generated",
+            summary=f"AI 生成了建议: 修改 {ai_session.target_type.replace('edit_', '', 1)}",
+            target_type="draft",
+            target_id=draft_id,
+            payload={
+                "target_type": ai_session.target_type,
+                "context_hash": context_hash,
+            }
+        )
+
         ai_session.status = "draft_created"
         await db_session.flush()
+
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_ADD_DRAFT_CREATED,
+            "AI add draft created",
+            project_id=ai_session.project_id,
+            session_id=ai_session.id,
+            draft_id=draft_id,
+            target_type=ai_session.target_type,
+        )
 
         return {
             "draft_id": draft_id, "project_id": project.public_id,
@@ -206,6 +298,89 @@ class AIAddDraftHandler:
         if not project_id:
             raise ValueError("invalid_draft_payload")
 
+        # Context hash conflict validation
+        stored_hash = draft.get("context_hash")
+        if stored_hash:
+            generator_ctx_keys = self._generator_ctx_keys(target_type)
+            project_context = await self._service._load_context(
+                project_id, generator_ctx_keys, db_session,
+            )
+            from backend.core.issue_resolution.fingerprint import compute_context_hash
+            current_hash = compute_context_hash(project_context)
+            if current_hash != stored_hash:
+                # Close the AI session
+                if session_id:
+                    ai_session = await self._get_session_or_raise(session_id, db_session)
+                    ai_session.status = "conflict"
+                    ai_session.closed_at = _beijing_now()
+                    await db_session.flush()
+
+                # Create collaboration task
+                from backend.database.model import CollaborationTaskModel
+                task = CollaborationTaskModel(
+                    project_id=project_id,
+                    task_type="resolve_conflict",
+                    title=f"解决 {target_type} 的 AI 写入冲突",
+                    description="在 AI 生成建议后，项目相关上下文发生了变化，请手动处理冲突。",
+                    status="open",
+                    priority="normal",
+                    created_by_user_id=owner_user_id,
+                    assigned_to_user_id=owner_user_id,
+                    payload={
+                        "stale_ai_result": draft.get("generated_object") or draft.get("diff") or {},
+                        "current_snapshot": project_context,
+                        "original_context_hash": stored_hash,
+                        "current_context_hash": current_hash,
+                        "target_type": target_type,
+                        "draft_id": draft_id
+                    }
+                )
+                db_session.add(task)
+                
+                # Write audit log for conflict
+                from backend.services.audit_service import AuditService
+                audit_service = AuditService()
+                await audit_service.record(
+                    session=db_session,
+                    project_id=project_id,
+                    action_type="ai_draft_conflict_detected",
+                    summary=f"检测到 AI 回写冲突: {target_type}",
+                    target_type="draft",
+                    target_id=draft_id,
+                    payload={
+                        "target_type": target_type,
+                        "original_context_hash": stored_hash,
+                        "current_context_hash": current_hash
+                    }
+                )
+
+                # Create notification for recipient
+                from backend.database.model import NotificationModel
+                notif = NotificationModel(
+                    recipient_user_id=owner_user_id,
+                    project_id=project_id,
+                    task_id=None,
+                    event_type="conflict_detected",
+                    title="检测到 AI 写入冲突",
+                    body=f"您提交的 AI 建议 {target_type} 检测到冲突，已转为冲突处理任务。"
+                )
+                db_session.add(notif)
+                await db_session.flush()
+
+                # Delete the stale draft
+                await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
+                
+                await db_session.commit()
+
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "ai_draft_conflict_detected",
+                        "task_id": task.id
+                    }
+                )
+
         if target_type.startswith("edit_"):
             created_id = await self._confirm_edit_draft(draft, db_session)
         else:
@@ -214,6 +389,22 @@ class AIAddDraftHandler:
             created_id = await self._persist_generated_object(
                 target_type, generated, project_id, db_session,
             )
+
+        # Record audit log for successful application of draft
+        from backend.services.audit_service import AuditService
+        audit_service = AuditService()
+        await audit_service.record(
+            session=db_session,
+            project_id=project_id,
+            action_type="ai_draft_applied_by_user",
+            summary=f"采纳 AI 建议: {target_type}",
+            target_type=target_type.replace("edit_", "", 1),
+            target_id=created_id,
+            payload={
+                "draft_id": draft_id,
+                "target_type": target_type
+            }
+        )
 
         # Update session status
         if session_id:
@@ -253,7 +444,14 @@ class AIAddDraftHandler:
 
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
 
-        logger.info("AI add draft discarded  draft_id=%s", draft_id)
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_ADD_DRAFT_DISCARDED,
+            "AI add draft discarded",
+            draft_id=draft_id,
+        )
 
         return {
             "draft_id": draft_id,

@@ -14,9 +14,15 @@ from backend.api.modules.auth_account.schemas.llm_config import (
     LLMConfigTestResponse,
 )
 from backend.core.security.encryption import encrypt_llm_api_key, decrypt_llm_api_key
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import (
+    LLM_CONFIG_MISSING,
+    LLM_CONFIG_RESOLVED,
+    LLM_CONFIG_SAVED,
+)
 from backend.services.LLM_service import load_llm_config
 
-logger = logging.getLogger("backend.api.modules.auth_account.application.llm_config_service")
+logger = get_logger("backend.api.modules.auth_account.application.llm_config_service")
 
 
 def validate_llm_url(url: str) -> bool:
@@ -58,6 +64,15 @@ class LLMConfigService:
             # but we only return whether it is configured (we do not expose/copy .env details)
             server_config = load_llm_config()
             if server_config:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "auth",
+                    LLM_CONFIG_RESOLVED,
+                    "LLM config resolved",
+                    user_id=user.id,
+                    config_scope="server",
+                )
                 return LLMConfigResponse(
                     configured=True,
                     source="server",
@@ -65,14 +80,22 @@ class LLMConfigService:
                     model_name=None,
                     api_key_last4=None,
                 )
-            else:
-                return LLMConfigResponse(
-                    configured=False,
-                    source="server",
-                    api_url=None,
-                    model_name=None,
-                    api_key_last4=None,
-                )
+            log_event(
+                logger,
+                logging.WARNING,
+                "auth",
+                LLM_CONFIG_MISSING,
+                "LLM config missing",
+                user_id=user.id,
+                config_scope="server",
+            )
+            return LLMConfigResponse(
+                configured=False,
+                source="server",
+                api_url=None,
+                model_name=None,
+                api_key_last4=None,
+            )
 
         # Regular users read from the database
         stmt = select(UserLLMConfigModel).where(UserLLMConfigModel.user_id == user.id)
@@ -80,6 +103,15 @@ class LLMConfigService:
         db_config = res.scalar_one_or_none()
 
         if db_config:
+            log_event(
+                logger,
+                logging.INFO,
+                "auth",
+                LLM_CONFIG_RESOLVED,
+                "LLM config resolved",
+                user_id=user.id,
+                config_scope="personal",
+            )
             return LLMConfigResponse(
                 configured=True,
                 source="personal",
@@ -87,14 +119,22 @@ class LLMConfigService:
                 model_name=db_config.model_name,
                 api_key_last4=db_config.api_key_last4,
             )
-        else:
-            return LLMConfigResponse(
-                configured=False,
-                source=None,
-                api_url=None,
-                model_name=None,
-                api_key_last4=None,
-            )
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth",
+            LLM_CONFIG_MISSING,
+            "LLM config missing",
+            user_id=user.id,
+            config_scope="personal",
+        )
+        return LLMConfigResponse(
+            configured=False,
+            source=None,
+            api_url=None,
+            model_name=None,
+            api_key_last4=None,
+        )
 
     async def update_config(
         self, user: UserModel, req: LLMConfigRequest, session: AsyncSession
@@ -148,6 +188,16 @@ class LLMConfigService:
             session.add(db_config)
 
         await session.flush()
+
+        log_event(
+            logger,
+            logging.INFO,
+            "auth",
+            LLM_CONFIG_SAVED,
+            "LLM config saved",
+            user_id=user.id,
+            config_scope="personal",
+        )
 
         return LLMConfigResponse(
             configured=True,
@@ -279,8 +329,30 @@ class LLMConfigService:
                 error_detail="Connection failed or upstream error",
             )
 
-    async def resolve_for_user(self, user_id: int, session: AsyncSession) -> dict:
+    async def resolve_for_user(self, user_id: int, session: AsyncSession, project_id: int | None = None) -> dict:
         """Resolve LLM credentials for internal calls (Plaintext key returned)."""
+        if project_id:
+            from backend.database.model import ProjectLLMConfigModel
+            stmt_proj = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
+            res_proj = await session.execute(stmt_proj)
+            db_proj = res_proj.scalar_one_or_none()
+            if db_proj:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "auth",
+                    LLM_CONFIG_RESOLVED,
+                    "LLM config resolved",
+                    user_id=user_id,
+                    project_id=project_id,
+                    config_scope="project",
+                )
+                return {
+                    "api_url": db_proj.api_url.rstrip("/"),
+                    "api_key": decrypt_llm_api_key(db_proj.encrypted_api_key),
+                    "model_name": db_proj.model_name,
+                }
+
         # Load user first to check role
         stmt_user = select(UserModel).where(UserModel.id == user_id)
         res_user = await session.execute(stmt_user)
@@ -292,7 +364,27 @@ class LLMConfigService:
         if user.role == UserRole.ADMIN.value:
             server_config = load_llm_config()
             if not server_config:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "auth",
+                    LLM_CONFIG_MISSING,
+                    "LLM config missing",
+                    user_id=user_id,
+                    project_id=project_id,
+                    config_scope="server",
+                )
                 raise ValueError("server_llm_config_not_configured")
+            log_event(
+                logger,
+                logging.INFO,
+                "auth",
+                LLM_CONFIG_RESOLVED,
+                "LLM config resolved",
+                user_id=user_id,
+                project_id=project_id,
+                config_scope="server",
+            )
             return {
                 "api_url": server_config["api_url"].rstrip("/"),
                 "api_key": server_config["api_key"],
@@ -305,8 +397,28 @@ class LLMConfigService:
         db_config = res_config.scalar_one_or_none()
 
         if not db_config:
+            log_event(
+                logger,
+                logging.WARNING,
+                "auth",
+                LLM_CONFIG_MISSING,
+                "LLM config missing",
+                user_id=user_id,
+                project_id=project_id,
+                config_scope="personal",
+            )
             raise ValueError("llm_config_required")
 
+        log_event(
+            logger,
+            logging.INFO,
+            "auth",
+            LLM_CONFIG_RESOLVED,
+            "LLM config resolved",
+            user_id=user_id,
+            project_id=project_id,
+            config_scope="personal",
+        )
         return {
             "api_url": db_config.api_url,
             "api_key": decrypt_llm_api_key(db_config.encrypted_api_key),

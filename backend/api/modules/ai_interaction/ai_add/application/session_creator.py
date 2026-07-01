@@ -1,8 +1,10 @@
 import logging
 from sqlalchemy import select
-from backend.database.model import AIAddSessionModel, ProjectModel
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import AI_ADD_SESSION_CREATED
+from backend.database.model import AIAddSessionModel, ProjectModel, ProjectMemberModel, ProjectMemberStatus
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AIAddSessionCreator:
@@ -72,16 +74,27 @@ class AIAddSessionCreator:
         if not self._strategy_registry.has_type(target_type):
             raise ValueError(f"unsupported_target_type: {target_type}")
 
-        # Validate project exists and is owned by the user
-        project_result = await session.execute(
-            select(ProjectModel).where(
+        # Validate project exists and user is an active member
+        member_result = await session.execute(
+            select(ProjectMemberModel)
+            .join(ProjectModel, ProjectModel.id == ProjectMemberModel.project_id)
+            .where(
                 ProjectModel.public_id == project_id,
-                ProjectModel.owner_user_id == owner_user_id,
+                ProjectMemberModel.user_id == owner_user_id,
             )
         )
-        project = project_result.scalar_one_or_none()
-        if project is None:
+        member = member_result.scalar_one_or_none()
+        if member is None or member.status != ProjectMemberStatus.ACTIVE.value:
             raise ValueError("project_not_found")
+
+        if member.role not in ["owner", "admin", "editor"]:
+            raise ValueError("insufficient_project_role")
+
+        # Load project model
+        project_res = await session.execute(
+            select(ProjectModel).where(ProjectModel.public_id == project_id)
+        )
+        project = project_res.scalar_one()
 
         # Validate anchor references exist
         await self._validate_anchor_references(project.id, target_type, anchor, session)
@@ -97,9 +110,15 @@ class AIAddSessionCreator:
         session.add(db_session)
         await session.flush()
 
-        logger.info(
-            "AI add session created  session_id=%s  project_id=%s  target_type=%s",
-            db_session.id, project.public_id, target_type,
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_ADD_SESSION_CREATED,
+            "AI add session created",
+            project_id=project.id,
+            session_id=db_session.id,
+            target_type=target_type,
         )
 
         return {

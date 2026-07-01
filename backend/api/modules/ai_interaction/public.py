@@ -3,6 +3,9 @@
 from backend.api.modules.ai_interaction.ai_add.application.session import (
     AIAddSessionService,
 )
+from backend.api.modules.ai_interaction.ai_add.application.session_draft_handler import (
+    AIAddDraftHandler,
+)
 
 from backend.api.modules.ai_interaction.ai_add.application.generator_registry import (
     SingleObjectGeneratorRegistry,
@@ -16,6 +19,7 @@ from backend.api.modules.ai_interaction.ai_explain.application.explain import AI
 
 __all__ = [
     "AIAddSessionService",
+    "AIAddDraftHandler",
     "SingleObjectGeneratorRegistry",
     "EditGeneratorRegistry",
     "create_default_generator_registry",

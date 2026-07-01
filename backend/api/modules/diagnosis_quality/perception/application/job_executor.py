@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+import logging
+import time
 from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -8,6 +10,12 @@ from sqlalchemy.orm import selectinload
 from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
     load_issue_project_context,
+)
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import (
+    PERCEPTION_JOB_COMPLETED,
+    PERCEPTION_JOB_FAILED,
+    PERCEPTION_JOB_STARTED,
 )
 from backend.core.perceptrons.acceptance_criteria_perceptron import (
     AcceptanceCriteriaPerceptron,
@@ -42,6 +50,8 @@ from backend.schemas import (
     PerceptionKindType,
     ScenarioNode,
 )
+
+logger = get_logger(__name__)
 
 
 class PerceptionJobExecutor:
@@ -92,6 +102,20 @@ class PerceptionJobExecutor:
             if job is None:
                 return
 
+            start_time = time.perf_counter()
+            log_event(
+                logger,
+                logging.INFO,
+                "domain",
+                PERCEPTION_JOB_STARTED,
+                "Perception job started",
+                project_id=job.project_id,
+                stage=job.stage,
+                target_type=job.target_type,
+                target_id=job.target_id,
+                perception_kind=job.perception_kind,
+            )
+
             try:
                 context = await load_issue_project_context(
                     project_id=job.project_id,
@@ -106,6 +130,20 @@ class PerceptionJobExecutor:
                 if current_hash != job.context_hash:
                     job.status = PerceptionJobStatus.STALE.value
                     await session.commit()
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "domain",
+                        PERCEPTION_JOB_COMPLETED,
+                        "Perception job completed",
+                        project_id=job.project_id,
+                        stage=job.stage,
+                        target_type=job.target_type,
+                        target_id=job.target_id,
+                        perception_kind=job.perception_kind,
+                        status=job.status,
+                        duration_ms=int((time.perf_counter() - start_time) * 1000),
+                    )
                     return
 
                 raw = await self._run_perceptron(
@@ -125,6 +163,20 @@ class PerceptionJobExecutor:
                         session=session,
                     )
                     await session.commit()
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "domain",
+                        PERCEPTION_JOB_COMPLETED,
+                        "Perception job completed",
+                        project_id=job.project_id,
+                        stage=job.stage,
+                        target_type=job.target_type,
+                        target_id=job.target_id,
+                        perception_kind=job.perception_kind,
+                        status=job.status,
+                        duration_ms=int((time.perf_counter() - start_time) * 1000),
+                    )
                     return
 
                 result_kind_code = self._resolve_result_perception_kind(
@@ -160,6 +212,20 @@ class PerceptionJobExecutor:
                     session.add(slot_model)
 
                 await session.commit()
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "domain",
+                    PERCEPTION_JOB_COMPLETED,
+                    "Perception job completed",
+                    project_id=job.project_id,
+                    stage=job.stage,
+                    target_type=job.target_type,
+                    target_id=job.target_id,
+                    perception_kind=job.perception_kind,
+                    status=job.status,
+                    duration_ms=int((time.perf_counter() - start_time) * 1000),
+                )
 
             except Exception as error:
                 await session.rollback()
@@ -173,6 +239,22 @@ class PerceptionJobExecutor:
                 job.status = PerceptionJobStatus.FAILED.value
                 job.error_message = f"{type(error).__name__}: {error}"
                 await session.commit()
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "domain",
+                    PERCEPTION_JOB_FAILED,
+                    "Perception job failed",
+                    project_id=job.project_id,
+                    stage=job.stage,
+                    target_type=job.target_type,
+                    target_id=job.target_id,
+                    perception_kind=job.perception_kind,
+                    status=job.status,
+                    error_type=type(error).__name__,
+                    error_message=sanitize_message(str(error)),
+                    duration_ms=int((time.perf_counter() - start_time) * 1000),
+                )
 
     @staticmethod
     async def _load_job_with_retry(job_id: int, session):

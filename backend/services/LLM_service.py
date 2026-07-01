@@ -1,8 +1,10 @@
 import asyncio
 import os
-import logging
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
+import time
+import traceback
 
 import httpx
 from dotenv import load_dotenv
@@ -14,8 +16,28 @@ from backend.core.llm_context import (
     LLMConfigError,
 )
 from backend.core.ai_operation_monitor import monitor_ai_operation
+from backend.core.logging import (
+    category_enabled,
+    get_logger,
+    log_event,
+    preview_text,
+    sanitize_message,
+)
+from backend.core.logging.events import (
+    LLM_API_CALL_ALL_ATTEMPTS_FAILED,
+    LLM_API_CALL_ATTEMPT,
+    LLM_API_CALL_COMPLETED,
+    LLM_API_CALL_FAILED,
+    LLM_PROMPT_SAMPLE,
+    LLM_RESPONSE_INVALID,
+    LLM_RESPONSE_SAMPLE,
+    LLM_RETRY_SCHEDULED,
+)
 
-logger = logging.getLogger(__name__)
+import logging
+
+logger = get_logger(__name__)
+LLM_CONTENT_PREVIEW_CHARS = 200
 
 
 def load_llm_config() -> dict[str, str] | None:
@@ -109,8 +131,17 @@ class LLMHandler:
 
     @staticmethod
     def _log(enabled: bool, message: str) -> None:
-        if enabled:
-            print(message)
+        if enabled and category_enabled("llm_content"):
+            log_event(
+                logger,
+                logging.INFO,
+                "llm_content",
+                LLM_PROMPT_SAMPLE,
+                "LLM content diagnostic",
+                content_preview=preview_text(message, LLM_CONTENT_PREVIEW_CHARS),
+                truncated=len(sanitize_message(message)) > LLM_CONTENT_PREVIEW_CHARS,
+                preview_chars=LLM_CONTENT_PREVIEW_CHARS,
+            )
 
     def _build_request_data(self, prompt: str, query: str) -> dict:
         messages = [
@@ -204,38 +235,68 @@ class LLMHandler:
 
         headers = self._build_headers()
         url = f"{self.api_url}/v1/chat/completions"
+        host = urlparse(self.api_url).hostname or self.api_url
+        model = request_data.get("model")
+        messages = request_data.get("messages")
+        message_count = len(messages) if isinstance(messages, list) else None
+        has_response_format = "response_format" in request_data
 
         for attempt in range(1, attempts + 1):
-            self._log(print_log, f"\n[PROMPT] LLM call attempt {attempt}:\n{prompt_label[:200]}")
+            self._log_prompt_sample(
+                print_log=print_log,
+                prompt_label=prompt_label,
+                query_label=query_label,
+            )
 
-            if query_label.strip():
-                self._log(print_log, f"\n[QUERY] LLM call attempt {attempt}:\n{query_label[:200]}")
-
-            self._log(print_log, f"\n{'---' * 40}")
-
-            from urllib.parse import urlparse
-            from backend.core.security import sanitize_message
-            import time
-            import traceback
-
-            host = urlparse(self.api_url).hostname or self.api_url
-            start_time = time.time()
+            log_event(
+                logger,
+                logging.INFO,
+                "llm",
+                LLM_API_CALL_ATTEMPT,
+                "LLM API call attempt started",
+                provider_host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                timeout_seconds=100,
+                has_response_format=has_response_format,
+                message_count=message_count,
+            )
+            start_time = time.perf_counter()
 
             try:
                 with monitor_ai_operation("llm_api_call", attempt=attempt):
                     async with httpx.AsyncClient(timeout=100.0, trust_env=False) as client:
                         response = await client.post(url, json=request_data, headers=headers)
 
-                duration = time.time() - start_time
+                duration_ms = int((time.perf_counter() - start_time) * 1000)
 
                 if response.status_code != 200:
                     last_error_text = f"API call failed: status_code={response.status_code}"
-                    logger.error(
-                        f"[LLM ERROR] Attempt {attempt} failed: host={host}, status_code={response.status_code}, "
-                        f"attempt={attempt}, duration={duration:.2f}s, response_length={len(response.text)}"
+                    log_event(
+                        logger,
+                        logging.ERROR,
+                        "llm",
+                        LLM_API_CALL_FAILED,
+                        "LLM API call failed",
+                        provider_host=host,
+                        model=model,
+                        attempt=attempt,
+                        attempts=attempts,
+                        status_code=response.status_code,
+                        duration_ms=duration_ms,
+                        response_chars=len(response.text),
+                        error_type="http_status",
+                        has_response_format=has_response_format,
+                        message_count=message_count,
                     )
-                    self._log(print_log, f"The LLM API call failed: {last_error_text}")
-                    await self._sleep_before_retry(attempt, attempts, base_delay)
+                    await self._sleep_before_retry(
+                        attempt,
+                        attempts,
+                        base_delay,
+                        provider_host=host,
+                        model=model,
+                    )
                     continue
 
                 result = response.json()
@@ -243,44 +304,137 @@ class LLMHandler:
 
                 if content is None:
                     last_error_text = "LLM response format exception (invalid structure)"
-                    req_id = response.headers.get("x-request-id") or ""
-                    logger.error(
-                        f"[LLM ERROR] Attempt {attempt} returned invalid response structure: "
-                        f"status_code={response.status_code}, request_id={req_id}"
+                    provider_request_id = response.headers.get("x-request-id") or None
+                    invalid_fields: dict[str, object] = {
+                        "provider_host": host,
+                        "model": model,
+                        "attempt": attempt,
+                        "attempts": attempts,
+                        "status_code": response.status_code,
+                        "duration_ms": duration_ms,
+                        "response_chars": len(response.text),
+                        "error_type": "invalid_response_structure",
+                        "has_response_format": has_response_format,
+                        "message_count": message_count,
+                    }
+                    if provider_request_id:
+                        invalid_fields["provider_request_id"] = provider_request_id
+                    log_event(
+                        logger,
+                        logging.ERROR,
+                        "llm",
+                        LLM_RESPONSE_INVALID,
+                        "LLM response returned invalid structure",
+                        **invalid_fields,
                     )
-                    self._log(print_log, last_error_text)
-                    await self._sleep_before_retry(attempt, attempts, base_delay)
+                    await self._sleep_before_retry(
+                        attempt,
+                        attempts,
+                        base_delay,
+                        provider_host=host,
+                        model=model,
+                    )
                     continue
 
-                self._log(print_log, f"\n[Response]\n{content[:200]}")
-                self._log(print_log, f"\n{'---' * 40}")
+                self._log_response_sample(print_log=print_log, content=content)
+                completed_fields: dict[str, object] = {
+                    "provider_host": host,
+                    "model": model,
+                    "attempt": attempt,
+                    "attempts": attempts,
+                    "status_code": response.status_code,
+                    "duration_ms": duration_ms,
+                    "response_chars": len(content),
+                    "has_response_format": has_response_format,
+                    "message_count": message_count,
+                }
+                provider_request_id = response.headers.get("x-request-id") or None
+                if provider_request_id:
+                    completed_fields["provider_request_id"] = provider_request_id
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "llm",
+                    LLM_API_CALL_COMPLETED,
+                    "LLM API call completed",
+                    **completed_fields,
+                )
 
                 return content
 
             except httpx.ConnectError as exc:
                 last_error_text = sanitize_message(str(exc))
-                logger.error(f"[LLM ERROR] Connection failed on attempt {attempt}: {last_error_text}")
-                self._log(print_log, f"The LLM API connection failed: {last_error_text}")
+                self._log_llm_exception(
+                    event=LLM_API_CALL_FAILED,
+                    message="LLM API connection failed",
+                    host=host,
+                    model=model,
+                    attempt=attempt,
+                    attempts=attempts,
+                    started=start_time,
+                    error_type=type(exc).__name__,
+                    error_message=last_error_text,
+                    has_response_format=has_response_format,
+                    message_count=message_count,
+                )
 
             except httpx.TimeoutException as exc:
                 last_error_text = sanitize_message(str(exc))
-                logger.error(f"[LLM ERROR] Request timed out on attempt {attempt}: {last_error_text}")
-                self._log(print_log, f"The LLM API request timed out: {last_error_text}")
+                self._log_llm_exception(
+                    event=LLM_API_CALL_FAILED,
+                    message="LLM API request timed out",
+                    host=host,
+                    model=model,
+                    attempt=attempt,
+                    attempts=attempts,
+                    started=start_time,
+                    error_type=type(exc).__name__,
+                    error_message=last_error_text,
+                    has_response_format=has_response_format,
+                    message_count=message_count,
+                )
 
             except Exception as exc:
                 last_error_text = sanitize_message(f"{exc} ({type(exc).__name__})")
                 tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
                 sanitized_tb = sanitize_message(tb_str)
-                logger.error(
-                    f"[LLM ERROR] Unexpected error on attempt {attempt}: {last_error_text}\n"
-                    f"Traceback:\n{sanitized_tb}"
+                self._log_llm_exception(
+                    event=LLM_API_CALL_FAILED,
+                    message="Unexpected error during LLM API call",
+                    host=host,
+                    model=model,
+                    attempt=attempt,
+                    attempts=attempts,
+                    started=start_time,
+                    error_type=type(exc).__name__,
+                    error_message=last_error_text,
+                    has_response_format=has_response_format,
+                    message_count=message_count,
+                    sanitized_traceback=sanitized_tb,
                 )
-                self._log(print_log, f"An error occurred when invoking the LLM service: {last_error_text}")
 
-            await self._sleep_before_retry(attempt, attempts, base_delay)
+            await self._sleep_before_retry(
+                attempt,
+                attempts,
+                base_delay,
+                provider_host=host,
+                model=model,
+            )
 
-        logger.error(f"[LLM ERROR] All {attempts} attempts failed. Last error: {last_error_text}")
-        self._log(print_log, str(last_error_text))
+        log_event(
+            logger,
+            logging.ERROR,
+            "llm",
+            LLM_API_CALL_ALL_ATTEMPTS_FAILED,
+            "All LLM API call attempts failed",
+            provider_host=host,
+            model=model,
+            attempts=attempts,
+            error_type="all_attempts_failed",
+            error_message=last_error_text,
+            has_response_format=has_response_format,
+            message_count=message_count,
+        )
         return None
 
     @staticmethod
@@ -301,12 +455,109 @@ class LLMHandler:
         attempt: int,
         attempts: int,
         base_delay: float,
+        *,
+        provider_host: str | None = None,
+        model: object | None = None,
     ) -> None:
         if attempt >= attempts:
             return
 
         delay = base_delay * (2 ** (attempt - 1))
+        log_event(
+            logger,
+            logging.INFO,
+            "llm",
+            LLM_RETRY_SCHEDULED,
+            "LLM API retry scheduled",
+            provider_host=provider_host,
+            model=model,
+            attempt=attempt,
+            attempts=attempts,
+            retry_delay_seconds=delay,
+        )
         await asyncio.sleep(delay)
+
+    @staticmethod
+    def _log_prompt_sample(
+        *,
+        print_log: bool,
+        prompt_label: str,
+        query_label: str,
+    ) -> None:
+        if not print_log or not category_enabled("llm_content"):
+            return
+
+        prompt_preview = preview_text(prompt_label, LLM_CONTENT_PREVIEW_CHARS)
+        query_preview = preview_text(query_label, LLM_CONTENT_PREVIEW_CHARS) if query_label.strip() else ""
+        log_event(
+            logger,
+            logging.INFO,
+            "llm_content",
+            LLM_PROMPT_SAMPLE,
+            "LLM prompt/query preview",
+            prompt_preview=prompt_preview,
+            query_preview=query_preview,
+            truncated=(
+                len(sanitize_message(prompt_label)) > LLM_CONTENT_PREVIEW_CHARS
+                or len(sanitize_message(query_label)) > LLM_CONTENT_PREVIEW_CHARS
+            ),
+            preview_chars=LLM_CONTENT_PREVIEW_CHARS,
+        )
+
+    @staticmethod
+    def _log_response_sample(*, print_log: bool, content: str) -> None:
+        if not print_log or not category_enabled("llm_content"):
+            return
+
+        log_event(
+            logger,
+            logging.INFO,
+            "llm_content",
+            LLM_RESPONSE_SAMPLE,
+            "LLM response preview",
+            response_preview=preview_text(content, LLM_CONTENT_PREVIEW_CHARS),
+            truncated=len(sanitize_message(content)) > LLM_CONTENT_PREVIEW_CHARS,
+            preview_chars=LLM_CONTENT_PREVIEW_CHARS,
+        )
+
+    @staticmethod
+    def _log_llm_exception(
+        *,
+        event: str,
+        message: str,
+        host: str,
+        model: object,
+        attempt: int,
+        attempts: int,
+        started: float,
+        error_type: str,
+        error_message: str,
+        has_response_format: bool,
+        message_count: int | None,
+        sanitized_traceback: str | None = None,
+    ) -> None:
+        fields: dict[str, object] = {
+            "provider_host": host,
+            "model": model,
+            "attempt": attempt,
+            "attempts": attempts,
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "error_type": error_type,
+            "error_message": error_message,
+            "has_response_format": has_response_format,
+            "message_count": message_count,
+        }
+        if sanitized_traceback:
+            fields["sanitized_traceback"] = sanitized_traceback
+
+        log_event(
+            logger,
+            logging.ERROR,
+            "llm",
+            event,
+            message,
+            **fields,
+        )
 
 
 if __name__ == "__main__":
@@ -317,6 +568,5 @@ if __name__ == "__main__":
             prompt="你好",
             print_log=True,     # 是否打印日志
         )
-        print(response)
 
     asyncio.run(main())

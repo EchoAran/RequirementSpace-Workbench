@@ -5,6 +5,9 @@ from backend.database.model import (
     AuditLogModel,
     ConfirmationStatus,
 )
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.scope.schemas import (
     ScopeUpdateRequest,
@@ -38,6 +41,15 @@ class ScopeService:
         )
         scope = scope_res.scalar_one_or_none()
 
+        if scope is not None:
+            from backend.api.modules.collaboration.application.task_service import snapshot_service
+            await snapshot_service.check_optimistic_lock(session, "scope", scope, req.last_seen_updated_at)
+
+        old_status = scope.status if scope else None
+        old_reason = scope.reason if scope else None
+        old_positive_summary = scope.positive_summary if scope else None
+        old_negative_summary = scope.negative_summary if scope else None
+
         status_map = {
             "本期": "current",
             "暂缓": "postponed",
@@ -69,20 +81,34 @@ class ScopeService:
         await session.flush()
 
         # 审计日志: 更新范围
-        session.add(AuditLogModel(
+        diff = {}
+        if old_status != scope.status:
+            diff["status"] = {"before": old_status, "after": scope.status}
+        if old_reason != scope.reason:
+            diff["reason"] = {"before": old_reason, "after": scope.reason}
+        if old_positive_summary != scope.positive_summary:
+            diff["positive_summary"] = {"before": old_positive_summary, "after": scope.positive_summary}
+        if old_negative_summary != scope.negative_summary:
+            diff["negative_summary"] = {"before": old_negative_summary, "after": scope.negative_summary}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_scope",
             summary=f"手动更新功能范围: feature_id={feature_id}, status={scope.status}",
             target_type="scope",
-            target_id=str(scope.id),
-            payload={},
-        ))
+            target_id=scope.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
             stages={"scope"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "scope", scope)
 
         return ScopeResponse(
             scope_id=scope.id,
@@ -145,14 +171,16 @@ class ScopeService:
         await session.flush()
 
         # Audit Log
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="set_kano_status",
             summary=f"更新项目 Kano 分析状态为: {status}",
             target_type="project",
-            target_id=str(project_id),
+            target_id=project_id,
+            diff={"kano_status": status},
             payload={"kano_status": status},
-        ))
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,

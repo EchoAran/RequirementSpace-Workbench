@@ -850,7 +850,7 @@ export function WhatToDo() {
               <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    👥 参与者
+                    参与者
                     <button
                       onClick={() => setIsAddActorModalOpen(true)}
                       className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
@@ -908,7 +908,7 @@ export function WhatToDo() {
                                   }
                                 }
                               }}
-                              className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none"
+                              className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none shadow-sm"
                               title="删除该参与者"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -926,43 +926,43 @@ export function WhatToDo() {
               </section>
 
               {/* Tree Section */}
-              <section>
-                <div className="flex justify-between items-center px-1 mb-3">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    🌳 核心能力特征树
-                    <button
-                      onClick={() => {
-                        setNewFeatureParentId(null);
-                        setIsParentFixed(false);
-                        setIsAddFeatureModalOpen(true);
-                      }}
-                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                      title="手动创建功能结点"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => void generateFeatures()}
-                      disabled={isGenerating || isLoading}
-                      className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                      AI 智能分解功能
-                    </button>
-                    <button
-                      onClick={() => setIsScenarioModalOpen(true)}
-                      disabled={isGenerating || isLoading}
-                      className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
-                      title="智能推演系统业务场景"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                      AI智能推演场景
-                    </button>
-                  </div>
-                </div>
+              <section className="flex flex-col">
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                  <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                      系统功能
+                      <button
+                        onClick={() => {
+                          setNewFeatureParentId(null);
+                          setIsParentFixed(false);
+                          setIsAddFeatureModalOpen(true);
+                        }}
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                        title="手动创建功能结点"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void generateFeatures()}
+                        disabled={isGenerating || isLoading}
+                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                        AI 智能分解功能
+                      </button>
+                      <button
+                        onClick={() => setIsScenarioModalOpen(true)}
+                        disabled={isGenerating || isLoading}
+                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                        title="智能推演系统业务场景"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                        AI智能推演场景
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Layer 1: System Root Header */}
                   <div 
@@ -988,7 +988,7 @@ export function WhatToDo() {
                           setIsParentFixed(true);
                           setIsAddFeatureModalOpen(true);
                         }}
-                        className="p-1 hover:bg-slate-200 border border-slate-200 hover:border-indigo-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-all flex items-center justify-center bg-white"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
                         title="添加一级模块功能结点"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -998,7 +998,7 @@ export function WhatToDo() {
                           e.stopPropagation();
                           setAiDialogTarget({ targetType: 'feature_branch', anchor: { parent_feature_id: null } });
                         }}
-                        className="p-1 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg text-slate-400 hover:text-amber-600 transition-all flex items-center justify-center"
+                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
                         title="AI 对话添加功能模块"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -1041,7 +1041,7 @@ export function WhatToDo() {
                                       }
                                     }
                                   }}
-                                  className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none"
+                                  className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none shadow-sm"
                                   title="删除该功能模块"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1053,7 +1053,7 @@ export function WhatToDo() {
                                     setIsParentFixed(true);
                                     setIsAddFeatureModalOpen(true);
                                   }}
-                                  className="p-1 hover:bg-slate-200 border border-slate-200 hover:border-indigo-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-all flex items-center justify-center bg-white"
+                                  className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
                                   title="为此模块直接添加子功能结点"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
@@ -1063,7 +1063,7 @@ export function WhatToDo() {
                                     e.stopPropagation();
                                     setAiDialogTarget({ targetType: 'feature_leaf', anchor: { parent_feature_id: cap.featureId } });
                                   }}
-                                  className="p-1 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg text-slate-400 hover:text-amber-600 transition-all flex items-center justify-center"
+                                  className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
                                   title="AI 对话为此模块添加功能点"
                                 >
                                   <Sparkles className="w-3.5 h-3.5" />
@@ -1124,12 +1124,12 @@ export function WhatToDo() {
                                               }
                                             }
                                           }}
-                                          className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                          className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center shadow-sm"
                                           title="删除该功能点"
                                         >
                                           <Trash2 className="w-3 h-3" />
                                         </button>
-                                        <StatusBadge status={child.status} className="scale-75 origin-right" />
+                                        <StatusBadge status={child.status} className="scale-75 origin-right ml-[-8px]" />
                                       </div>
                                     </div>
                                     <div className="text-xs text-slate-500 line-clamp-2 ml-4 leading-relaxed">

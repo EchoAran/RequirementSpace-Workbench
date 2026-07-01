@@ -6,6 +6,10 @@ from backend.api.modules.project_lifecycle.schemas.audit import (
     UserRequirementsResponse,
 )
 from backend.services.LLM_service import LLMHandler
+from backend.core.actor_context import ActorContext
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 
 
 class ProjectRequirementsService:
@@ -16,18 +20,36 @@ class ProjectRequirementsService:
         self,
         project_id: int,
         session,
+        actor_user_id: int | None = None,
+        actor_type: str | None = None,
+        action_type: str | None = None,
+        target_type: str | None = None,
+        task_id: int | None = None,
     ) -> list[AuditLogResponse]:
-        """获取项目的全部审计日志，按创建时间降序排列"""
-        result = await session.execute(
+        """获取项目的全部审计日志，按创建时间降序排列，支持可选过滤"""
+        stmt = (
             select(AuditLogModel)
             .where(AuditLogModel.project_id == project_id)
-            .order_by(AuditLogModel.created_at.desc())
+            .options(selectinload(AuditLogModel.actor_user))
         )
+        if actor_user_id is not None:
+            stmt = stmt.where(AuditLogModel.actor_user_id == actor_user_id)
+        if actor_type is not None:
+            stmt = stmt.where(AuditLogModel.actor_type == actor_type)
+        if action_type is not None:
+            stmt = stmt.where(AuditLogModel.action_type == action_type)
+        if target_type is not None:
+            stmt = stmt.where(AuditLogModel.target_type == target_type)
+        if task_id is not None:
+            stmt = stmt.where(AuditLogModel.task_id == task_id)
+
+        stmt = stmt.order_by(AuditLogModel.created_at.desc())
+        result = await session.execute(stmt)
         logs = result.scalars().all()
         return [
             AuditLogResponse(
                 id=log.id,
-                project_id=log.project_id,
+                project_id=str(log.project_id),
                 action_type=log.action_type,
                 summary=log.summary,
                 target_type=log.target_type,
@@ -35,6 +57,12 @@ class ProjectRequirementsService:
                 payload=log.payload,
                 created_at=log.created_at,
                 updated_at=log.updated_at,
+                actor_user_id=log.actor_user_id,
+                actor_type=log.actor_type,
+                actor_email=log.actor_user.email if log.actor_user else None,
+                diff=log.diff,
+                request_id=log.request_id,
+                task_id=log.task_id,
             )
             for log in logs
         ]
@@ -43,6 +71,7 @@ class ProjectRequirementsService:
         self,
         project_id: int,
         user_requirements: str,
+        actor: ActorContext,
         session,
     ) -> UserRequirementsResponse:
         """直接更新项目的用户需求文本"""
@@ -54,22 +83,25 @@ class ProjectRequirementsService:
         if project is None:
             raise ValueError("project_not_found")
 
+        old_requirements = project.user_requirements or ""
         project.user_requirements = user_requirements
         await session.flush()
 
         # 审计日志: 更新用户需求
-        session.add(AuditLogModel(
+        diff = {"user_requirements": {"before": old_requirements, "after": user_requirements}}
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_user_requirements",
             summary="手动更新用户需求文档",
             target_type="project",
             target_id=str(project_id),
-            payload={},
-        ))
-        await session.flush()
+            actor=actor,
+            diff=diff,
+        )
 
         return UserRequirementsResponse(
-            project_id=project.id,
+            project_id=str(project.public_id),
             user_requirements=project.user_requirements,
         )
 
@@ -77,6 +109,7 @@ class ProjectRequirementsService:
         self,
         project_id: int,
         user_feedback: str | None,
+        actor: ActorContext,
         session,
     ) -> UserRequirementsResponse:
         """基于审计日志 and 用户反馈，使用LLM对需求文档进行精炼优化"""
@@ -139,17 +172,19 @@ class ProjectRequirementsService:
         await session.flush()
 
         # 7. 插入审计日志
-        session.add(AuditLogModel(
+        diff = {"user_requirements": {"before": current_requirements, "after": llm_result}}
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="refine_user_requirements",
             summary="通过LLM精炼优化用户需求文档",
             target_type="project",
-            target_id=str(project_id),
-            payload={},
-        ))
-        await session.flush()
+            target_id=project_id,
+            actor=actor,
+            diff=diff,
+        )
 
         return UserRequirementsResponse(
-            project_id=project.id,
+            project_id=str(project.public_id),
             user_requirements=project.user_requirements,
         )

@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, defaultload
 
-from backend.database.model import ProjectModel, FeatureModel, ScenarioModel, BusinessObjectModel, FlowModel, FlowStepModel, PerceptionJobModel
+from backend.database.model import ProjectModel, FeatureModel, ScenarioModel, BusinessObjectModel, FlowModel, FlowStepModel, PerceptionJobModel, ProjectMemberModel, ProjectMemberStatus
 from backend.api.modules.project_lifecycle.schemas.project import (
     ProjectListItemResponse,
     ProjectDetailResponse,
@@ -25,11 +25,27 @@ from backend.core.detectors import (
 from backend.services.binary_conversion_service import BinaryConversionService
 
 class ProjectService:
-    async def list_projects(self, owner_user_id: int, session: AsyncSession) -> list[ProjectListItemResponse]:
-        # Eager load relationships to avoid N+1 queries during node count calculation
+    async def list_projects(self, user_id: int, session: AsyncSession) -> list[ProjectListItemResponse]:
+        from sqlalchemy import func
+        
+        # Subquery to calculate member count for each project
+        member_count_subquery = (
+            select(func.count(ProjectMemberModel.id))
+            .where(
+                ProjectMemberModel.project_id == ProjectModel.id,
+                ProjectMemberModel.status == ProjectMemberStatus.ACTIVE.value
+            )
+            .correlate(ProjectModel)
+            .scalar_subquery()
+        )
+
         stmt = (
-            select(ProjectModel)
-            .where(ProjectModel.owner_user_id == owner_user_id)
+            select(ProjectModel, ProjectMemberModel.role, member_count_subquery)
+            .join(ProjectMemberModel, ProjectModel.id == ProjectMemberModel.project_id)
+            .where(
+                ProjectMemberModel.user_id == user_id,
+                ProjectMemberModel.status == ProjectMemberStatus.ACTIVE.value
+            )
             .options(
                 selectinload(ProjectModel.perception_slot),
                 selectinload(ProjectModel.actors),
@@ -42,11 +58,10 @@ class ProjectService:
             .order_by(ProjectModel.updated_at.desc())
         )
         result = await session.execute(stmt)
-        projects = result.scalars().all()
+        rows = result.all()
 
-        # Eager load issues is complex due to detectors; we keep the visible issue logic
         response = []
-        for p in projects:
+        for p, role, member_count in rows:
             # 1. Sum up all nodes inside this project space to get node_count
             node_count = (
                 len(p.actors)
@@ -80,6 +95,9 @@ class ProjectService:
                     status=status,
                     issue_count=issue_count,
                     node_count=node_count,
+                    membership_role=role,
+                    owner_user_id=p.owner_user_id,
+                    member_count=member_count,
                 )
             )
         return response
@@ -222,6 +240,7 @@ class ProjectService:
                 actor_name=a.name,
                 actor_description=a.description,
                 confirmation_status=a.confirmation_status,
+                updated_at=a.updated_at,
             )
             for a in p.actors
         ]
@@ -255,6 +274,7 @@ class ProjectService:
                     kano_category=f.scope.kano_category,
                     kano_category_name=f.scope.kano_category_name,
                     confirmation_status=f.scope.confirmation_status,
+                    updated_at=f.scope.updated_at,
                 )
 
             # Map Scenarios
@@ -265,6 +285,7 @@ class ProjectService:
                         criterion_id=ac.id,
                         criterion_content=ac.content,
                         confirmation_status=ac.confirmation_status,
+                        updated_at=ac.updated_at,
                     )
                     for ac in sc.acceptance_criteria
                 ]
@@ -277,6 +298,7 @@ class ProjectService:
                         actor_id=sc.actor_id,
                         acceptance_criteria=criteria,
                         confirmation_status=sc.confirmation_status,
+                        updated_at=sc.updated_at,
                     )
                 )
 
@@ -291,6 +313,7 @@ class ProjectService:
                     scenarios=scenarios,
                     scope=scope,
                     confirmation_status=f.confirmation_status,
+                    updated_at=f.updated_at,
                 )
             )
 
@@ -308,10 +331,12 @@ class ProjectService:
                         business_object_attribute_type=attr.data_type,
                         business_object_attribute_example=attr.example,
                         confirmation_status=attr.confirmation_status,
+                        updated_at=attr.updated_at,
                     )
                     for attr in bo.attributes
                 ],
                 confirmation_status=bo.confirmation_status,
+                updated_at=bo.updated_at,
             )
             for bo in p.business_objects
         ]
@@ -331,6 +356,7 @@ class ProjectService:
                     output_business_object_ids=[bo.id for bo in st.output_business_objects],
                     next_step_ids=[ns.id for ns in st.next_steps],
                     confirmation_status=st.confirmation_status,
+                    updated_at=st.updated_at,
                 )
                 for st in fl.steps
             ]
@@ -342,6 +368,7 @@ class ProjectService:
                     feature_ids=[f.id for f in fl.features],
                     flow_steps=steps,
                     confirmation_status=fl.confirmation_status,
+                    updated_at=fl.updated_at,
                 )
             )
 

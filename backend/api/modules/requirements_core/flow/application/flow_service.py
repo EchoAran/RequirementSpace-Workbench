@@ -14,6 +14,9 @@ from backend.database.model import (
     flow_step_output_business_object_table,
     flow_step_next_table,
 )
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.flow.schemas import (
     FlowCreateRequest,
@@ -67,14 +70,15 @@ class FlowService:
         await session.flush()
 
         # 审计日志: 新增流程
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_flow",
             summary=f"手动新增流程: {flow.name}",
             target_type="flow",
-            target_id=str(flow.id),
-            payload={},
-        ))
+            target_id=flow.id,
+            diff={"name": flow.name, "description": flow.description, "confirmation_status": flow.confirmation_status},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -117,6 +121,13 @@ class FlowService:
 
         if flow is None:
             raise ValueError("flow_not_found")
+        
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "flow", flow, req.last_seen_updated_at)
+
+        old_name = flow.name
+        old_description = flow.description
+        old_feature_ids = [feat.id for feat in flow.features]
 
         if req.name is not None:
             flow.name = req.name
@@ -147,14 +158,24 @@ class FlowService:
         await session.flush()
 
         # 审计日志: 更新流程
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != flow.name:
+            diff["name"] = {"before": old_name, "after": flow.name}
+        if old_description != flow.description:
+            diff["description"] = {"before": old_description, "after": flow.description}
+        new_feature_ids = [feat.id for feat in flow.features]
+        if old_feature_ids != new_feature_ids:
+            diff["feature_ids"] = {"before": old_feature_ids, "after": new_feature_ids}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_flow",
             summary=f"手动更新流程: {flow.name}",
             target_type="flow",
-            target_id=str(flow.id),
-            payload={},
-        ))
+            target_id=flow.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -162,6 +183,9 @@ class FlowService:
             perception_kinds={"FLOW"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "flow", flow)
 
         return self._serialize_flow(flow)
 
@@ -187,14 +211,15 @@ class FlowService:
         await session.flush()
 
         # 审计日志: 删除流程
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_flow",
             summary=f"手动删除流程: {flow_name}",
             target_type="flow",
-            target_id=str(flow_id),
-            payload={},
-        ))
+            target_id=flow_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -250,14 +275,21 @@ class FlowService:
         await session.flush()
 
         # 审计日志: 新增流程步骤
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_flow_step",
             summary=f"手动新增流程步骤: {step.name}",
             target_type="flow_step",
-            target_id=str(step.id),
-            payload={},
-        ))
+            target_id=step.id,
+            diff={
+                "name": step.name,
+                "description": step.description,
+                "step_type": step.step_type,
+                "position": step.position,
+                "confirmation_status": step.confirmation_status
+            },
+        )
 
         # Verify and insert relationships directly into association tables to avoid async lazy loading on newly created Step model
         if req.actor_ids:
@@ -400,6 +432,17 @@ class FlowService:
         if step is None:
             raise ValueError("flow_step_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "flow_step", step, req.last_seen_updated_at)
+
+        old_name = step.name
+        old_description = step.description
+        old_step_type = step.step_type
+        old_actor_ids = [a.id for a in step.actors]
+        old_input_bo_ids = [b.id for b in step.input_business_objects]
+        old_output_bo_ids = [b.id for b in step.output_business_objects]
+        old_next_step_ids = [s.id for s in step.next_steps]
+
         # 轻量约束校验
         new_step_type = req.step_type if req.step_type is not None else step.step_type
         new_actor_ids = req.actor_ids if req.actor_ids is not None else [actor.id for actor in step.actors]
@@ -476,14 +519,35 @@ class FlowService:
         await session.flush()
 
         # 审计日志: 更新流程步骤
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != step.name:
+            diff["name"] = {"before": old_name, "after": step.name}
+        if old_description != step.description:
+            diff["description"] = {"before": old_description, "after": step.description}
+        if old_step_type != step.step_type:
+            diff["step_type"] = {"before": old_step_type, "after": step.step_type}
+        new_actor_ids = [a.id for a in step.actors]
+        if old_actor_ids != new_actor_ids:
+            diff["actor_ids"] = {"before": old_actor_ids, "after": new_actor_ids}
+        new_input_bo_ids = [b.id for b in step.input_business_objects]
+        if old_input_bo_ids != new_input_bo_ids:
+            diff["input_business_object_ids"] = {"before": old_input_bo_ids, "after": new_input_bo_ids}
+        new_output_bo_ids = [b.id for b in step.output_business_objects]
+        if old_output_bo_ids != new_output_bo_ids:
+            diff["output_business_object_ids"] = {"before": old_output_bo_ids, "after": new_output_bo_ids}
+        new_next_step_ids = [s.id for s in step.next_steps]
+        if old_next_step_ids != new_next_step_ids:
+            diff["next_step_ids"] = {"before": old_next_step_ids, "after": new_next_step_ids}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_flow_step",
             summary=f"手动更新流程步骤: {step.name}",
             target_type="flow_step",
-            target_id=str(step.id),
-            payload={},
-        ))
+            target_id=step.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -491,6 +555,9 @@ class FlowService:
             perception_kinds={"FLOW"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "flow_step", step)
 
         return self._serialize_flow_step(step)
 
@@ -559,14 +626,15 @@ class FlowService:
                     )
 
         # 审计日志: 删除流程步骤
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_flow_step",
             summary=f"手动删除流程步骤: {step_name}",
             target_type="flow_step",
-            target_id=str(step_id),
-            payload={},
-        ))
+            target_id=step_id,
+            diff={"status": "deleted"},
+        )
 
         # Re-index remaining flow step positions to prevent UniqueConstraint errors
         list_res = await session.execute(
@@ -676,14 +744,16 @@ class FlowService:
         await session.flush()
 
         # 5. Audit Log and Mark Perception Jobs Stale
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="reorder_flow_steps",
             summary=f"手动重排流程步骤，流程: {flow.name}",
             target_type="flow",
-            target_id=str(flow.id),
+            target_id=flow.id,
+            diff={"step_ids": step_ids},
             payload={"step_ids": step_ids},
-        ))
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,

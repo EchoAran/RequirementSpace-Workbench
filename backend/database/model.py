@@ -76,6 +76,11 @@ class UserModel(TimestampMixin, Base):
         back_populates="owner",
         cascade="all, delete-orphan",
     )
+    project_memberships: Mapped[list["ProjectMemberModel"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[ProjectMemberModel.user_id]",
+    )
 
 
 class UserLLMConfigModel(TimestampMixin, Base):
@@ -115,6 +120,69 @@ class AuthSessionModel(TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[UserModel] = relationship(back_populates="auth_sessions")
+
+
+class ProjectMemberRole(str, enum.Enum):
+    OWNER = "owner"
+    ADMIN = "admin"
+    EDITOR = "editor"
+    REVIEWER = "reviewer"
+    VIEWER = "viewer"
+
+
+class ProjectMemberStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INVITED = "invited"
+    REMOVED = "removed"
+
+
+class ProjectMemberModel(TimestampMixin, Base):
+    __tablename__ = "project_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(
+        String(50),
+        default=ProjectMemberRole.VIEWER.value,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default=ProjectMemberStatus.ACTIVE.value,
+        nullable=False,
+    )
+    invited_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    joined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Relationships
+    project: Mapped["ProjectModel"] = relationship(back_populates="members")
+    user: Mapped["UserModel"] = relationship(
+        back_populates="project_memberships",
+        foreign_keys=[user_id],
+    )
+    invited_by: Mapped["UserModel | None"] = relationship(
+        foreign_keys=[invited_by_user_id],
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_member_user"),
+    )
+
 
 class ConfirmationStatus(str, enum.Enum):
     """标记对象的确认状态：AI生成、待确认、已确认"""
@@ -236,6 +304,10 @@ class ProjectModel(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
     owner: Mapped[UserModel] = relationship(back_populates="projects")
+    members: Mapped[list["ProjectMemberModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     user_requirements: Mapped[str] = mapped_column(Text, default="", nullable=False)
     kano_status: Mapped[str] = mapped_column(String(50), default="missing", nullable=False)
     unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
@@ -367,6 +439,10 @@ class PerceptionJobModel(TimestampMixin, Base):
         nullable=True,
     )
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="perception_jobs")
 
@@ -985,6 +1061,11 @@ class ChoiceModel(TimestampMixin, Base):
 class AuditLogModel(TimestampMixin, Base):
     __tablename__ = "audit_logs"
 
+    __table_args__ = (
+        Index("idx_audit_project_created", "project_id", "created_at"),
+        Index("idx_audit_actor_created", "actor_user_id", "created_at"),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
@@ -997,7 +1078,22 @@ class AuditLogModel(TimestampMixin, Base):
     target_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    actor_type: Mapped[str] = mapped_column(
+        String(50),
+        default="system",
+        nullable=False,
+        server_default="system",
+    )
+    diff: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     project: Mapped[ProjectModel] = relationship(back_populates="audit_logs")
+    actor_user: Mapped[UserModel | None] = relationship()
 
 
 class PreviewShadowDraftModel(TimestampMixin, Base):
@@ -1182,3 +1278,165 @@ class AIAddMessageModel(TimestampMixin, Base):
     extra: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
 
     session: Mapped[AIAddSessionModel] = relationship(back_populates="messages")
+
+
+class CollaborationTaskModel(TimestampMixin, Base):
+    __tablename__ = "collaboration_tasks"
+    __table_args__ = (
+        Index("idx_collab_proj_status", "project_id", "status"),
+        Index("idx_collab_assignee_status", "assigned_to_user_id", "status"),
+        Index("idx_collab_creator_status", "created_by_user_id", "status"),
+        Index("idx_collab_target", "target_type", "target_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_type: Mapped[str] = mapped_column(String(50), nullable=False)  # confirm_node
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    targets: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)  # open, done, rejected, cancelled, superseded
+    priority: Mapped[str] = mapped_column(String(50), default="normal", server_default="normal", nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assigned_to_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    content_snapshot: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+    creator: Mapped["UserModel"] = relationship(foreign_keys=[created_by_user_id])
+    assignee: Mapped["UserModel"] = relationship(foreign_keys=[assigned_to_user_id])
+
+
+class ProjectLLMConfigModel(TimestampMixin, Base):
+    __tablename__ = "project_llm_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    api_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key_last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    updated_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+
+
+class NotificationModel(TimestampMixin, Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("idx_notification_recipient", "recipient_user_id"),
+        Index("idx_notification_unread", "recipient_user_id", "read_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recipient_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collaboration_tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    recipient: Mapped["UserModel"] = relationship(foreign_keys=[recipient_user_id])
+    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+    task: Mapped["CollaborationTaskModel | None"] = relationship(foreign_keys=[task_id])
+
+
+class TaskCommentModel(TimestampMixin, Base):
+    __tablename__ = "task_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("collaboration_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    task: Mapped["CollaborationTaskModel"] = relationship(foreign_keys=[task_id])
+    author: Mapped["UserModel"] = relationship(foreign_keys=[author_user_id])
+
+
+class TaskAssigneeModel(TimestampMixin, Base):
+    __tablename__ = "task_assignees"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("collaboration_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    assignee_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    task: Mapped["CollaborationTaskModel"] = relationship(foreign_keys=[task_id])
+    assignee: Mapped["UserModel"] = relationship(foreign_keys=[assignee_user_id])
+
+
+from sqlalchemy import event, text
+
+@event.listens_for(ProjectModel, 'after_insert')
+def auto_create_project_owner_member(mapper, connection, target):
+    res = connection.execute(
+        text("SELECT 1 FROM project_members WHERE project_id = :project_id AND user_id = :user_id"),
+        {"project_id": target.id, "user_id": target.owner_user_id}
+    )
+    if not res.fetchone():
+        now = beijing_now()
+        connection.execute(
+            text(
+                "INSERT INTO project_members (project_id, user_id, role, status, joined_at, created_at, updated_at) "
+                "VALUES (:project_id, :user_id, 'owner', 'active', :joined_at, :created_at, :updated_at)"
+            ),
+            {
+                "project_id": target.id,
+                "user_id": target.owner_user_id,
+                "joined_at": target.created_at or now,
+                "created_at": target.created_at or now,
+                "updated_at": target.updated_at or now,
+            }
+        )

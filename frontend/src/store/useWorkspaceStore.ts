@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import {
   RequirementSpace,
   ActorNode,
@@ -92,17 +92,17 @@ const mapResolutionDraftType = (draftType?: string): 'project' | 'actor' | 'feat
 };
 
 /**
- * 从 Finding 对象获取处理能力（优先使用后端返回的 capability）。
+ * 浠?Finding 瀵硅薄鑾峰彇澶勭悊鑳藉姏锛堜紭鍏堜娇鐢ㄥ悗绔繑鍥炵殑 capability锛夈€?
  *
- * 任何时候优先信任后端 capability 字段；缺失时使用安全回退（manual_action），
- * 不由前端 code 推导 AI capability。
+ * 浠讳綍鏃跺€欎紭鍏堜俊浠诲悗绔?capability 瀛楁锛涚己澶辨椂浣跨敤瀹夊叏鍥為€€锛坢anual_action锛夛紝
+ * 涓嶇敱鍓嶇 code 鎺ㄥ AI capability銆?
  */
 export function getFindingCapability(finding: { code: string; capability?: any; type?: string }): {
   kind: string;
   actionLabel: string;
   enabled: boolean;
 } {
-  // 1. 优先使用后端返回的 capability
+  // 1. 浼樺厛浣跨敤鍚庣杩斿洖鐨?capability
   if (finding.capability) {
     return {
       kind: finding.capability.kind || 'manual_action',
@@ -111,8 +111,8 @@ export function getFindingCapability(finding: { code: string; capability?: any; 
     };
   }
 
-  // 2. 无 capability 时（旧缓存/旧响应），使用安全回退
-  //    禁止由 code 推导 AI capability，统一降级为 manual_action
+  // 2. 鏃?capability 鏃讹紙鏃х紦瀛?鏃у搷搴旓級锛屼娇鐢ㄥ畨鍏ㄥ洖閫€
+  //    绂佹鐢?code 鎺ㄥ AI capability锛岀粺涓€闄嶇骇涓?manual_action
   console.warn(
     `getFindingCapability: Finding ${finding.code} (${finding.type}) missing backend capability. ` +
     'Using safe fallback manual_action. Check if backend returned capability field.',
@@ -131,51 +131,50 @@ export const getFriendlyErrorMessage = (rawError: string): string => {
     normalizedError.includes('timed out') ||
     normalizedError.includes('request timed out')
   ) {
-    return '⚠️ AI 服务响应超时，请稍后重试；如果持续出现，请检查模型服务连接状态。';
+    return 'AI 服务响应超时，请稍后重试；如果持续出现，请检查模型服务连接状态。';
   }
   if (
     normalizedError.includes('quota') ||
     normalizedError.includes('rate limit') ||
     normalizedError.includes('429')
   ) {
-    return '⚠️ AI 服务调用额度或频率已受限，请稍后重试或检查 API 配额。';
+    return 'AI 服务调用额度或频率受限，请稍后重试或检查 API 配额。';
   }
   if (
     normalizedError.includes('invalid api key') ||
     normalizedError.includes('unauthorized') ||
     normalizedError.includes('401')
   ) {
-    return '⚠️ AI 服务鉴权失败，请检查账户设置中的 API 密钥是否有效。';
+    return 'AI 服务鉴权失败，请检查账户设置中的 API 密钥是否有效。';
   }
 
   switch (rawError) {
     case 'llm_config_required':
-      return '⚠️ 您尚未配置大语言模型连接信息！请前往【账户设置】填写您的 API 密钥以启用 AI 推演。';
+      return '尚未配置大语言模型连接信息，请前往账户设置填写 API 密钥后再启用 AI 推演。';
     case 'server_llm_config_not_configured':
-      return '⚠️ 服务端尚未配置共享的 API 密钥与模型。如果您是普通用户，请联系管理员；如果您是管理员，请检查服务端的 .env 配置文件。';
+      return '服务端尚未配置共享 API 密钥与模型。普通用户请联系管理员，管理员请检查服务端 .env 配置。';
     case 'leaf_feature_without_actor':
-      return '⚠️ 当前选择的（或项目内）叶子功能节点未关联任何业务角色！请先在“核心能力特征树”中为该功能模块勾选绑定至少一个角色，然后再发起场景推演。';
+      return '当前叶子功能节点未关联业务角色，请先为该功能模块绑定至少一个角色，再发起场景推演。';
     case 'feature_is_not_leaf':
-      return '⚠️ 该功能节点不是叶子节点！AI 智能场景推演仅支持针对最底层的“叶子功能节点”进行，请先选择具体的叶子功能节点。';
+      return '该功能节点不是叶子节点。AI 场景推演仅支持最底层叶子功能节点。';
     case 'empty_leaf_features':
-      return '⚠️ 找不到任何可用于生成的叶子功能节点，请先在 What 页面的能力树中创建最底层的叶子功能。';
+      return '找不到可用于生成的叶子功能节点，请先在 What 页面创建最底层功能。';
     case 'project_not_found':
-      return '⚠️ 未找到对应的项目空间。';
+      return '未找到对应的项目空间。';
     case 'empty_actors':
-      return '⚠️ 项目中暂无业务角色！请先在 What 页的角色定义中创建至少一个角色。';
+      return '项目中暂无业务角色，请先在 What 页创建至少一个角色。';
     case 'empty_features':
-      return '⚠️ 项目中暂无功能节点！请先在 What 页的功能特征树中创建能力模块。';
+      return '项目中暂无功能节点，请先在 What 页创建能力模块。';
     case 'feature_not_found':
-      return '⚠️ 未找到指定的功能节点。';
+      return '未找到指定的功能节点。';
     case 'actor_not_found':
-      return '⚠️ 未找到指定的业务角色。';
+      return '未找到指定的业务角色。';
     case 'draft_not_found':
-      return '⚠️ AI 推演草稿已失效或过期，请尝试重新点击“AI 智能推演”。';
+      return 'AI 推演草稿已失效或过期，请重新发起 AI 推演。';
     default:
       return rawError;
   }
 };
-
 const getVisibleIssueStages = (unlockedStages?: string[]): Array<'what' | 'how' | 'scope'> => {
   const unlocked = new Set(unlockedStages || []);
   const stages: Array<'what' | 'how' | 'scope'> = ['what'];
@@ -297,7 +296,7 @@ export const normalizeRequirementSpace = (
         nodes[acid] = {
           ...ac,
           id: acid,
-          title: '验收标准',
+          title: '楠屾敹鏍囧噯',
           description: ac.criterionContent,
           status: getConfirmationStatus((ac as any).confirmationStatus),
           scopeStatus: 'in_scope'
@@ -366,8 +365,8 @@ export const normalizeRequirementSpace = (
         nodes[screenId] = {
           kind: 'screen',
           id: screenId,
-          title: `${bo.businessObjectName} 档案看板`,
-          description: `提供给 ${actor.actorName} 用于操作 ${bo.businessObjectName} 的控制台及细分账面明细。`,
+          title: `${bo.businessObjectName} 看板`,
+          description: `提供给 ${actor.actorName} 用于操作 ${bo.businessObjectName} 的控制台及明细页面。`,
           status: 'confirmed',
           scopeStatus: 'in_scope'
         };
@@ -837,6 +836,46 @@ export interface WorkspaceState {
   snoozeGateFinding: (action: string, finding: Finding) => void;
   startFindingSuggestion: (finding: Finding) => Promise<void>;
   executeGateFindingAction: (finding: Finding) => Promise<void>;
+
+  // Phase 3 & 4: Collaboration Tasks
+  tasks: any[];
+  userTasks: any[];
+  confirmationSummary: any | null;
+  loadProjectTasks: (projectId: string, params?: any) => Promise<void>;
+  loadMyTasks: (params?: any) => Promise<void>;
+  loadConfirmationSummary: (projectId: string) => Promise<any>;
+  createConfirmationTask: (
+    projectId: string,
+    payload: {
+      nodeKind: string;
+      nodeId: number;
+      assignedToUserId: number;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string;
+    }
+  ) => Promise<any>;
+  createBatchConfirmTask: (
+    projectId: string,
+    payload: {
+      targets: Array<{ nodeKind: string; nodeId: number }>;
+      assignedToUserId: number;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string;
+    }
+  ) => Promise<any>;
+  decideTask: (
+    projectId: string,
+    taskId: number,
+    payload: {
+      decision: string;
+      decisionNote?: string;
+    }
+  ) => Promise<any>;
+  cancelTask: (projectId: string, taskId: number) => Promise<any>;
 }
 
 const buildSelectedScopeObject = (feature: any) => {
@@ -924,7 +963,7 @@ const findSelectedObjectInIr = (
 
 const withWorkspaceId = (state: WorkspaceState): string => {
   if (!state.ir?.projectId) {
-    throw new Error('当前工作区尚未初始化');
+    throw new Error('褰撳墠宸ヤ綔鍖哄皻鏈垵濮嬪寲');
   }
   return state.ir.projectId;
 };
@@ -1322,6 +1361,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
   backendChoiceGroups: {},
   auditLogs: [],
+  tasks: [],
+  userTasks: [],
+  confirmationSummary: null,
   lastImpactPreview: null,
   isDiagnosing: false,
   nextSuggestions: {},
@@ -1418,7 +1460,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '打开已有项目失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '鎵撳紑宸叉湁椤圭洰澶辫触', isLoading: false });
     }
   },
 
@@ -1503,7 +1545,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }));
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '同步数据失败' });
+      set({ error: err instanceof Error ? err.message : '鍚屾鏁版嵁澶辫触' });
     }
   },
 
@@ -1520,7 +1562,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '解锁阶段失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '瑙ｉ攣闃舵澶辫触', isLoading: false });
     }
   },
 
@@ -1619,12 +1661,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (action) {
         await executeProcessorAction(action, { stage: finding.stage, findingCode: finding.code, target }, version);
       } else {
-        throw new Error(`下一步建议「${finding.code}」缺少可执行 action`);
+        throw new Error(`涓嬩竴姝ュ缓璁€?{finding.code}銆嶇己灏戝彲鎵ц action`);
       }
       set({ isLoading: false, isGenerating: false });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '启动建议失败', isLoading: false, isGenerating: false });
+      set({ error: err instanceof Error ? err.message : '鍚姩寤鸿澶辫触', isLoading: false, isGenerating: false });
     }
   },
 
@@ -1719,7 +1761,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false, lastActionMessage: '项目基本信息更新成功。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新项目失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '鏇存柊椤圭洰澶辫触', isLoading: false });
     }
   },
 
@@ -1738,7 +1780,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false, lastActionMessage: '项目已成功删除。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '删除项目失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '鍒犻櫎椤圭洰澶辫触', isLoading: false });
     }
   },
 
@@ -1750,9 +1792,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const mapped = (logs || []).map((log: any) => ({
         id: (log.id || 1).toString(),
         timestamp: log.createdAt || log.created_at || new Date().toISOString(),
-        actionType: log.actionType || log.action_type || '应用变更',
-        summary: log.summary || '应用建模变更',
-        targetIds: log.targetId || log.target_id ? [log.targetId || log.target_id] : []
+        actionType: log.actionType || log.action_type || '搴旂敤鍙樻洿',
+        summary: log.summary || '搴旂敤寤烘ā鍙樻洿',
+        targetIds: log.targetId || log.target_id ? [log.targetId || log.target_id] : [],
+        actorUserId: log.actorUserId !== undefined ? log.actorUserId : log.actor_user_id,
+        actorType: log.actorType !== undefined ? log.actorType : (log.actor_type || 'system'),
+        actorEmail: log.actorEmail !== undefined ? log.actorEmail : log.actor_email,
+        diff: log.diff !== undefined ? log.diff : null,
+        requestId: log.requestId !== undefined ? log.requestId : log.request_id,
+        taskId: log.taskId !== undefined ? log.taskId : log.task_id
       }));
       set({ auditLogs: mapped });
     } catch (err) {
@@ -1778,7 +1826,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   // Onboarding On-demand Creation
   startAIOnboarding: async (prompt, name, description) => {
     const version = get().sessionVersion;
-    set({ isGenerating: true, error: null, lastActionMessage: 'AI 正在生成项目初始草稿，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: 'AI 姝ｅ湪鐢熸垚椤圭洰鍒濆鑽夌锛岃绋嶅€?..' });
     try {
       const draft = await workspaceApi.createProjectCreationDraft({
         user_requirements: prompt,
@@ -1794,7 +1842,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '生成草稿失败', isGenerating: false });
+      set({ error: err instanceof Error ? err.message : '鐢熸垚鑽夌澶辫触', isGenerating: false });
     }
   },
 
@@ -1825,9 +1873,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认草稿失败';
+      const errMsg = err instanceof Error ? err.message : '纭鑽夌澶辫触';
       if (errMsg === 'draft_not_found') {
-        set({ activeDraft: null, activeDraftType: null, error: '草稿已失效，请重新生成项目草稿', isLoading: false });
+        set({ activeDraft: null, activeDraftType: null, error: '草稿已失效，请重新生成项目草稿。', isLoading: false });
       } else {
         set({ error: errMsg, isLoading: false });
       }
@@ -1838,16 +1886,16 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || !draft.draft_id) return;
-    set({ isGenerating: true, error: null, lastActionMessage: 'AI 正在根据您的意见重新生成项目草稿，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: 'AI 姝ｅ湪鏍规嵁鎮ㄧ殑鎰忚閲嶆柊鐢熸垚椤圭洰鑽夌锛岃绋嶅€?..' });
     try {
       const updated = await workspaceApi.regenerateProjectCreationDraft(draft.draft_id, feedback);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成项目草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚澶辫触';
       if (errMsg === 'draft_not_found') {
-        set({ activeDraft: null, activeDraftType: null, error: '草稿已失效，请重新配置并生成', isGenerating: false });
+        set({ activeDraft: null, activeDraftType: null, error: '鑽夌宸插け鏁堬紝璇烽噸鏂伴厤缃苟鐢熸垚', isGenerating: false });
       } else {
         set({ error: errMsg, isGenerating: false });
       }
@@ -1864,13 +1912,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, currentSystemView: 'home' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '舍弃草稿失败' });
+      set({ error: err instanceof Error ? err.message : '鑸嶅純鑽夌澶辫触' });
     }
   },
 
-  // ══════════════════════════════════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
   // Phase 2: Choice Group Onboarding Actions
-  // ══════════════════════════════════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   createOnboardingChoiceGroup: async (userRequirements, candidateCount) => {
     const version = get().sessionVersion;
@@ -1932,13 +1980,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         selectedObjectId: null,
         selectedNodeId: null,
         isLoading: false,
-        lastActionMessage: '项目已创建！祝您建模愉快！',
+        lastActionMessage: '项目已创建，祝您建模愉快！',
       });
       // Reload open groups since this one is resolved
       get().loadOpenOnboardingChoiceGroups();
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '采纳方案失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '閲囩撼鏂规澶辫触', isLoading: false });
     }
   },
 
@@ -1961,7 +2009,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           isGeneratingChoices: false,
           generatingChoiceGroupType: null,
           currentSystemView: 'onboarding',
-          lastActionMessage: '已关闭候选方案并返回创建页面',
+          lastActionMessage: '宸插叧闂€欓€夋柟妗堝苟杩斿洖鍒涘缓椤甸潰',
         });
         void get().loadOpenOnboardingChoiceGroups();
       }
@@ -1992,7 +2040,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     } catch (err) {
       if (get().sessionVersion !== version) return null;
       set({
-        error: err instanceof Error ? err.message : '稍后处理失败',
+        error: err instanceof Error ? err.message : '绋嶅悗澶勭悊澶辫触',
         isLoading: false,
       });
       return null;
@@ -2006,7 +2054,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       set({ openOnboardingChoiceGroups: groups });
     } catch {
-      // Silently fail — this is a background refresh
+      // Silently fail 鈥?this is a background refresh
     }
   },
 
@@ -2020,7 +2068,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
     } catch {
       if (get().sessionVersion !== version) return;
-      set({ error: '无法恢复项目草稿，它可能已失效' });
+      set({ error: '无法恢复项目草稿，它可能已失效。' });
     }
   },
 
@@ -2059,10 +2107,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  // ══════════════════════════════════════════════════════════
   // Phase 3: In-project Generation Choice Group
-  // ══════════════════════════════════════════════════════════
-
   createGenerationChoiceGroup: async (params) => {
     const {
       projectId,
@@ -2074,7 +2119,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       conflictAction,
       conflictArgs,
     } = params;
-    // 前端开关: VITE_GENERATION_CHOICE_GROUP_ENABLED=false 时跳过 choice group
     if (import.meta.env.VITE_GENERATION_CHOICE_GROUP_ENABLED === 'false') {
       set({ isGeneratingChoices: false, isGenerating: false });
       throw new Error('choice_group_disabled');
@@ -2117,6 +2161,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       choiceGroupGenerationProgress: buildInitialChoiceProgress(candidateCount),
       lastActionMessage: `正在生成 ${generationType} 候选方案...`,
     });
+
     try {
       if (conflictingGroup && forceReplace) {
         await workspaceApi.discardChoiceGroup(projectId, Number(conflictingGroup.id));
@@ -2127,7 +2172,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           activeChoiceGroup:
             state.activeChoiceGroup && String(state.activeChoiceGroup.id) === conflictingGroup.id
               ? null
-              : state.activeChoiceGroup,
+          : state.activeChoiceGroup,
         }));
       }
 
@@ -2195,7 +2240,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '创建空白项目失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '鍒涘缓绌虹櫧椤圭洰澶辫触', isLoading: false });
     }
   },
 
@@ -2224,7 +2269,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessage: '角色列表已生成。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '生成角色失败';
+      const errMsg = err instanceof Error ? err.message : '鐢熸垚瑙掕壊澶辫触';
       set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
@@ -2234,7 +2279,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见调整重构角色列表，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '姝ｅ湪鏍规嵁鎰忚璋冩暣閲嶆瀯瑙掕壊鍒楄〃锛岃绋嶅€?..' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2246,7 +2291,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成角色草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成角色草稿失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚瑙掕壊鑽夌澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2261,7 +2306,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳 AI 推荐角色并合入数据库，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼 AI 鎺ㄨ崘瑙掕壊骞跺悎鍏ユ暟鎹簱锛岃绋嶅€?..' });
     try {
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
@@ -2274,7 +2319,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '已合并 AI 生成的角色列表。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认角色失败';
+      const errMsg = err instanceof Error ? err.message : '纭瑙掕壊澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2319,7 +2364,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新调整功能分解树，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '姝ｅ湪鏍规嵁鎰忚閲嶆柊璋冩暣鍔熻兘鍒嗚В鏍戯紝璇风◢鍊?..' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2331,7 +2376,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成功能草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成功能草稿失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚鍔熻兘鑽夌澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2346,7 +2391,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳功能架构分解并合入正式功能特征树，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼鍔熻兘鏋舵瀯鍒嗚В骞跺悎鍏ユ寮忓姛鑳界壒寰佹爲锛岃绋嶅€?..' });
     try {
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
@@ -2359,7 +2404,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '已将功能叶子节点合并到功能树。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认功能失败';
+      const errMsg = err instanceof Error ? err.message : '纭鍔熻兘澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2394,7 +2439,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '生成流程失败';
+      const errMsg = err instanceof Error ? err.message : '鐢熸垚娴佺▼澶辫触';
       set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
@@ -2404,7 +2449,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新推演流程与业务对象，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '姝ｅ湪鏍规嵁鎰忚閲嶆柊鎺ㄦ紨娴佺▼涓庝笟鍔″璞★紝璇风◢鍊?..' });
     try {
       const updated = isSlotFillingDraft(draft)
         ? await workspaceApi.regenerateSlotFillingDraft(draftId, feedback)
@@ -2413,7 +2458,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: updated, activeDraftType: 'flow', isGenerating: false, lastActionMessage: '已根据意见重新生成流程与业务对象草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成流程失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚娴佺▼澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2429,7 +2474,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (!draft) return;
     const draftId = draft.draftId || draft.draft_id;
     if (!draftId) return;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳流程与业务对象草稿，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼娴佺▼涓庝笟鍔″璞¤崏绋匡紝璇风◢鍊?..' });
     try {
       if (isSlotFillingDraft(draft)) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
@@ -2442,7 +2487,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '业务流程与业务对象已应用。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认流程失败';
+      const errMsg = err instanceof Error ? err.message : '纭娴佺▼澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2482,18 +2527,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       // Fall through to draft fallback
     }
 
-    // ── Fallback / full / batch: old draft path ──────────────
+    // 鈹€鈹€ Fallback / full / batch: old draft path 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     set({ isGenerating: true, error: null, lastActionMessage: '正在生成场景草稿，请稍候...' });
     try {
       if (Array.isArray(featureIds)) {
         if (featureIds.length === 0) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId);
           if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功，已在上方提供完整场景列表。' });
         } else if (featureIds.length === 1) {
           const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds[0]);
           if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
+          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功，已在上方提供完整场景列表。' });
         } else {
           const drafts = await Promise.all(
             featureIds.map(fId => workspaceApi.createScenarioGenerationDraft(pId, fId))
@@ -2508,16 +2553,16 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
             scenarios: combinedScenarios,
             draft_id: draftIds[0],
           };
-          set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: `场景草稿生成成功！针对选定的 ${featureIds.length} 个功能模块共生成了 ${combinedScenarios.length} 个场景，已在上方提供预览。` });
+          set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: `场景草稿生成成功，针对选定的 ${featureIds.length} 个功能模块共生成了 ${combinedScenarios.length} 个场景，已在上方提供预览。` });
         }
       } else {
         const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds);
         if (get().sessionVersion !== version) return;
-        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功！已在上方提供完整场景列表，可查看其详细交互与成功标准。' });
+        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessage: '场景草稿生成成功，已在上方提供完整场景列表。' });
       }
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '生成成功场景失败';
+      const errMsg = err instanceof Error ? err.message : '生成场景失败';
       set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
@@ -2527,7 +2572,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据反馈重新演练场景详情，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '正在根据反馈重新生成场景详情，请稍候...' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2539,7 +2584,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成成功场景草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成场景失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚鍦烘櫙澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2553,7 +2598,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft) return;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳成功场景设计并正式落库，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼鎴愬姛鍦烘櫙璁捐骞舵寮忚惤搴擄紝璇风◢鍊?..' });
     try {
       if (draft.draftIds && draft.draftIds.length > 0) {
         await Promise.all(
@@ -2576,7 +2621,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '成功场景与关联验收标准已应用。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认场景失败';
+      const errMsg = err instanceof Error ? err.message : '纭鍦烘櫙澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2617,7 +2662,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '生成验收标准失败';
+      const errMsg = err instanceof Error ? err.message : '鐢熸垚楠屾敹鏍囧噯澶辫触';
       set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
@@ -2627,7 +2672,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据调整意见重新演练优化成功标准 (AC) 检查项，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '姝ｅ湪鏍规嵁璋冩暣鎰忚閲嶆柊婕旂粌浼樺寲鎴愬姛鏍囧噯 (AC) 妫€鏌ラ」锛岃绋嶅€?..' });
     try {
       let updated;
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
@@ -2639,7 +2684,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成验收标准草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成验收标准失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚楠屾敹鏍囧噯澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2654,7 +2699,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
     const draftId = draft.draftId || draft.draft_id;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳验收条件 (AC) 并正式关联落库，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼楠屾敹鏉′欢 (AC) 骞舵寮忓叧鑱旇惤搴擄紝璇风◢鍊?..' });
     try {
       if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
@@ -2664,10 +2709,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '成功标准已精细化补充并落库。' });
+      set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: '成功标准已补充并落库。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认失败';
+      const errMsg = err instanceof Error ? err.message : '纭澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2702,7 +2747,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '生成范围分析失败';
+      const errMsg = err instanceof Error ? err.message : '鐢熸垚鑼冨洿鍒嗘瀽澶辫触';
       set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
     }
   },
@@ -2711,14 +2756,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || !draft.draft_id) return;
-    set({ isGenerating: true, error: null, lastActionMessage: '正在根据意见重新评估功能卡片优先级与 Kano 归属，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: '姝ｅ湪鏍规嵁鎰忚閲嶆柊璇勪及鍔熻兘鍗＄墖浼樺厛绾т笌 Kano 褰掑睘锛岃绋嶅€?..' });
     try {
       const updated = await workspaceApi.regenerateScopeGenerationDraft(draft.draft_id, feedback);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: updated, isGenerating: false, lastActionMessage: '已根据意见重新生成范围分析草稿。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重新生成范围分析失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶆柊鐢熸垚鑼冨洿鍒嗘瀽澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isGenerating: false });
@@ -2732,7 +2777,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || !draft.draft_id) return;
-    set({ isLoading: true, error: null, lastActionMessage: '💾 正在确认采纳发布计划安排并落库保存，请稍候...' });
+    set({ isLoading: true, error: null, lastActionMessage: '馃捑 姝ｅ湪纭閲囩撼鍙戝竷璁″垝瀹夋帓骞惰惤搴撲繚瀛橈紝璇风◢鍊?..' });
     try {
       await workspaceApi.confirmScopeGenerationDraft(draft.draft_id);
       if (get().sessionVersion !== version) return;
@@ -2741,7 +2786,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, isLoading: false, lastActionMessage: 'Kano 功能发布计划与正反方观点已确认。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '确认失败';
+      const errMsg = err instanceof Error ? err.message : '纭澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       if (errMsg === 'draft_not_found') {
         set({ activeDraft: null, activeDraftType: null, error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
@@ -2773,7 +2818,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeDraft: null, activeDraftType: null, lastActionMessage: '已舍弃未保存的 AI 推荐草案。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '取消草稿失败' });
+      set({ error: err instanceof Error ? err.message : '鍙栨秷鑽夌澶辫触' });
     }
   },
 
@@ -2781,7 +2826,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const ir = get().ir;
     if (!ir || !ir.projectId) return;
-    set({ isLoading: true, error: null, lastActionMessage: '正在跳过 Kano 分析并解锁导航...' });
+    set({ isLoading: true, error: null, lastActionMessage: '姝ｅ湪璺宠繃 Kano 鍒嗘瀽骞惰В閿佸鑸?..' });
     try {
       await workspaceApi.skipKano(ir.projectId);
       if (get().sessionVersion !== version) return;
@@ -2790,7 +2835,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false, lastActionMessage: '已跳过 Kano 分析，阶段导航已解锁。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '跳过 Kano 分析失败';
+      const errMsg = err instanceof Error ? err.message : '璺宠繃 Kano 鍒嗘瀽澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       set({ error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
     }
@@ -2800,7 +2845,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const ir = get().ir;
     if (!ir || !ir.projectId) return;
-    set({ isLoading: true, error: null, lastActionMessage: '正在重置 Kano 分析，清理 AI 建议...' });
+    set({ isLoading: true, error: null, lastActionMessage: '姝ｅ湪閲嶇疆 Kano 鍒嗘瀽锛屾竻鐞?AI 寤鸿...' });
     try {
       await workspaceApi.resetKano(ir.projectId);
       if (get().sessionVersion !== version) return;
@@ -2809,7 +2854,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false, lastActionMessage: 'Kano 分析已重置，手工交付决策已保留。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : '重置 Kano 分析失败';
+      const errMsg = err instanceof Error ? err.message : '閲嶇疆 Kano 鍒嗘瀽澶辫触';
       const friendlyMsg = getFriendlyErrorMessage(errMsg);
       set({ error: errMsg, lastActionMessage: friendlyMsg, isLoading: false });
     }
@@ -2828,7 +2873,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已添加参与者角色：${name}` });
+      set({ lastActionMessage: `宸叉坊鍔犲弬涓庤€呰鑹诧細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '添加参与者角色失败' });
@@ -2838,18 +2883,24 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   updateActor: async (actorId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    const actor = (get().ir?.actors || []).find((x: any) => x.actorId === actorId);
     try {
       await workspaceApi.updateActor(pId, actorId, {
         name: updates.actorName,
-        description: updates.actorDescription
+        description: updates.actorDescription,
+        last_seen_updated_at: actor?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '参与者角色属性更新成功。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新参与者角色属性失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该参与者已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '更新参与者角色属性失败' });
+      }
     }
   },
 
@@ -2895,10 +2946,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已创建功能节点：${name}` });
+      set({ lastActionMessage: `宸插垱寤哄姛鑳借妭鐐癸細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '创建功能节点失败' });
+      set({ error: err instanceof Error ? err.message : '鍒涘缓鍔熻兘鑺傜偣澶辫触' });
     }
   },
 
@@ -2910,15 +2961,20 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       await workspaceApi.updateFeature(pId, featureId, {
         name: updates.featureName !== undefined ? updates.featureName : original?.featureName,
         description: updates.featureDescription !== undefined ? updates.featureDescription : original?.featureDescription,
-        actor_ids: updates.actorIds !== undefined ? updates.actorIds : original?.actorIds
+        actor_ids: updates.actorIds !== undefined ? updates.actorIds : original?.actorIds,
+        last_seen_updated_at: original?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '功能节点属性更新成功。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新功能节点属性失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该功能节点已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '更新功能节点属性失败' });
+      }
     }
   },
 
@@ -2940,7 +2996,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '删除功能节点失败' });
+      set({ error: err instanceof Error ? err.message : '鍒犻櫎鍔熻兘鑺傜偣澶辫触' });
     }
   },
 
@@ -2958,28 +3014,41 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已为功能添加新场景：${name}` });
+      set({ lastActionMessage: `宸蹭负鍔熻兘娣诲姞鏂板満鏅細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '添加场景失败' });
+      set({ error: err instanceof Error ? err.message : '娣诲姞鍦烘櫙澶辫触' });
     }
   },
 
   updateScenario: async (featureId, scenarioId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    let originalScenario: any = null;
+    for (const f of (get().ir?.features || [])) {
+      const found = (f.scenarios || []).find((s: any) => s.scenarioId === scenarioId);
+      if (found) {
+        originalScenario = found;
+        break;
+      }
+    }
     try {
       await workspaceApi.updateScenario(pId, scenarioId, {
         name: updates.scenarioName,
-        content: updates.scenarioContent
+        content: updates.scenarioContent,
+        last_seen_updated_at: originalScenario?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '成功场景已更新。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新场景失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该场景/用户故事已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '鏇存柊鍦烘櫙澶辫触' });
+      }
     }
   },
 
@@ -3001,7 +3070,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '删除场景失败' });
+      set({ error: err instanceof Error ? err.message : '鍒犻櫎鍦烘櫙澶辫触' });
     }
   },
 
@@ -3017,22 +3086,39 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ lastActionMessage: '成功验收标准添加成功！' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '添加验收标准失败' });
+      set({ error: err instanceof Error ? err.message : '娣诲姞楠屾敹鏍囧噯澶辫触' });
     }
   },
 
   updateAcceptanceCriterion: async (featureId, scenarioId, criterionId, content) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    let originalAc: any = null;
+    for (const f of (get().ir?.features || [])) {
+      for (const s of (f.scenarios || [])) {
+        const found = (s.acceptanceCriteria || []).find((a: any) => a.criterionId === criterionId);
+        if (found) {
+          originalAc = found;
+          break;
+        }
+      }
+    }
     try {
-      await workspaceApi.updateAcceptanceCriterion(pId, scenarioId, criterionId, { content });
+      await workspaceApi.updateAcceptanceCriterion(pId, scenarioId, criterionId, {
+        content,
+        last_seen_updated_at: originalAc?.updatedAt
+      });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '验收标准已修改。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新验收标准失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该验收标准已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '鏇存柊楠屾敹鏍囧噯澶辫触' });
+      }
     }
   },
 
@@ -3054,7 +3140,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '删除验收标准失败' });
+      set({ error: err instanceof Error ? err.message : '鍒犻櫎楠屾敹鏍囧噯澶辫触' });
     }
   },
 
@@ -3067,25 +3153,34 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已创建业务对象：${name}` });
+      set({ lastActionMessage: `宸插垱寤轰笟鍔″璞★細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '创建业务对象失败' });
+      set({ error: err instanceof Error ? err.message : '鍒涘缓涓氬姟瀵硅薄澶辫触' });
     }
   },
 
   updateBusinessObject: async (id, name, description) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    const bo = (get().ir?.businessObjects || []).find((x: any) => x.businessObjectId === id);
     try {
-      await workspaceApi.updateBusinessObject(pId, id, { name, description });
+      await workspaceApi.updateBusinessObject(pId, id, {
+        name,
+        description,
+        last_seen_updated_at: bo?.updatedAt
+      });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '业务对象定义已更新。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新业务对象定义失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该业务对象已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '鏇存柊涓氬姟瀵硅薄瀹氫箟澶辫触' });
+      }
     }
   },
 
@@ -3101,7 +3196,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       )
     );
     if (isReferenced) {
-      set({ boDeletionError: '无法删除该数据实体：因为某些流程步骤（How阶段）正将其作为输入或输出实体引用。请先在相应的步骤面板中取消勾选关联。' });
+      set({ boDeletionError: '无法删除该数据实体：某些流程步骤正在将其作为输入或输出实体引用。请先取消关联。' });
       return;
     }
 
@@ -3115,7 +3210,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         return {
           selectedObjectId: isSelected ? null : s.selectedObjectId,
           selectedObject: isSelected ? null : s.selectedObject,
-          lastActionMessage: '业务数据对象已被完全抹除。',
+          lastActionMessage: '业务数据对象已被完全移除。',
           boDeletionError: null
         };
       });
@@ -3123,9 +3218,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       const errMsg = err instanceof Error ? err.message : '';
       if (errMsg.includes('business_object_in_use')) {
-        set({ boDeletionError: '无法删除该数据实体：该数据实体正被某些流程步骤（How阶段）作为输入或输出对象引用。请先在相应的步骤面板中取消勾选关联，再进行删除。' });
+        set({ boDeletionError: '无法删除该数据实体：该数据实体正被某些流程步骤作为输入或输出对象引用。请先取消关联后再删除。' });
       } else {
-        set({ error: errMsg || '删除业务数据对象失败' });
+        set({ error: errMsg || '鍒犻櫎涓氬姟鏁版嵁瀵硅薄澶辫触' });
       }
     }
   },
@@ -3143,7 +3238,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已为对象添加字段属性：${name}` });
+      set({ lastActionMessage: `宸蹭负瀵硅薄娣诲姞瀛楁灞炴€э細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '添加字段属性失败' });
@@ -3153,20 +3248,33 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   updateBusinessObjectAttribute: async (boId, attrId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    let originalAttr: any = null;
+    for (const bo of (get().ir?.businessObjects || [])) {
+      const found = (bo.businessObjectAttributes || []).find((a: any) => a.businessObjectAttributeId === attrId);
+      if (found) {
+        originalAttr = found;
+        break;
+      }
+    }
     try {
       await workspaceApi.updateBusinessObjectAttribute(pId, boId, attrId, {
         name: updates.businessObjectAttributeName,
         description: updates.businessObjectAttributeDescription,
         data_type: updates.businessObjectAttributeType,
-        example: updates.businessObjectAttributeExample
+        example: updates.businessObjectAttributeExample,
+        last_seen_updated_at: originalAttr?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '字段属性详情修改完毕。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新字段属性详情失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该字段属性已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '更新字段属性详情失败' });
+      }
     }
   },
 
@@ -3205,29 +3313,35 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `已组建业务流程：${name}` });
+      set({ lastActionMessage: `宸茬粍寤轰笟鍔℃祦绋嬶細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '组建业务流程失败' });
+      set({ error: err instanceof Error ? err.message : '缁勫缓涓氬姟娴佺▼澶辫触' });
     }
   },
 
   updateFlow: async (flowId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    const flow = (get().ir?.flows || []).find((x: any) => x.flowId === flowId);
     try {
       await workspaceApi.updateFlow(pId, flowId, {
         name: updates.flowName,
         description: updates.flowDescription,
-        feature_ids: updates.featureIds
+        feature_ids: updates.featureIds,
+        last_seen_updated_at: flow?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '流程信息已更新。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新流程信息失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该流程已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '鏇存柊娴佺▼淇℃伅澶辫触' });
+      }
     }
   },
 
@@ -3244,12 +3358,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         return {
           selectedObjectId: isSelected ? null : s.selectedObjectId,
           selectedObject: isSelected ? null : s.selectedObject,
-          lastActionMessage: '流程已被连根剔除。'
+          lastActionMessage: '流程已删除。'
         };
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '删除流程失败' });
+      set({ error: err instanceof Error ? err.message : '鍒犻櫎娴佺▼澶辫触' });
     }
   },
 
@@ -3285,13 +3399,21 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ lastActionMessage: `流程步骤 "${step.stepName}" 已载入。` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '载入流程步骤失败' });
+      set({ error: err instanceof Error ? err.message : '杞藉叆娴佺▼姝ラ澶辫触' });
     }
   },
 
   updateFlowStep: async (flowId, stepId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    let originalStep: any = null;
+    for (const flow of (get().ir?.flows || [])) {
+      const found = (flow.flowSteps || []).find((s: any) => s.stepId === stepId);
+      if (found) {
+        originalStep = found;
+        break;
+      }
+    }
     try {
       await workspaceApi.updateFlowStep(pId, flowId, stepId, {
         name: updates.stepName,
@@ -3300,15 +3422,20 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         actor_ids: updates.actorIds,
         input_business_object_ids: updates.inputBusinessObjectIds,
         output_business_object_ids: updates.outputBusinessObjectIds,
-        next_step_ids: updates.nextStepIds
+        next_step_ids: updates.nextStepIds,
+        last_seen_updated_at: originalStep?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '流程步骤细项修改成功。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '修改流程步骤细项失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该流程步骤已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '淇敼娴佺▼姝ラ缁嗛」澶辫触' });
+      }
     }
   },
 
@@ -3330,7 +3457,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '移除步骤失败' });
+      set({ error: err instanceof Error ? err.message : '绉婚櫎姝ラ澶辫触' });
     }
   },
 
@@ -3345,7 +3472,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ lastActionMessage: '线性步骤排序及拓扑链路同步成功。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '重新排列步骤顺序失败' });
+      set({ error: err instanceof Error ? err.message : '閲嶆柊鎺掑垪姝ラ椤哄簭澶辫触' });
     }
   },
 
@@ -3353,20 +3480,26 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   updateScope: async (featureId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
+    const feature = (get().ir?.features || []).find((x: any) => x.featureId === featureId);
     try {
       await workspaceApi.updateScope(pId, featureId, {
         status: updates.scopeStatus,
         reason: updates.reason,
         positive_summary: updates.positiveSummary,
-        negative_summary: updates.negativeSummary
+        negative_summary: updates.negativeSummary,
+        last_seen_updated_at: feature?.scope?.updatedAt
       });
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       set({ lastActionMessage: '功能优先级发布范围及理由更新成功。' });
-    } catch (err) {
+    } catch (err: any) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '更新功能优先级发布范围及理由失败' });
+      if (err?.status === 409) {
+        set({ error: '更新失败：检测到并行的冲突编辑。该范围划分已被其他成员修改，请刷新页面以加载最新版本。' });
+      } else {
+        set({ error: err instanceof Error ? err.message : '鏇存柊鍔熻兘浼樺厛绾у彂甯冭寖鍥村強鐞嗙敱澶辫触' });
+      }
     }
   },
 
@@ -3417,18 +3550,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const slot = get().ir?.perceptionSlot;
     if (!slot || slot.perceptionSlotId !== numId) return;
 
-    set({ isGenerating: true, error: null, lastActionMessage: 'AI 正在展开感知槽并生成补全草稿，请稍候...' });
+    set({ isGenerating: true, error: null, lastActionMessage: 'AI 姝ｅ湪灞曞紑鎰熺煡妲藉苟鐢熸垚琛ュ叏鑽夌锛岃绋嶅€?..' });
     try {
       let fillerKind: 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | null = null;
       const kindText = slot.perceptionKind ? slot.perceptionKind.toUpperCase() : '';
-      if (kindText === '角色结点' || kindText === 'ACTOR') fillerKind = 'actor';
-      else if (kindText === '功能模块结点' || kindText === '功能叶子结点' || kindText === 'FEATURE') fillerKind = 'feature';
-      else if (kindText === '流程主结点' || kindText === 'FLOW') fillerKind = 'flow';
-      else if (kindText === '场景结点' || kindText === 'SCENARIO') fillerKind = 'scenario';
-      else if (kindText === '成功标准结点' || kindText === 'ACCEPTANCE_CRITERION' || kindText === 'AC' || kindText === 'ac') fillerKind = 'ac';
+      if (kindText === '瑙掕壊缁撶偣' || kindText === 'ACTOR') fillerKind = 'actor';
+      else if (kindText === '鍔熻兘妯″潡缁撶偣' || kindText === '鍔熻兘鍙跺瓙缁撶偣' || kindText === 'FEATURE') fillerKind = 'feature';
+      else if (kindText === '流程主节点' || kindText === 'FLOW') fillerKind = 'flow';
+      else if (kindText === '鍦烘櫙缁撶偣' || kindText === 'SCENARIO') fillerKind = 'scenario';
+      else if (kindText === '鎴愬姛鏍囧噯缁撶偣' || kindText === 'ACCEPTANCE_CRITERION' || kindText === 'AC' || kindText === 'ac') fillerKind = 'ac';
 
       if (!fillerKind) {
-        throw new Error('未知的槽感知类型，无法展开。');
+        throw new Error('未知的感知类型，无法展开。');
       }
 
       const draft = await workspaceApi.createSlotFillingDraft(projectId, numId, fillerKind);
@@ -3528,7 +3661,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ selectedObject: null, selectedObjectId: null, isLoading: false, lastActionMessage: '已拒绝该设计决策提案。' });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '拒绝决策失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '鎷掔粷鍐崇瓥澶辫触', isLoading: false });
     }
   },
 
@@ -3559,7 +3692,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (!projectId) return null;
     const issue = get().findingsByView.issues.find((finding) => finding.findingId === issueId);
     if (!issue) {
-      set({ error: '找不到对应问题，请重新诊断后再试。', lastActionMessage: '找不到对应问题，请重新诊断后再试。', isLoading: false });
+        set({ error: '找不到对应问题，请重新诊断后再试。', lastActionMessage: '找不到对应问题，请重新诊断后再试。', isLoading: false });
       return null;
     }
 
@@ -3583,7 +3716,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return slot ? slot.perceptionSlotId.toString() : null;
     } catch (err) {
       if (get().sessionVersion !== version) return null;
-      const msg = (err as any)?.detail || (err instanceof Error ? err.message : '处理 Issue 失败');
+      const msg = (err as any)?.detail || (err instanceof Error ? err.message : '澶勭悊 Issue 澶辫触');
       set({ error: msg, lastActionMessage: msg, isLoading: false });
       return null;
     }
@@ -3599,7 +3732,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
       if (res && (res.status === 'stale' || res.status === 'invalid')) {
-        const msg = res.status === 'stale' ? '修复草稿已过期，请重新生成。' : '修复草稿已失效，数据已变化。';
+          const msg = res.status === 'stale' ? '修复草稿已过期，请重新生成。' : '修复草稿已失效，数据已变化。';
         set({ isLoading: false, lastActionMessage: msg, error: msg });
         return res;
       }
@@ -3616,7 +3749,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return res;
     } catch (err) {
       if (get().sessionVersion !== version) return null;
-      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '应用修复失败');
+      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '搴旂敤淇澶辫触');
       set({ error: msg, lastActionMessage: msg, isLoading: false });
       return null;
     }
@@ -3634,7 +3767,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false, lastActionMessage: '已丢弃修复草稿。', activeDraft: null, activeDraftType: null });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '丢弃修复失败');
+      const msg = (err as any)?.response?.data?.detail || (err instanceof Error ? err.message : '涓㈠純淇澶辫触');
       set({ error: msg, lastActionMessage: msg, isLoading: false });
     }
   },
@@ -3656,7 +3789,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '重新生成修复失败', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '閲嶆柊鐢熸垚淇澶辫触', isLoading: false });
     }
   },
   setNodeStatus: async (nodeId: string, nodeKind: string, status: NodeStatus) => {
@@ -3698,7 +3831,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           ...s.nextSuggestions,
           [stage]: res.suggestion
         },
-        lastActionMessage: `AI 智能分析中：“${res.suggestion?.title || '正在分析中'}”...`
+        lastActionMessage: `AI 智能分析中：${res.suggestion?.title || '正在分析中'}...`
       }));
 
       // If the suggestion is in 'running' state, poll until it's finished or failed
@@ -3735,14 +3868,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({
         isDiagnosing: false,
         lastActionMessage: res.suggestion 
-          ? `诊断完成！最新建议：“${res.suggestion.title}”。` 
+          ? `诊断完成！最新建议：${res.suggestion.title}`
           : '诊断完成！当前模块设计非常规范，暂无建议。'
       });
       await get().refreshWorkspace();
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({
-        error: err instanceof Error ? err.message : '诊断失败',
+        error: err instanceof Error ? err.message : '璇婃柇澶辫触',
         isDiagnosing: false
       });
     }
@@ -3769,13 +3902,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       
       set({
         isLoading: false,
-        lastActionMessage: '📝 AI 智能自动建模成功：已根据您的建模指令精炼并更新了项目原始用户需求。您可在各 Tab 重新发起 AI 推演或补全草稿。'
+        lastActionMessage: 'AI 智能自动建模成功：已根据您的建模指令精炼并更新了项目原始用户需求。您可在各 Tab 重新发起 AI 推演或补全草稿。'
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({
         isLoading: false,
-        lastActionMessage: `⚠️ 建模失败: ${err instanceof Error ? err.message : '未知异常'}`
+        lastActionMessage: `鈿狅笍 寤烘ā澶辫触: ${err instanceof Error ? err.message : '鏈煡寮傚父'}`
       });
     }
   },
@@ -3812,12 +3945,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (!targetFeatureId) {
         set({
           isLoading: false,
-          lastActionMessage: '⚠️ 链路联动分析目前支持针对“功能模块”进行分析，请在左侧或 What 页选中一个功能模块节点。'
+          lastActionMessage: '链路联动分析目前支持针对“功能模块”进行分析，请在左侧或 What 页面选中一个功能模块节点。'
         });
         return;
       }
 
-      const res = await workspaceApi.impactPreview(projectId, targetFeatureId, '暂缓');
+      const res = await workspaceApi.impactPreview(projectId, targetFeatureId, '鏆傜紦');
       if (get().sessionVersion !== version) return;
       
       const scenarioCount = res.affectedScenarios?.length || 0;
@@ -3826,13 +3959,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
       set({
         isLoading: false,
-        lastActionMessage: `📊 【${featureName}】变更影响评估：关联受影响场景 ${scenarioCount} 个，业务流 ${flowCount} 个，数据实体 ${boCount} 个。详细分析可在 Scope 页面进行决策评估。`
+        lastActionMessage: `【${featureName}】变更影响评估：关联受影响场景 ${scenarioCount} 个，业务流 ${flowCount} 个，数据实体 ${boCount} 个。详细分析可在 Scope 页面进行决策评估。`
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({
         isLoading: false,
-        lastActionMessage: `⚠️ 评估失败: ${err instanceof Error ? err.message : '未知异常'}`
+        lastActionMessage: `鈿狅笍 璇勪及澶辫触: ${err instanceof Error ? err.message : '鏈煡寮傚父'}`
       });
     }
   },
@@ -4014,6 +4147,113 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return res;
     } catch (err) {
       if (get().sessionVersion !== version) return null;
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  loadProjectTasks: async (projectId: string, params?: any) => {
+    const version = get().sessionVersion;
+    try {
+      const res = await workspaceApi.listProjectTasks(projectId, params);
+      if (get().sessionVersion !== version) return;
+      set({ tasks: res });
+    } catch (err) {
+      console.error('Failed to load project tasks:', err);
+    }
+  },
+
+  loadMyTasks: async (params?: any) => {
+    const version = get().sessionVersion;
+    try {
+      const res = await workspaceApi.listMyTasks(params);
+      if (get().sessionVersion !== version) return;
+      set({ userTasks: res });
+    } catch (err) {
+      console.error('Failed to load user tasks:', err);
+    }
+  },
+
+  loadConfirmationSummary: async (projectId: string) => {
+    const version = get().sessionVersion;
+    try {
+      const res = await workspaceApi.getProjectConfirmationSummary(projectId);
+      if (get().sessionVersion !== version) return res;
+      set({ confirmationSummary: res });
+      return res;
+    } catch (err) {
+      console.error('Failed to load project confirmation summary:', err);
+      throw err;
+    }
+  },
+
+  createConfirmationTask: async (projectId: string, payload: any) => {
+    const version = get().sessionVersion;
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.createConfirmationTask(projectId, payload);
+      if (get().sessionVersion !== version) return res;
+      set({ isLoading: false });
+      await get().loadProjectTasks(projectId);
+      await get().loadConfirmationSummary(projectId);
+      await get().refreshWorkspace();
+      return res;
+    } catch (err) {
+      if (get().sessionVersion !== version) throw err;
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  createBatchConfirmTask: async (projectId: string, payload: any) => {
+    const version = get().sessionVersion;
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.createBatchConfirmTask(projectId, payload);
+      if (get().sessionVersion !== version) return res;
+      set({ isLoading: false });
+      await get().loadProjectTasks(projectId);
+      await get().loadConfirmationSummary(projectId);
+      await get().refreshWorkspace();
+      return res;
+    } catch (err) {
+      if (get().sessionVersion !== version) throw err;
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  decideTask: async (projectId: string, taskId: number, payload: any) => {
+    const version = get().sessionVersion;
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.decideTask(projectId, taskId, payload);
+      if (get().sessionVersion !== version) return res;
+      set({ isLoading: false });
+      await get().loadProjectTasks(projectId);
+      await get().loadConfirmationSummary(projectId);
+      await get().refreshWorkspace();
+      return res;
+    } catch (err) {
+      if (get().sessionVersion !== version) throw err;
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  cancelTask: async (projectId: string, taskId: number) => {
+    const version = get().sessionVersion;
+    set({ isLoading: true });
+    try {
+      const res = await workspaceApi.cancelTask(projectId, taskId);
+      if (get().sessionVersion !== version) return res;
+      set({ isLoading: false });
+      await get().loadProjectTasks(projectId);
+      await get().loadConfirmationSummary(projectId);
+      await get().refreshWorkspace();
+      return res;
+    } catch (err) {
+      if (get().sessionVersion !== version) throw err;
       set({ isLoading: false });
       throw err;
     }

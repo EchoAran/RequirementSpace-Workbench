@@ -79,8 +79,13 @@ from backend.core.issue_capabilities import (
     IssueCapabilityKind,
     get_issue_capability,
 )
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import (
+    ISSUE_REPAIR_DRAFT_CREATED,
+    ISSUE_REPAIR_FAILED,
+)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Map stage names to detector instances
@@ -269,6 +274,19 @@ class IssueRepairService:
                 resolution=resolution,
                 session=session,
             )
+            log_event(
+                logger,
+                logging.INFO,
+                "domain",
+                ISSUE_REPAIR_DRAFT_CREATED,
+                "Issue repair draft created",
+                project_id=project_id,
+                issue_code=issue_code,
+                stage=resolved_stage,
+                target_type=issue_target.targetType if issue_target else None,
+                target_id=issue_target.targetId if issue_target else None,
+                draft_id=getattr(resolution, "draftId", None),
+            )
 
         # 12. Build unified response dict
         result = resolution.to_dict()
@@ -297,12 +315,29 @@ class IssueRepairService:
             IssueRepairDraftService,
         )
 
-        result: RepairResult = await ai_solver.solve(
-            project_id=project_id,
-            issue_code=issue_code,
-            target=target,
-            session=session,
-        )
+        try:
+            result: RepairResult = await ai_solver.solve(
+                project_id=project_id,
+                issue_code=issue_code,
+                target=target,
+                session=session,
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "domain",
+                ISSUE_REPAIR_FAILED,
+                "Issue repair failed",
+                project_id=project_id,
+                issue_code=issue_code,
+                stage=stage,
+                target_type=issue_target.targetType if issue_target else None,
+                target_id=issue_target.targetId if issue_target else None,
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc)),
+            )
+            raise
 
         # P4: fallback_to_registry — solver wants generation_draft path
         if result.fallback_to_registry:
@@ -316,6 +351,19 @@ class IssueRepairService:
             if resolution.resolutionType == "generation_draft":
                 resolution = await self._draft_factory.create_draft(
                     project_id=project_id, resolution=resolution, session=session,
+                )
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "domain",
+                    ISSUE_REPAIR_DRAFT_CREATED,
+                    "Issue repair draft created",
+                    project_id=project_id,
+                    issue_code=issue_code,
+                    stage=stage,
+                    target_type=issue_target.targetType if issue_target else None,
+                    target_id=issue_target.targetId if issue_target else None,
+                    draft_id=getattr(resolution, "draftId", None),
                 )
             response = resolution.to_dict()
             response["project_id"] = project_id
@@ -396,6 +444,19 @@ class IssueRepairService:
             issue_fingerprint=issue_fp,
             context_hash=context_hash,
             session=session,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            ISSUE_REPAIR_DRAFT_CREATED,
+            "Issue repair draft created",
+            project_id=project_id,
+            issue_code=issue_code,
+            stage=stage,
+            target_type=issue_target.targetType if issue_target else None,
+            target_id=issue_target.targetId if issue_target else None,
+            draft_id=draft.get("draft_id"),
         )
 
         return {

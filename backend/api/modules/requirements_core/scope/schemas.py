@@ -1,11 +1,14 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 # CRUD Schemas
-class ScopeUpdateRequest(BaseModel):
+class ScopeUpdateRequest(CamelModel):
     status: str = Field(..., pattern="^(current|postponed|exclude)$")
     reason: str = Field(default="")
     positive_summary: str | None = Field(default=None)
     negative_summary: str | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class ScopeResponse(BaseModel):

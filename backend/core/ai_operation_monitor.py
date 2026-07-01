@@ -7,7 +7,14 @@ import time
 from contextlib import contextmanager
 from typing import Iterator
 
-logger = logging.getLogger("backend.ai_operations")
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import (
+    AI_OPERATION_COMPLETED,
+    AI_OPERATION_FAILED,
+    AI_OPERATION_RESULT,
+)
+
+logger = get_logger("backend.ai_operations")
 
 
 @contextmanager
@@ -26,29 +33,35 @@ def monitor_ai_operation(
         yield
     except Exception as exc:
         duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.warning(
-            "ai_operation_failed operation=%s project_id=%s generation_type=%s issue_code=%s "
-            "attempt=%s duration_ms=%s error_type=%s",
-            operation,
-            project_id,
-            generation_type,
-            issue_code,
-            attempt,
-            duration_ms,
-            type(exc).__name__,
+        log_event(
+            logger,
+            logging.WARNING,
+            "ai_operation",
+            AI_OPERATION_FAILED,
+            "AI operation failed",
+            operation=operation,
+            project_id=project_id,
+            generation_type=generation_type,
+            issue_code=issue_code,
+            attempt=attempt,
+            duration_ms=duration_ms,
+            error_type=type(exc).__name__,
         )
         raise
     else:
         duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.info(
-            "ai_operation_completed operation=%s project_id=%s generation_type=%s issue_code=%s "
-            "attempt=%s duration_ms=%s",
-            operation,
-            project_id,
-            generation_type,
-            issue_code,
-            attempt,
-            duration_ms,
+        log_event(
+            logger,
+            logging.INFO,
+            "ai_operation",
+            AI_OPERATION_COMPLETED,
+            "AI operation completed",
+            operation=operation,
+            project_id=project_id,
+            generation_type=generation_type,
+            issue_code=issue_code,
+            attempt=attempt,
+            duration_ms=duration_ms,
         )
 
 
@@ -65,15 +78,18 @@ def log_ai_operation_result(
 ) -> None:
     """Log aggregate result data for batch AI operations."""
 
-    logger.info(
-        "ai_operation_result operation=%s project_id=%s generation_type=%s issue_code=%s "
-        "duration_ms=%s success_count=%s failure_count=%s status=%s",
-        operation,
-        project_id,
-        generation_type,
-        issue_code,
-        duration_ms,
-        success_count,
-        failure_count,
-        status,
+    log_event(
+        logger,
+        logging.INFO,
+        "ai_operation",
+        AI_OPERATION_RESULT,
+        "AI operation result",
+        operation=operation,
+        project_id=project_id,
+        generation_type=generation_type,
+        issue_code=issue_code,
+        duration_ms=duration_ms,
+        success_count=success_count,
+        failure_count=failure_count,
+        status=status,
     )

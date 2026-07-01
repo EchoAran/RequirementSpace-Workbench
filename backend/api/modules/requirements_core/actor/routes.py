@@ -158,7 +158,7 @@ async def create_actor_generation_draft(
     session: AsyncSession = Depends(get_session),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    async with llm_context_manager(user, session):
+    async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await actor_generation_service.create_draft(
                 project_id=owned_project.id,

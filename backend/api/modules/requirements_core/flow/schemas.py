@@ -1,4 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 # CRUD Models
 class FlowStepCreateRequest(BaseModel):
@@ -11,7 +13,7 @@ class FlowStepCreateRequest(BaseModel):
     next_step_ids: list[int] = Field(default_factory=list)
 
 
-class FlowStepUpdateRequest(BaseModel):
+class FlowStepUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None)
     step_type: str | None = Field(default=None, pattern="^(actorAction|systemAction|judgment)$")
@@ -19,6 +21,7 @@ class FlowStepUpdateRequest(BaseModel):
     input_business_object_ids: list[int] | None = Field(default=None)
     output_business_object_ids: list[int] | None = Field(default=None)
     next_step_ids: list[int] | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class FlowStepResponse(BaseModel):
@@ -43,10 +46,11 @@ class FlowCreateRequest(BaseModel):
     feature_ids: list[int] = Field(default_factory=list)
 
 
-class FlowUpdateRequest(BaseModel):
+class FlowUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None)
     feature_ids: list[int] | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class FlowStepsReorderRequest(BaseModel):

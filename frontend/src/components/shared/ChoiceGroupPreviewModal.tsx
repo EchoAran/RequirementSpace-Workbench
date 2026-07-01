@@ -780,20 +780,27 @@ export function ChoiceGroupPreviewModal({
 
   if (isGeneratingChoices) {
     const total = generationProgress?.totalCandidates || 2;
-    // Derive completed candidates from simulatedProgress if generationProgress is null
+    const progressStatuses = generationProgress?.candidateStatuses || {};
+    const hasRealCandidateProgress = Object.values(progressStatuses).some(
+      status => status === 'generating' || status === 'complete' || status === 'failed'
+    );
+    const useSimulatedProgress = !generationProgress || (
+      (generationProgress.completedCandidates || 0) === 0 && !hasRealCandidateProgress
+    );
+
     let completed = generationProgress?.completedCandidates || 0;
-    if (generationProgress === null || generationProgress === undefined) {
+    if (useSimulatedProgress) {
       if (simulatedProgress >= 90) {
-        completed = 2;
+        completed = Math.min(2, total);
       } else if (simulatedProgress >= 45) {
         completed = 1;
       } else {
         completed = 0;
       }
     }
-    const progressPercent = generationProgress 
-      ? Math.round((completed / total) * 100) 
-      : Math.round(simulatedProgress);
+    const progressPercent = useSimulatedProgress
+      ? Math.round(simulatedProgress)
+      : Math.round((completed / total) * 100);
 
     // Determine the display title for loading dynamically
     let loadingTitle = '正在生成项目方案，请稍候...';
@@ -887,7 +894,7 @@ export function ChoiceGroupPreviewModal({
             <div className="space-y-2 mt-6">
               {Array.from({ length: total }).map((_, i) => {
                 let status = 'pending';
-                if (generationProgress) {
+                if (!useSimulatedProgress && generationProgress) {
                   status = generationProgress.candidateStatuses?.[i] || 'generating';
                 } else {
                   if (i === 0) {

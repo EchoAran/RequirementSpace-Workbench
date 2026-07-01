@@ -1,4 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 # CRUD Models
 class AcceptanceCriterionCreateRequest(BaseModel):
@@ -6,8 +8,9 @@ class AcceptanceCriterionCreateRequest(BaseModel):
     position: int | None = Field(default=None)
 
 
-class AcceptanceCriterionUpdateRequest(BaseModel):
+class AcceptanceCriterionUpdateRequest(CamelModel):
     content: str = Field(..., min_length=1)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class AcceptanceCriterionResponse(BaseModel):
@@ -27,9 +30,10 @@ class ScenarioCreateRequest(BaseModel):
     content: str = Field(default="")
 
 
-class ScenarioUpdateRequest(BaseModel):
+class ScenarioUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class ScenarioResponse(BaseModel):

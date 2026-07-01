@@ -36,9 +36,16 @@ from backend.api.modules.decision_workflow.ports.ports import (
     CandidateRunResult,
 )
 from backend.core.ai_operation_monitor import log_ai_operation_result
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import (
+    CHOICE_GROUP_CREATED,
+    CHOICE_GROUP_CREATE_REQUESTED,
+    CHOICE_GROUP_GENERATION_FAILED,
+    CHOICE_GROUP_REGENERATED,
+)
 from backend.database.model import ChoiceGroupModel, ChoiceModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ═══════════════════════════════════════════════
@@ -283,6 +290,18 @@ class GenerationChoiceService:
         7. 返回 ChoiceGroupResponse
         """
         config = self.settings.with_overrides(candidate_count)
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            CHOICE_GROUP_CREATE_REQUESTED,
+            "Choice group create requested",
+            project_id=project_id,
+            generation_type=generation_type,
+            candidate_count=config.candidate_count,
+            issue_code=issue_code,
+            source_type=source_type,
+        )
 
         # Phase 6: 检查该 generation_type 是否允许走 choice group
         if not config.is_generation_type_enabled(generation_type):
@@ -320,6 +339,23 @@ class GenerationChoiceService:
 
         # 判断是否达到部分成功下限
         is_partial_failure = len(deduped) < config.partial_success_min
+        if is_partial_failure:
+            log_event(
+                logger,
+                logging.WARNING,
+                "domain",
+                CHOICE_GROUP_GENERATION_FAILED,
+                "Choice group generation failed",
+                project_id=project_id,
+                generation_type=generation_type,
+                candidate_count=result.total_count,
+                success_count=len(deduped),
+                failure_count=result.failure_count,
+                duration_ms=result.duration_ms,
+                issue_code=issue_code,
+                source_type=source_type,
+                status="failed",
+            )
 
         # 构造 status_detail: 包含失败候选信息和跨候选差异摘要
         status_detail = {}
@@ -416,6 +452,23 @@ class GenerationChoiceService:
             failure_count=result.failure_count,
             status=group.status,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            CHOICE_GROUP_CREATED,
+            "Choice group created",
+            project_id=project_id,
+            choice_group_id=group.id,
+            generation_type=generation_type,
+            candidate_count=result.total_count,
+            success_count=result.success_count,
+            failure_count=result.failure_count,
+            duration_ms=result.duration_ms,
+            issue_code=issue_code,
+            source_type=source_type,
+            status=group.status,
+        )
 
         # Phase 6: audit log
         if session:
@@ -481,7 +534,7 @@ class GenerationChoiceService:
         await session.flush()
 
         # 用旧 group 的参数创建新 group
-        return await self.create_choice_group(
+        response = await self.create_choice_group(
             project_id=project_id,
             generation_type=old_group.generation_type or "",
             target=old_group.target,
@@ -489,6 +542,19 @@ class GenerationChoiceService:
             session=session,
             progress_callback=progress_callback,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            CHOICE_GROUP_REGENERATED,
+            "Choice group regenerated",
+            project_id=project_id,
+            choice_group_id=response.get("id") if isinstance(response, dict) else None,
+            generation_type=old_group.generation_type,
+            source_type=old_group.source_type,
+            status=response.get("status") if isinstance(response, dict) else None,
+        )
+        return response
 
     async def regenerate_choice(
         self,

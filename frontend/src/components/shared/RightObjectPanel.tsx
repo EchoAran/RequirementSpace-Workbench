@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Choice, ChoiceGroup, Finding, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText } from '@/core/schema';
+import { Choice, ChoiceGroup, Finding, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText, ProjectMember } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPanel } from '../right-panel/ChoiceGroupPanel';
 import { ChoicePanel } from '../right-panel/ChoicePanel';
@@ -8,9 +8,12 @@ import { NodePanel } from '../right-panel/NodePanel';
 import { PanelShell, Section, TextField, SelectField, ActionRow, ActionButton } from '../right-panel/shared';
 import { SlotPanel } from '../right-panel/SlotPanel';
 import { StatusBadge } from './StatusBadge';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { normalizeScopeStatus } from '@/core/selectors';
 import { GherkinVisualRenderer, GherkinVisualEditor } from './GherkinVisualizer';
+import { useAuthStore } from '@/store/useAuthStore';
+import { workspaceApi } from '@/lib/api';
+import { TaskDecisionModal } from './TaskDecisionModal';
 
 const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null): Choice | null => {
   if (!ir || !choiceId) return null;
@@ -93,31 +96,307 @@ function ConfirmationStatusSection({
   onChange?: (value: string) => void;
 }) {
   const setNodeStatus = useWorkspaceStore((state) => state.setNodeStatus);
+  const projectId = useWorkspaceStore((state) => state.ir?.projectId);
+  const tasks = useWorkspaceStore((state) => state.tasks || []);
+  const loadProjectTasks = useWorkspaceStore((state) => state.loadProjectTasks);
+  const createConfirmationTask = useWorkspaceStore((state) => state.createConfirmationTask);
+  const user = useAuthStore((state) => state.user);
+
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [showAssignForm, setShowAssignForm] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [assigneeId, setAssigneeId] = useState<number | ''>('');
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDesc, setTaskDesc] = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [dueAt, setDueAt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const nodeId = selectedObject.actorId ?? selectedObject.featureId ?? selectedObject.scenarioId
+    ?? selectedObject.criterionId ?? selectedObject.businessObjectId ?? selectedObject.flowId
+    ?? selectedObject.businessObjectAttributeId ?? selectedObject.stepId ?? selectedObject.scopeId;
+
   const displayStatus = value ?? selectedObject.confirmationStatus ?? fallbackStatus;
 
+  useEffect(() => {
+    if (projectId) {
+      loadProjectTasks(projectId);
+      workspaceApi.listProjectMembers(projectId).then(setProjectMembers).catch(console.error);
+    }
+  }, [projectId, loadProjectTasks]);
+
+  const openTask = useMemo(() => {
+    if (!nodeId) return null;
+    return tasks.find(
+      (t) =>
+        t.targetType === nodeKind &&
+        t.targetId === String(nodeId) &&
+        t.status === 'open'
+    );
+  }, [tasks, nodeKind, nodeId]);
+
+  const currentMember = useMemo(() => {
+    if (!user) return null;
+    return projectMembers.find((m) => m.userId === user.id);
+  }, [projectMembers, user]);
+
+  const currentUserRole = currentMember?.role || 'viewer';
+  const canAssign = currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'editor';
+  const potentialAssignees = useMemo(() => {
+    return projectMembers.filter((m) => m.status === 'active' && m.role !== 'viewer');
+  }, [projectMembers]);
+
   const handleChange = useCallback((nextValue: string) => {
-    if (disabled) return;
+    if (disabled || (currentUserRole === 'reviewer' && displayStatus !== 'confirmed')) return;
     if (onChange) {
       onChange(nextValue);
       return;
     }
-    const nodeId = selectedObject.actorId ?? selectedObject.featureId ?? selectedObject.scenarioId
-      ?? selectedObject.criterionId ?? selectedObject.businessObjectId ?? selectedObject.flowId
-      ?? selectedObject.businessObjectAttributeId ?? selectedObject.stepId ?? selectedObject.scopeId;
     if (nodeId != null) {
       void setNodeStatus(nodeId.toString(), nodeKind, nextValue as NodeStatus);
     }
-  }, [disabled, nodeKind, onChange, selectedObject, setNodeStatus]);
+  }, [disabled, nodeKind, onChange, selectedObject, setNodeStatus, currentUserRole, displayStatus, nodeId]);
+
+  const handleAssign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId || !nodeId || !assigneeId) return;
+    try {
+      setSubmitting(true);
+      setAssignError(null);
+      await createConfirmationTask(projectId, {
+        nodeKind,
+        nodeId,
+        assignedToUserId: Number(assigneeId),
+        title: taskTitle.trim() || undefined,
+        description: taskDesc.trim() || undefined,
+        priority,
+        dueAt: dueAt || undefined,
+      });
+      setShowAssignForm(false);
+      setAssigneeId('');
+      setTaskTitle('');
+      setTaskDesc('');
+      setPriority('normal');
+      setDueAt('');
+    } catch (err: any) {
+      setAssignError(err?.response?.data?.detail || err?.message || '指派任务失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <Section title="节点审查状态">
-      <SelectField
-        label="确认状态"
-        value={displayStatus}
-        options={CONFIRMATION_STATUS_OPTIONS}
-        onChange={handleChange}
-        disabled={disabled}
-      />
+    <Section title="节点审查与指派">
+      <div className="space-y-4">
+        {/* Core Dropdown */}
+        <SelectField
+          label="确认状态"
+          value={displayStatus}
+          options={CONFIRMATION_STATUS_OPTIONS}
+          onChange={handleChange}
+          disabled={disabled || (currentUserRole === 'reviewer' && displayStatus !== 'confirmed')}
+        />
+
+        {/* Active open task notice */}
+        {openTask ? (
+          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <div className="bg-indigo-100 text-indigo-700 p-1 rounded-lg mt-0.5">
+                <UserCheck className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-indigo-900 leading-none">未决确认任务</div>
+                <div className="text-[11px] text-indigo-700 mt-1 leading-normal">
+                  指派人: <span className="font-semibold">{openTask.creatorEmail || openTask.createdByUserId}</span> <br />
+                  处理人: <span className="font-semibold">{openTask.assigneeEmail || openTask.assignedToUserId}</span>
+                </div>
+                {openTask.contentChanged && (
+                  <div className="text-[10px] text-amber-700 mt-1.5 flex items-center gap-1 font-medium bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-lg w-fit">
+                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                    <span>内容已被修改 (已失效)</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Decide action button if assignee or admin/owner */}
+            {(openTask.assignedToUserId === user?.id || currentUserRole === 'owner' || currentUserRole === 'admin') && (
+              <button
+                onClick={() => setShowDecisionModal(true)}
+                className="w-full py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors cursor-pointer"
+              >
+                处理该指派任务
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Button to toggle assign form if canAssign */
+          canAssign && !showAssignForm && (
+            <button
+              onClick={() => setShowAssignForm(true)}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 transition-colors bg-indigo-50/30 border border-indigo-100 hover:border-indigo-200 px-3 py-1.5 rounded-xl cursor-pointer w-full justify-center"
+            >
+              指派他人处理确认
+            </button>
+          )
+        )}
+
+        {/* Assign Form */}
+        {showAssignForm && (
+          <form onSubmit={handleAssign} className="bg-slate-50 rounded-xl p-4 border border-slate-200/60 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">指派确认任务</span>
+              <button
+                type="button"
+                onClick={() => { setShowAssignForm(false); setAssignError(null); }}
+                className="text-slate-400 hover:text-slate-600 text-xs font-medium"
+              >
+                取消
+              </button>
+            </div>
+
+            {assignError && (
+              <div className="text-[10px] text-rose-600 bg-rose-50 border border-rose-100 p-2 rounded-lg leading-normal">
+                {assignError}
+              </div>
+            )}
+
+            {/* Assignee selection */}
+            <label className="block space-y-1">
+              <div className="text-[10px] font-semibold text-slate-500">处理人</div>
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value ? Number(e.target.value) : '')}
+                required
+                className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+              >
+                <option value="">请选择项目成员...</option>
+                {potentialAssignees.map((member) => (
+                  <option key={member.memberId} value={member.userId}>
+                    {member.email} ({member.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Custom title */}
+            <label className="block space-y-1">
+              <div className="text-[10px] font-semibold text-slate-500">任务标题 (选填)</div>
+              <input
+                type="text"
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                placeholder="例如: 确认当前节点的细节属性..."
+                className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1.5"
+              />
+            </label>
+
+            {/* Custom description */}
+            <label className="block space-y-1">
+              <div className="text-[10px] font-semibold text-slate-500">指派说明 (选填)</div>
+              <textarea
+                value={taskDesc}
+                onChange={(e) => setTaskDesc(e.target.value)}
+                placeholder="描述评审关注的重点或背景信息..."
+                className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1.5 min-h-[50px]"
+              />
+            </label>
+
+            {/* Priority and Due Date */}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1">
+                <div className="text-[10px] font-semibold text-slate-500">优先级</div>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                >
+                  <option value="low">低 (Low)</option>
+                  <option value="normal">中 (Normal)</option>
+                  <option value="high">高 (High)</option>
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <div className="text-[10px] font-semibold text-slate-500">截止日期</div>
+                <input
+                  type="date"
+                  value={dueAt}
+                  onChange={(e) => setDueAt(e.target.value)}
+                  className="w-full text-xs text-slate-700 border border-slate-200 rounded-lg px-2 py-1 bg-white"
+                />
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {submitting ? '发送指派中...' : '提交指派任务'}
+            </button>
+          </form>
+        )}
+
+        {/* Historical tasks */}
+        {(() => {
+          const historicalTasks = tasks.filter(
+            (t: any) =>
+              t.status !== 'open' && (
+                (t.targetType === nodeKind && String(t.targetId) === String(nodeId)) ||
+                (t.taskType === 'confirm_nodes' && Array.isArray(t.targets) && t.targets.some((tg: any) => tg.node_kind === nodeKind && String(tg.node_id) === String(nodeId)))
+              )
+          );
+          if (historicalTasks.length === 0) return null;
+          return (
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">历史审批与驳回记录</div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                {historicalTasks.map((t: any) => (
+                  <div key={t.id} className="border border-slate-150 rounded-xl p-3 bg-slate-50/30 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 truncate max-w-[150px]">{t.title}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                        t.status === 'done' 
+                          ? 'bg-emerald-50 text-emerald-600' 
+                          : t.status === 'rejected'
+                          ? 'bg-rose-50 text-rose-600'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {t.status === 'done' ? '已确认' : t.status === 'rejected' ? '已驳回' : t.status === 'superseded' ? '冲销失效' : '已取消'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      处理人: <span className="font-medium text-slate-500">{t.assigneeEmail || t.assignedToUserId}</span>
+                    </div>
+                    {t.decisionNote && (
+                      <div className="bg-white border border-slate-100 rounded-lg p-2 text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap">
+                        {t.decisionNote}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Decision Modal */}
+      {showDecisionModal && openTask && (
+        <TaskDecisionModal
+          task={openTask}
+          projectId={projectId || ''}
+          onClose={() => setShowDecisionModal(false)}
+          onDecided={async () => {
+            setShowDecisionModal(false);
+            if (projectId) {
+              await loadProjectTasks(projectId);
+            }
+          }}
+        />
+      )}
     </Section>
   );
 }

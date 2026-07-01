@@ -1,4 +1,4 @@
-import {
+﻿import {
   RequirementSpace,
   WorkspaceListItem,
   ProjectCreationDraft,
@@ -7,6 +7,7 @@ import {
   ProjectCreationChoiceGroup,
   ProjectCreationChoiceItem,
   ProjectCreationChoiceGroupDeferResponse,
+  ProjectMember,
 } from '@/core/schema';
 import { http } from './http';
 
@@ -32,7 +33,7 @@ export const workspaceApi = {
   unlockStage: async (projectId: string, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
   },
-  /** 更新任意节点的确认状态（ai_assumption / needs_confirmation / confirmed） */
+  /** 鏇存柊浠绘剰鑺傜偣鐨勭‘璁ょ姸鎬侊紙ai_assumption / needs_confirmation / confirmed锛?*/
   updateNodeConfirmationStatus: async (
     projectId: string,
     nodeKind: string,
@@ -45,7 +46,7 @@ export const workspaceApi = {
       confirmation_status: confirmationStatus,
     });
   },
-  /** 批量更新一组节点的确认状态 */
+  /** 鎵归噺鏇存柊涓€缁勮妭鐐圭殑纭鐘舵€?*/
   batchUpdateNodeConfirmationStatus: async (
     projectId: string,
     nodes: Array<{ node_kind: string; node_id: number; confirmation_status?: string }>,
@@ -77,7 +78,7 @@ export const workspaceApi = {
   createActor: async (projectId: string, payload: { name: string; description: string }) => {
     return http.post<any>(`/projects/${projectId}/actors`, payload);
   },
-  updateActor: async (projectId: string, actorId: number, payload: { name?: string; description?: string }) => {
+  updateActor: async (projectId: string, actorId: number, payload: { name?: string; description?: string; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/actors/${actorId}`, payload);
   },
   deleteActor: async (projectId: string, actorId: number) => {
@@ -86,7 +87,7 @@ export const workspaceApi = {
   createFeature: async (projectId: string, payload: { name: string; description: string; parent_id: number | null }) => {
     return http.post<any>(`/projects/${projectId}/features`, payload);
   },
-  updateFeature: async (projectId: string, featureId: number, payload: { name?: string; description?: string; actor_ids?: number[] }) => {
+  updateFeature: async (projectId: string, featureId: number, payload: { name?: string; description?: string; actor_ids?: number[]; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/features/${featureId}`, payload);
   },
   deleteFeature: async (projectId: string, featureId: number) => {
@@ -95,7 +96,7 @@ export const workspaceApi = {
   createScenario: async (projectId: string, payload: { feature_id: number; actor_id: number; name: string; content: string }) => {
     return http.post<any>(`/projects/${projectId}/scenarios`, payload);
   },
-  updateScenario: async (projectId: string, scenarioId: number, payload: { name?: string; content?: string }) => {
+  updateScenario: async (projectId: string, scenarioId: number, payload: { name?: string; content?: string; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/scenarios/${scenarioId}`, payload);
   },
   deleteScenario: async (projectId: string, scenarioId: number) => {
@@ -104,7 +105,7 @@ export const workspaceApi = {
   createAcceptanceCriterion: async (projectId: string, scenarioId: number, payload: { content: string; position?: number }) => {
     return http.post<any>(`/projects/${projectId}/scenarios/${scenarioId}/acceptance_criteria`, payload);
   },
-  updateAcceptanceCriterion: async (projectId: string, scenarioId: number, acId: number, payload: { content: string }) => {
+  updateAcceptanceCriterion: async (projectId: string, scenarioId: number, acId: number, payload: { content: string; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/scenarios/${scenarioId}/acceptance_criteria/${acId}`, payload);
   },
   deleteAcceptanceCriterion: async (projectId: string, scenarioId: number, acId: number) => {
@@ -113,7 +114,7 @@ export const workspaceApi = {
   createBusinessObject: async (projectId: string, payload: { name: string; description: string }) => {
     return http.post<any>(`/projects/${projectId}/business_objects`, payload);
   },
-  updateBusinessObject: async (projectId: string, boId: number, payload: { name?: string; description?: string }) => {
+  updateBusinessObject: async (projectId: string, boId: number, payload: { name?: string; description?: string; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/business_objects/${boId}`, payload);
   },
   deleteBusinessObject: async (projectId: string, boId: number) => {
@@ -122,7 +123,7 @@ export const workspaceApi = {
   createBusinessObjectAttribute: async (projectId: string, boId: number, payload: { name: string; description: string; data_type: string; example: string }) => {
     return http.post<any>(`/projects/${projectId}/business_objects/${boId}/attributes`, payload);
   },
-  updateBusinessObjectAttribute: async (projectId: string, boId: number, attrId: number, payload: { name?: string; description?: string; data_type?: string; example?: string }) => {
+  updateBusinessObjectAttribute: async (projectId: string, boId: number, attrId: number, payload: { name?: string; description?: string; data_type?: string; example?: string; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/business_objects/${boId}/attributes/${attrId}`, payload);
   },
   deleteBusinessObjectAttribute: async (projectId: string, boId: number, attrId: number) => {
@@ -131,7 +132,7 @@ export const workspaceApi = {
   createFlow: async (projectId: string, payload: { name: string; description: string; feature_ids?: number[] }) => {
     return http.post<any>(`/projects/${projectId}/flows`, payload);
   },
-  updateFlow: async (projectId: string, flowId: number, payload: { name?: string; description?: string; feature_ids?: number[] }) => {
+  updateFlow: async (projectId: string, flowId: number, payload: { name?: string; description?: string; feature_ids?: number[]; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/flows/${flowId}`, payload);
   },
   deleteFlow: async (projectId: string, flowId: number) => {
@@ -140,7 +141,7 @@ export const workspaceApi = {
   createFlowStep: async (projectId: string, flowId: number, payload: { name: string; description: string; step_type: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; next_step_ids?: number[] }) => {
     return http.post<any>(`/projects/${projectId}/flows/${flowId}/steps`, payload);
   },
-  updateFlowStep: async (projectId: string, flowId: number, stepId: number, payload: { name?: string; description?: string; step_type?: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; next_step_ids?: number[] }) => {
+  updateFlowStep: async (projectId: string, flowId: number, stepId: number, payload: { name?: string; description?: string; step_type?: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; next_step_ids?: number[]; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/flows/${flowId}/steps/${stepId}`, payload);
   },
   deleteFlowStep: async (projectId: string, flowId: number, stepId: number) => {
@@ -149,7 +150,7 @@ export const workspaceApi = {
   reorderFlowSteps: async (projectId: string, flowId: number, stepIds: number[]) => {
     return http.put<any>(`/projects/${projectId}/flows/${flowId}/steps/reorder`, { step_ids: stepIds });
   },
-  updateScope: async (projectId: string, featureId: number, payload: { status: string; reason: string; positive_summary?: string | null; negative_summary?: string | null }) => {
+  updateScope: async (projectId: string, featureId: number, payload: { status: string; reason: string; positive_summary?: string | null; negative_summary?: string | null; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/features/${featureId}/scope`, payload);
   },
   createActorGenerationDraft: async (projectId: string): Promise<any> => {
@@ -434,9 +435,9 @@ export const workspaceApi = {
     return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/regenerate`);
   },
 
-  // ═══════════════════════════════════════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
   // Phase 2: Project Creation Choice Group API
-  // ═══════════════════════════════════════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
   createProjectCreationChoiceGroup: async (payload: {
     user_requirements: string;
     candidate_count?: number;
@@ -469,5 +470,132 @@ export const workspaceApi = {
     return http.post<ProjectCreationChoiceGroupDeferResponse>(
       `/project_creation_choice_groups/${groupId}/defer`
     );
+  },
+
+  listProjectMembers: async (projectId: string): Promise<ProjectMember[]> => {
+    return http.get<ProjectMember[]>(`/projects/${projectId}/members`);
+  },
+
+  addProjectMember: async (projectId: string, email: string, role: string): Promise<ProjectMember> => {
+    return http.post<ProjectMember>(`/projects/${projectId}/members`, { email, role });
+  },
+
+  updateProjectMember: async (projectId: string, memberId: number, role: string, status: string): Promise<ProjectMember> => {
+    return http.patch<ProjectMember>(`/projects/${projectId}/members/${memberId}`, { role, status });
+  },
+
+  removeProjectMember: async (projectId: string, memberId: number): Promise<void> => {
+    await http.delete(`/projects/${projectId}/members/${memberId}`);
+  },
+
+  createConfirmationTask: async (
+    projectId: string,
+    payload: {
+      nodeKind: string;
+      nodeId: number;
+      assignedToUserId: number;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string;
+    }
+  ): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/tasks/confirm-node`, payload);
+  },
+
+  listProjectTasks: async (
+    projectId: string,
+    params?: {
+      status?: string;
+      taskType?: string;
+      assignedToUserId?: number;
+      createdByUserId?: number;
+      targetType?: string;
+      targetId?: string;
+    }
+  ): Promise<any[]> => {
+    return http.get<any[]>(`/projects/${projectId}/tasks`, params);
+  },
+
+  listMyTasks: async (
+    params?: {
+      role?: string;
+      status?: string;
+      taskType?: string;
+      projectId?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<any[]> => {
+    return http.get<any[]>('/me/tasks', params);
+  },
+
+  decideTask: async (
+    projectId: string,
+    taskId: number,
+    payload: {
+      decision: string;
+      decisionNote?: string;
+    }
+  ): Promise<any> => {
+    return http.patch<any>(`/projects/${projectId}/tasks/${taskId}/decision`, payload);
+  },
+
+  cancelTask: async (
+    projectId: string,
+    taskId: number
+  ): Promise<any> => {
+    return http.patch<any>(`/projects/${projectId}/tasks/${taskId}/cancel`);
+  },
+
+  createBatchConfirmTask: async (
+    projectId: string,
+    payload: {
+      targets: Array<{ nodeKind: string; nodeId: number }>;
+      assignedToUserId: number;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string;
+    }
+  ): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/tasks/confirm-nodes`, payload);
+  },
+
+  getProjectConfirmationSummary: async (
+    projectId: string
+  ): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/confirmation-summary`);
+  },
+
+  listNotifications: async (): Promise<any[]> => {
+    return http.get<any[]>('/me/notifications');
+  },
+
+  markNotificationsRead: async (notificationIds?: number[]): Promise<any> => {
+    return http.put<any>('/me/notifications/read', { notificationIds });
+  },
+
+  getProjectLLMConfig: async (projectId: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/llm-config`);
+  },
+
+  updateProjectLLMConfig: async (
+    projectId: string,
+    payload: { api_url: string; api_key: string; model_name: string }
+  ): Promise<any> => {
+    // Convert to snake_case payload for backend
+    return http.put<any>(`/projects/${projectId}/llm-config`, payload);
+  },
+
+  deleteProjectLLMConfig: async (projectId: string): Promise<any> => {
+    return http.delete<any>(`/projects/${projectId}/llm-config`);
+  },
+
+  testProjectLLMConfig: async (
+    projectId: string,
+    payload: { api_url: string; api_key: string; model_name: string }
+  ): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/llm-config/test`, payload);
   },
 };

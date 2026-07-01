@@ -461,11 +461,17 @@
             "default": "acceptance_criterion",
             "title": "Kind",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "criterionId",
-          "criterionContent"
+          "criterionContent",
+          "updatedAt"
         ],
         "title": "AcceptanceCriterionDetail",
         "type": "object"
@@ -515,6 +521,18 @@
             "minLength": 1,
             "title": "Content",
             "type": "string"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           }
         },
         "required": [
@@ -572,12 +590,18 @@
             "default": "actor",
             "title": "Kind",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "actorId",
           "actorName",
-          "actorDescription"
+          "actorDescription",
+          "updatedAt"
         ],
         "title": "ActorDetail",
         "type": "object"
@@ -709,6 +733,18 @@
             ],
             "title": "Description"
           },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
+          },
           "name": {
             "anyOf": [
               {
@@ -732,10 +768,53 @@
             "title": "Actiontype",
             "type": "string"
           },
+          "actorEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actoremail"
+          },
+          "actorType": {
+            "default": "system",
+            "title": "Actortype",
+            "type": "string"
+          },
+          "actorUserId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actoruserid"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
           },
           "id": {
             "title": "Id",
@@ -757,6 +836,17 @@
             "title": "Projectid",
             "type": "string"
           },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -768,6 +858,17 @@
           "targetType": {
             "title": "Targettype",
             "type": "string"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
           },
           "updatedAt": {
             "format": "date-time",
@@ -786,6 +887,72 @@
           "updatedAt"
         ],
         "title": "AuditLogResponse",
+        "type": "object"
+      },
+      "BatchTaskCreateRequest": {
+        "properties": {
+          "assignedToUserId": {
+            "description": "User ID to assign the confirmation task to",
+            "title": "Assignedtouserid",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional description details",
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional deadline for the task",
+            "title": "Dueat"
+          },
+          "priority": {
+            "default": "normal",
+            "description": "Task priority: low, normal, high",
+            "title": "Priority",
+            "type": "string"
+          },
+          "targets": {
+            "description": "List of target nodes",
+            "items": {
+              "$ref": "#/components/schemas/TargetNodeInput"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional custom title for the task",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "targets",
+          "assignedToUserId"
+        ],
+        "title": "BatchTaskCreateRequest",
         "type": "object"
       },
       "BatchUpdateNodeStatusRequest": {
@@ -927,9 +1094,25 @@
             "title": "Businessobjectattributetype",
             "type": "string"
           },
+          "confirmationStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmationstatus"
+          },
           "kind": {
             "default": "business_object_attribute",
             "title": "Kind",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
             "type": "string"
           }
         },
@@ -938,7 +1121,8 @@
           "businessObjectAttributeName",
           "businessObjectAttributeDescription",
           "businessObjectAttributeType",
-          "businessObjectAttributeExample"
+          "businessObjectAttributeExample",
+          "updatedAt"
         ],
         "title": "BusinessObjectAttributeDetail",
         "type": "object"
@@ -952,6 +1136,17 @@
           "business_object_id": {
             "title": "Business Object Id",
             "type": "integer"
+          },
+          "confirmation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Status"
           },
           "data_type": {
             "title": "Data Type",
@@ -983,7 +1178,7 @@
       },
       "BusinessObjectAttributeUpdateRequest": {
         "properties": {
-          "data_type": {
+          "dataType": {
             "anyOf": [
               {
                 "maxLength": 100,
@@ -994,7 +1189,7 @@
                 "type": "null"
               }
             ],
-            "title": "Data Type"
+            "title": "Datatype"
           },
           "description": {
             "anyOf": [
@@ -1017,6 +1212,18 @@
               }
             ],
             "title": "Example"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           },
           "name": {
             "anyOf": [
@@ -1092,12 +1299,18 @@
             "default": "business_object",
             "title": "Kind",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "businessObjectId",
           "businessObjectName",
-          "businessObjectDescription"
+          "businessObjectDescription",
+          "updatedAt"
         ],
         "title": "BusinessObjectDetail",
         "type": "object"
@@ -1156,6 +1369,18 @@
               }
             ],
             "title": "Description"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           },
           "name": {
             "anyOf": [
@@ -1604,6 +1829,55 @@
         "title": "ConfirmationStatusEnum",
         "type": "string"
       },
+      "ConfirmationSummaryResponse": {
+        "properties": {
+          "aiAssumptionCount": {
+            "title": "Aiassumptioncount",
+            "type": "integer"
+          },
+          "assignedToMeCount": {
+            "title": "Assignedtomecount",
+            "type": "integer"
+          },
+          "byAssignee": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Byassignee",
+            "type": "object"
+          },
+          "byNodeKind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bynodekind",
+            "type": "object"
+          },
+          "createdByMeCount": {
+            "title": "Createdbymecount",
+            "type": "integer"
+          },
+          "openTaskCount": {
+            "title": "Opentaskcount",
+            "type": "integer"
+          },
+          "rejectedCount": {
+            "title": "Rejectedcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "aiAssumptionCount",
+          "openTaskCount",
+          "assignedToMeCount",
+          "createdByMeCount",
+          "rejectedCount",
+          "byNodeKind",
+          "byAssignee"
+        ],
+        "title": "ConfirmationSummaryResponse",
+        "type": "object"
+      },
       "DraftRegenerateRequest": {
         "properties": {
           "userFeedback": {
@@ -1831,12 +2105,18 @@
                 "type": "null"
               }
             ]
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "featureId",
           "featureName",
-          "featureDescription"
+          "featureDescription",
+          "updatedAt"
         ],
         "title": "FeatureDetail",
         "type": "object"
@@ -1984,7 +2264,7 @@
       },
       "FeatureUpdateRequest": {
         "properties": {
-          "actor_ids": {
+          "actorIds": {
             "anyOf": [
               {
                 "items": {
@@ -1996,7 +2276,7 @@
                 "type": "null"
               }
             ],
-            "title": "Actor Ids"
+            "title": "Actorids"
           },
           "description": {
             "anyOf": [
@@ -2008,6 +2288,18 @@
               }
             ],
             "title": "Description"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           },
           "name": {
             "anyOf": [
@@ -2223,12 +2515,18 @@
             "default": "flow",
             "title": "Kind",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "flowId",
           "flowName",
-          "flowDescription"
+          "flowDescription",
+          "updatedAt"
         ],
         "title": "FlowDetail",
         "type": "object"
@@ -2455,6 +2753,17 @@
             "title": "Actorids",
             "type": "array"
           },
+          "confirmationStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmationstatus"
+          },
           "inputBusinessObjectIds": {
             "default": [],
             "items": {
@@ -2503,6 +2812,11 @@
           "stepType": {
             "title": "Steptype",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
@@ -2510,7 +2824,8 @@
           "stepName",
           "stepDescription",
           "stepType",
-          "position"
+          "position",
+          "updatedAt"
         ],
         "title": "FlowStepDetail",
         "type": "object"
@@ -2524,6 +2839,17 @@
             },
             "title": "Actor Ids",
             "type": "array"
+          },
+          "confirmation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Status"
           },
           "description": {
             "title": "Description",
@@ -2587,7 +2913,7 @@
       },
       "FlowStepUpdateRequest": {
         "properties": {
-          "actor_ids": {
+          "actorIds": {
             "anyOf": [
               {
                 "items": {
@@ -2599,7 +2925,7 @@
                 "type": "null"
               }
             ],
-            "title": "Actor Ids"
+            "title": "Actorids"
           },
           "description": {
             "anyOf": [
@@ -2612,7 +2938,7 @@
             ],
             "title": "Description"
           },
-          "input_business_object_ids": {
+          "inputBusinessObjectIds": {
             "anyOf": [
               {
                 "items": {
@@ -2624,7 +2950,19 @@
                 "type": "null"
               }
             ],
-            "title": "Input Business Object Ids"
+            "title": "Inputbusinessobjectids"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           },
           "name": {
             "anyOf": [
@@ -2639,7 +2977,7 @@
             ],
             "title": "Name"
           },
-          "next_step_ids": {
+          "nextStepIds": {
             "anyOf": [
               {
                 "items": {
@@ -2651,9 +2989,9 @@
                 "type": "null"
               }
             ],
-            "title": "Next Step Ids"
+            "title": "Nextstepids"
           },
-          "output_business_object_ids": {
+          "outputBusinessObjectIds": {
             "anyOf": [
               {
                 "items": {
@@ -2665,9 +3003,9 @@
                 "type": "null"
               }
             ],
-            "title": "Output Business Object Ids"
+            "title": "Outputbusinessobjectids"
           },
-          "step_type": {
+          "stepType": {
             "anyOf": [
               {
                 "pattern": "^(actorAction|systemAction|judgment)$",
@@ -2677,7 +3015,7 @@
                 "type": "null"
               }
             ],
-            "title": "Step Type"
+            "title": "Steptype"
           }
         },
         "title": "FlowStepUpdateRequest",
@@ -2713,7 +3051,7 @@
             ],
             "title": "Description"
           },
-          "feature_ids": {
+          "featureIds": {
             "anyOf": [
               {
                 "items": {
@@ -2725,7 +3063,19 @@
                 "type": "null"
               }
             ],
-            "title": "Feature Ids"
+            "title": "Featureids"
+          },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
           },
           "name": {
             "anyOf": [
@@ -3848,6 +4198,27 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MarkNotificationsReadRequest": {
+        "properties": {
+          "notificationIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List of notification IDs to mark as read. If null or empty, marks all as read.",
+            "title": "Notificationids"
+          }
+        },
+        "title": "MarkNotificationsReadRequest",
+        "type": "object"
+      },
       "NextSuggestionRediagnoseRequest": {
         "properties": {
           "stage": {
@@ -3938,6 +4309,79 @@
           "status"
         ],
         "title": "NextSuggestionResponseItem",
+        "type": "object"
+      },
+      "NotificationResponse": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectid"
+          },
+          "readAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readat"
+          },
+          "recipientUserId": {
+            "title": "Recipientuserid",
+            "type": "integer"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "recipientUserId",
+          "eventType",
+          "title",
+          "body",
+          "createdAt"
+        ],
+        "title": "NotificationResponse",
         "type": "object"
       },
       "PerceptionSlotDeleteResponse": {
@@ -5066,6 +5510,17 @@
             "title": "Businessobjects",
             "type": "array"
           },
+          "currentUserRole": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentuserrole"
+          },
           "features": {
             "default": [],
             "items": {
@@ -5091,6 +5546,21 @@
             "default": "requirement_space",
             "title": "Kind",
             "type": "string"
+          },
+          "membersSummary": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memberssummary"
           },
           "perceptionSlot": {
             "anyOf": [
@@ -5175,6 +5645,152 @@
         "title": "ProjectFindingsResponse",
         "type": "object"
       },
+      "ProjectLLMConfigRequest": {
+        "properties": {
+          "apiKey": {
+            "minLength": 1,
+            "title": "Apikey",
+            "type": "string"
+          },
+          "apiUrl": {
+            "minLength": 1,
+            "title": "Apiurl",
+            "type": "string"
+          },
+          "modelName": {
+            "minLength": 1,
+            "title": "Modelname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiUrl",
+          "apiKey",
+          "modelName"
+        ],
+        "title": "ProjectLLMConfigRequest",
+        "type": "object"
+      },
+      "ProjectLLMConfigResponse": {
+        "properties": {
+          "apiKeyLast4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikeylast4"
+          },
+          "apiUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "modelName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelname"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "ProjectLLMConfigResponse",
+        "type": "object"
+      },
+      "ProjectLLMConfigTestRequest": {
+        "properties": {
+          "apiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "apiUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "modelName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelname"
+          }
+        },
+        "title": "ProjectLLMConfigTestRequest",
+        "type": "object"
+      },
+      "ProjectLLMConfigTestResponse": {
+        "properties": {
+          "errorDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errordetail"
+          },
+          "errorType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errortype"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ProjectLLMConfigTestResponse",
+        "type": "object"
+      },
       "ProjectListItemResponse": {
         "properties": {
           "description": {
@@ -5193,12 +5809,24 @@
             "title": "Issuecount",
             "type": "integer"
           },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "membershipRole": {
+            "title": "Membershiprole",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "nodeCount": {
             "title": "Nodecount",
+            "type": "integer"
+          },
+          "ownerUserId": {
+            "title": "Owneruserid",
             "type": "integer"
           },
           "projectId": {
@@ -5229,9 +5857,105 @@
           "statusCode",
           "status",
           "issueCount",
-          "nodeCount"
+          "nodeCount",
+          "membershipRole",
+          "ownerUserId",
+          "memberCount"
         ],
         "title": "ProjectListItemResponse",
+        "type": "object"
+      },
+      "ProjectMemberAddRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "ProjectMemberAddRequest",
+        "type": "object"
+      },
+      "ProjectMemberResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "joinedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joinedat"
+          },
+          "memberId": {
+            "title": "Memberid",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "memberId",
+          "userId",
+          "email",
+          "role",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ProjectMemberResponse",
+        "type": "object"
+      },
+      "ProjectMemberUpdateRequest": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "status"
+        ],
+        "title": "ProjectMemberUpdateRequest",
         "type": "object"
       },
       "ProjectPreview": {
@@ -5567,6 +6291,11 @@
           "scenarioName": {
             "title": "Scenarioname",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
@@ -5574,7 +6303,8 @@
           "scenarioName",
           "scenarioContent",
           "featureId",
-          "actorId"
+          "actorId",
+          "updatedAt"
         ],
         "title": "ScenarioDetail",
         "type": "object"
@@ -5775,6 +6505,18 @@
             ],
             "title": "Content"
           },
+          "lastSeenUpdatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenupdatedat"
+          },
           "name": {
             "anyOf": [
               {
@@ -5887,12 +6629,18 @@
           "scopeStatus": {
             "title": "Scopestatus",
             "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
           }
         },
         "required": [
           "scopeId",
           "scopeStatus",
-          "reason"
+          "reason",
+          "updatedAt"
         ],
         "title": "ScopeDetail",
         "type": "object"
@@ -6139,18 +6887,19 @@
       },
       "ScopeUpdateRequest": {
         "properties": {
-          "negative_summary": {
+          "lastSeenUpdatedAt": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Negative Summary"
+            "title": "Lastseenupdatedat"
           },
-          "positive_summary": {
+          "negativeSummary": {
             "anyOf": [
               {
                 "type": "string"
@@ -6159,7 +6908,18 @@
                 "type": "null"
               }
             ],
-            "title": "Positive Summary"
+            "title": "Negativesummary"
+          },
+          "positiveSummary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positivesummary"
           },
           "reason": {
             "default": "",
@@ -6176,6 +6936,330 @@
           "status"
         ],
         "title": "ScopeUpdateRequest",
+        "type": "object"
+      },
+      "TargetNodeInput": {
+        "properties": {
+          "nodeId": {
+            "description": "Target node ID",
+            "title": "Nodeid",
+            "type": "integer"
+          },
+          "nodeKind": {
+            "description": "Target node kind, e.g. actor, feature, scenario",
+            "title": "Nodekind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeKind",
+          "nodeId"
+        ],
+        "title": "TargetNodeInput",
+        "type": "object"
+      },
+      "TaskCreateRequest": {
+        "properties": {
+          "assignedToUserId": {
+            "description": "User ID to assign the confirmation task to",
+            "title": "Assignedtouserid",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional description details",
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional deadline for the task",
+            "title": "Dueat"
+          },
+          "nodeId": {
+            "description": "Target node ID",
+            "title": "Nodeid",
+            "type": "integer"
+          },
+          "nodeKind": {
+            "description": "Target node kind, e.g. actor, feature, scenario",
+            "title": "Nodekind",
+            "type": "string"
+          },
+          "priority": {
+            "default": "normal",
+            "description": "Task priority: low, normal, high",
+            "title": "Priority",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional custom title for the task",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "nodeKind",
+          "nodeId",
+          "assignedToUserId"
+        ],
+        "title": "TaskCreateRequest",
+        "type": "object"
+      },
+      "TaskDecisionRequest": {
+        "properties": {
+          "decision": {
+            "description": "approve or reject",
+            "title": "Decision",
+            "type": "string"
+          },
+          "decisionNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional note for approval or rejection",
+            "title": "Decisionnote"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "TaskDecisionRequest",
+        "type": "object"
+      },
+      "TaskResponse": {
+        "properties": {
+          "assignedToUserId": {
+            "title": "Assignedtouserid",
+            "type": "integer"
+          },
+          "assigneeEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeemail"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "contentChanged": {
+            "default": false,
+            "title": "Contentchanged",
+            "type": "boolean"
+          },
+          "contentHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contenthash"
+          },
+          "contentSnapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contentsnapshot"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdByUserId": {
+            "title": "Createdbyuserid",
+            "type": "integer"
+          },
+          "creatorEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creatoremail"
+          },
+          "decisionNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decisionnote"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "nodeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodename"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "projectId": {
+            "title": "Projectid",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "targetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
+          "targetType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targettype"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
+          },
+          "taskType": {
+            "title": "Tasktype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "taskType",
+          "title",
+          "status",
+          "priority",
+          "createdByUserId",
+          "assignedToUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "TaskResponse",
         "type": "object"
       },
       "UnlockStageRequest": {
@@ -6322,6 +7406,114 @@
           "is_active"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "UserTaskProjectSummary": {
+        "properties": {
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "projectName": {
+            "title": "Projectname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "projectName"
+        ],
+        "title": "UserTaskProjectSummary",
+        "type": "object"
+      },
+      "UserTaskResponse": {
+        "properties": {
+          "assigneeSummary": {
+            "$ref": "#/components/schemas/UserTaskUserSummary"
+          },
+          "contentChanged": {
+            "title": "Contentchanged",
+            "type": "boolean"
+          },
+          "creatorSummary": {
+            "$ref": "#/components/schemas/UserTaskUserSummary"
+          },
+          "projectSummary": {
+            "$ref": "#/components/schemas/UserTaskProjectSummary"
+          },
+          "targetSummary": {
+            "$ref": "#/components/schemas/UserTaskTargetSummary"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          }
+        },
+        "required": [
+          "task",
+          "projectSummary",
+          "targetSummary",
+          "creatorSummary",
+          "assigneeSummary",
+          "contentChanged"
+        ],
+        "title": "UserTaskResponse",
+        "type": "object"
+      },
+      "UserTaskTargetSummary": {
+        "properties": {
+          "nodeId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodeid"
+          },
+          "nodeKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodekind"
+          },
+          "nodeName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodename"
+          }
+        },
+        "title": "UserTaskTargetSummary",
+        "type": "object"
+      },
+      "UserTaskUserSummary": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "userId",
+          "email"
+        ],
+        "title": "UserTaskUserSummary",
         "type": "object"
       },
       "ValidationError": {
@@ -7748,6 +8940,24 @@
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -7885,6 +9095,24 @@
     "/api/auth/register": {
       "post": {
         "operationId": "register_api_auth_register_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8545,6 +9773,24 @@
     "/api/health": {
       "get": {
         "operationId": "health_check_api_health_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8553,6 +9799,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Health Check"
@@ -8600,6 +9856,269 @@
           }
         },
         "summary": "Llm Test"
+      }
+    },
+    "/api/me/notifications": {
+      "get": {
+        "operationId": "get_my_notifications_api_me_notifications_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationResponse"
+                  },
+                  "title": "Response Get My Notifications Api Me Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get My Notifications",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/me/notifications/read": {
+      "put": {
+        "operationId": "mark_notifications_as_read_api_me_notifications_read_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotificationsReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Notifications As Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/me/tasks": {
+      "get": {
+        "operationId": "list_my_tasks_api_me_tasks_get",
+        "parameters": [
+          {
+            "description": "Filter by role: assignee, creator, or both. Default is assignee.",
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by role: assignee, creator, or both. Default is assignee.",
+              "title": "Role"
+            }
+          },
+          {
+            "description": "Comma-separated statuses",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated statuses",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserTaskResponse"
+                  },
+                  "title": "Response List My Tasks Api Me Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List My Tasks",
+        "tags": [
+          "user_tasks"
+        ]
       }
     },
     "/api/perception_slot_filling_drafts/acceptance_criteria": {
@@ -10346,6 +11865,86 @@
             }
           },
           {
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -11301,6 +12900,64 @@
         "summary": "Reject Choice",
         "tags": [
           "choices"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/confirmation-summary": {
+      "get": {
+        "operationId": "get_confirmation_summary_api_projects__project_id__confirmation_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Confirmation Summary",
+        "tags": [
+          "project_confirmation"
         ]
       }
     },
@@ -12788,6 +14445,524 @@
         ]
       }
     },
+    "/api/projects/{project_id}/llm-config": {
+      "delete": {
+        "operationId": "delete_project_llm_config_api_projects__project_id__llm_config_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project Llm Config",
+        "tags": [
+          "project_llm_config"
+        ]
+      },
+      "get": {
+        "operationId": "get_project_llm_config_api_projects__project_id__llm_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLLMConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Llm Config",
+        "tags": [
+          "project_llm_config"
+        ]
+      },
+      "put": {
+        "operationId": "update_project_llm_config_api_projects__project_id__llm_config_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectLLMConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLLMConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Llm Config",
+        "tags": [
+          "project_llm_config"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/llm-config/test": {
+      "post": {
+        "operationId": "test_project_llm_config_api_projects__project_id__llm_config_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectLLMConfigTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLLMConfigTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Project Llm Config",
+        "tags": [
+          "project_llm_config"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/members": {
+      "get": {
+        "description": "List all members of the project.",
+        "operationId": "list_members_api_projects__project_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectMemberResponse"
+                  },
+                  "title": "Response List Members Api Projects  Project Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Members",
+        "tags": [
+          "project_members"
+        ]
+      },
+      "post": {
+        "description": "Add a new member to the project.",
+        "operationId": "add_member_api_projects__project_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectMemberAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Member",
+        "tags": [
+          "project_members"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/members/{member_id}": {
+      "delete": {
+        "description": "Remove a project member (mark status as removed).",
+        "operationId": "remove_member_api_projects__project_id__members__member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Member",
+        "tags": [
+          "project_members"
+        ]
+      },
+      "patch": {
+        "description": "Update a project member's role or status.",
+        "operationId": "update_member_api_projects__project_id__members__member_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectMemberUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Member",
+        "tags": [
+          "project_members"
+        ]
+      }
+    },
     "/api/projects/{project_id}/next-suggestion": {
       "get": {
         "operationId": "get_next_suggestion_api_projects__project_id__next_suggestion_get",
@@ -14258,6 +16433,511 @@
         "summary": "Skip Kano",
         "tags": [
           "project_scope"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks": {
+      "get": {
+        "operationId": "list_project_tasks_api_projects__project_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned_to_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assigned To User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_by_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponse"
+                  },
+                  "title": "Response List Project Tasks Api Projects  Project Id  Tasks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Tasks",
+        "tags": [
+          "project_tasks"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks/confirm-node": {
+      "post": {
+        "operationId": "create_confirm_node_task_api_projects__project_id__tasks_confirm_node_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Confirm Node Task",
+        "tags": [
+          "project_tasks"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks/confirm-nodes": {
+      "post": {
+        "operationId": "create_confirm_nodes_task_api_projects__project_id__tasks_confirm_nodes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchTaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Confirm Nodes Task",
+        "tags": [
+          "project_tasks"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task_details_api_projects__project_id__tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task Details",
+        "tags": [
+          "project_tasks"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks/{task_id}/cancel": {
+      "patch": {
+        "operationId": "cancel_task_endpoint_api_projects__project_id__tasks__task_id__cancel_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Task Endpoint",
+        "tags": [
+          "project_tasks"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tasks/{task_id}/decision": {
+      "patch": {
+        "operationId": "decide_task_endpoint_api_projects__project_id__tasks__task_id__decision_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Task Endpoint",
+        "tags": [
+          "project_tasks"
         ]
       }
     },

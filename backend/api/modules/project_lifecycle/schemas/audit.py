@@ -14,6 +14,13 @@ class AuditLogResponse(CamelModel):
     payload: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
+    
+    actor_user_id: Optional[int] = None
+    actor_type: str = "system"
+    actor_email: Optional[str] = None
+    diff: Optional[dict | list] = None
+    request_id: Optional[str] = None
+    task_id: Optional[int] = None
 
 
 class UserRequirementsUpdateRequest(CamelModel):

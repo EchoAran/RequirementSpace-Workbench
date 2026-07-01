@@ -2,6 +2,9 @@ from sqlalchemy import select
 from backend.database.model import ActorModel, AuditLogModel, ConfirmationStatus
 from backend.api.modules.requirements_core.ports import get_notifier
 from backend.api.modules.requirements_core.actor.schemas import ActorCreateRequest, ActorUpdateRequest, ActorResponse
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 
 
 class ActorService:
@@ -40,14 +43,16 @@ class ActorService:
         await session.flush()
 
         # 审计日志: 新增角色
-        session.add(AuditLogModel(
+        diff = {"name": actor.name, "description": actor.description, "confirmation_status": confirmation_status}
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="create_actor",
             summary=f"手动新增角色: {actor.name}",
             target_type="actor",
-            target_id=str(actor.id),
-            payload={},
-        ))
+            target_id=actor.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -81,6 +86,12 @@ class ActorService:
         if actor is None:
             raise ValueError("actor_not_found")
 
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.check_optimistic_lock(session, "actor", actor, req.last_seen_updated_at)
+
+        old_name = actor.name
+        old_description = actor.description
+
         if req.name is not None:
             actor.name = req.name
         if req.description is not None:
@@ -89,14 +100,21 @@ class ActorService:
         await session.flush()
 
         # 审计日志: 更新角色
-        session.add(AuditLogModel(
+        diff = {}
+        if old_name != actor.name:
+            diff["name"] = {"before": old_name, "after": actor.name}
+        if old_description != actor.description:
+            diff["description"] = {"before": old_description, "after": actor.description}
+
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="update_actor",
             summary=f"手动更新角色: {actor.name}",
             target_type="actor",
-            target_id=str(actor.id),
-            payload={},
-        ))
+            target_id=actor.id,
+            diff=diff,
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -104,6 +122,9 @@ class ActorService:
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
+
+        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        await snapshot_service.supersede_tasks_on_node_update(session, "actor", actor)
 
         return ActorResponse(
             actor_id=actor.id,
@@ -134,14 +155,15 @@ class ActorService:
         await session.flush()
 
         # 审计日志: 删除角色
-        session.add(AuditLogModel(
+        await audit_service.record(
+            session=session,
             project_id=project_id,
             action_type="delete_actor",
             summary=f"手动删除角色: {actor_name}",
             target_type="actor",
-            target_id=str(actor_id),
-            payload={},
-        ))
+            target_id=actor_id,
+            diff={"status": "deleted"},
+        )
 
         await get_notifier().mark_stale(
             project_id=project_id,

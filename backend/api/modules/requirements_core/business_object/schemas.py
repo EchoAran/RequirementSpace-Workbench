@@ -1,4 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 # Business Object Attribute Schemas
 class BusinessObjectAttributeCreateRequest(BaseModel):
@@ -8,11 +10,12 @@ class BusinessObjectAttributeCreateRequest(BaseModel):
     example: str = Field(default="")
 
 
-class BusinessObjectAttributeUpdateRequest(BaseModel):
+class BusinessObjectAttributeUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None)
     data_type: str | None = Field(default=None, min_length=1, max_length=100)
     example: str | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class BusinessObjectAttributeResponse(BaseModel):
@@ -33,9 +36,10 @@ class BusinessObjectCreateRequest(BaseModel):
     description: str = Field(default="")
 
 
-class BusinessObjectUpdateRequest(BaseModel):
+class BusinessObjectUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None)
+    last_seen_updated_at: datetime | None = Field(default=None)
 
 
 class BusinessObjectResponse(BaseModel):

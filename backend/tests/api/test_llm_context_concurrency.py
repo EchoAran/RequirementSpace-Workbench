@@ -32,12 +32,14 @@ from backend.database.model import (
     UserLLMConfigModel,
     UserModel,
     ProjectModel,
+    ProjectLLMConfigModel,
     ChoiceGroupModel,
     ChoiceModel,
     GenerativeDraftModel,
 )
 from backend.api.modules.decision_workflow.public import ChoiceActionResponse
 from backend.api.dependencies.llm import get_llm_context
+from backend.core.security.encryption import encrypt_llm_api_key
 from backend.core.llm_context import (
     current_llm_context, is_web_request_ctx,
     LLMRequestContext, LLMContextMissingError, LLMConfigError,
@@ -49,10 +51,10 @@ DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 # ---------------------------------------------------------------------------
 # Test-only router that inspects context + delays to force overlap
 # ---------------------------------------------------------------------------
-test_router = APIRouter()
+context_router = APIRouter()
 
 
-@test_router.get("/api/test-context-inspect")
+@context_router.get("/api/test-context-inspect")
 async def inspect_context(llm_ctx: LLMRequestContext = Depends(get_llm_context)):
     await asyncio.sleep(0.3)
     ctx_val = current_llm_context.get()
@@ -68,7 +70,7 @@ async def inspect_context(llm_ctx: LLMRequestContext = Depends(get_llm_context))
     }
 
 
-@test_router.get("/api/test-context-gather")
+@context_router.get("/api/test-context-gather")
 async def inspect_context_gather(llm_ctx: LLMRequestContext = Depends(get_llm_context)):
     async def worker():
         await asyncio.sleep(0.1)
@@ -78,13 +80,13 @@ async def inspect_context_gather(llm_ctx: LLMRequestContext = Depends(get_llm_co
     return {"results": results}
 
 
-@test_router.get("/api/test-context-error")
+@context_router.get("/api/test-context-error")
 async def inspect_context_error(llm_ctx: LLMRequestContext = Depends(get_llm_context)):
     """Endpoint that always raises to verify ContextVar reset on exception path."""
     raise HTTPException(status_code=500, detail="deliberate_error")
 
 
-@test_router.get("/api/test-context-llm-call")
+@context_router.get("/api/test-context-llm-call")
 async def inspect_context_llm_call(llm_ctx: LLMRequestContext = Depends(get_llm_context)):
     import httpx
     async with httpx.AsyncClient() as client:
@@ -96,7 +98,7 @@ async def inspect_context_llm_call(llm_ctx: LLMRequestContext = Depends(get_llm_
     return {"status": res.status_code}
 
 
-app.include_router(test_router)
+app.include_router(context_router)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +155,10 @@ def _get_async_client():
         return httpx.AsyncClient(app=app, base_url="http://testserver")
 
 
+def _auth_headers(cookie: str) -> dict[str, str]:
+    return {"Cookie": f"auth_session={cookie}"}
+
+
 async def _create_project_db(session_factory, owner_user_id, name="TestProject"):
     """Create a project directly in the DB and return (proj.id, proj.public_id)."""
     async with session_factory() as session:
@@ -168,6 +174,22 @@ async def _create_project_db(session_factory, owner_user_id, name="TestProject")
         pub_id = proj.public_id
         await session.commit()
     return pid, pub_id
+
+
+async def _configure_project_llm_db(session_factory, project_id, owner_user_id, api_url, api_key, model_name):
+    async with session_factory() as session:
+        session.add(
+            ProjectLLMConfigModel(
+                project_id=project_id,
+                api_url=api_url,
+                encrypted_api_key=encrypt_llm_api_key(api_key),
+                api_key_last4=api_key[-4:],
+                model_name=model_name,
+                created_by_user_id=owner_user_id,
+                updated_by_user_id=owner_user_id,
+            )
+        )
+        await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +229,8 @@ async def test_concurrent_isolation_intercepts_upstream(llm_test_db):
         async with _get_async_client() as ac:
             # Fire /api/test-context-llm-call for both users concurrently
             resp_a, resp_b = await asyncio.gather(
-                ac.get("/api/test-context-llm-call", cookies={"auth_session": cookie_a}),
-                ac.get("/api/test-context-llm-call", cookies={"auth_session": cookie_b}),
+                ac.get("/api/test-context-llm-call", headers=_auth_headers(cookie_a)),
+                ac.get("/api/test-context-llm-call", headers=_auth_headers(cookie_b)),
             )
 
     assert resp_a.status_code == 200
@@ -252,8 +274,8 @@ async def test_admin_user_concurrent_isolation(llm_test_db, monkeypatch):
 
     async with _get_async_client() as ac:
         resp_admin, resp_user = await asyncio.gather(
-            ac.get("/api/test-context-inspect", cookies={"auth_session": cookie_admin}),
-            ac.get("/api/test-context-inspect", cookies={"auth_session": cookie_user}),
+            ac.get("/api/test-context-inspect", headers=_auth_headers(cookie_admin)),
+            ac.get("/api/test-context-inspect", headers=_auth_headers(cookie_user)),
         )
 
     assert resp_admin.status_code == 200
@@ -288,7 +310,7 @@ async def test_exception_path_context_reset(llm_test_db):
     async with _get_async_client() as ac:
         resp = await ac.get(
             "/api/test-context-error",
-            cookies={"auth_session": cookie},
+            headers=_auth_headers(cookie),
         )
     assert resp.status_code == 500
     assert resp.json()["detail"] == "Internal Server Error"
@@ -339,6 +361,54 @@ async def test_legacy_generation_uses_scoped_context(llm_test_db):
     assert captured["model"] == "gpt-legacy"
 
 
+@pytest.mark.anyio
+async def test_legacy_generation_prefers_project_llm_config_over_personal(llm_test_db):
+    client = TestClient(app)
+    uid, cookie = _register_user(client, "user_legacy_project_gen@example.com", "pass1234")
+    _configure_llm(
+        client,
+        cookie,
+        "https://api.personal-legacy.com",
+        "sk-personal-legacy-key",
+        "gpt-personal-legacy",
+    )
+    proj_id, proj_public_id = await _create_project_db(llm_test_db, uid)
+    await _configure_project_llm_db(
+        llm_test_db,
+        proj_id,
+        uid,
+        "https://api.project-legacy.com",
+        "sk-project-legacy-key",
+        "gpt-project-legacy",
+    )
+
+    captured = {}
+
+    async def _capture_post(self, url, *, json=None, headers=None, **kwargs):
+        captured["url"] = str(url)
+        captured["auth"] = headers.get("Authorization", "") if headers else ""
+        captured["model"] = json.get("model", "") if json else ""
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"actors": []}'}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    with patch.object(httpx.AsyncClient, "post", _capture_post):
+        client.cookies.clear()
+        client.cookies.set("auth_session", cookie)
+        res = client.post(
+            "/api/actor_generation_drafts",
+            json={"project_id": proj_public_id},
+        )
+
+    assert res.status_code != 422
+    assert captured
+    assert "project-legacy.com" in captured["url"]
+    assert "sk-project-legacy-key" in captured["auth"]
+    assert captured["model"] == "gpt-project-legacy"
+
+
 
 # ---------------------------------------------------------------------------
 # 5. Skill-backed generation — generation_choice_groups
@@ -378,6 +448,54 @@ async def test_skill_generation_uses_scoped_context(llm_test_db):
     assert "skill-gen.com" in captured["url"]
     assert "sk-skill-gen-key-5678" in captured["auth"]
     assert captured["model"] == "gpt-skill"
+
+
+@pytest.mark.anyio
+async def test_skill_generation_prefers_project_llm_config_over_personal(llm_test_db):
+    client = TestClient(app)
+    uid, cookie = _register_user(client, "user_skill_project_gen@example.com", "pass1234")
+    _configure_llm(
+        client,
+        cookie,
+        "https://api.personal-skill.com",
+        "sk-personal-skill-key",
+        "gpt-personal-skill",
+    )
+    proj_id, proj_public_id = await _create_project_db(llm_test_db, uid)
+    await _configure_project_llm_db(
+        llm_test_db,
+        proj_id,
+        uid,
+        "https://api.project-skill.com",
+        "sk-project-skill-key",
+        "gpt-project-skill",
+    )
+
+    captured = {}
+
+    async def _capture_post(self, url, *, json=None, headers=None, **kwargs):
+        captured["url"] = str(url)
+        captured["auth"] = headers.get("Authorization", "") if headers else ""
+        captured["model"] = json.get("model", "") if json else ""
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"choices": []}'}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    with patch.object(httpx.AsyncClient, "post", _capture_post):
+        client.cookies.clear()
+        client.cookies.set("auth_session", cookie)
+        res = client.post(
+            "/api/generation_choice_groups",
+            json={"project_id": proj_public_id, "generation_type": "actor"},
+        )
+
+    assert res.status_code != 422
+    assert captured
+    assert "project-skill.com" in captured["url"]
+    assert "sk-project-skill-key" in captured["auth"]
+    assert captured["model"] == "gpt-project-skill"
 
 
 # ---------------------------------------------------------------------------
@@ -671,7 +789,7 @@ async def test_llm_context_gather_inheritance(llm_test_db):
     async with _get_async_client() as ac:
         resp = await ac.get(
             "/api/test-context-gather",
-            cookies={"auth_session": cookie},
+            headers=_auth_headers(cookie),
         )
     assert resp.status_code == 200
     data = resp.json()
@@ -689,7 +807,7 @@ async def test_llm_context_missing_config_conflict(llm_test_db):
     async with _get_async_client() as ac:
         resp = await ac.get(
             "/api/test-context-inspect",
-            cookies={"auth_session": cookie},
+            headers=_auth_headers(cookie),
         )
     assert resp.status_code == 409
     assert resp.json()["detail"] == "llm_config_required"

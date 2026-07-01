@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Response, Cookie
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +14,11 @@ from backend.database.model import UserModel
 from backend.api.modules.auth_account.schemas.auth import RegisterRequest, LoginRequest, UserResponse
 from backend.api.modules.auth_account.application.auth_service import AuthService
 from backend.api.dependencies.auth import get_current_user
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import AUTH_LOGIN_FAILED, AUTH_LOGIN_SUCCEEDED
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = get_logger(__name__)
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -48,9 +53,29 @@ async def login(
     response: Response,
     session: AsyncSession = Depends(get_session)
 ):
-    user = await AuthService.authenticate_user(request, session)
+    try:
+        user = await AuthService.authenticate_user(request, session)
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth",
+            AUTH_LOGIN_FAILED,
+            "Auth login failed",
+            error_type=type(exc).__name__,
+            error_message=sanitize_message(str(exc)),
+        )
+        raise
     token = await AuthService.create_session(user.id, session)
     set_session_cookie(response, token)
+    log_event(
+        logger,
+        logging.INFO,
+        "auth",
+        AUTH_LOGIN_SUCCEEDED,
+        "Auth login succeeded",
+        user_id=user.id,
+    )
     return user
 
 

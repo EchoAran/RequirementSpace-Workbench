@@ -44,6 +44,7 @@ export interface ActorNode {
   description?: string;
   status?: NodeStatus;
   scopeStatus?: ScopeStatus | 'in_scope' | 'out_of_scope' | 'external_dependency' | 'deferred';
+  updatedAt?: string;
 }
 
 // 成功标准
@@ -57,6 +58,7 @@ export interface AcceptanceCriterionNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 // 场景/用户故事
@@ -74,6 +76,7 @@ export interface ScenarioNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 // 功能范围 (Kano)
@@ -95,6 +98,7 @@ export interface ScopeNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 // 功能结点 (组成特征树)
@@ -114,6 +118,7 @@ export interface FeatureNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 // 业务对象属性
@@ -147,6 +152,7 @@ export interface BusinessObjectNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 // 流程步骤结点
@@ -185,6 +191,7 @@ export interface FlowNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  updatedAt?: string;
 }
 
 export type Stage = 'what' | 'how' | 'scope';
@@ -498,6 +505,9 @@ export interface WorkspaceListItem {
   status: string;
   issueCount: number;
   nodeCount: number;
+  membershipRole?: string;
+  ownerUserId?: number;
+  memberCount?: number;
 }
 
 export interface ProjectCreationDraft {
@@ -608,4 +618,15 @@ export interface GenerationChoiceItem {
   comparisonSummary?: string;
   score?: any;
   error?: any;
+}
+
+export interface ProjectMember {
+  memberId: number;
+  userId: number;
+  email: string;
+  role: string;
+  status: string;
+  joinedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }

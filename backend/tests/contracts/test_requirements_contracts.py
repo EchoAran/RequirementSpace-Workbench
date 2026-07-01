@@ -443,8 +443,13 @@ async def test_node_status_supports_attribute_and_flow_step(req_test_db):
     detail = client.get(f"/api/projects/{project_id}").json()
     attrs = detail["businessObjects"][0]["businessObjectAttributes"]
     steps = detail["flows"][0]["flowSteps"]
+    assert detail["features"][0]["updatedAt"]
+    assert detail["businessObjects"][0]["updatedAt"]
+    assert detail["flows"][0]["updatedAt"]
     assert attrs[0]["confirmationStatus"] == "confirmed"
+    assert attrs[0]["updatedAt"]
     assert steps[0]["confirmationStatus"] == "confirmed"
+    assert steps[0]["updatedAt"]
 
 
 # ═══════════════════════════════════════════════════════════════════

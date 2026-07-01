@@ -1,5 +1,8 @@
 from uuid import uuid4
+import logging
 
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import PERCEPTION_SLOT_FILLING_DRAFT_CREATED
 from backend.core.perceptrons.slot_fillers.acceptance_criteria_filler import (
     AcceptanceCriteriaFiller,
 )
@@ -18,6 +21,8 @@ from backend.core.perceptrons.slot_fillers.scenarios_filler import (
 from backend.api.modules.diagnosis_quality.perception.application.preview_builders import (
     PerceptionPreviewBuilder,
 )
+
+logger = get_logger(__name__)
 
 
 class PerceptionDraftCreator:
@@ -133,6 +138,16 @@ class PerceptionDraftCreator:
             owner_user_id=owner_user_id,
             session=session,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            PERCEPTION_SLOT_FILLING_DRAFT_CREATED,
+            "Perception slot filling draft created",
+            project_id=project_id,
+            draft_id=draft_id,
+            perception_kind=filler_kind,
+        )
 
         return response_payload
 
@@ -164,6 +179,16 @@ class PerceptionDraftCreator:
             payload=draft_payload,
             owner_user_id=owner_user_id,
             session=session,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            PERCEPTION_SLOT_FILLING_DRAFT_CREATED,
+            "Perception slot filling draft created",
+            project_id=draft["project_id"],
+            draft_id=draft_id,
+            perception_kind=draft["filler_kind"],
         )
 
         return response_payload

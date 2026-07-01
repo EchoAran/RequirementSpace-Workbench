@@ -1,9 +1,12 @@
+﻿import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project
+from backend.api.dependencies.project_access import require_project_member
 from backend.database.model import UserModel, ChoiceGroupModel, ChoiceModel
 from backend.api.modules.decision_workflow.choice_group.schemas import (
     ChoiceGroupResponse,
@@ -17,10 +20,13 @@ from backend.api.modules.decision_workflow.candidate_generation.application.gene
 )
 from backend.database.database import get_session
 from backend.api.dependencies.llm import llm_context_manager
+from backend.core.logging import get_logger, log_event
+from backend.core.logging.events import CHOICE_GROUP_RESOLVED
 
 router = APIRouter(
     tags=["choices"],
 )
+logger = get_logger(__name__)
 
 choice_service = ChoiceService()
 generation_choice_service = GenerationChoiceService()
@@ -36,7 +42,7 @@ async def list_choice_groups(
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    owned_project = await require_owned_project(project_id, user, session)
+    owned_project = await require_project_member(project_id, user, session)
     try:
         return await choice_service.list_choice_groups(
             project_id=owned_project.id,
@@ -79,13 +85,24 @@ async def accept_choice(
         raise HTTPException(status_code=404, detail="choice_not_found")
 
     try:
-        async with llm_context_manager(user, session):
-            return await choice_service.accept_choice(
+        async with llm_context_manager(user, session, project_id=owned_project.id):
+            result = await choice_service.accept_choice(
                 project_id=owned_project.id,
                 choice_id=choice_id,
                 session=session,
                 force=body.force,
             )
+            log_event(
+                logger,
+                logging.INFO,
+                "domain",
+                CHOICE_GROUP_RESOLVED,
+                "Choice group resolved",
+                project_id=owned_project.id,
+                choice_group_id=choice.choice_group_id,
+                status="resolved",
+            )
+            return result
     except ValueError as error:
         err_msg = str(error)
         status_code = 400
@@ -104,8 +121,6 @@ async def accept_choice(
             status_code=500,
             detail=f"Failed to accept choice: {error}",
         )
-
-
 @router.post(
     "/api/projects/{project_id}/choices/{choice_id}/reject",
     response_model=ChoiceActionResponse,
@@ -218,7 +233,7 @@ async def create_generation_choice_group(
     用户稍后可调用 accept、reject、discard 处理。
     """
     owned_project = await require_owned_project(body.project_id, user, session)
-    async with llm_context_manager(user, session):
+    async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             result = await generation_choice_service.create_choice_group(
                 project_id=owned_project.id,
@@ -271,7 +286,7 @@ async def regenerate_choice_group(
     if not group:
         raise HTTPException(status_code=404, detail="choice_group_not_found")
 
-    async with llm_context_manager(user, session):
+    async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await generation_choice_service.regenerate_choice_group(
                 project_id=owned_project.id,
@@ -320,7 +335,7 @@ async def regenerate_choice(
     if not choice:
         raise HTTPException(status_code=404, detail="choice_not_found")
 
-    async with llm_context_manager(user, session):
+    async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await generation_choice_service.regenerate_choice(
                 project_id=owned_project.id,

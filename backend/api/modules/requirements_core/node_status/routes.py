@@ -24,6 +24,11 @@ from backend.database.model import (
     AuditLogModel,
 )
 from backend.api.modules.project_lifecycle.ports import ConfirmationStatusEnum
+from backend.api.dependencies.actor_context import get_actor_context
+from backend.core.actor_context import ActorContext
+from backend.services.audit_service import AuditService
+
+audit_service = AuditService()
 
 router = APIRouter(prefix="/api/projects/{project_id}/node-status", tags=["node-status"])
 
@@ -143,31 +148,69 @@ async def _apply_status_update(
 
 async def _write_audit_log(
     project_id: int, node_kind: str, node_id: int,
-    old_status: str, new_status: str, session,
+    old_status: str, new_status: str, actor: ActorContext, session,
 ):
     """写入状态变更审计日志。"""
     kind_label = _NODE_KIND_LABEL.get(node_kind, node_kind)
     old_label = _CONFIRMATION_STATUS_LABEL.get(old_status, old_status)
     new_label = _CONFIRMATION_STATUS_LABEL.get(new_status, new_status)
-    session.add(AuditLogModel(
+    
+    if new_status == "confirmed":
+        summary = f"直接确认{kind_label}(id={node_id}): {old_label} → {new_label}"
+    else:
+        summary = f"节点确认状态变更: {kind_label}(id={node_id}) {old_label} → {new_label}"
+        
+    diff = {"confirmation_status": {"before": old_status, "after": new_status}}
+    
+    await audit_service.record(
+        session=session,
         project_id=project_id,
         action_type="update_confirmation_status",
-        summary=f"节点确认状态变更: {kind_label}(id={node_id}) {old_label} → {new_label}",
+        summary=summary,
         target_type=node_kind,
-        target_id=str(node_id),
+        target_id=node_id,
+        actor=actor,
+        diff=diff,
         payload={
             "old_status": old_status,
             "new_status": new_status,
             "old_label": old_label,
             "new_label": new_label,
         },
-    ))
+    )
+
+    if new_status == "confirmed":
+        from backend.database.model import CollaborationTaskModel
+        from datetime import datetime, timezone
+        
+        query = select(CollaborationTaskModel).where(
+            CollaborationTaskModel.project_id == project_id,
+            CollaborationTaskModel.target_type == node_kind,
+            CollaborationTaskModel.target_id == str(node_id),
+            CollaborationTaskModel.status == "open"
+        )
+        res = await session.execute(query)
+        open_tasks = res.scalars().all()
+        for task in open_tasks:
+            task.status = "superseded"
+            task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            await audit_service.record(
+                session=session,
+                project_id=project_id,
+                action_type="task_superseded",
+                summary=f"任务已冲销: 节点状态直接更新为 confirmed (直接确认)",
+                target_type="task",
+                target_id=task.id,
+                task_id=task.id,
+                payload={"reason": "direct_confirmation"}
+            )
 
 
 @router.patch("")
 async def update_node_status(
     project_id: str,
     req: UpdateNodeStatusRequest,
+    actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
@@ -188,7 +231,7 @@ async def update_node_status(
     if not result.get("skipped"):
         await _write_audit_log(
             owned_project.id, req.node_kind, req.node_id,
-            result["old_status"], result["new_status"], session,
+            result["old_status"], result["new_status"], actor, session,
         )
 
     await session.commit()
@@ -199,6 +242,7 @@ async def update_node_status(
 async def batch_update_node_status(
     project_id: str,
     req: BatchUpdateNodeStatusRequest,
+    actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
@@ -224,7 +268,7 @@ async def batch_update_node_status(
         if not result.get("skipped"):
             await _write_audit_log(
                 owned_project.id, kind, node_req.node_id,
-                result["old_status"], result["new_status"], session,
+                result["old_status"], result["new_status"], actor, session,
             )
             results.append({"node_kind": kind, "node_id": node_req.node_id, "status": "updated"})
         else:

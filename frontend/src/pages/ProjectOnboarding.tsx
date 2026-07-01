@@ -19,8 +19,6 @@ export function ProjectOnboarding() {
     isLoading,
     isGenerating,
     error,
-
-    // Phase 2: Choice Group Onboarding
     activeChoiceGroup,
     choiceGroupGenerationProgress,
     isGeneratingChoices,

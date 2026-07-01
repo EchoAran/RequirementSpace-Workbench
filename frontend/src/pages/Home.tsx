@@ -14,7 +14,6 @@ export function Home() {
     error,
     updateProject,
     deleteProject,
-    // Phase 2: onboarding recovery
     openOnboardingChoiceGroups,
     loadOpenOnboardingChoiceGroups,
     recoverOnboardingChoiceGroup,
@@ -29,7 +28,6 @@ export function Home() {
 
   useEffect(() => {
     void loadWorkspaces();
-    // Load open onboarding choice groups for recovery banner (UX-4)
     void loadOpenOnboardingChoiceGroups();
   }, [loadWorkspaces, loadOpenOnboardingChoiceGroups]);
 
@@ -161,7 +159,6 @@ export function Home() {
           </p>
         </div>
 
-        {/* Phase 2: Onboarding recovery banner (UX-4) */}
         {openOnboardingChoiceGroups.length > 0 && (
           <div className="mb-4 shrink-0 animate-in fade-in slide-in-from-top-4 duration-500">
             {openOnboardingChoiceGroups.map((g: any) => (

@@ -141,7 +141,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
               <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 items-center justify-between">
                 <div className="w-full flex justify-between items-center">
                   {item.status ? <StatusBadge status={item.status} /> : <span />}
-                  {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind] || item.kind}</span>}
+                  {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind as keyof typeof NodeKindToText] || item.kind}</span>}
                 </div>
               </div>
             </div>

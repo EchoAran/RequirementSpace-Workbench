@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 
 from backend.api.dependencies.auth import get_current_user
 from backend.database.model import UserModel
@@ -12,7 +13,11 @@ llm_config_service = LLMConfigService()
 
 
 @asynccontextmanager
-async def llm_context_manager(user: UserModel, session: AsyncSession, project_id: int | None = None):
+async def llm_context_manager(
+    user: UserModel,
+    session: AsyncSession,
+    project_id: int | None = None,
+) -> AsyncIterator[LLMRequestContext]:
     """Context manager to resolve user LLM configuration and set request context."""
     try:
         config_data = await llm_config_service.resolve_for_user(user.id, session, project_id=project_id)
@@ -46,7 +51,7 @@ async def get_llm_context(
     request: Request = None,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
-) -> LLMRequestContext:
+) -> AsyncIterator[LLMRequestContext]:
     """FastAPI dependency to resolve the current user's LLM configuration and set request context."""
     project_id_int = None
     if request is not None:

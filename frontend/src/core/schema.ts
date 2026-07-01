@@ -541,7 +541,6 @@ export interface ProjectCreationDiscardResponse {
   message: string;
 }
 
-// Phase 2: Project Creation Choice Group types
 export interface ProjectCreationChoiceItem {
   id: string;
   title: string;
@@ -591,7 +590,6 @@ export interface ProjectCreationChoiceGroupDeferResponse {
   message: string;
 }
 
-// Phase 3: Generic generation choice group (actor, scenario, etc.)
 export interface GenerationChoiceGroup {
   id: number | string;
   projectId: string;

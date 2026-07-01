@@ -18,7 +18,7 @@ export function SlotPanel({ slot, ir }: { slot: RequirementSlot; ir: Requirement
 
       <Section title="Context">
         <div className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-          Owner node: {ir.nodes[slot.ownerNodeId]?.title || slot.ownerNodeId}
+          Owner node: {ir.nodes?.[slot.ownerNodeId]?.title || slot.ownerNodeId}
         </div>
         <div className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
           Expected kinds: {(slot.expectedKinds || []).join(', ') || 'Not specified'}

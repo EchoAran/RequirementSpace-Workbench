@@ -8,12 +8,6 @@ interface StaleChoiceDialogProps {
   onCancel: () => void;
 }
 
-/**
- * StaleChoiceDialog (UX-5)
- *
- * When a choice's context has changed (feature/actor deleted, etc.),
- * this dialog asks the user whether to force-accept or regenerate.
- */
 export function StaleChoiceDialog({
   isOpen,
   staleReason,

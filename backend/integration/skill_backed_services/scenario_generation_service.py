@@ -6,7 +6,6 @@ import logging
 from uuid import uuid4
 
 from backend.api.modules.requirements_core.public import (
-    AcceptanceCriteriaGenerationService,
     ScenarioGenerationService,
     get_notifier,
 )
@@ -186,41 +185,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
-        scenario_ids = result.pop("scenario_ids")
-
-        if generate_acceptance_criteria:
-            criteria_items = []
-            for scenario_id, item in zip(scenario_ids, draft["scenarios"]):
-                criteria = item.get("acceptance_criteria", [])
-                if criteria:
-                    criteria_items.append(
-                        {
-                            "scenario_id": scenario_id,
-                            "acceptance_criteria": criteria,
-                        }
-                    )
-
-            if criteria_items:
-                criteria_draft = {
-                    "project_id": draft["project_id"],
-                    "scenario_ids": scenario_ids,
-                    "scenario_acceptance_criteria": criteria_items,
-                }
-                persist_criteria = (
-                    AcceptanceCriteriaGenerationService
-                    ._persist_acceptance_criteria_generation_draft
-                )
-                criteria_result = await persist_criteria(
-                    draft=criteria_draft,
-                    session=session,
-                )
-                result["acceptance_criterion_count"] = criteria_result[
-                    "acceptance_criterion_count"
-                ]
-            else:
-                result["acceptance_criterion_count"] = 0
-        else:
-            result["acceptance_criterion_count"] = 0
+        result.pop("scenario_ids")
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -379,7 +344,11 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         session,
     ) -> dict:
-        from backend.database.model import GherkinSpecModel, ScenarioModel
+        from backend.database.model import (
+            GherkinSpecModel,
+            ScenarioAcceptanceCriterionModel,
+            ScenarioModel,
+        )
 
         project_id = draft["project_id"]
         specs_by_target: dict[str, GherkinSpecModel] = {}
@@ -405,7 +374,12 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         await session.flush()
 
         scenarios = []
+        acceptance_criterion_count = 0
         for item in draft["scenarios"]:
+            acceptance_criteria = item.get("acceptance_criteria") or []
+            if not acceptance_criteria:
+                raise ValueError("empty_acceptance_criteria")
+
             target_key = item.get("gherkin_target_key") or (
                 f"{item['feature_id']}:{item['actor_id']}"
             )
@@ -426,9 +400,24 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
 
         await session.flush()
 
+        for scenario, item in zip(scenarios, draft["scenarios"], strict=True):
+            for position, criterion in enumerate(item["acceptance_criteria"], start=1):
+                session.add(
+                    ScenarioAcceptanceCriterionModel(
+                        scenario_id=scenario.id,
+                        position=position,
+                        content=criterion,
+                        confirmation_status="ai_assumption",
+                    )
+                )
+                acceptance_criterion_count += 1
+
+        await session.flush()
+
         return {
             "project_id": project_id,
             "scenario_count": len(draft["scenarios"]),
+            "acceptance_criterion_count": acceptance_criterion_count,
             "scenario_ids": [
                 scenario.id
                 for scenario in scenarios
@@ -467,6 +456,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
                     "actor_name": item["actor_name"],
                     "scenario_name": item["scenario_name"],
                     "scenario_content": item["scenario_content"],
+                    "acceptance_criteria": item["acceptance_criteria"],
                 }
                 for item in generated_scenarios
             ],

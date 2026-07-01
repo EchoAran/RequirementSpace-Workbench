@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Choice, ChoiceGroup, Finding, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText, ProjectMember } from '@/core/schema';
+import { ActorNode, Choice, ChoiceGroup, Finding, RequirementSpaceIR, RequirementSlot, NodeStatus, NodeStatusToText, ProjectMember } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPanel } from '../right-panel/ChoiceGroupPanel';
 import { ChoicePanel } from '../right-panel/ChoicePanel';
@@ -18,7 +18,7 @@ import { TaskDecisionModal } from './TaskDecisionModal';
 const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null): Choice | null => {
   if (!ir || !choiceId) return null;
   for (const group of Object.values(ir.choiceGroups || {})) {
-    const choice = (group.choices || []).find((item) => item.id === choiceId);
+    const choice = (group.choices || []).find((item: Choice) => item.id === choiceId);
     if (choice) return choice;
   }
   return null;
@@ -477,6 +477,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
   const updateFeature = useWorkspaceStore((state) => state.updateFeature);
   const updateScope = useWorkspaceStore((state) => state.updateScope);
   const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
+  const actors = ir?.actors || [];
 
   // Find original feature in ir to get its scope/reason and complete fields
   const originalFeature = useMemo(() => {
@@ -679,9 +680,9 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
       </Section>
 
       <Section title="关联参与者">
-        {ir.actors && ir.actors.length > 0 ? (
+        {actors.length > 0 ? (
           <div className="space-y-2 border border-slate-200/60 rounded-xl p-3 bg-slate-50/50 max-h-[160px] overflow-y-auto">
-            {ir.actors.map((actor: any) => {
+            {actors.map((actor: ActorNode) => {
               const isChecked = selectedActorIds.includes(actor.actorId);
               return (
                 <label 

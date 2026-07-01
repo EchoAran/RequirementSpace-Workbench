@@ -86,7 +86,6 @@ export function Overview() {
     expandSlot,
     updateIssueAttributes,
     refreshWorkspace,
-    // Phase 5b: Choice group
     activeChoiceGroup,
     isGeneratingChoices,
     choiceGroupGenerationProgress,
@@ -107,7 +106,7 @@ export function Overview() {
   const openIssues = overview.openIssues;
   const highRiskIssues = overview.highRiskIssues;
   const decisionQueue = overview.decisionQueue;
-  const recentChoices = overview.recentChoices.length ? overview.recentChoices : choices.filter(c => c.status === 'candidate').slice(0, 3);
+  const recentChoices = overview.recentChoices.length ? overview.recentChoices : choices.filter((c: any) => c.status === 'candidate').slice(0, 3);
   const stageHealths = [
     { stage: 'what', label: 'What', route: '/what' as const, health: buildPageHealth(ir, '/what') },
     { stage: 'how', label: 'How', route: '/flow' as const, health: buildPageHealth(ir, '/flow') },
@@ -400,7 +399,7 @@ export function Overview() {
                 </div>
                 <div className="flex-1 p-6 overflow-y-auto">
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    {recentChoices.map(c => (
+                    {recentChoices.map((c: any) => (
                       <ChoiceCard
                         key={c.id}
                         choice={c as any}
@@ -506,7 +505,6 @@ export function Overview() {
 
       <RightObjectPanel />
 
-      {/* Phase 5b: Choice group preview modal */}
       <ChoiceGroupPreviewModal
         group={activeChoiceGroup}
         isWorking={isGeneratingChoices}
@@ -527,7 +525,6 @@ export function Overview() {
         onDefer={handleDeferChoiceGroupPreview}
       />
 
-      {/* Phase 5b: Stale choice dialog (UX-5) */}
       <StaleChoiceDialog
         isOpen={!!activeStaleChoice}
         staleReason={activeStaleChoice?.staleReason || ''}

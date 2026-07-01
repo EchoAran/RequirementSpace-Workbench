@@ -21,6 +21,7 @@ import {
   getChildCapabilities,
   getRootCapabilities,
 } from '@/core/selectors';
+import type { ActorNode, FeatureNode } from '@/core/schema';
 
 interface AcInlineEditorProps {
   initialContent: string;
@@ -279,7 +280,6 @@ export function WhatToDo() {
     generateAcceptanceCriteria, regenerateAcceptanceCriteria, confirmAcceptanceCriteria,
     discardDraft, activeDraft, activeDraftType, isGenerating, isLoading, isDiagnosing,
     addActor, addFeature, lastActionMessage,
-    // Phase 3: Choice group
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress,
     acceptChoice, discardChoiceGroup, deferOnboardingChoiceGroup,
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
@@ -367,11 +367,12 @@ export function WhatToDo() {
       setIsTransitionModalOpen(true);
     } else if (targetId) {
       const featIdStr = targetId.toString();
-      const featObj = ir?.features?.find((f: any) => f.featureId === targetId);
+      const featObj = ir?.features?.find((f: FeatureNode) => f.featureId === targetId);
       if (featObj) {
         // Expand parent capability
-        if (featObj.parentId) {
-          setExpandedCaps((prev) => ({ ...prev, [featObj.parentId]: true }));
+        const parentId = featObj.parentId;
+        if (parentId !== null && parentId !== undefined) {
+          setExpandedCaps((prev) => ({ ...prev, [parentId]: true }));
         }
 
         // Set highlight target to trigger the 3-second temporary border
@@ -385,7 +386,7 @@ export function WhatToDo() {
           setScenarioManagerFeature({ featureId: targetId });
         } else {
           // Open right drawer
-          const childNode = ir.capabilitiesCompatible?.find((c: any) => c.featureId === targetId || c.id === featIdStr);
+          const childNode = ir?.capabilitiesCompatible?.find((c: any) => c.featureId === targetId || c.id === featIdStr);
           setSelectedObject(childNode || featObj);
         }
       }
@@ -881,7 +882,11 @@ export function WhatToDo() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {actors.map(actor => (
+                    {actors.map((actor: ActorNode) => {
+                      const actorTitle = actor.title || actor.actorName;
+                      const actorStatus = actor.status || 'needs_confirmation';
+
+                      return (
                       <div
                         key={actor.id}
                         id={`actor-${actor.actorId}`}
@@ -891,17 +896,17 @@ export function WhatToDo() {
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100">
-                              {actor.title.charAt(0)}
+                              {actorTitle.charAt(0)}
                             </div>
                             <div>
-                              <h4 className="font-bold text-slate-800 text-sm tracking-wide">{actor.title}</h4>
+                              <h4 className="font-bold text-slate-800 text-sm tracking-wide">{actorTitle}</h4>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`确定要删除参与者“${actor.title}”吗？此操作将清除该参与者及其所有关联，不可恢复！`)) {
+                                if (window.confirm(`确定要删除参与者“${actorTitle}”吗？此操作将清除该参与者及其所有关联，不可恢复！`)) {
                                   await deleteActor(actor.actorId);
                                   if (selectedObject?.actorId === actor.actorId) {
                                     setSelectedObject(null);
@@ -913,14 +918,14 @@ export function WhatToDo() {
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                            <StatusBadge status={actor.status} className="scale-90 origin-right" />
+                            <StatusBadge status={actorStatus} className="scale-90 origin-right" />
                           </div>
                         </div>
                         <div className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
                           {actor.description || '无具体描述说明'}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </section>
@@ -1923,7 +1928,6 @@ export function WhatToDo() {
         confirmLabel={activeDraftType === 'scenario' ? '确认并生成验收标准' : '确认采纳'}
       />
 
-      {/* Phase 3: Choice group preview modal (actor/scenario) */}
       <ChoiceGroupPreviewModal
         group={activeChoiceGroup}
         isWorking={isGeneratingChoices || isLoading}

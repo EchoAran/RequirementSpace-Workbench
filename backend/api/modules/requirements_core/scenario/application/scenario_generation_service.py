@@ -12,7 +12,7 @@ from backend.core.generators.scenarios_generator import (
     ScenariosGeneratorInput,
 )
 from backend.api.modules.requirements_core.ports import get_notifier
-from backend.schemas import ActorNode, FeatureNode
+from backend.schemas import ActorNode, FeatureNode, ScenarioNode
 
 
 class ScenarioGenerationService:
@@ -188,21 +188,7 @@ class ScenarioGenerationService:
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
         )
-        scenario_ids = result.pop("scenario_ids")
-
-        if generate_acceptance_criteria:
-            acceptance_criteria_result = await (
-                self._acceptance_criteria_generation_service
-            ).create_and_persist_for_scenarios(
-                project_id=draft["project_id"],
-                scenario_ids=scenario_ids,
-                session=session,
-            )
-            result["acceptance_criterion_count"] = (
-                acceptance_criteria_result["acceptance_criterion_count"]
-            )
-        else:
-            result["acceptance_criterion_count"] = 0
+        result.pop("scenario_ids")
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -264,6 +250,14 @@ class ScenarioGenerationService:
         if not generated_scenarios:
             raise ValueError("empty_scenarios")
 
+        generated_scenarios = await self._attach_acceptance_criteria_to_generated_scenarios(
+            user_requirements=user_requirements,
+            actor_node_map=actor_node_map,
+            feature_node_map=feature_node_map,
+            generated_scenarios=generated_scenarios,
+            user_feedback=user_feedback,
+        )
+
         draft_payload = {
             "project_id": project_id,
             "generation_mode": generation_mode,
@@ -285,6 +279,7 @@ class ScenarioGenerationService:
                     "actor_name": item["actor_name"],
                     "scenario_name": item["scenario_name"],
                     "scenario_content": item["scenario_content"],
+                    "acceptance_criteria": item["acceptance_criteria"],
                 }
                 for item in generated_scenarios
             ],
@@ -553,17 +548,69 @@ class ScenarioGenerationService:
 
         return generated_scenarios
 
+    async def _attach_acceptance_criteria_to_generated_scenarios(
+        self,
+        user_requirements: str,
+        actor_node_map: dict[int, ActorNode],
+        feature_node_map: dict[int, FeatureNode],
+        generated_scenarios: list[dict],
+        user_feedback: str | None = None,
+    ) -> list[dict]:
+        scenario_nodes = [
+            ScenarioNode(
+                scenarioId=index,
+                scenarioName=item["scenario_name"],
+                scenarioContent=item["scenario_content"],
+                featureId=item["feature_id"],
+                actorId=item["actor_id"],
+                acceptanceCriteria=[],
+            )
+            for index, item in enumerate(generated_scenarios, start=1)
+        ]
+
+        generated_acceptance_criteria = await (
+            self._acceptance_criteria_generation_service
+        )._generate_acceptance_criteria_concurrently(
+            user_requirements=user_requirements,
+            actor_node_map=actor_node_map,
+            feature_node_map=feature_node_map,
+            scenario_nodes=scenario_nodes,
+            user_feedback=user_feedback,
+        )
+
+        criteria_by_scenario_id = {
+            item["scenario_id"]: item["acceptance_criteria"]
+            for item in generated_acceptance_criteria
+        }
+
+        scenarios_with_criteria = []
+        for index, item in enumerate(generated_scenarios, start=1):
+            acceptance_criteria = criteria_by_scenario_id.get(index, [])
+            if not acceptance_criteria:
+                raise ValueError("empty_acceptance_criteria")
+            scenarios_with_criteria.append({
+                **item,
+                "acceptance_criteria": acceptance_criteria,
+            })
+
+        return scenarios_with_criteria
+
     @staticmethod
     async def _persist_scenario_generation_draft(
         draft: dict,
         session,
     ) -> dict:
-        from backend.database.model import ScenarioModel
+        from backend.database.model import ScenarioAcceptanceCriterionModel, ScenarioModel
 
         project_id = draft["project_id"]
         scenarios = []
+        acceptance_criterion_count = 0
 
         for item in draft["scenarios"]:
+            acceptance_criteria = item.get("acceptance_criteria") or []
+            if not acceptance_criteria:
+                raise ValueError("empty_acceptance_criteria")
+
             scenario = ScenarioModel(
                 project_id=project_id,
                 feature_id=item["feature_id"],
@@ -578,9 +625,24 @@ class ScenarioGenerationService:
 
         await session.flush()
 
+        for scenario, item in zip(scenarios, draft["scenarios"], strict=True):
+            for position, criterion in enumerate(item["acceptance_criteria"], start=1):
+                session.add(
+                    ScenarioAcceptanceCriterionModel(
+                        scenario_id=scenario.id,
+                        position=position,
+                        content=criterion,
+                        confirmation_status='ai_assumption',
+                    )
+                )
+                acceptance_criterion_count += 1
+
+        await session.flush()
+
         return {
             "project_id": project_id,
             "scenario_count": len(draft["scenarios"]),
+            "acceptance_criterion_count": acceptance_criterion_count,
             "scenario_ids": [
                 scenario.id
                 for scenario in scenarios

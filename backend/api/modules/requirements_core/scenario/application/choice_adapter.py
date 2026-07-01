@@ -59,7 +59,13 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 target_pairs=target_pairs,
                 user_feedback=combined,
             )
-            scenarios = generated_scenarios
+            scenarios = await self._service._attach_acceptance_criteria_to_generated_scenarios(
+                user_requirements=user_requirements,
+                actor_node_map=actor_node_map,
+                feature_node_map=feature_node_map,
+                generated_scenarios=generated_scenarios,
+                user_feedback=combined,
+            )
             feature_name = "批量功能"
             actor_name = "多角色"
         else:
@@ -88,6 +94,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 {
                     "scenario_name": s["scenario_name"],
                     "scenario_content": s["scenario_content"][:100],
+                    "acceptance_criteria": s["acceptance_criteria"],
                 }
                 for s in scenarios
             ],
@@ -121,27 +128,11 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
-        """Persist scenario payload to ScenarioModel (append mode) and automatically generate AC."""
+        """Persist scenario payload to ScenarioModel (append mode), including generated AC."""
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,
             session=session,
         )
-
-        scenario_ids = result.get("scenario_ids", [])
-        if scenario_ids:
-            # Commit the scenario inserts immediately to release database write lock!
-            await session.commit()
-
-            ac_result = await (
-                self._service._acceptance_criteria_generation_service
-            ).create_and_persist_for_scenarios(
-                project_id=payload["project_id"],
-                scenario_ids=scenario_ids,
-                session=session,
-            )
-            result["acceptance_criterion_count"] = ac_result.get("acceptance_criterion_count", 0)
-        else:
-            result["acceptance_criterion_count"] = 0
 
         # Invalidate perception jobs
         from backend.api.modules.requirements_core.public import get_notifier

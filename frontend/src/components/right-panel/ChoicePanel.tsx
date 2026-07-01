@@ -18,7 +18,6 @@ export function ChoicePanel({ choice, ir }: { choice: Choice; ir: RequirementSpa
         </div>
       </Section>
 
-      {/* Phase 5b: draft_payload type choices show typed preview instead of patch */}
       {isDraftPayload && draftType ? (
         <Section title={`预览 (${draftType})`}>
           <div className="rounded-xl border border-slate-200 p-3">

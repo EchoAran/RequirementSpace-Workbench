@@ -1180,7 +1180,7 @@ export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranch
     items.push({
       kind: 'slot',
       slot: {
-        id: space.perceptionSlot.perceptionSlotId.toString(),
+        id: space.perceptionSlot.id,
         name: space.perceptionSlot.perceptionKind,
         description: space.perceptionSlot.perceptionDescription,
         status: 'empty'
@@ -1313,8 +1313,9 @@ export const groupScopeItems = (space: RequirementSpace | null) => {
 
   const mapToNode = (f: FeatureNode) => {
     const parentModule = (space.features || []).find(p => p.featureId === f.parentId);
-    const hasScope = f.scope && f.scope.scopeStatus;
-    const normStatus = hasScope ? normalizeScopeStatus(f.scope.scopeStatus) : undefined;
+    const scopeStatus = f.scope?.scopeStatus;
+    const hasScope = !!scopeStatus;
+    const normStatus = scopeStatus ? normalizeScopeStatus(scopeStatus) : undefined;
     const isDecisionMissing = !hasScope;
     const scopeConfirmationStatus = (f.scope as any)?.confirmationStatus;
 

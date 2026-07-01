@@ -35,7 +35,7 @@ export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpace
         {targetIds.length === 0 && <div className="text-xs text-slate-400 italic">暂无关联节点</div>}
         {targetIds.map((nodeId) => (
           <div key={nodeId} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-            {ir.nodes[nodeId]?.title || nodeId}
+            {ir.nodes?.[nodeId]?.title || nodeId}
           </div>
         ))}
       </Section>

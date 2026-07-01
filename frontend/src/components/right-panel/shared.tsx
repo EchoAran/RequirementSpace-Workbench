@@ -182,11 +182,13 @@ export function LinkList({
   ir: RequirementSpaceIR;
   nodeId: string;
 }) {
+  const nodeMap = ir.nodes || {};
+  const allLinks = (Array.isArray(ir.links) ? ir.links : Object.values(ir.links || {})) as RequirementLink[];
   const dedupeLinks = (links: RequirementLink[]) =>
     Array.from(new Map(links.map((link) => [link.id, link])).values());
 
-  const incoming = dedupeLinks(ir.links.filter((link) => link.targetId === nodeId));
-  const outgoing = dedupeLinks(ir.links.filter((link) => link.sourceId === nodeId));
+  const incoming = dedupeLinks(allLinks.filter((link: RequirementLink) => link.targetId === nodeId));
+  const outgoing = dedupeLinks(allLinks.filter((link: RequirementLink) => link.sourceId === nodeId));
 
   const renderLinks = (links: RequirementLink[], directionLabel: string) => (
     <div className="space-y-2">
@@ -194,13 +196,16 @@ export function LinkList({
       {links.length === 0 && <div className="text-xs text-slate-400 italic">暂无</div>}
       {links.map((link) => {
         const relatedId = link.sourceId === nodeId ? link.targetId : link.sourceId;
-        const relatedNode = ir.nodes[relatedId];
+        const relatedNode = nodeMap[relatedId];
+        const relatedKindText = relatedNode?.kind
+          ? NodeKindToText[relatedNode.kind as keyof typeof NodeKindToText]
+          : '';
         return (
           <div key={link.id} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
             <div className="font-medium">{LINK_LABELS[link.type]}</div>
             <div className="text-xs text-slate-500 mt-1">
               {relatedNode?.title || relatedId}
-              {relatedNode ? ` / ${NodeKindToText[relatedNode.kind]}` : ''}
+              {relatedNode ? ` / ${relatedKindText}` : ''}
             </div>
           </div>
         );
@@ -241,6 +246,7 @@ export function PatchSummary({ patch }: { patch?: GraphPatch }) {
 }
 
 export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: ImpactPreview }) {
+  const nodeMap = ir.nodes || {};
   const safeImpact = impact || {};
   const groups = [
     ['目标', safeImpact.affectedGoals || []],
@@ -259,7 +265,7 @@ export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: 
           <div key={label} className="rounded-xl border border-slate-200 px-3 py-2">
             <div className="text-xs font-medium text-slate-500">{label}</div>
             <div className="text-sm text-slate-700 mt-1">
-              {ids.map((id) => ir.nodes[id]?.title || id).join(', ')}
+              {ids.map((id: string | number) => nodeMap[id]?.title || id).join(', ')}
             </div>
           </div>
         ) : null,

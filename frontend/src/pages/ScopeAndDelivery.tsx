@@ -127,7 +127,9 @@ export function ScopeAndDelivery() {
   };
 
   // Group items based on our four-column status mapping
-  const grouped = ir ? groupScopeItems(ir) : { inScope: [], deferred: [], excluded: [], undecided: [] };
+  const grouped = ir
+    ? (groupScopeItems(ir) as { inScope: any[]; deferred: any[]; excluded: any[]; undecided: any[] })
+    : { inScope: [] as any[], deferred: [] as any[], excluded: [] as any[], undecided: [] as any[] };
   const inScope = grouped.inScope;
   const deferred = grouped.deferred;
   const excluded = grouped.excluded;

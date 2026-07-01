@@ -1,4 +1,4 @@
-﻿import {
+import {
   RequirementSpace,
   WorkspaceListItem,
   ProjectCreationDraft,
@@ -33,7 +33,7 @@ export const workspaceApi = {
   unlockStage: async (projectId: string, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
   },
-  /** 鏇存柊浠绘剰鑺傜偣鐨勭‘璁ょ姸鎬侊紙ai_assumption / needs_confirmation / confirmed锛?*/
+  /** 更新任意节点的确认状态（`ai_assumption` / `needs_confirmation` / `confirmed`）。 */
   updateNodeConfirmationStatus: async (
     projectId: string,
     nodeKind: string,
@@ -46,7 +46,7 @@ export const workspaceApi = {
       confirmation_status: confirmationStatus,
     });
   },
-  /** 鎵归噺鏇存柊涓€缁勮妭鐐圭殑纭鐘舵€?*/
+  /** 批量更新一组节点的确认状态。 */
   batchUpdateNodeConfirmationStatus: async (
     projectId: string,
     nodes: Array<{ node_kind: string; node_id: number; confirmation_status?: string }>,
@@ -307,7 +307,6 @@ export const workspaceApi = {
       user_feedback: feedback,
     });
   },
-  // Phase 3: Generation choice group (actor, scenario, etc.)
   createGenerationChoiceGroup: async (payload: {
     project_id: string;
     generation_type: string;
@@ -318,7 +317,6 @@ export const workspaceApi = {
     return http.post<any>('/generation_choice_groups', payload);
   },
 
-  // Phase 3: Discard a project-level choice group
   discardChoiceGroup: async (projectId: string, groupId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/discard`);
   },
@@ -332,7 +330,6 @@ export const workspaceApi = {
   rejectChoice: async (projectId: string, choiceId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`);
   },
-  // Phase 5b: Regenerate choice group or single choice
   regenerateChoiceGroup: async (projectId: string, groupId: number, feedback?: string): Promise<any> => {
     const query = feedback ? `?feedback=${encodeURIComponent(feedback)}` : '';
     return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/regenerate${query}`);
@@ -367,7 +364,6 @@ export const workspaceApi = {
       user_feedback: feedback,
     });
   },
-  // AI Conversational Add Session (Phase 3)
   createAIAddSession: async (payload: {
     project_id: string;
     target_type: string;
@@ -435,9 +431,6 @@ export const workspaceApi = {
     return http.post(`/projects/${projectId}/issue_repair_drafts/${draftId}/regenerate`);
   },
 
-  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-  // Phase 2: Project Creation Choice Group API
-  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
   createProjectCreationChoiceGroup: async (payload: {
     user_requirements: string;
     candidate_count?: number;

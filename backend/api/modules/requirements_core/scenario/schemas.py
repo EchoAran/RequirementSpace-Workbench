@@ -65,6 +65,7 @@ class GeneratedScenarioPreview(BaseModel):
     actor_name: str
     scenario_name: str
     scenario_content: str
+    acceptance_criteria: list[str] = []
 
 
 class ScenarioGenerationDraftResponse(BaseModel):

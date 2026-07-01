@@ -499,7 +499,7 @@ export function Preview() {
 
   const isWhatComplete = (spaceToUse?.actors || []).length > 0 && (spaceToUse?.features || []).length > 0;
   const isHowComplete = (spaceToUse?.flows || []).length > 0 && (spaceToUse?.businessObjects || []).length > 0;
-  const isScopeComplete = (spaceToUse?.features || []).some((feature) => feature.scope !== null);
+  const isScopeComplete = (spaceToUse?.features || []).some((feature: any) => feature.scope !== null);
   const isPreviewReady = isWhatComplete && isHowComplete && isScopeComplete;
 
   const actors = useMemo(() => spaceToUse?.actorsCompatible || [], [spaceToUse]);
@@ -537,7 +537,7 @@ export function Preview() {
   const flows = useMemo(() => spaceToUse?.flows || [], [spaceToUse]);
 
   const activeFlow = useMemo(() => {
-    return flows.find((f) => f.flowId === selectedFlowId) || flows[0] || null;
+    return flows.find((f: any) => f.flowId === selectedFlowId) || flows[0] || null;
   }, [flows, selectedFlowId]);
 
   const activeFlowSteps = useMemo(() => {
@@ -1121,7 +1121,7 @@ export function Preview() {
               
               {/* Flow Switcher Tabs */}
               <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-100 pb-4">
-                {flows.map((flow) => (
+                {flows.map((flow: any) => (
                   <button
                     key={flow.flowId}
                     type="button"
@@ -1153,20 +1153,20 @@ export function Preview() {
                     </div>
                   ) : (
                     <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 py-2">
-                      {activeFlowSteps.map((step, idx) => {
+                      {activeFlowSteps.map((step: any, idx: number) => {
                         const stepDetail = buildStepDetail(spaceToUse as any, step.stepId);
                         const performerId = (step.actorIds || [])[0];
-                        const performer = (spaceToUse?.actors || []).find((a) => a.actorId === performerId);
+                        const performer = (spaceToUse?.actors || []).find((a: any) => a.actorId === performerId);
                         const actorName = performer ? performer.actorName : '系统自动';
 
                         const nextSteps = (step.nextStepIds || [])
-                          .map((nid) => activeFlowSteps.find((s) => s.stepId === nid)?.stepName)
+                          .map((nid: string) => activeFlowSteps.find((s: any) => s.stepId === nid)?.stepName)
                           .filter(Boolean) as string[];
 
                         const stepSlots: any[] = [];
                         if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionJobId === step.stepId) {
                           stepSlots.push({
-                            id: spaceToUse.perceptionSlot.perceptionSlotId.toString(),
+                            id: spaceToUse.perceptionSlot.id,
                             title: spaceToUse.perceptionSlot.perceptionKind,
                             choiceCount: 0,
                             status: 'empty'
@@ -1214,7 +1214,7 @@ export function Preview() {
                                 setHighlightTarget(step.stepId.toString());
                               }}
                               onSlotClick={(slotId) => {
-                                if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionSlotId.toString() === slotId) {
+                                if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.id === slotId) {
                                   setSelectedObject(spaceToUse.perceptionSlot);
                                 }
                               }}

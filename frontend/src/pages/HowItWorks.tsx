@@ -15,6 +15,7 @@ import {
 } from '@/store/useWorkspaceStore';
 import { findingProjection, findingTargetIds } from '@/core/findingPresentation';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
+import type { ActorNode, BusinessObjectNode, FeatureNode } from '@/core/schema';
 
 
 // Cycle-safe dynamic grid positioning algorithm for DAG visualization
@@ -57,7 +58,7 @@ const computeStepPositions = (steps: any[]) => {
 
     const step = steps.find(s => s.stepId === stepId);
     if (step && step.nextStepIds) {
-      step.nextStepIds.forEach((nid, idx) => {
+      step.nextStepIds.forEach((nid: number, idx: number) => {
         if (!visited.has(nid)) {
           // Spread branches vertically
           queue.push({ stepId: nid, col: col + 1, row: idx });
@@ -626,7 +627,7 @@ export function HowItWorks() {
 
                 {(ir?.flows || []).map((flow) => {
                   const featNames = (flow.featureIds || [])
-                    .map(fid => (ir.features || []).find(f => f.featureId === fid)?.featureName)
+                    .map(fid => (ir?.features || []).find(f => f.featureId === fid)?.featureName)
                     .filter(Boolean) as string[];
                   const flowStatus = flow.confirmationStatus || flow.status || 'ai_assumption';
 
@@ -938,7 +939,7 @@ export function HowItWorks() {
 
                                   const stepDetail = buildStepDetail(ir, step.stepId);
                                   const stepActors = (step.actorIds || [])
-                                    .map(aid => (ir.actors || []).find(a => a.actorId === aid)?.actorName)
+                                    .map(aid => (ir?.actors || []).find(a => a.actorId === aid)?.actorName)
                                     .filter(Boolean);
                                   const stepMeta = getStepTypeMeta(step.stepType);
                                   const ioVisibleCount = stepMeta.ioVisibleCount;
@@ -1045,7 +1046,7 @@ export function HowItWorks() {
                               {steps.map((step, idx) => {
                                 const stepDetail = buildStepDetail(ir, step.stepId);
                                 const stepActors = (step.actorIds || [])
-                                  .map(aid => (ir.actors || []).find(a => a.actorId === aid)?.actorName)
+                                  .map(aid => (ir?.actors || []).find(a => a.actorId === aid)?.actorName)
                                   .filter(Boolean);
                                 const stepMeta = getStepTypeMeta(step.stepType);
 
@@ -1370,9 +1371,9 @@ export function HowItWorks() {
                   {(ir?.features || []).length === 0 ? (
                     <div className="text-xs text-slate-400 italic">当前工作区暂无任何功能模块。</div>
                   ) : (
-                    (ir.features || []).map((feat: any) => {
+                    (ir?.features || []).map((feat: FeatureNode) => {
                       const isLeaf = !feat.childrenIds || feat.childrenIds.length === 0;
-                      const pathStr = getFeaturePath(feat.featureId, ir.features || []);
+                      const pathStr = getFeaturePath(feat.featureId, ir?.features || []);
 
                       return (
                         <label
@@ -1488,7 +1489,7 @@ export function HowItWorks() {
                   {(ir?.actors || []).length === 0 ? (
                     <div className="text-xs text-slate-400 italic">暂无可用参与者，请在 What 阶段定义。</div>
                   ) : (
-                    (ir.actors || []).map((actor: any) => (
+                    (ir?.actors || []).map((actor: ActorNode) => (
                       <label key={actor.actorId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"
@@ -1516,7 +1517,7 @@ export function HowItWorks() {
                   {(ir?.businessObjects || []).length === 0 ? (
                     <div className="text-xs text-slate-400 italic">暂无可用业务数据对象。</div>
                   ) : (
-                    (ir.businessObjects || []).map((bo: any) => (
+                    (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
                       <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"
@@ -1544,7 +1545,7 @@ export function HowItWorks() {
                   {(ir?.businessObjects || []).length === 0 ? (
                     <div className="text-xs text-slate-400 italic">暂无可用业务数据对象。</div>
                   ) : (
-                    (ir.businessObjects || []).map((bo: any) => (
+                    (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
                       <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"

@@ -62,8 +62,14 @@ class PreviewShadowPatchGenerator:
         }
         temp_feat_to_int = {}
 
+        base_features = base_snapshot.get("features", [])
+        base_actors = base_snapshot.get("actors", [])
+        base_parent_ids = {f.get("parent_id") for f in base_features if f.get("parent_id") is not None}
+        base_leaf_features = [f for f in base_features if f.get("id") not in base_parent_ids]
+        has_preservable_what_assets = bool(base_actors) and bool(base_leaf_features)
+
         # 2. What stage
-        if not what_passed:
+        if not what_passed and not has_preservable_what_assets:
             user_requirements = base_snapshot.get("user_requirements", "")
             
             # Generate Actors
@@ -612,7 +618,7 @@ class PreviewShadowPatchGenerator:
                         "negative_picture_base64": sc.get("negative_picture_base64")
                     })
 
-        # 3. What is already converged: use service registry wrappers outside session transactions
+        # 3. What core assets already exist: preserve them and fill missing scenario/AC/link gaps.
         else:
             await service._update_progress(draft_id, 25, "AI 正在检测并补充 What 阶段缺失的典型故事场景与验收标准（AC）...")
             features = base_snapshot.get("features", [])
@@ -629,6 +635,10 @@ class PreviewShadowPatchGenerator:
                 lf_actor_ids = lf.get("actor_ids", [])
                 
                 if not lf_actor_ids and actors:
+                    patch["feature_actor_links_added"].append({
+                        "feature_ref": f"feature:{lf_id}",
+                        "actor_ref": f"actor:{actors[0].get('id')}",
+                    })
                     lf_actor_ids = [actors[0].get("id")]
                 
                 scenarios_in_feat = lf.get("scenarios", [])

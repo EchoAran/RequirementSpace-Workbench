@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWorkspaceStore, getFindingCapability } from '@/store/useWorkspaceStore';
 import { ArrowRight, ChevronDown, ChevronUp, LocateFixed, RefreshCw, Sparkles, X, Heart, Cpu } from 'lucide-react';
 import { Finding } from '@/core/schema';
@@ -23,6 +24,7 @@ const severityClass: Record<string, string> = {
 };
 
 export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
+  const navigate = useNavigate();
   const ir = useWorkspaceStore((s) => s.ir);
   const findingsByView = useWorkspaceStore((s) => s.findingsByView) || { issues: [], next_action: [], gate: [], health: [] };
   const startFindingSuggestion = useWorkspaceStore((s) => s.startFindingSuggestion);
@@ -32,6 +34,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
   const runDiagnosis = useWorkspaceStore((s) => s.runDiagnosis);
   const setSelectedObject = useWorkspaceStore((s) => s.setSelectedObject);
   const setHighlightTarget = useWorkspaceStore((s) => s.setHighlightTarget);
+  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
 
   const isLoading = useWorkspaceStore((s) => s.isLoading);
   const isGenerating = useWorkspaceStore((s) => s.isGenerating);
@@ -44,7 +47,11 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
   if (!ir) return null;
 
   // Filter findings by current stage
-  const nextAction = (findingsByView.next_action || []).find((f) => f.stage === stage);
+  const stageProgressItem = stageProgress?.stages?.find((s: any) => s.stage === stage);
+  const stageAlreadyAdvanced = stageProgressItem?.statusCode === 'ready';
+  const nextAction = stageAlreadyAdvanced
+    ? null
+    : (findingsByView.next_action || []).find((f) => f.stage === stage);
   const stageIssues = (findingsByView.issues || []).filter((f) => f.stage === stage);
   const stageHealthHints = (findingsByView.health || []).filter((f) => f.stage === stage);
 
@@ -61,7 +68,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
           </div>
           <button
             type="button"
-            onClick={() => void runDiagnosis()}
+            onClick={() => void runDiagnosis(stage)}
             disabled={isWorking}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50"
           >
@@ -120,7 +127,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
             <div className="flex shrink-0 items-center gap-2 self-end md:self-center">
               <button
                 type="button"
-                onClick={() => void startFindingSuggestion(nextAction)}
+                onClick={() => void startFindingSuggestion(nextAction, { navigate })}
                 disabled={isWorking}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-500 shadow-sm transition-all disabled:opacity-50 active:scale-95"
               >

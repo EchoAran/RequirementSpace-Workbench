@@ -538,6 +538,7 @@ export const buildSinglePerceptionSlot = (
   return undefined;
 };
 
+/** @deprecated evaluateMandatoryChecks is deprecated. Use backend StageProgress instead. */
 export const evaluateMandatoryChecks = (space: RequirementSpace | null, stage: Stage): boolean => {
   if (!space) return false;
 
@@ -607,13 +608,15 @@ export const evaluateMandatoryChecks = (space: RequirementSpace | null, stage: S
   return false;
 };
 
+/** @deprecated buildStageGate is deprecated. Use backend StageProgress instead. */
 export const buildStageGate = (space: RequirementSpace | null, stage: Stage): StageGateResult => {
   const issues = (space?.findings || []).filter((finding) => finding.stage === stage);
   const missingKinds = evaluateMissingKinds(space, stage);
   const slot = buildSinglePerceptionSlot(space, stage, issues, missingKinds);
   const mandatoryChecksPassed = evaluateMandatoryChecks(space, stage);
 
-  const passed = mandatoryChecksPassed && !(slot && slot.blocking);
+  const isTransitionConfirmSlot = slot?.kind === 'stage_gate_transition_confirm';
+  const passed = mandatoryChecksPassed && !(slot && slot.blocking && !isTransitionConfirmSlot);
 
   return {
     stage,
@@ -621,7 +624,7 @@ export const buildStageGate = (space: RequirementSpace | null, stage: Stage): St
     passed,
     issues,
     activeSlot: slot || undefined,
-    blockingSlot: slot && slot.blocking ? slot : undefined,
+    blockingSlot: slot && slot.blocking && !isTransitionConfirmSlot ? slot : undefined,
     missingKinds
   };
 };
@@ -635,6 +638,7 @@ export const getStageIssues = (space: RequirementSpace | null, stage: Stage): Fi
   );
 };
 
+/** @deprecated buildPageHealth is deprecated. Use backend StageProgress instead. */
 export const buildPageHealth = (space: RequirementSpace | null, path: string): PageHealth => {
   if (!space) {
     return {
@@ -669,6 +673,9 @@ export const buildPageHealth = (space: RequirementSpace | null, path: string): P
     } else if (hasBlockingSlot) {
       statusCode = 'needs_attention';
       statusLabel = '待检查';
+    } else if (whatGate.activeSlot?.kind === 'stage_gate_transition_confirm') {
+      statusCode = 'ready_to_advance';
+      statusLabel = '可进入下一阶段';
     } else {
       statusCode = 'ready';
       statusLabel = '已就绪';
@@ -704,6 +711,9 @@ export const buildPageHealth = (space: RequirementSpace | null, path: string): P
     } else if (hasBlockingSlot) {
       statusCode = 'needs_attention';
       statusLabel = '待检查';
+    } else if (howGate.activeSlot?.kind === 'stage_gate_transition_confirm') {
+      statusCode = 'ready_to_advance';
+      statusLabel = '可进入下一阶段';
     } else {
       statusCode = 'ready';
       statusLabel = '已就绪';
@@ -1466,6 +1476,7 @@ export const buildPlaybackForActor = (space: RequirementSpace | null, actorId: s
   }));
 };
 
+/** @deprecated getGuardRedirect is deprecated. Use StageRouteGuard with stageProgress state instead. */
 export const getGuardRedirect = (
   path: string,
   space: RequirementSpace | null

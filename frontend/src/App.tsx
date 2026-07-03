@@ -209,9 +209,10 @@ export function GlobalToast() {
 
 function GlobalTaskStatus() {
   const isGenerating = useWorkspaceStore((s) => s.isGenerating);
+  const isGeneratingChoices = useWorkspaceStore((s) => s.isGeneratingChoices);
   const lastActionMessage = useWorkspaceStore((s) => s.lastActionMessage);
 
-  if (!isGenerating) return null;
+  if (!isGenerating || isGeneratingChoices) return null;
 
   const message = lastActionMessage || '正在执行操作，请稍候...';
 
@@ -308,42 +309,105 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
       })
     : [];
 
-  const isSnoozed = projectId && gateFindings.length > 0 && activeBlockingGates.length === 0;
+  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
+  const isLoading = useWorkspaceStore((s) => s.isLoading);
 
-  const redirect = getGuardRedirect(path, ir);
-
-  useEffect(() => {
-    if (redirect && !isSnoozed) {
-      setError(redirect.errorToast);
-      navigate(buildProjectRoute(ir?.projectId, redirect.targetRoute as WorkspacePage), { replace: true });
-    }
-  }, [redirect, isSnoozed, setError, navigate, ir?.projectId]);
-
-  if (redirect && !isSnoozed) {
+  if (!stageProgress) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5 animate-in fade-in duration-300">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-500 text-xl font-bold animate-pulse">
-            ⚠️
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800 tracking-tight">页面阶段尚未解锁</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              您访问的阶段由于前置建模依赖未完成，目前仍处于锁定状态。
-            </p>
-            <p className="text-[10px] text-slate-400 font-bold leading-normal bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-              系统正在自动为您返回上一就绪阶段，请稍候...
-            </p>
-          </div>
-          <div className="pt-2">
-            <div className="mx-auto h-4 w-4 rounded-full border-2 border-slate-200 border-t-rose-500 animate-spin" />
-          </div>
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full animate-in fade-in duration-300">
+        <div className="max-w-md w-full bg-white rounded-[28px] p-8 border border-slate-200 shadow-xl text-center space-y-4">
+          <div className="mx-auto h-8 w-8 rounded-full border-4 border-slate-200 border-t-indigo-500 animate-spin" />
+          <p className="text-xs text-slate-500 font-medium">正在加载阶段状态，请稍候...</p>
         </div>
       </div>
     );
   }
 
-  return <>{children}</>;
+  const whatStage = stageProgress.stages.find((s: any) => s.stage === 'what');
+  const howStage = stageProgress.stages.find((s: any) => s.stage === 'how');
+  const scopeStage = stageProgress.stages.find((s: any) => s.stage === 'scope');
+
+  let isUnlocked = false;
+  let prevStage: any = null;
+  let prevStageKey: 'what' | 'how' = 'what';
+  let prevStageRoute = '/what';
+  let targetAction: 'enter_how' | 'enter_scope' = 'enter_how';
+  let stageNameLabel = '';
+
+  if (stage === 'flow') {
+    isUnlocked = howStage ? howStage.unlocked : false;
+    prevStage = whatStage;
+    prevStageKey = 'what';
+    prevStageRoute = '/what';
+    targetAction = 'enter_how';
+    stageNameLabel = '怎么运作 (How)';
+  } else if (stage === 'scope') {
+    isUnlocked = scopeStage ? scopeStage.unlocked : false;
+    prevStage = howStage;
+    prevStageKey = 'how';
+    prevStageRoute = '/flow';
+    targetAction = 'enter_scope';
+    stageNameLabel = '范围与交付 (Scope)';
+  }
+
+  if (isUnlocked) {
+    return <>{children}</>;
+  }
+
+  const prevReady = prevStage?.statusCode === 'ready_to_advance';
+  const blockReason = prevStage?.failedChecks?.[0]?.message || (
+    prevStageKey === 'what' 
+      ? '需先补齐 What 阶段的所有核心建模规则' 
+      : '需先补齐 How 阶段的核心规则'
+  );
+
+  const handleTransition = () => {
+    useWorkspaceStore.getState().requestStageTransition(targetAction, { navigate });
+  };
+
+  const handleGoBack = () => {
+    navigate(buildProjectRoute(ir?.projectId, prevStageRoute as any));
+  };
+
+  return (
+    <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full">
+      <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-6 animate-in fade-in duration-300">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-500 text-xl font-bold">
+          🔒
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-base font-black text-slate-800 tracking-tight">{stageNameLabel} 阶段尚未解锁</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            您访问的阶段由于前置建模依赖未完成，目前仍处于锁定状态。
+          </p>
+          <div className="text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">阻碍进入原因：</span>
+            <p className="text-xs text-slate-700 leading-relaxed font-medium">
+              {blockReason}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2">
+          {prevReady && (
+            <button
+              onClick={handleTransition}
+              disabled={isLoading}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? '正在提交解锁...' : '申请解锁并进入该阶段'}
+            </button>
+          )}
+          <button
+            onClick={handleGoBack}
+            className="w-full py-3 px-4 border border-slate-200 hover:border-slate-300 text-slate-600 rounded-2xl text-xs font-bold transition-all bg-white hover:bg-slate-50"
+          >
+            返回上一就绪阶段
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function App() {

@@ -395,9 +395,129 @@ describe('useWorkspaceStore - Finding Integration', () => {
       metadata: { action: { kind: 'wait' } },
     };
 
+    vi.mocked(workspaceApi.getNextSuggestion).mockResolvedValue({
+      suggestion: {
+        code: 'GENERATE_SCENARIOS',
+        title: '生成场景',
+        description: '建议生成场景',
+        status: 'ready'
+      }
+    });
+
     await useWorkspaceStore.getState().startFindingSuggestion(finding);
 
-    expect(useWorkspaceStore.getState().lastActionMessage).toBe('后台分析正在运行，请稍后刷新或重新诊断。');
+    expect(useWorkspaceStore.getState().lastActionMessage).toBe('建议已更新：生成场景');
+  });
+
+  it('8b. startFindingSuggestion - handles wait actions (running -> running)', async () => {
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      lastActionMessage: null
+    });
+
+    const store = useWorkspaceStore.getState();
+    vi.spyOn(store, 'refreshWorkspace').mockResolvedValue(undefined);
+
+    const finding: Finding = {
+      findingId: 'what:WAIT:suggest',
+      type: 'next_suggestion',
+      stage: 'what',
+      code: 'WAIT',
+      severity: 'info',
+      title: '等待',
+      description: '等待',
+      blockingScope: 'none',
+      metadata: { action: { kind: 'wait' } },
+    };
+
+    vi.mocked(workspaceApi.getNextSuggestion).mockResolvedValue({
+      suggestion: {
+        code: 'WAIT',
+        title: '等待中',
+        description: 'AI 仍在分析中',
+        status: 'running'
+      }
+    });
+
+    await useWorkspaceStore.getState().startFindingSuggestion(finding);
+
+    expect(useWorkspaceStore.getState().lastActionMessage).toBe('AI 仍在分析中');
+  }, 15000);
+
+  it('8c. startFindingSuggestion - handles wait actions (running -> failed)', async () => {
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      lastActionMessage: null
+    });
+
+    const store = useWorkspaceStore.getState();
+    vi.spyOn(store, 'refreshWorkspace').mockResolvedValue(undefined);
+
+    const finding: Finding = {
+      findingId: 'what:WAIT:suggest',
+      type: 'next_suggestion',
+      stage: 'what',
+      code: 'WAIT',
+      severity: 'info',
+      title: '等待',
+      description: '等待',
+      blockingScope: 'none',
+      metadata: { action: { kind: 'wait' } },
+    };
+
+    vi.mocked(workspaceApi.getNextSuggestion).mockResolvedValue({
+      suggestion: {
+        code: 'WAIT',
+        title: '诊断失败',
+        description: '大模型连接超时',
+        status: 'failed'
+      }
+    });
+
+    await useWorkspaceStore.getState().startFindingSuggestion(finding);
+
+    expect(useWorkspaceStore.getState().lastActionMessage).toBe('重新诊断：大模型连接超时');
+  });
+
+  it('8d. startFindingSuggestion - handles wait actions (running -> stage_transition ready)', async () => {
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      lastActionMessage: null
+    });
+
+    const store = useWorkspaceStore.getState();
+    vi.spyOn(store, 'refreshWorkspace').mockResolvedValue(undefined);
+
+    const finding: Finding = {
+      findingId: 'what:WAIT:suggest',
+      type: 'next_suggestion',
+      stage: 'what',
+      code: 'WAIT',
+      severity: 'info',
+      title: '等待',
+      description: '等待',
+      blockingScope: 'none',
+      metadata: { action: { kind: 'wait' } },
+    };
+
+    vi.mocked(workspaceApi.getNextSuggestion).mockResolvedValue({
+      suggestion: {
+        code: 'ENTER_HOW',
+        title: '进入 How 阶段',
+        description: '推进',
+        status: 'ready',
+        metadata: {
+          action: {
+            kind: 'stage_transition',
+            transition_action: 'enter_how'
+          }
+        }
+      }
+    });
+
+    await useWorkspaceStore.getState().startFindingSuggestion(finding);
+
+    expect(useWorkspaceStore.getState().lastActionMessage).toBe('当前阶段可申请进入下一阶段');
   });
 
   it('9. startFindingSuggestion - handles retry actions', async () => {

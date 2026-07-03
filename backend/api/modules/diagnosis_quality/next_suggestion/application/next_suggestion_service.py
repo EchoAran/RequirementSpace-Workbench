@@ -30,6 +30,7 @@ class NextSuggestionService:
         session,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
+        include_perception: bool = False,
     ) -> dict:
         stage = self._normalize_stage(stage)
         pub_id = public_project_id or str(project_id)
@@ -66,7 +67,7 @@ class NextSuggestionService:
                 public_project_id=pub_id,
             )
 
-            if stage == "what" and suggestion_node.code == "ENTER_HOW":
+            if include_perception and stage == "what" and suggestion_node.code == "ENTER_HOW":
                 perception_suggestion = await (
                     self._perception_job_service
                 ).get_next_what_suggestion(
@@ -79,7 +80,7 @@ class NextSuggestionService:
                 if perception_suggestion is not None:
                     suggestion_node = perception_suggestion
 
-            if stage == "how" and suggestion_node.code == "ENTER_SCOPE":
+            if include_perception and stage == "how" and suggestion_node.code == "ENTER_SCOPE":
                 perception_suggestion = await (
                     self._perception_job_service
                 ).get_next_how_suggestion(
@@ -153,6 +154,7 @@ class NextSuggestionService:
             session=session,
             background_tasks=background_tasks,
             public_project_id=pub_id,
+            include_perception=True,
         )
 
     @staticmethod
@@ -222,7 +224,7 @@ class NextSuggestionService:
         if stage == "scope":
             return "how" in unlocked
         if stage == "preview":
-            return "scope" in unlocked
+            return True
 
         return False
 

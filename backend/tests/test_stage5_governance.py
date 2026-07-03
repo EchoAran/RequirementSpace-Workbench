@@ -92,8 +92,17 @@ async def test_next_suggestion_perception_insertion_order(db_session):
     # Define NextSuggestionService
     suggestion_service = NextSuggestionService()
 
-    # Verify that without perception jobs, next suggestion triggers running perception
+    # Normal next suggestion is rule-based and must not auto-start perception jobs.
     res = await suggestion_service.get_next_suggestion(
+        project_id=project_id,
+        stage="what",
+        session=db_session,
+        public_project_id=public_id,
+    )
+    assert res["suggestion"]["code"] == "ENTER_HOW"
+
+    # Manual rediagnose is the explicit entry point for AI perception.
+    res = await suggestion_service.rediagnose_next_suggestion(
         project_id=project_id,
         stage="what",
         session=db_session,
@@ -140,12 +149,13 @@ async def test_next_suggestion_perception_insertion_order(db_session):
     db_session.add(job_feature)
     await db_session.commit()
 
-    # Now run get_next_suggestion. ACTOR must have priority over FEATURE!
+    # Explicit perception reads should keep ACTOR priority over FEATURE.
     res_ready = await suggestion_service.get_next_suggestion(
         project_id=project_id,
         stage="what",
         session=db_session,
         public_project_id=public_id,
+        include_perception=True,
     )
     assert res_ready["suggestion"]["code"] == "ACTOR_SLOT"
     assert res_ready["suggestion"]["description"] == "Found a missing actor: Admin"
@@ -160,6 +170,7 @@ async def test_next_suggestion_perception_insertion_order(db_session):
         stage="what",
         session=db_session,
         public_project_id=public_id,
+        include_perception=True,
     )
     assert res_ready_2["suggestion"]["code"] == "FEATURE_SLOT"
     assert res_ready_2["suggestion"]["description"] == "Found a missing feature: Login"

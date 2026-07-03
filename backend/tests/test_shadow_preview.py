@@ -24,6 +24,7 @@ from backend.database.model import (
     FeatureModel,
     FeatureRelationModel,
     ScenarioModel,
+    ScenarioAcceptanceCriterionModel,
     FlowModel,
     FlowStepModel,
     ScopeModel,
@@ -315,6 +316,20 @@ async def test_semi_converged_project_preservation_workflow(db_session, seeded_p
             actor_id=actor.id
         )
     )
+    scenario = ScenarioModel(
+        project_id=seeded_project,
+        feature_id=feature.id,
+        actor_id=actor.id,
+        name="系统设置变更",
+        content="Given the admin edits settings, when the form is saved, then the settings are updated",
+    )
+    db_session.add(scenario)
+    await db_session.flush()
+    db_session.add(ScenarioAcceptanceCriterionModel(
+        scenario_id=scenario.id,
+        position=1,
+        content="Settings are updated after the admin saves the form",
+    ))
     await db_session.flush()
 
     # Evaluate gates: What should pass, How & Scope should fail
@@ -748,9 +763,9 @@ async def test_what_converged_missing_scenarios_workflow(db_session, seeded_proj
     )
     await db_session.flush()
 
-    # Evaluate gates: What should pass (since missing scenarios is warning), How & Scope fail
+    # Evaluate gates: missing scenarios is now a hard What rule, aligned with StageProgress.
     gates = await service.gate_evaluator.evaluate_gates(seeded_project, db_session)
-    assert gates["what"] is True
+    assert gates["what"] is False
     assert gates["how"] is False
     assert gates["scope"] is False
 
@@ -870,4 +885,3 @@ async def test_what_converged_missing_scenarios_workflow(db_session, seeded_proj
         )).scalars().all()
         assert len(db_ac) == 1
         assert "系统参数配置" in db_ac[0].content
-

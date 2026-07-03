@@ -157,6 +157,28 @@ vi.mock('../store/useWorkspaceStore', () => {
         actorEmail: 'user@perm.test',
         diff: {},
       },
+      {
+        id: '12',
+        timestamp: '2026-06-27T03:55:00.000Z',
+        actionType: 'generation_choice_group_created',
+        summary: '创建 actor 候选组 (3/3)',
+        targetIds: ['11'],
+        actorUserId: 1,
+        actorType: 'ai',
+        actorEmail: 'user@perm.test',
+        diff: {},
+      },
+      {
+        id: '13',
+        timestamp: '2026-06-27T04:00:00.000Z',
+        actionType: 'generation_choice_accepted',
+        summary: '接受 actor 候选: 主要用户',
+        targetIds: ['12'],
+        actorUserId: 1,
+        actorType: 'user',
+        actorEmail: 'user@perm.test',
+        diff: {},
+      },
     ],
     choiceGroups: [],
     isGeneratingChoices: false,
@@ -200,7 +222,7 @@ describe('Audit Log Display rendering on Overview Page', () => {
     // Check first audit operation (user)
     expect(screen.getAllByText('更新用户需求').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('手动更新用户需求文档')).toBeDefined();
-    expect(screen.getAllByText('user@perm.test').length).toBe(11);
+    expect(screen.getAllByText('user@perm.test').length).toBe(13);
 
     // Check second audit operation (ai)
     expect(screen.getAllByText('AI 精炼用户需求').length).toBeGreaterThanOrEqual(1);
@@ -211,6 +233,10 @@ describe('Audit Log Display rendering on Overview Page', () => {
     expect(screen.getByText('创建确认任务: 请确认参与者')).toBeDefined();
     expect(screen.getAllByText('审批通过').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('确认任务已通过: 请确认参与者')).toBeDefined();
+    expect(screen.getAllByText('生成候选方案组').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('创建 actor 候选组 (3/3)')).toBeDefined();
+    expect(screen.getAllByText('采纳生成候选方案').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('接受 actor 候选: 主要用户')).toBeDefined();
     expect(screen.getAllByText('更新流程步骤').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('调整流程步骤描述')).toBeDefined();
     expect(screen.getByText('新增候选参与者')).toBeDefined();

@@ -418,18 +418,23 @@ class ProjectService:
         if p is None:
             raise ValueError("project_not_found")
 
-        unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
+        STAGES_ORDER = ["what", "how", "scope"]
         stage_clean = stage.strip().lower()
-        if stage_clean not in unlocked_list:
-            unlocked_list.append(stage_clean)
-            p.unlocked_stages = ",".join(unlocked_list)
-            await session.commit()
+        if stage_clean not in STAGES_ORDER:
+            raise ValueError("invalid_stage")
+
+        unlocked_set = {s.strip().lower() for s in p.unlocked_stages.split(",") if s.strip()} if p.unlocked_stages else set()
+        unlocked_set.add(stage_clean)
+        
+        ordered_unlocked = [s for s in STAGES_ORDER if s in unlocked_set]
+        p.unlocked_stages = ",".join(ordered_unlocked)
+        await session.commit()
 
         return {
             "project_id": p.public_id,
             "stage": stage_clean,
             "message": "stage_unlocked",
-            "unlocked_stages": unlocked_list
+            "unlocked_stages": ordered_unlocked
         }
 
     async def delete_project(self, project_id: int, session: AsyncSession) -> dict:
@@ -732,4 +737,544 @@ class ProjectService:
             "affected_flows": affected_flows,
             "affected_business_objects": affected_business_objects,
             "summary": summary,
+        }
+
+    async def get_stage_progress(
+        self,
+        project_id: int,
+        public_project_id: str,
+        session: AsyncSession,
+    ) -> dict:
+        """
+        Compute unified stage progress for What / How / Scope stages.
+        Returns a StageProgressResponse-compatible dict.
+        """
+        from backend.api.modules.diagnosis_quality.public import FindingService
+        from backend.database.model import (
+            ActorModel, FeatureModel, FeatureRelationModel,
+            ScenarioModel, ScenarioAcceptanceCriterionModel,
+            FlowModel, FlowStepModel, ScopeModel,
+            PerceptionJobModel,
+            BusinessObjectModel,
+        )
+
+        # Load project
+        stmt = select(ProjectModel).where(ProjectModel.id == project_id)
+        p = (await session.execute(stmt)).scalar_one_or_none()
+        if p is None:
+            raise ValueError("project_not_found")
+
+        unlocked_set: set[str] = {
+            s.strip().lower() for s in p.unlocked_stages.split(",") if s.strip()
+        } if p.unlocked_stages else set()
+
+        STAGES_ORDER = ["what", "how", "scope"]
+        finding_service = FindingService()
+
+        # ── Structural data ──────────────────────────────────────────────
+
+        actors_rows = (await session.execute(
+            select(ActorModel.id).where(ActorModel.project_id == project_id)
+        )).scalars().all()
+        actors_count = len(actors_rows)
+
+        features = (await session.execute(
+            select(FeatureModel).where(FeatureModel.project_id == project_id)
+        )).scalars().all()
+
+        feature_ids = [f.id for f in features]
+        parent_ids: set[int] = set()
+        if feature_ids:
+            parent_ids = set((await session.execute(
+                select(FeatureRelationModel.parent_feature_id).where(
+                    FeatureRelationModel.parent_feature_id.in_(feature_ids),
+                    FeatureRelationModel.child_feature_id.in_(feature_ids),
+                )
+            )).scalars().all())
+        leaf_features = [f for f in features if f.id not in parent_ids]
+
+        # Feature to Actor mapping
+        from backend.database.model import feature_actor_table
+        feature_actor_rows = (await session.execute(
+            select(feature_actor_table.c.feature_id, feature_actor_table.c.actor_id)
+            .join(FeatureModel, FeatureModel.id == feature_actor_table.c.feature_id)
+            .where(FeatureModel.project_id == project_id)
+        )).all()
+        feature_actor_map: dict[int, list[int]] = {}
+        for f_id, a_id in feature_actor_rows:
+            feature_actor_map.setdefault(f_id, []).append(a_id)
+
+        # Scenarios and ACs
+        scenarios_result = await session.execute(
+            select(ScenarioModel)
+            .join(FeatureModel, FeatureModel.id == ScenarioModel.feature_id)
+            .where(FeatureModel.project_id == project_id)
+        )
+        scenarios_db = scenarios_result.scalars().all()
+        scenario_ids = [s.id for s in scenarios_db]
+        scenarios_map = {s.id: s for s in scenarios_db}
+        feature_scenario_map: dict[int, list[int]] = {}
+        for s in scenarios_db:
+            feature_scenario_map.setdefault(s.feature_id, []).append(s.id)
+
+        ac_scenario_ids: set[int] = set()
+        if scenario_ids:
+            ac_rows = (await session.execute(
+                select(ScenarioAcceptanceCriterionModel.scenario_id).where(
+                    ScenarioAcceptanceCriterionModel.scenario_id.in_(scenario_ids)
+                )
+            )).scalars().all()
+            ac_scenario_ids = set(ac_rows)
+
+        # Flows and Business Objects
+        flows_result = await session.execute(
+            select(FlowModel).where(FlowModel.project_id == project_id)
+        )
+        flows_db = flows_result.scalars().all()
+        flows = [f.id for f in flows_db]
+        flows_map = {f.id: f for f in flows_db}
+
+        flows_with_steps = set()
+        steps_db = []
+        step_actor_map: dict[int, list[int]] = {}
+        step_input_bo_map: dict[int, list[int]] = {}
+        step_output_bo_map: dict[int, list[int]] = {}
+        if flows:
+            steps_result = await session.execute(
+                select(FlowStepModel).where(FlowStepModel.flow_id.in_(flows))
+            )
+            steps_db = steps_result.scalars().all()
+            flows_with_steps = {step.flow_id for step in steps_db}
+            step_ids = [step.id for step in steps_db]
+
+            if step_ids:
+                from backend.database.model import (
+                    flow_step_actor_table,
+                    flow_step_input_business_object_table,
+                    flow_step_output_business_object_table,
+                )
+                # Query step actors mapping
+                step_actors_rows = (await session.execute(
+                    select(flow_step_actor_table.c.flow_step_id, flow_step_actor_table.c.actor_id)
+                    .where(flow_step_actor_table.c.flow_step_id.in_(step_ids))
+                )).all()
+                for step_id, actor_id in step_actors_rows:
+                    step_actor_map.setdefault(step_id, []).append(actor_id)
+
+                # Query step input BOs mapping
+                step_input_bo_rows = (await session.execute(
+                    select(flow_step_input_business_object_table.c.flow_step_id, flow_step_input_business_object_table.c.business_object_id)
+                    .where(flow_step_input_business_object_table.c.flow_step_id.in_(step_ids))
+                )).all()
+                for step_id, bo_id in step_input_bo_rows:
+                    step_input_bo_map.setdefault(step_id, []).append(bo_id)
+
+                # Query step output BOs mapping
+                step_output_bo_rows = (await session.execute(
+                    select(flow_step_output_business_object_table.c.flow_step_id, flow_step_output_business_object_table.c.business_object_id)
+                    .where(flow_step_output_business_object_table.c.flow_step_id.in_(step_ids))
+                )).all()
+                for step_id, bo_id in step_output_bo_rows:
+                    step_output_bo_map.setdefault(step_id, []).append(bo_id)
+
+        bos_result = await session.execute(
+            select(BusinessObjectModel)
+            .options(selectinload(BusinessObjectModel.attributes))
+            .where(BusinessObjectModel.project_id == project_id)
+        )
+        bos_db = bos_result.scalars().all()
+        bo_set = {bo.id for bo in bos_db}
+
+        scope_rows = (await session.execute(
+            select(ScopeModel.feature_id)
+            .join(FeatureModel, FeatureModel.id == ScopeModel.feature_id)
+            .where(FeatureModel.project_id == project_id, ScopeModel.status != None)
+        )).scalars().all()
+        scoped_feature_ids = set(scope_rows)
+
+        # Perception job status (latest running or failed job for each stage)
+        latest_jobs_result = await session.execute(
+            select(PerceptionJobModel)
+            .where(PerceptionJobModel.project_id == project_id)
+            .order_by(PerceptionJobModel.id.desc())
+        )
+        latest_jobs_db = latest_jobs_result.scalars().all()
+        latest_jobs_map: dict[str, PerceptionJobModel] = {}
+        for job in latest_jobs_db:
+            if job.stage not in latest_jobs_map:
+                latest_jobs_map[job.stage] = job
+
+        # Gate findings
+        what_gate_findings = await finding_service.list_findings(
+            project_id=project_id, stage="what", view="gate", action="enter_how", session=session,
+        )
+        how_gate_findings = await finding_service.list_findings(
+            project_id=project_id, stage="how", view="gate", action="enter_scope", session=session,
+        )
+        scope_gate_findings = await finding_service.list_findings(
+            project_id=project_id, stage="scope", view="gate", action="generate_preview", session=session,
+        )
+
+        stages: list[dict] = []
+        for stage in STAGES_ORDER:
+            if stage == "what":
+                unlocked = True
+            elif stage == "how":
+                unlocked = "what" in unlocked_set
+            elif stage == "scope":
+                unlocked = "how" in unlocked_set
+            else:
+                unlocked = False
+            gate_findings = {"what": what_gate_findings, "how": how_gate_findings, "scope": scope_gate_findings}[stage]
+            blocked = bool(gate_findings)
+
+            # ── What checks ─────────────────────────────────────────────
+            failed_checks: list[dict] = []
+            content_complete = False
+
+            if stage == "what":
+                if actors_count == 0:
+                    failed_checks.append({"code": "missing_actors", "message": "项目尚未有参与者", "targets": []})
+                if not leaf_features:
+                    failed_checks.append({"code": "missing_leaf_features", "message": "项目尚未有叶子功能", "targets": []})
+                # leaf without actor check
+                leaf_without_actor = [f for f in leaf_features if not feature_actor_map.get(f.id)] if leaf_features else []
+                if leaf_without_actor:
+                    failed_checks.append({
+                        "code": "leaf_feature_without_actor",
+                        "message": f"{len(leaf_without_actor)} 个叶子功能未绑定参与者",
+                        "targets": [{"type": "feature", "id": str(f.id), "name": f.name} for f in leaf_without_actor[:5]],
+                    })
+                # leaf without scenario
+                leaf_without_scenario = [f for f in leaf_features if not feature_scenario_map.get(f.id)]
+                if leaf_without_scenario:
+                    failed_checks.append({
+                        "code": "leaf_feature_without_scenario",
+                        "message": f"{len(leaf_without_scenario)} 个叶子功能缺少场景",
+                        "targets": [{"type": "feature", "id": str(f.id), "name": f.name} for f in leaf_without_scenario[:5]],
+                    })
+                # scenario without AC
+                scenarios_without_ac = [sid for sid in scenario_ids if sid not in ac_scenario_ids]
+                if scenarios_without_ac:
+                    failed_checks.append({
+                        "code": "missing_acceptance_criteria",
+                        "message": f"{len(scenarios_without_ac)} 个场景缺少验收标准",
+                        "targets": [{"type": "scenario", "id": str(sid), "name": scenarios_map[sid].name} for sid in scenarios_without_ac[:5]],
+                    })
+                content_complete = len(failed_checks) == 0
+
+            elif stage == "how":
+                if not flows:
+                    failed_checks.append({"code": "missing_flows", "message": "项目尚未有流程", "targets": []})
+                else:
+                    flows_without_steps_ids = [fid for fid in flows if fid not in flows_with_steps]
+                    if flows_without_steps_ids:
+                        failed_checks.append({
+                            "code": "flows_without_steps",
+                            "message": f"{len(flows_without_steps_ids)} 个流程缺少步骤",
+                            "targets": [{"type": "flow", "id": str(fid), "name": flows_map[fid].name} for fid in flows_without_steps_ids[:5]],
+                        })
+                    
+                    # step actor check
+                    actors_set = set(actors_rows)
+                    invalid_actor_steps = []
+                    for step in steps_db:
+                        step_actor_ids = step_actor_map.get(step.id, [])
+                        if step_actor_ids:
+                            if any(aid not in actors_set for aid in step_actor_ids):
+                                invalid_actor_steps.append(step)
+                    if invalid_actor_steps:
+                        failed_checks.append({
+                            "code": "invalid_step_actor",
+                            "message": f"{len(invalid_actor_steps)} 个流程步骤关联了无效或被删除的角色",
+                            "targets": [{"type": "step", "id": str(s.id), "name": s.name} for s in invalid_actor_steps[:5]],
+                        })
+
+                    # step business object check
+                    invalid_bo_steps = []
+                    for step in steps_db:
+                        all_step_bos = step_input_bo_map.get(step.id, []) + step_output_bo_map.get(step.id, [])
+                        if any(boid not in bo_set for boid in all_step_bos):
+                            invalid_bo_steps.append(step)
+                    if invalid_bo_steps:
+                        failed_checks.append({
+                            "code": "invalid_step_business_object",
+                            "message": f"{len(invalid_bo_steps)} 个流程步骤关联了无效的业务对象",
+                            "targets": [{"type": "step", "id": str(s.id), "name": s.name} for s in invalid_bo_steps[:5]],
+                        })
+
+                    # business object attributes definition check
+                    if bos_db:
+                        total_attributes = sum(len(bo.attributes) for bo in bos_db)
+                        if total_attributes == 0:
+                            failed_checks.append({
+                                "code": "missing_object_attributes",
+                                "message": "业务对象尚未定义任何属性字段",
+                                "targets": [{"type": "business_object", "id": str(bo.id), "name": bo.name} for bo in bos_db[:5]],
+                            })
+                content_complete = len(failed_checks) == 0
+
+            elif stage == "scope":
+                leaf_not_scoped = [f for f in leaf_features if f.id not in scoped_feature_ids]
+                if leaf_not_scoped:
+                    failed_checks.append({
+                        "code": "missing_scope_decision",
+                        "message": f"{len(leaf_not_scoped)} 个叶子功能缺少范围决策",
+                        "targets": [{"type": "feature", "id": str(f.id), "name": f.name} for f in leaf_not_scoped[:5]],
+                    })
+                kano_ready = p.kano_status in ("generated", "skipped")
+                if not kano_ready:
+                    failed_checks.append({"code": "kano_not_ready", "message": "Kano 分析尚未完成", "targets": []})
+                content_complete = len(failed_checks) == 0
+
+            # Determine next_stage_unlocked
+            next_stage_unlocked = stage in unlocked_set
+
+            # Stage perception status
+            stage_latest_job = latest_jobs_map.get(stage)
+            stage_perception_running = stage_latest_job is not None and stage_latest_job.status in ("running", "pending")
+
+            # ── Status code ──────────────────────────────────────────────
+            if next_stage_unlocked:
+                status_code = "ready"
+                status_label = "阶段已完成"
+            else:
+                if not unlocked:
+                    status_code = "locked"
+                    status_label = "尚未解锁"
+                else:
+                    if stage_perception_running:
+                        status_code = "analysis_running"
+                        status_label = "AI 分析运行中"
+                    elif blocked:
+                        status_code = "blocked"
+                        status_label = "存在阻塞问题，需先解决"
+                    elif content_complete:
+                        status_code = "ready_to_advance"
+                        status_label = "可申请进入下一阶段"
+                    else:
+                        # Check unlocked but not started
+                        is_not_started = False
+                        if stage == "what":
+                            is_not_started = (actors_count == 0)
+                        elif stage == "how":
+                            is_not_started = (len(flows_db) == 0 and len(bos_db) == 0)
+                        elif stage == "scope":
+                            is_not_started = (len(scoped_feature_ids) == 0)
+
+                        if is_not_started:
+                            status_code = "unlocked_not_started"
+                            status_label = "已解锁，尚未开始"
+                        else:
+                            status_code = "in_progress"
+                            status_label = "阶段进行中"
+
+            # ── Next action ──────────────────────────────────────────────
+            transition_action_map = {"what": "enter_how", "how": "enter_scope", "scope": "enter_preview"}
+            transition_available = status_code == "ready_to_advance"
+            route_map = {
+                "what": f"/projects/{public_project_id}/what",
+                "how": f"/projects/{public_project_id}/flow",
+                "scope": f"/projects/{public_project_id}/scope",
+            }
+
+            if status_code == "ready_to_advance":
+                next_action = {
+                    "kind": "stage_transition",
+                    "transition_action": transition_action_map[stage],
+                    "route": None,
+                    "label": f"申请进入下一阶段",
+                }
+            elif status_code == "blocked":
+                next_action = {"kind": "open_gate_findings", "transition_action": None, "route": None, "label": "查看阻塞问题"}
+            elif status_code == "analysis_running":
+                next_action = {"kind": "wait", "transition_action": None, "route": None, "label": "查看分析进度"}
+            elif status_code == "locked":
+                next_action = {"kind": "none", "transition_action": None, "route": None, "label": ""}
+            elif status_code == "unlocked_not_started":
+                next_action = {"kind": "navigate", "transition_action": None, "route": route_map.get(stage), "label": "开始建模"}
+            elif status_code in ("in_progress", "ready"):
+                next_action = {"kind": "navigate", "transition_action": None, "route": route_map.get(stage), "label": "前往该阶段"}
+            else:
+                next_action = {"kind": "navigate", "transition_action": None, "route": route_map.get(stage), "label": "继续完善"}
+
+            # Analysis status
+            if stage_latest_job:
+                if stage_perception_running:
+                    analysis_status = {
+                        "status": "running",
+                        "job_id": stage_latest_job.id,
+                        "started_at": stage_latest_job.created_at.isoformat() if hasattr(stage_latest_job, "created_at") and stage_latest_job.created_at else None,
+                        "message": f"AI 正在分析 {stage} 阶段...",
+                    }
+                elif stage_latest_job.status == "failed":
+                    analysis_status = {
+                        "status": "failed",
+                        "job_id": stage_latest_job.id,
+                        "started_at": stage_latest_job.created_at.isoformat() if hasattr(stage_latest_job, "created_at") and stage_latest_job.created_at else None,
+                        "message": stage_latest_job.error_message or "分析失败，请重试",
+                    }
+                else:
+                    analysis_status = {"status": "idle", "job_id": None, "started_at": None, "message": None}
+            else:
+                analysis_status = {"status": "idle", "job_id": None, "started_at": None, "message": None}
+
+            stages.append({
+                "stage": stage,
+                "status_code": status_code,
+                "status_label": status_label,
+                "content_complete": content_complete,
+                "unlocked": unlocked,
+                "transition_available": transition_available,
+                "next_action": next_action,
+                "failed_checks": failed_checks,
+                "blocking_findings": gate_findings,
+                "analysis_status": analysis_status,
+            })
+
+        return {
+            "project_id": public_project_id,
+            "stages": stages,
+        }
+
+    async def stage_transition(
+        self,
+        project_id: int,
+        action: str,
+        force: bool,
+        session: AsyncSession,
+        operator_id: int | None = None,
+    ) -> dict:
+        from backend.api.modules.diagnosis_quality.public import FindingService
+        from backend.database.model import AuditLogModel
+        
+        stmt = select(ProjectModel).where(ProjectModel.id == project_id)
+        result = await session.execute(stmt)
+        p = result.scalar_one_or_none()
+        if p is None:
+            raise ValueError("project_not_found")
+
+        # 1. Map action
+        if action == "enter_how":
+            gate_action = "enter_how"
+            gate_stage = "what"
+            unlock_stage = "what"
+            target_route = f"/projects/{p.public_id}/flow"
+        elif action == "enter_scope":
+            gate_action = "enter_scope"
+            gate_stage = "how"
+            unlock_stage = "how"
+            target_route = f"/projects/{p.public_id}/scope"
+        elif action == "enter_preview":
+            gate_action = "generate_preview"
+            gate_stage = "scope"
+            unlock_stage = "scope"
+            target_route = f"/projects/{p.public_id}/preview"
+        else:
+            raise ValueError("invalid_stage_transition")
+
+        STAGES_ORDER = ["what", "how", "scope"]
+        unlocked_set = {s.strip().lower() for s in p.unlocked_stages.split(",") if s.strip()} if p.unlocked_stages else set()
+        ordered_unlocked = [s for s in STAGES_ORDER if s in unlocked_set]
+
+        # 2. Check unified stage progress before gate findings. A forced transition may
+        # skip blocking findings, but it must not bypass incomplete mandatory checks.
+        stage_progress = await self.get_stage_progress(project_id, p.public_id, session)
+        source_progress = next(
+            (s for s in stage_progress["stages"] if s["stage"] == gate_stage),
+            None,
+        )
+        source_status = source_progress.get("status_code") if source_progress else None
+        content_complete = bool(source_progress.get("content_complete")) if source_progress else False
+        already_unlocked = unlock_stage in unlocked_set
+
+        # 3. Check gate findings
+        finding_service = FindingService()
+        findings = await finding_service.list_findings(
+            project_id=project_id,
+            stage=gate_stage,
+            view="gate",
+            action=gate_action,
+            session=session,
+        )
+
+        if not already_unlocked:
+            if source_status in ("locked", "analysis_running") or not content_complete:
+                return {
+                    "status": "blocked",
+                    "action": action,
+                    "unlocked_stage": None,
+                    "target_route": None,
+                    "unlocked_stages": ordered_unlocked,
+                    "blocking_findings": findings,
+                }
+
+        # 4. Handle force and findings
+        if findings and not force:
+            return {
+                "status": "blocked",
+                "action": action,
+                "unlocked_stage": None,
+                "target_route": None,
+                "unlocked_stages": ordered_unlocked,
+                "blocking_findings": findings,
+            }
+
+        # 5. Perform stage unlock
+        unlocked_set.add(unlock_stage)
+        ordered_unlocked = [s for s in STAGES_ORDER if s in unlocked_set]
+        p.unlocked_stages = ",".join(ordered_unlocked)
+        
+        # 6. Add Audit Log
+        audit_action = "stage_transition_forced" if (findings and force) else "stage_transition_unlocked"
+        audit_summary = (
+            f"强制推进阶段: {action} (跳过了 {len(findings)} 个阻塞项)" 
+            if (findings and force) 
+            else f"解锁阶段: {action} (前置 {unlock_stage} 已满足)"
+        )
+        
+        is_forced_transition = bool(findings and force)
+        from_stage = ""
+        target_stage = ""
+        if action == "enter_how":
+            from_stage = "what"
+            target_stage = "how"
+        elif action == "enter_scope":
+            from_stage = "how"
+            target_stage = "scope"
+        elif action == "enter_preview":
+            from_stage = "scope"
+            target_stage = "preview"
+
+        blocking_finding_ids = [f.findingId for f in findings] if findings else []
+
+        audit_log = AuditLogModel(
+            project_id=project_id,
+            action_type=audit_action,
+            summary=audit_summary,
+            target_type="project",
+            target_id=p.public_id,
+            actor_user_id=operator_id,
+            payload={
+                "action": action,
+                "unlock_stage": unlock_stage,
+                "force": force,
+                "is_forced_transition": is_forced_transition,
+                "from_stage": from_stage,
+                "target_stage": target_stage,
+                "blocking_finding_ids": blocking_finding_ids,
+                "operator_id": operator_id,
+                "bypass_findings_count": len(findings) if findings else 0
+            }
+        )
+        session.add(audit_log)
+        await session.commit()
+
+        return {
+            "status": "unlocked",
+            "action": action,
+            "unlocked_stage": unlock_stage,
+            "target_route": target_route,
+            "unlocked_stages": ordered_unlocked,
+            "blocking_findings": [],
         }

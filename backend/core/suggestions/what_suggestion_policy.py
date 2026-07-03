@@ -117,7 +117,8 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
             title="进入 How 阶段",
             description="What 阶段已有基础内容，可以继续梳理流程与业务对象。",
             action={
-                "kind": "navigate",
+                "kind": "stage_transition",
+                "transition_action": "enter_how",
                 "route": f"/projects/{pub_id}/how",
             },
         )

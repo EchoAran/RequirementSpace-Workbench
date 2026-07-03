@@ -33,6 +33,15 @@ export const workspaceApi = {
   unlockStage: async (projectId: string, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
   },
+  stageTransition: async (
+    projectId: string,
+    payload: { action: 'enter_how' | 'enter_scope' | 'enter_preview'; force?: boolean }
+  ): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/stage-transition`, payload);
+  },
+  getStageProgress: async (projectId: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/stage-progress`);
+  },
   /** 更新任意节点的确认状态（`ai_assumption` / `needs_confirmation` / `confirmed`）。 */
   updateNodeConfirmationStatus: async (
     projectId: string,

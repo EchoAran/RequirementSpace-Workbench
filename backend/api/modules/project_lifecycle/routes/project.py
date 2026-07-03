@@ -16,6 +16,9 @@ from backend.api.modules.project_lifecycle.schemas.project import (
     ScopeImpactPreviewRequest,
     ScopeImpactPreviewResponse,
     UnlockStageRequest,
+    StageTransitionRequest,
+    StageTransitionResponse,
+    StageProgressResponse,
 )
 from backend.api.modules.project_lifecycle.ports import get_project_service
 
@@ -93,6 +96,44 @@ async def unlock_stage(
             raise HTTPException(
                 status_code=404,
                 detail="project_not_found",
+            )
+        if str(error) == "invalid_stage":
+            raise HTTPException(
+                status_code=400,
+                detail="invalid_stage",
+            )
+        raise
+
+
+@router.post(
+    "/{project_id}/stage-transition",
+    response_model=StageTransitionResponse,
+)
+async def stage_transition(
+    project_id: str,
+    request: StageTransitionRequest,
+    owned_project: ProjectModel = Depends(require_owned_project),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await project_service.stage_transition(
+            project_id=owned_project.id,
+            action=request.action,
+            force=request.force,
+            operator_id=user.id,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) == "project_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail="project_not_found",
+            )
+        if str(error) == "invalid_stage_transition":
+            raise HTTPException(
+                status_code=400,
+                detail="invalid_stage_transition",
             )
         raise
 
@@ -239,5 +280,29 @@ async def preview_scope_impact(
             raise HTTPException(
                 status_code=404,
                 detail="feature_not_found",
+            )
+        raise
+
+
+@router.get(
+    "/{project_id}/stage-progress",
+    response_model=StageProgressResponse,
+)
+async def get_stage_progress(
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_project_member),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await project_service.get_stage_progress(
+            project_id=owned_project.id,
+            public_project_id=project_id,
+            session=session,
+        )
+    except ValueError as error:
+        if str(error) == "project_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail="project_not_found",
             )
         raise

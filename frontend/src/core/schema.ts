@@ -207,7 +207,7 @@ export interface StageGateResult {
 }
 
 export interface PageHealth {
-  statusCode: 'not_started' | 'in_progress' | 'needs_attention' | 'ready' | 'locked' | 'real_ready' | 'shadow_available';
+  statusCode: 'not_started' | 'in_progress' | 'needs_attention' | 'ready' | 'locked' | 'real_ready' | 'shadow_available' | 'ready_to_advance';
   statusLabel: string;
   disabled: boolean;
   disabledReason?: string;

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Target, Activity, CheckSquare, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
-import { 
-  useWorkspaceStore, 
+import {
+  useWorkspaceStore,
   selectPageHealth
 } from '@/store/useWorkspaceStore';
 import { buildProjectRoute, buildReadiness, extractWorkspacePage } from '@/core/selectors';
@@ -18,7 +18,73 @@ export function LeftNav() {
   const locationPage = extractWorkspacePage(location.pathname);
   const resolvedActivePage = locationPage || activePage;
 
+  const stageProgress = useWorkspaceStore(s => s.stageProgress);
+
   const getCounts = (path: string) => {
+    if (stageProgress && stageProgress.stages) {
+      const stageMap: Record<string, string> = {
+        '/what': 'what',
+        '/flow': 'how',
+        '/scope': 'scope',
+      };
+
+      const stageKey = stageMap[path];
+      if (stageKey) {
+        const item = stageProgress.stages.find((s: any) => s.stage === stageKey);
+        if (item) {
+          const issueCount = item.blockingFindings ? item.blockingFindings.length : 0;
+          const hasBlockingSlot = item.statusCode === 'blocked';
+          const disabled = !item.unlocked;
+
+          let disabledReason = '';
+          if (disabled) {
+            if (stageKey === 'how') {
+              const whatItem = stageProgress.stages.find((s: any) => s.stage === 'what');
+              if (whatItem && !whatItem.unlocked) {
+                disabledReason = '需先完成并解锁 What 阶段';
+              } else {
+                disabledReason = '需先补齐 What 阶段的所有核心建模规则';
+              }
+            } else if (stageKey === 'scope') {
+              const howItem = stageProgress.stages.find((s: any) => s.stage === 'how');
+              if (howItem && !howItem.unlocked) {
+                disabledReason = '需先完成并解锁 How 阶段';
+              } else {
+                disabledReason = '需先补齐 How 阶段的所有核心建模规则';
+              }
+            }
+          }
+
+          return {
+            issueCount,
+            hasBlockingSlot,
+            statusCode: item.statusCode,
+            statusLabel: item.statusLabel,
+            disabled,
+            disabledReason
+          };
+        }
+      } else if (path === '/preview') {
+        return {
+          issueCount: 0,
+          hasBlockingSlot: false,
+          statusCode: 'shadow_available',
+          statusLabel: '可预演',
+          disabled: false,
+          disabledReason: ''
+        };
+      }
+      return {
+        issueCount: 0,
+        hasBlockingSlot: false,
+        statusCode: 'ready',
+        statusLabel: '已就绪',
+        disabled: false,
+        disabledReason: ''
+      };
+    }
+
+    console.warn('[deprecated] evaluateMandatoryChecks fallback is used; core gating must read StageProgress');
     return selectPageHealth({ ir } as any, path);
   };
 
@@ -35,7 +101,7 @@ export function LeftNav() {
       "bg-white border-r border-slate-200 flex flex-col shrink-0 min-h-screen transition-all duration-300 relative",
       collapsed ? "w-16" : "w-64"
     )}>
-      <button 
+      <button
         onClick={() => setCollapsed(!collapsed)}
         className="absolute -right-3 top-[calc(50%+2rem)] -translate-y-1/2 bg-white border border-slate-200 rounded-full w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-300 shadow-sm hover:shadow z-20 transition-all"
       >
@@ -52,7 +118,7 @@ export function LeftNav() {
           const Icon = item.icon;
           const { issueCount, hasBlockingSlot, statusCode, statusLabel, disabled, disabledReason } = getCounts(item.page);
           const to = buildProjectRoute(ir?.projectId, item.page);
-          
+
           const InnerContent = collapsed ? (
              <div className="flex justify-center items-center w-full relative" title={item.label}>
                 <Icon className="h-5 w-5 shrink-0" />
@@ -66,7 +132,7 @@ export function LeftNav() {
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="text-sm shrink-0 whitespace-nowrap font-medium text-slate-800 truncate">{item.label}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-1.5 shrink-0">
                   {hasBlockingSlot && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
                   <span className={cn(
@@ -83,7 +149,7 @@ export function LeftNav() {
                   </span>
                 </div>
               </div>
-              
+
               <div className="pl-6 min-h-[14px] flex items-center">
                 {(issueCount > 0 || hasBlockingSlot) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
@@ -91,7 +157,7 @@ export function LeftNav() {
                       statusLabel
                     ) : (
                       <>
-                        {issueCount > 0 && `${issueCount} 待处理`}
+                        {issueCount > 0 && (String(issueCount) + ' 待处理')}
                         {issueCount > 0 && hasBlockingSlot && ' / '}
                         {hasBlockingSlot && '有阻塞建议'}
                       </>
@@ -105,21 +171,78 @@ export function LeftNav() {
               </div>
             </div>
           );
-          
+
           return (
-            <Link 
-              key={item.page} 
+            <Link
+              key={item.page}
               to={disabled ? '#' : to}
               onClick={(e) => {
-                if (disabled) {
+                if (stageProgress && stageProgress.stages) {
+                  if (disabled) {
+                    e.preventDefault();
+                    const stageMap: Record<string, string> = {
+                      '/flow': 'what',
+                      '/scope': 'how'
+                    };
+                    const prevStageKey = stageMap[item.page];
+                    if (prevStageKey) {
+                      const prevStage = stageProgress.stages.find((s: any) => s.stage === prevStageKey);
+                      if (prevStage) {
+                        if (prevStage.statusCode === 'ready_to_advance') {
+                          const actionMap: Record<string, 'enter_how' | 'enter_scope' | 'enter_preview'> = {
+                            'what': 'enter_how',
+                            'how': 'enter_scope',
+                            'scope': 'enter_preview'
+                          };
+                          useWorkspaceStore.getState().requestStageTransition(actionMap[prevStageKey], { navigate });
+                        } else {
+                          let reason = prevStage.failedChecks && prevStage.failedChecks[0]?.message;
+                          if (!reason) {
+                            if (prevStageKey === 'what') reason = '需先补齐 What 阶段的所有核心建模规则';
+                            else if (prevStageKey === 'how') reason = '需先补齐 How 阶段的核心规则';
+                            else reason = '当前阶段未解锁';
+                          }
+                          useWorkspaceStore.getState().setError(reason);
+                        }
+                      }
+                    }
+                  }
+                  return;
+                }
+
+                // Exact Legacy Fallback Click Intercept
+                const isFlowUnlocked = ir?.unlockedStages?.includes('what');
+                const isScopeUnlocked = ir?.unlockedStages?.includes('how');
+
+                let intercept = false;
+                if (item.page === '/flow' && !isFlowUnlocked) intercept = true;
+                if (item.page === '/scope' && !isScopeUnlocked) intercept = true;
+
+                if (intercept) {
                   e.preventDefault();
-                  const action = item.page === '/flow' ? 'enter_how' : 'enter_scope';
-                  useWorkspaceStore.getState().triggerGateCheck(action, () => {
-                    const stageName = item.page === '/flow' ? 'how' : 'scope';
-                    useWorkspaceStore.getState().unlockStageGate(stageName).then(() => {
-                      navigate(to);
-                    });
-                  });
+                  if (item.page === '/flow') {
+                    const whatHealth = getCounts('/what') as any;
+                    const isWhatReady = whatHealth.statusCode === 'ready_to_advance' || whatHealth.nextSlot?.kind === 'stage_gate_transition_confirm';
+                    if (isWhatReady) {
+                      useWorkspaceStore.getState().requestStageTransition('enter_how', { navigate });
+                    } else {
+                      useWorkspaceStore.getState().setError(whatHealth.disabledReason || '需先补齐 What 阶段的所有核心建模规则');
+                    }
+                  } else if (item.page === '/scope') {
+                    const flowHealth = getCounts('/flow') as any;
+                    const isFlowReady = flowHealth.statusCode === 'ready_to_advance' || flowHealth.nextSlot?.kind === 'stage_gate_transition_confirm';
+                    if (isFlowReady) {
+                      useWorkspaceStore.getState().requestStageTransition('enter_scope', { navigate });
+                    } else {
+                      const isWhatUnlocked = ir?.unlockedStages?.includes('what');
+                      const reason = !isWhatUnlocked
+                        ? '需先完成并解锁 What 阶段'
+                        : (flowHealth.disabledReason || '需先补齐 How 阶段的核心规则');
+                      useWorkspaceStore.getState().setError(reason);
+                    }
+                  } else {
+                    useWorkspaceStore.getState().setError(disabledReason || '当前阶段未解锁');
+                  }
                 }
               }}
               className={cn(
@@ -139,7 +262,7 @@ export function LeftNav() {
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
             <div className="text-xs text-slate-500 mb-1 italic">整体成熟度</div>
             <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${readinessScore}%` }}></div>
+              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: String(readinessScore) + '%' }}></div>
             </div>
             <div className="text-xs text-right mt-1 font-mono font-bold text-slate-700">{readinessScore}%</div>
           </div>

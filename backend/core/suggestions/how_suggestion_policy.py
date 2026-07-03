@@ -67,7 +67,8 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
             title="进入 Scope 阶段",
             description="How 阶段已有流程和业务对象，可以继续判断功能范围。",
             action={
-                "kind": "navigate",
+                "kind": "stage_transition",
+                "transition_action": "enter_scope",
                 "route": f"/projects/{pub_id}/scope",
             },
         )

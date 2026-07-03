@@ -285,7 +285,7 @@ export function WhatToDo() {
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
     updateScenario, updateAcceptanceCriterion,
     setNodeStatus,
-    deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate, triggerGateCheck,
+    deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate, triggerGateCheck, requestStageTransition,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
@@ -1964,17 +1964,12 @@ export function WhatToDo() {
         stage="what"
         isWorking={isLoading}
         onAIDiagnose={async () => {
-          setIsTransitionModalOpen(false);
-          await runDiagnosis();
+          // Don't close modal — it handles its own diagnosing state
+          await runDiagnosis('what');
         }}
         onForceUnlock={async () => {
           setIsTransitionModalOpen(false);
-          const targetPath = buildProjectRoute(ir?.projectId, '/flow');
-          triggerGateCheck('enter_how', () => {
-            unlockStageGate('how').then(() => {
-              navigate(targetPath);
-            });
-          });
+          await requestStageTransition('enter_how', { navigate });
         }}
       />
 

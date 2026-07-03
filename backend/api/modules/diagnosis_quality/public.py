@@ -3,6 +3,9 @@
 from backend.api.modules.diagnosis_quality.finding.application.finding_service import (
     FindingService,
 )
+from backend.api.modules.diagnosis_quality.finding.schemas import (
+    FindingResponse,
+)
 from backend.api.modules.diagnosis_quality.issue_compat.application.issue_service import (
     IssueService,
 )
@@ -31,6 +34,7 @@ from backend.api.modules.diagnosis_quality.quality_metrics.application.quality_m
 
 __all__ = [
     "FindingService",
+    "FindingResponse",
     "IssueService",
     "NextSuggestionService",
     "PerceptionJobService",

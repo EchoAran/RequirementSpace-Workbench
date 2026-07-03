@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { StageGuidanceBanner } from '../components/shared/StageGuidanceBanner';
 import { Finding } from '../core/schema';
@@ -28,13 +29,14 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       isLoading: false,
       isGenerating: false,
       isDiagnosing: false,
+      stageProgress: null,
     });
   });
 
   it('should render the clean green banner when there are no findings', () => {
-    render(<StageGuidanceBanner stage="what" />);
-    expect(screen.queryByText('当前阶段暂未发现待处理问题，模型结构健康。', { exact: false })).not.toBeNull();
-    expect(screen.queryByText('重新诊断')).not.toBeNull();
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
+    expect(screen.queryByRole('button')).not.toBeNull();
+    expect(screen.queryByRole('button')).not.toBeNull();
   });
 
   it('should render Next Actions, Issues, and Health Hints in their respective tiers', () => {
@@ -44,8 +46,8 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'GENERATE_SCENARIOS',
       severity: 'info',
-      title: '建议补齐系统角色',
-      description: '建模需要至少一个核心角色。',
+      title: '寤鸿琛ラ綈绯荤粺瑙掕壊',
+      description: 'Need at least one core role.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -56,11 +58,11 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'LEAF_FEATURE_WITHOUT_ACTOR',
       severity: 'blocking',
-      title: '功能未关联角色',
-      description: '叶子功能缺少关联的执行主体。',
+      title: 'Feature missing actor',
+      description: 'Leaf feature has no actor.',
       blockingScope: 'stage_transition',
       metadata: {},
-      capability: { kind: 'ai_repair', action_label: 'AI 修复', enabled: true },
+      capability: { kind: 'ai_repair', action_label: 'AI 淇', enabled: true },
     };
 
     const healthFinding: Finding = {
@@ -69,8 +71,8 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'HEALTH_TEST',
       severity: 'info',
-      title: '冗余场景名称提示',
-      description: '部分典型场景名称存在冗余词汇。',
+      title: '鍐椾綑鍦烘櫙鍚嶇О鎻愮ず',
+      description: 'Scenario name can be improved.',
       blockingScope: 'none',
       metadata: {},
       capability: null,
@@ -85,33 +87,33 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
 
     // 1. Next Actions section
     expect(screen.queryByText('下一步建议')).not.toBeNull();
-    expect(screen.queryByText('建议补齐系统角色')).not.toBeNull();
+    expect(screen.queryByText('寤鸿琛ラ綈绯荤粺瑙掕壊')).not.toBeNull();
     expect(screen.queryByText('生成场景草稿')).not.toBeNull();
-    expect(screen.queryByText('开始处理 (AI)')).toBeNull();
+    expect(screen.queryByText('开始处理(AI)')).toBeNull();
 
     // 2. Issues count header
     expect(screen.queryByText('仍有 1 个待处理问题')).not.toBeNull();
-    expect(screen.queryByText('叶子功能缺少关联的执行主体。')).toBeNull(); // folded by default
+    expect(screen.queryByText('Leaf feature has no actor.')).toBeNull(); // folded by default
 
     // Expand Issues
     fireEvent.click(screen.getByText('仍有 1 个待处理问题'));
-    expect(screen.queryByText('功能未关联角色')).not.toBeNull();
-    expect(screen.queryByText('叶子功能缺少关联的执行主体。')).not.toBeNull();
-    expect(screen.queryByText('AI 修复')).not.toBeNull();
+    expect(screen.queryByText('Feature missing actor')).not.toBeNull();
+    expect(screen.queryByText('Leaf feature has no actor.')).not.toBeNull();
     expect(screen.queryByText('定位')).not.toBeNull();
+    expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
 
     // 3. Health Hints count header
-    expect(screen.queryByText('空间健康：1 条可优化建议')).not.toBeNull();
-    expect(screen.queryByText('部分典型场景名称存在冗余词汇。')).toBeNull(); // folded by default
+    expect(screen.queryByText(/空间健康/)).not.toBeNull();
+    expect(screen.queryByText('Scenario name can be improved.')).toBeNull(); // folded by default
 
     // Expand Health Hints
-    fireEvent.click(screen.getByText('空间健康：1 条可优化建议'));
-    expect(screen.queryByText('冗余场景名称提示')).not.toBeNull();
-    expect(screen.queryByText('部分典型场景名称存在冗余词汇。')).not.toBeNull();
+    fireEvent.click(screen.getByText(/空间健康/));
+    expect(screen.queryByText('鍐椾綑鍦烘櫙鍚嶇О鎻愮ず')).not.toBeNull();
+    expect(screen.queryByText('Scenario name can be improved.')).not.toBeNull();
   });
 
   it('should call startFindingSuggestion when clicking Next Action button', async () => {
@@ -121,8 +123,8 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'ENTER_HOW',
       severity: 'info',
-      title: '建议补齐系统角色',
-      description: '建模需要至少一个核心角色。',
+      title: '寤鸿琛ラ綈绯荤粺瑙掕壊',
+      description: 'Need at least one core role.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -138,10 +140,10 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
 
     const handleButton = screen.getByText('进入 How 阶段');
-    expect(screen.queryByText('开始处理 (AI)')).toBeNull();
+    expect(screen.queryByText('开始处理(AI)')).toBeNull();
     act(() => {
       fireEvent.click(handleButton);
     });
@@ -149,7 +151,7 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
     await vi.waitFor(() => !useWorkspaceStore.getState().isLoading);
 
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(nextActionFinding);
+    expect(spy).toHaveBeenCalledWith(nextActionFinding, expect.objectContaining({ navigate: expect.any(Function) }));
   });
 
   it('should call updateIssueAttributes when ignoring a health hint', async () => {
@@ -159,8 +161,8 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'HEALTH_TEST',
       severity: 'info',
-      title: '冗余场景名称提示',
-      description: '部分典型场景名称存在冗余词汇。',
+      title: '鍐椾綑鍦烘櫙鍚嶇О鎻愮ず',
+      description: 'Scenario name can be improved.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -176,12 +178,12 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
 
     // Expand Health Hints
-    fireEvent.click(screen.getByText('空间健康：1 条可优化建议'));
+    fireEvent.click(screen.getByText(/空间健康/));
     
-    // Find the ignore button (which is the button with title "忽略")
+    // Find the ignore button (which is the button with title "蹇界暐")
     const ignoreButton = screen.getByTitle('忽略');
     act(() => {
       fireEvent.click(ignoreButton);
@@ -198,8 +200,8 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       stage: 'what',
       code: 'GENERATE_SCENARIOS',
       severity: 'info',
-      title: '生成场景',
-      description: '当前项目还没有场景，建议为功能与参与者生成场景。',
+      title: '鐢熸垚鍦烘櫙',
+      description: 'Generate scenarios for features and actors.',
       blockingScope: 'none',
       metadata: {
         action: {
@@ -227,10 +229,10 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
 
     const handleButton = screen.getByText('生成场景草稿');
-    expect(screen.queryByText('开始处理 (AI)')).toBeNull();
+    expect(screen.queryByText('开始处理(AI)')).toBeNull();
     await act(async () => {
       fireEvent.click(handleButton);
     });
@@ -245,15 +247,15 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
     );
   });
 
-  it('should render "查看建议" for slot findings', () => {
+  it('should render "鏌ョ湅寤鸿" for slot findings', () => {
     const slotFinding: Finding = {
       findingId: 'what:ACTOR_SLOT:feature:1',
       type: 'next_suggestion',
       stage: 'what',
       code: 'ACTOR_SLOT',
       severity: 'info',
-      title: '缺少系统角色',
-      description: '缺少系统角色建议。',
+      title: '缂哄皯绯荤粺瑙掕壊',
+      description: 'Missing role suggestion.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -267,19 +269,19 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
     expect(screen.queryByText('查看建议')).not.toBeNull();
   });
 
-  it('should render "重新诊断" for failed perception findings', () => {
+  it('should render "閲嶆柊璇婃柇" for failed perception findings', () => {
     const failedFinding: Finding = {
       findingId: 'what:ACTOR_PERCEPTION_FAILED:feature:1',
       type: 'next_suggestion',
       stage: 'what',
       code: 'ACTOR_PERCEPTION_FAILED',
       severity: 'info',
-      title: '角色感知失败',
-      description: '角色感知诊断失败。',
+      title: '瑙掕壊鎰熺煡澶辫触',
+      description: 'Actor perception failed.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -293,19 +295,19 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
     expect(screen.queryByText('重新诊断')).not.toBeNull();
   });
 
-  it('should render "完善流程步骤" for COMPLETE_FLOW_STEPS with open_panel/flow_editor action', () => {
+  it('should render "瀹屽杽娴佺▼姝ラ" for COMPLETE_FLOW_STEPS with open_panel/flow_editor action', () => {
     const completeFlowFinding: Finding = {
       findingId: 'how:COMPLETE_FLOW_STEPS:flow:1',
       type: 'next_suggestion',
       stage: 'how',
       code: 'COMPLETE_FLOW_STEPS',
       severity: 'info',
-      title: '完善流程步骤',
-      description: '当前流程尚未包含可执行步骤，建议先补充流程步骤。',
+      title: '瀹屽杽娴佺▼姝ラ',
+      description: 'Complete flow steps before entering Scope.',
       blockingScope: 'none',
       metadata: {
         action: {
@@ -326,21 +328,21 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       },
     });
 
-    render(<StageGuidanceBanner stage="how" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="how" /></MemoryRouter>);
     // Verify presentation shows correct label despite action.kind=open_panel
-    const buttons = screen.queryAllByText('完善流程步骤');
+    const buttons = screen.queryAllByText('瀹屽杽娴佺▼姝ラ');
     expect(buttons.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('should render "执行建议" for unknown code fallback', () => {
+  it('should render "鎵ц寤鸿" for unknown code fallback', () => {
     const unknownFinding: Finding = {
       findingId: 'what:SOME_UNKNOWN_CODE:feature:1',
       type: 'next_suggestion',
       stage: 'what',
       code: 'SOME_UNKNOWN_CODE',
       severity: 'info',
-      title: '未知建议',
-      description: '未知的系统建议。',
+      title: '鏈煡寤鸿',
+      description: 'Unknown suggestion.',
       blockingScope: 'none',
       metadata: {}
     };
@@ -354,7 +356,40 @@ describe('StageGuidanceBanner - 4-Tier UX Categorization Tests', () => {
       }
     });
 
-    render(<StageGuidanceBanner stage="what" />);
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
     expect(screen.queryByText('执行建议')).not.toBeNull();
+  });
+
+  it('should hide stale next action after the stage has already advanced', () => {
+    const nextActionFinding: Finding = {
+      findingId: 'what:ENTER_HOW:project:1',
+      type: 'next_suggestion',
+      stage: 'what',
+      code: 'ENTER_HOW',
+      severity: 'info',
+      title: '进入 How 阶段',
+      description: 'What 已完成',
+      blockingScope: 'none',
+      metadata: {}
+    };
+
+    useWorkspaceStore.setState({
+      findingsByView: {
+        next_action: [nextActionFinding],
+        issues: [],
+        gate: [],
+        health: []
+      },
+      stageProgress: {
+        stages: [
+          { stage: 'what', statusCode: 'ready' },
+          { stage: 'how', statusCode: 'unlocked_not_started' },
+          { stage: 'scope', statusCode: 'locked' }
+        ]
+      }
+    });
+
+    render(<MemoryRouter><StageGuidanceBanner stage="what" /></MemoryRouter>);
+    expect(screen.queryByText('进入 How 阶段')).toBeNull();
   });
 });

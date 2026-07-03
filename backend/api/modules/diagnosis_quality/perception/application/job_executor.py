@@ -756,6 +756,9 @@ class PerceptionJobExecutor:
             "FLOW": "正在分析流程",
         }
 
+        started_time = str(job.created_at) if getattr(job, "created_at", None) else ""
+        stage_display = "What" if job.stage == "what" else ("How" if job.stage == "how" else "Scope")
+
         return NextSuggestion(
             sourceType="perception_slot",
             code=f"{job.perception_kind}_PERCEPTION_RUNNING",
@@ -768,16 +771,24 @@ class PerceptionJobExecutor:
             },
             action={
                 "kind": "wait",
+                "status": "running",
+                "job_id": job.id,
+                "jobId": job.id,
+                "stage": job.stage,
+                "started_at": started_time,
+                "startedAt": started_time,
+                "message": f"AI 正在分析 {stage_display} 阶段...",
             },
         )
 
     @staticmethod
     def _build_failed_suggestion(job) -> NextSuggestion:
+        err_msg = job.error_message or "感知器执行失败，可以稍后重试。"
         return NextSuggestion(
             sourceType="perception_slot",
             code=f"{job.perception_kind}_PERCEPTION_FAILED",
             title="感知分析失败",
-            description=job.error_message or "感知器执行失败，可以稍后重试。",
+            description=err_msg,
             status="failed",
             target={
                 "type": job.target_type,
@@ -785,8 +796,14 @@ class PerceptionJobExecutor:
             },
             action={
                 "kind": "retry",
+                "status": "failed",
+                "error_message": err_msg,
+                "errorMessage": err_msg,
+                "retry_action": "rediagnose",
+                "retryAction": "rediagnose",
                 "payload": {
                     "perception_job_id": job.id,
+                    "perceptionJobId": job.id,
                 },
             },
         )

@@ -636,6 +636,7 @@ export interface WorkspaceState {
   };
   backendChoiceGroups: Record<string, ChoiceGroup>;
   isDiagnosing: boolean;
+  stageTransitionInFlight: boolean;
   /** @deprecated Legacy cache used only by runDiagnosis polling. UI should read findingsByView.next_action instead. */
   nextSuggestions: Record<string, any>;
 
@@ -656,6 +657,8 @@ export interface WorkspaceState {
   lastActionMessage: string | null;
   lastIssueResolution: any | null;
   workspaces: WorkspaceListItem[];
+  stageProgress: any | null;
+  loadStageProgress: (projectId?: string) => Promise<void>;
 
   // Project Lifecycles
   loadWorkspaces: () => Promise<void>;
@@ -797,7 +800,7 @@ export interface WorkspaceState {
   regenerateRepairDraft: (draftId: string) => Promise<void>;
   setNodeStatus: (nodeId: string, nodeKind: string, status: NodeStatus) => Promise<void>;
   setScopeStatus: (nodeId: string, scopeStatus: ScopeStatus) => Promise<void>;
-  runDiagnosis: (scope?: any) => Promise<void>;
+  runDiagnosis: (stage?: 'what' | 'how' | 'scope') => Promise<void>;
   rewrite: (scope: any, instruction: string) => Promise<void>;
   explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
   updateNodeAttributes: (nodeId: string, updates: Partial<BaseNode> & Record<string, any>) => Promise<void>;
@@ -821,6 +824,10 @@ export interface WorkspaceState {
   commitShadowDraft: (draftId: string) => Promise<void>;
   regenerateShadowDraft: (draftId: string, feedback?: string) => Promise<any>;
   unlockStageGate: (stage: string) => Promise<void>;
+  requestStageTransition: (
+    action: 'enter_how' | 'enter_scope' | 'enter_preview',
+    options?: { navigate?: (path: string) => void; force?: boolean }
+  ) => Promise<void>;
 
   activeGateCheck: {
     action: string;
@@ -831,7 +838,10 @@ export interface WorkspaceState {
   snoozedGateFindingIds: Record<string, string>; // Maps key to context hash
   triggerGateCheck: (action: string, onPass: () => void, onCancel?: () => void) => Promise<void>;
   snoozeGateFinding: (action: string, finding: Finding) => void;
-  startFindingSuggestion: (finding: Finding) => Promise<void>;
+  startFindingSuggestion: (
+    finding: Finding,
+    options?: { navigate?: (path: string) => void }
+  ) => Promise<any>;
   executeGateFindingAction: (finding: Finding) => Promise<void>;
 
   tasks: any[];
@@ -1043,11 +1053,26 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   const executeProcessorAction = async (
     action: any,
     context: { stage?: string; findingCode?: string; target?: any },
-    version: number
+    version: number,
+    options?: { navigate?: (path: string) => void }
   ) => {
-    if (!action) return;
+    if (!action) return null;
 
     const kind = action.kind;
+
+    if (kind === 'stage_transition') {
+      const transitionAction = action.transition_action || action.transitionAction;
+      if (transitionAction) {
+        if (options?.navigate) {
+          await get().requestStageTransition(transitionAction, { navigate: options.navigate });
+        }
+        return {
+          type: 'stage_transition',
+          action: transitionAction,
+        };
+      }
+      return null;
+    }
 
     if (kind === 'create_draft') {
       const draftType = action.draft_type || action.draftType;
@@ -1081,6 +1106,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       } else if (code === 'GENERATE_SCOPE' || draftType === 'scope_generation') {
         await get().generateScope(false);
       }
+      return {
+        type: 'business_action',
+        kind,
+        action,
+      };
     } else if (kind === 'navigate') {
       const route = action.route || '';
       let page: any = null;
@@ -1101,19 +1131,133 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         page = '/preview';
       }
 
-      if (page) {
-        get().setActivePage(page);
+      const projectId = get().ir?.projectId;
+      if (projectId && route) {
+        let resolvedRoute = route;
+        if (page) {
+          resolvedRoute = `/projects/${projectId}${page}`;
+        }
+        if (options?.navigate) {
+          options.navigate(resolvedRoute);
+        } else if (page) {
+          get().setActivePage(page);
+        }
+        return {
+          type: 'navigation',
+          route: resolvedRoute,
+        };
       }
+      return null;
     } else if (kind === 'wait') {
-      set({ lastActionMessage: '后台分析正在运行，请稍后刷新或重新诊断。' });
+      const stage = (action.stage || context.stage || 'what') as 'what' | 'how' | 'scope';
+      const projectId = get().ir?.projectId;
+      
+      set({ lastActionMessage: '正在刷新分析状态...' });
+      
+      if (!projectId) {
+        return {
+          type: 'wait',
+          jobId: action.job_id || action.jobId,
+          stage,
+          message: '项目 ID 缺失',
+          status: 'failed',
+        };
+      }
+
+      let res = await workspaceApi.getNextSuggestion(projectId, stage);
+      if (get().sessionVersion !== version) return;
+      let currentSug = res.suggestion;
+
+      if (currentSug && currentSug.status === 'running') {
+        const maxAttempts = 4;
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+          set({ lastActionMessage: 'AI 诊断正在后台运行，请稍候...' });
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          if (get().sessionVersion !== version) return;
+          
+          res = await workspaceApi.getNextSuggestion(projectId, stage);
+          if (get().sessionVersion !== version) return;
+          currentSug = res.suggestion;
+          
+          if (!currentSug || currentSug.status !== 'running') {
+            break;
+          }
+          attempts++;
+        }
+      }
+
+      // Update in store
+      set((s: WorkspaceState) => ({
+        nextSuggestions: {
+          ...s.nextSuggestions,
+          [stage]: currentSug
+        }
+      }));
+
       await get().refreshWorkspace();
+
+      let status = 'idle';
+      let message = 'AI 诊断完成';
+
+      if (currentSug) {
+        if (currentSug.status === 'running') {
+          status = 'running';
+          message = 'AI 仍在分析中';
+        } else if (currentSug.status === 'failed') {
+          status = 'failed';
+          message = `重新诊断：${currentSug.description || '分析发生错误'}`;
+        } else if (
+          currentSug.code === 'ENTER_HOW' ||
+          currentSug.code === 'ENTER_SCOPE' ||
+          currentSug.metadata?.action?.kind === 'stage_transition'
+        ) {
+          status = 'ready_to_advance';
+          message = '当前阶段可申请进入下一阶段';
+        } else {
+          status = 'suggestion_changed';
+          message = `建议已更新：${currentSug.title}`;
+        }
+      }
+
+      set({ lastActionMessage: message });
+
+      return {
+        type: 'wait',
+        jobId: action.job_id || action.jobId,
+        stage,
+        message,
+        status,
+      };
+    } else if (kind === 'open_gate_findings') {
+      const stage = (context.stage || 'what') as 'what' | 'how' | 'scope';
+      const actionMap: Record<string, string> = {
+        'what': 'enter_how',
+        'how': 'enter_scope',
+        'scope': 'enter_preview'
+      };
+      const gateAction = actionMap[stage] || 'enter_how';
+      await get().triggerGateCheck(gateAction, () => {
+        if (options?.navigate) {
+          get().requestStageTransition(gateAction as any, { navigate: options.navigate });
+        }
+      });
+      return {
+        type: 'open_gate_findings',
+        stage,
+      };
     } else if (kind === 'retry') {
-      const stage = context.stage || 'what';
+      const stage = (context.stage || 'what') as 'what' | 'how' | 'scope';
       const projectId = get().ir?.projectId;
       if (projectId) {
         await workspaceApi.rediagnoseNextSuggestion(projectId, stage);
         await get().runDiagnosis(stage);
       }
+      return {
+        type: 'retry',
+        stage,
+      };
     } else if (kind === 'open_panel') {
       const panel = action.panel;
       const payload = action.payload || {};
@@ -1167,7 +1311,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         }
         if (!found) {
           // Navigate to How page as fallback
-          get().setActivePage('/flow');
+          if (options?.navigate) {
+            options.navigate(`/projects/${get().ir?.projectId}/flow`);
+          } else {
+            get().setActivePage('/flow');
+          }
           found = true;
         }
       } else if (panel === 'business_object') {
@@ -1210,7 +1358,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           else if (route.endsWith('/preview') || route === 'preview' || route.endsWith('/projects/preview')) page = '/preview';
 
           if (page) {
-            get().setActivePage(page);
+            if (options?.navigate) {
+              options.navigate(`/projects/${get().ir?.projectId}${page}`);
+            } else {
+              get().setActivePage(page);
+            }
             routed = true;
             set({ lastActionMessage: `无法定位目标对象，已导航到对应页面：${page}` });
           }
@@ -1219,7 +1371,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           set({ lastActionMessage: '无法定位目标对象，请重新诊断或手动定位。' });
         }
       }
+      return {
+        type: 'open_panel',
+        panel,
+        payload,
+      };
     }
+    return null;
   };
 
   const executeIssueResolution = async (res: any, issue: any, version: number) => {
@@ -1362,6 +1520,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   confirmationSummary: null,
   lastImpactPreview: null,
   isDiagnosing: false,
+  stageTransitionInFlight: false,
   nextSuggestions: {},
 
   // Draft Generative States
@@ -1391,6 +1550,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   lastActionMessage: null,
   lastIssueResolution: null,
   workspaces: [],
+  stageProgress: null,
 
   loadWorkspaces: async () => {
     const version = get().sessionVersion;
@@ -1482,6 +1642,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         }
         await get().loadAuditLogs(projectId);
         if (get().sessionVersion !== version) return;
+        await get().loadStageProgress(projectId);
+        if (get().sessionVersion !== version) return;
 
         set({
           currentSystemView: 'workspace',
@@ -1529,6 +1691,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
       await get().loadAuditLogs(id);
       if (get().sessionVersion !== version) return;
+      await get().loadStageProgress(id);
+      if (get().sessionVersion !== version) return;
 
       set((s: WorkspaceState) => ({
         ...findingsData,
@@ -1540,6 +1704,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '鍚屾鏁版嵁澶辫触' });
+    }
+  },
+  loadStageProgress: async (projectId?: string) => {
+    const version = get().sessionVersion;
+    const id = projectId || get().ir?.projectId;
+    if (!id) return;
+    try {
+      const progress = await workspaceApi.getStageProgress(id);
+      if (get().sessionVersion !== version) return;
+      set({ stageProgress: progress });
+    } catch (err) {
+      console.error('Failed to load stage progress:', err);
     }
   },
 
@@ -1556,7 +1732,84 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ isLoading: false });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '瑙ｉ攣闃舵澶辫触', isLoading: false });
+      set({ error: err instanceof Error ? err.message : '解锁阶段失败', isLoading: false });
+    }
+  },
+
+  requestStageTransition: async (
+    action: 'enter_how' | 'enter_scope' | 'enter_preview',
+    options?: { navigate?: (path: string) => void; force?: boolean }
+  ) => {
+    if (get().stageTransitionInFlight) {
+      console.warn('Stage transition already in flight, ignoring request.');
+      return;
+    }
+    const version = get().sessionVersion;
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+
+    let targetRoute = '';
+    if (action === 'enter_how') {
+      targetRoute = `/projects/${projectId}/flow`;
+    } else if (action === 'enter_scope') {
+      targetRoute = `/projects/${projectId}/scope`;
+    } else if (action === 'enter_preview') {
+      targetRoute = `/projects/${projectId}/preview`;
+    } else {
+      return;
+    }
+
+    set({ stageTransitionInFlight: true, isLoading: true, error: null });
+
+    try {
+      const response = await workspaceApi.stageTransition(projectId, {
+        action,
+        force: options?.force || false,
+      });
+
+      if (get().sessionVersion !== version) {
+        set({ stageTransitionInFlight: false });
+        return;
+      }
+
+      if (response.status === 'blocked') {
+        // Pop the gate check modal
+        set({
+          activeGateCheck: {
+            action: action === 'enter_preview' ? 'generate_preview' : action,
+            findings: response.blockingFindings || [],
+            onPass: () => {
+              set({ activeGateCheck: null });
+              get().requestStageTransition(action, { ...options, force: true });
+            },
+            onCancel: () => {
+              set({ activeGateCheck: null });
+            },
+          },
+          isLoading: false,
+          stageTransitionInFlight: false,
+        });
+        return;
+      }
+
+      // Transition succeeded, refresh workspace and navigate
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) {
+        set({ stageTransitionInFlight: false });
+        return;
+      }
+
+      set({ isLoading: false, stageTransitionInFlight: false });
+
+      if (options?.navigate) {
+        options.navigate(targetRoute);
+      }
+    } catch (err) {
+      if (get().sessionVersion !== version) {
+        set({ stageTransitionInFlight: false });
+        return;
+      }
+      set({ error: err instanceof Error ? err.message : '流转阶段失败', isLoading: false, stageTransitionInFlight: false });
     }
   },
 
@@ -1626,13 +1879,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  startFindingSuggestion: async (finding: Finding) => {
+  startFindingSuggestion: async (finding: Finding, options?: { navigate?: (path: string) => void }) => {
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
 
     const presentation = getNextSuggestionPresentation(finding);
-    const isGlobalLoading = presentation.icon === 'generate' || presentation.icon === 'retry';
+    const isGlobalLoading = presentation.icon === 'generate' || presentation.icon === 'retry' || presentation.icon === 'wait';
 
     set({
       isLoading: true,
@@ -1653,11 +1906,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
       const action = finding.metadata?.action;
       if (action) {
-        await executeProcessorAction(action, { stage: finding.stage, findingCode: finding.code, target }, version);
+        const result = await executeProcessorAction(action, { stage: finding.stage, findingCode: finding.code, target }, version, options);
+        set({ isLoading: false, isGenerating: false });
+        return result;
       } else {
         throw new Error(`下一步建议「${finding.code}」缺少可执行 action`);
       }
-      set({ isLoading: false, isGenerating: false });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '启动建议失败', isLoading: false, isGenerating: false });
@@ -3799,25 +4053,28 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       await get().updateScope(featId, { scopeStatus });
     }
   },
-  runDiagnosis: async () => {
+  runDiagnosis: async (stage?: 'what' | 'how' | 'scope') => {
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
     
-    let stage = 'what';
-    const activePage = get().activePage;
-    if (activePage === '/flow') stage = 'how';
-    else if (activePage === '/scope') stage = 'scope';
-    else if (activePage === '/preview') stage = 'preview';
+    let targetStage: string = stage || 'what';
+    if (!stage) {
+      const activePage = get().activePage;
+      if (activePage === '/flow') targetStage = 'how';
+      else if (activePage === '/scope') targetStage = 'scope';
+      else if (activePage === '/preview') targetStage = 'scope';
+      else targetStage = 'what';
+    }
 
     set({ isDiagnosing: true, error: null });
     try {
-      let res = await workspaceApi.rediagnoseNextSuggestion(projectId, stage);
+      let res = await workspaceApi.rediagnoseNextSuggestion(projectId, targetStage);
       if (get().sessionVersion !== version) return;
       set((s: WorkspaceState) => ({
         nextSuggestions: {
           ...s.nextSuggestions,
-          [stage]: res.suggestion
+          [targetStage]: res.suggestion
         },
         lastActionMessage: `AI 智能分析中：${res.suggestion?.title || '正在分析中'}...`
       }));
@@ -3833,13 +4090,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           if (get().sessionVersion !== version) return;
           
           // Poll next suggestion
-          res = await workspaceApi.getNextSuggestion(projectId, stage);
+          res = await workspaceApi.getNextSuggestion(projectId, targetStage);
           if (get().sessionVersion !== version) return;
           
           set((s: WorkspaceState) => ({
             nextSuggestions: {
               ...s.nextSuggestions,
-              [stage]: res.suggestion
+              [targetStage]: res.suggestion
             }
           }));
 

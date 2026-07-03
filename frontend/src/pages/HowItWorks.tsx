@@ -129,6 +129,7 @@ export function HowItWorks() {
     runDiagnosis,
     unlockStageGate,
     triggerGateCheck,
+    requestStageTransition,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
@@ -1697,17 +1698,12 @@ export function HowItWorks() {
         stage="how"
         isWorking={isLoading}
         onAIDiagnose={async () => {
-          setIsTransitionModalOpen(false);
-          await runDiagnosis();
+          // Don't close modal — it handles its own diagnosing state
+          await runDiagnosis('how');
         }}
         onForceUnlock={async () => {
           setIsTransitionModalOpen(false);
-          const targetPath = buildProjectRoute(ir?.projectId, '/scope');
-          triggerGateCheck('enter_scope', () => {
-            unlockStageGate('scope').then(() => {
-              navigate(targetPath);
-            });
-          });
+          await requestStageTransition('enter_scope', { navigate });
         }}
       />
 

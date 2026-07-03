@@ -30,6 +30,7 @@ import {
 } from '@/core/selectors';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
+import { withAuditActionTypeLabel } from '@/core/auditActionLabels';
 
 type PrototypePreview = {
   prototypeId: number;
@@ -281,7 +282,9 @@ export function Preview() {
           if (currentLabel) {
             setProgressSubtitle(currentLabel);
           } else {
-            if (nextVal < 35) {
+            if (currentUnreadyGates.length === 0) {
+              setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+            } else if (nextVal < 35) {
               setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
             } else if (nextVal < 70) {
               setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
@@ -310,7 +313,9 @@ export function Preview() {
           if (currentLabel) {
             setProgressSubtitle(currentLabel);
           } else {
-            if (prev < 35) {
+            if (currentUnreadyGates.length === 0) {
+              setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+            } else if (prev < 35) {
               setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
             } else if (prev < 70) {
               setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
@@ -588,7 +593,7 @@ export function Preview() {
     try {
       downloadFile(
         `${spaceToUse.projectName || spaceToUse.projectId || 'requirement-space'}-audit.json`,
-        JSON.stringify(auditLogs || [], null, 2),
+        JSON.stringify((auditLogs || []).map(withAuditActionTypeLabel), null, 2),
         'application/json;charset=utf-8',
       );
       setExportState('success');
@@ -601,6 +606,10 @@ export function Preview() {
   const generatePrototype = async () => {
     triggerGateCheck('generate_preview', async () => {
       if (!spaceToUse?.projectId) return;
+      setHasRequestedShadowPreview(true);
+      setSmoothProgress(90);
+      setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+      setIsModalOpen(true);
       setPrototypeState('loading');
       setPrototypeError(null);
       try {
@@ -667,6 +676,9 @@ export function Preview() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
   };
+
+  const overlayUnreadyGates = activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || [];
+  const isShadowOverlay = activeShadowDraft?.source === 'shadow_project' && overlayUnreadyGates.length > 0;
 
   const shouldShowReadinessGate =
     !isPreviewReady &&
@@ -972,16 +984,14 @@ export function Preview() {
                         <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-650 animate-spin" />
                         <h4 className="text-xs font-black text-slate-800 tracking-wide select-none">
                           <span className="flex items-center gap-1.5 justify-center">
-                            <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" /> 
-                            {isPostCommitCompiling 
-                              ? '🎉 采纳合并成功！AI 正在后台组装正式高保真原型...' 
-                              : 'AI 正在推演影子沙盒与界面原型...'}
+                            <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" />
+                            {isPostCommitCompiling ? 'AI 正在组装正式高保真原型' : 'AI 正在生成预览原型'}
                           </span>
                         </h4>
                         <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">
                           {isPostCommitCompiling
-                            ? '正在将影子沙盒的补充资产完整闭环并转换为您的正式高保真网页原型。该过程大约需要 10 至 30 秒，请稍候，系统将自动加载...'
-                            : '检测到部分规约尚未收敛（有未满足的What/How/Scope阶段硬规则）。系统正在影子收敛推演算法下，自动为您编排补充结构缺漏并生成全套高保真可运行原型，请稍候。'}
+                            ? '正在将已采纳的设计资产转换为正式高保真网页原型，完成后会自动加载。'
+                            : '生成完成后，交互式原型会自动显示在此处。'}
                         </p>
                       </div>
                     ) : prototypeState === 'error' ? (
@@ -1254,8 +1264,10 @@ export function Preview() {
                 <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> 智能推演异常断裂</span>
               ) : smoothProgress === 100 ? (
                 <span className="text-emerald-600 font-extrabold">🪄 影子原型推演成功</span>
+              ) : isShadowOverlay ? (
+                <span className="text-slate-800">AI 正在补齐规约并生成影子预览</span>
               ) : (
-                <span className="text-slate-800">🪄 AI 正在智能推演影子沙盒...</span>
+                <span className="text-slate-800">AI 正在生成预览原型</span>
               )}
             </h3>
 
@@ -1281,6 +1293,7 @@ export function Preview() {
             </div>
 
             {/* Sub-steps Checklist */}
+            {isShadowOverlay ? (
             <div className="w-full space-y-3 bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6">
               {[
                 { label: '步骤一：What 阶段智能推演（角色与功能补齐）', checkKey: 'what', threshold: 35 },
@@ -1329,6 +1342,12 @@ export function Preview() {
                 );
               })}
             </div>
+            ) : (
+            <div className="w-full bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6 text-center">
+              <div className="text-xs font-bold text-slate-700">正在生成交互式预览原型</div>
+              <div className="mt-1 text-[11px] text-slate-500">当前规约已满足预览生成条件，系统不会额外提示阶段缺口。</div>
+            </div>
+            )}
 
             {/* Error message collapsible container (collapsible terminal box) */}
             {activeShadowDraft?.status === 'failed' && (

@@ -13,69 +13,9 @@ import {
   selectChoices
 } from '@/store/useWorkspaceStore';
 import { RefreshCw } from 'lucide-react';
-import { NodeKindToRoute, NodeKindToText } from '@/core/schema';
+import { NodeKindToRoute, NodeKindToText, Finding } from '@/core/schema';
 import { findingProjection } from '@/core/findingPresentation';
-
-const auditActionTypeLabels: Record<string, string> = {
-  update_confirmation_status: '更新确认状态',
-  batch_update_confirmation_status: '批量更新确认状态',
-  update_user_requirements: '更新用户需求',
-  refine_user_requirements: 'AI 精炼用户需求',
-  create_actor: '新增参与者',
-  update_actor: '更新参与者',
-  delete_actor: '删除参与者',
-  create_feature: '新增功能',
-  update_feature: '更新功能',
-  delete_feature: '删除功能',
-  create_scenario: '新增场景',
-  update_scenario: '更新场景',
-  delete_scenario: '删除场景',
-  create_acceptance_criterion: '新增验收标准',
-  update_acceptance_criterion: '更新验收标准',
-  delete_acceptance_criterion: '删除验收标准',
-  update_scope: '更新范围决策',
-  skip_kano: '跳过 Kano 分析',
-  create_business_object: '新增业务对象',
-  update_business_object: '更新业务对象',
-  delete_business_object: '删除业务对象',
-  create_business_object_attribute: '新增对象属性',
-  update_business_object_attribute: '更新对象属性',
-  delete_business_object_attribute: '删除对象属性',
-  create_flow: '新增业务流',
-  update_flow: '更新业务流',
-  delete_flow: '删除业务流',
-  create_flow_step: '新增流程步骤',
-  update_flow_step: '更新流程步骤',
-  delete_flow_step: '删除流程步骤',
-  create_choice_group: '生成方案组',
-  accept_choice: '采纳方案',
-  reject_choice: '拒绝方案',
-  discard_choice_group: '丢弃方案组',
-  regenerate_choice_group: '重新生成方案组',
-  create_task: '创建任务',
-  task_created: '创建任务',
-  approve_task: '审批通过',
-  task_approved: '审批通过',
-  reject_task: '审批驳回',
-  task_rejected: '审批驳回',
-  task_superseded: '任务已冲销',
-  create_confirmation_task: '创建确认任务',
-  update_confirmation_task: '更新确认任务',
-  complete_confirmation_task: '完成确认任务',
-  supersede_confirmation_task: '替换确认任务',
-  unlock_stage_gate: '解锁阶段门',
-  commit_shadow_draft: '提交影子草稿',
-  discard_shadow_draft: '丢弃影子草稿',
-  regenerate_shadow_draft: '重新生成影子草稿',
-  member_added: '成员加入',
-  member_removed: '成员移除',
-  member_role_updated: '成员角色更新',
-  member_invitation_accepted: '成员邀请接受',
-  member_invitation_declined: '成员邀请拒绝',
-  member_invitation_revoked: '成员邀请撤销',
-};
-
-const getAuditActionTypeLabel = (actionType: string) => auditActionTypeLabels[actionType] || actionType;
+import { getAuditActionTypeLabel } from '@/core/auditActionLabels';
 
 export function Overview() {
   const {
@@ -86,6 +26,8 @@ export function Overview() {
     expandSlot,
     updateIssueAttributes,
     refreshWorkspace,
+    requestStageTransition,
+    startFindingSuggestion,
     activeChoiceGroup,
     isGeneratingChoices,
     choiceGroupGenerationProgress,
@@ -115,6 +57,46 @@ export function Overview() {
   const activeStageHealth = stageHealths.find((item) => !item.health.disabled);
   const activeSuggestionEntry = stageHealths.find((item) => item.health.nextSlot);
   const nextSlot = activeSuggestionEntry?.health.nextSlot;
+
+  // Use backend findings next_action as primary suggestion source
+  const findingsByView = useWorkspaceStore((s) => s.findingsByView);
+  const isLoading = useWorkspaceStore((s) => s.isLoading);
+  const backendNextAction = (findingsByView?.next_action || []).find((f) => !!f);
+  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
+
+  const activeProgressStage = stageProgress?.stages?.find((s: any) => s.statusCode !== 'ready');
+  const progressNextAction = activeProgressStage?.nextAction || activeProgressStage?.next_action;
+
+  const handleProgressAction = useCallback(() => {
+    if (!activeProgressStage || !progressNextAction) return;
+    const kind = progressNextAction.kind;
+    const stage = activeProgressStage.stage;
+
+    const actionMap: Record<string, string> = {
+      'what': 'enter_how',
+      'how': 'enter_scope',
+      'scope': 'enter_preview'
+    };
+
+    const dummyFinding: Finding = {
+      findingId: `overview:${kind}:${stage}`,
+      type: 'next_suggestion',
+      stage: stage as any,
+      code: stage === 'what' ? 'ENTER_HOW' : stage === 'how' ? 'ENTER_SCOPE' : 'ENTER_PREVIEW',
+      severity: 'info',
+      title: progressNextAction.label || '继续处理',
+      description: activeProgressStage.statusLabel || '',
+      blockingScope: 'none',
+      metadata: {
+        action: {
+          kind,
+          transition_action: progressNextAction.transitionAction || progressNextAction.transition_action || actionMap[stage],
+          route: progressNextAction.route
+        }
+      }
+    };
+    void startFindingSuggestion(dummyFinding, { navigate });
+  }, [activeProgressStage, progressNextAction, startFindingSuggestion, navigate, ir?.projectId]);
 
   const [previewChoiceId, setPreviewChoiceId] = useState<string | number | null>(null);
   const [selectedAuditActionTypes, setSelectedAuditActionTypes] = useState<string[]>([]);
@@ -189,31 +171,62 @@ export function Overview() {
     choiceGroup: '方案选择',
   };
 
-  const headlineTone =
-    overview.openSlotsCount > 0
-      ? {
-          title: '当前存在阻塞卡点',
+  let headlineTone = {
+    title: '当前模型已基本收敛',
+    badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  };
+
+  if (stageProgress && stageProgress.stages) {
+    if (activeProgressStage) {
+      if (activeProgressStage.statusCode === 'not_started' || activeProgressStage.statusCode === 'unlocked_not_started') {
+        headlineTone = {
+          title: '当前模型尚未开始构建',
+          badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
+        };
+      } else if (activeProgressStage.statusCode === 'ready_to_advance') {
+        headlineTone = {
+          title: '前置阶段建模就绪，可推进',
           badgeClass: 'border-amber-200 bg-amber-50 text-amber-700',
-        }
-      : openIssues.length > 0
+        };
+      } else if (activeProgressStage.statusCode === 'blocked') {
+        headlineTone = {
+          title: '当前存在阻塞卡点',
+          badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
+        };
+      } else {
+        headlineTone = {
+          title: '当前模型仍在持续完善',
+          badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
+        };
+      }
+    }
+  } else {
+    headlineTone =
+      overview.openSlotsCount > 0
         ? {
-            title: '当前仍有待处理问题',
+            title: '当前存在阻塞卡点',
             badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
           }
-        : activeStageHealth?.health.statusCode === 'not_started'
+        : openIssues.length > 0
           ? {
-              title: '当前模型尚未开始构建',
-              badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
+              title: '当前仍有待处理问题',
+              badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
             }
-          : activeStageHealth && activeStageHealth.health.statusCode !== 'ready'
+          : activeStageHealth?.health.statusCode === 'not_started'
             ? {
-                title: '当前模型仍在持续完善',
-                badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
+                title: '当前模型尚未开始构建',
+                badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
               }
-            : {
-                title: '当前模型已基本收敛',
-                badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-              };
+            : activeStageHealth && activeStageHealth.health.statusCode !== 'ready'
+              ? {
+                  title: '当前模型仍在持续完善',
+                  badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
+                }
+              : {
+                  title: '当前模型已基本收敛',
+                  badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                };
+  }
 
   const headlineStats = [
     {
@@ -321,15 +334,85 @@ export function Overview() {
                   </div>
 
                   <div className="mt-4">
-                    {nextSlot ? (
+                    {stageProgress && stageProgress.stages ? (
+                      progressNextAction && progressNextAction.kind !== 'none' ? (
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={handleProgressAction}
+                          className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <div className="mt-2 text-sm font-bold text-slate-900">
+                            {progressNextAction.label || '继续处理当前建议'}
+                          </div>
+                          <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
+                            {activeProgressStage.statusLabel}：{activeProgressStage.failedChecks?.[0]?.message || '请前往对应页面进行处理'}
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="rounded-2xl bg-white border border-slate-200 px-4 py-5 text-sm text-slate-400">
+                          当前所有开发阶段均已完成！
+                        </div>
+                      )
+                    ) : backendNextAction ? (
                       <button
                         type="button"
+                        disabled={isLoading}
+                        onClick={() => void startFindingSuggestion(backendNextAction, { navigate })}
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <div className="mt-2 text-sm font-bold text-slate-900">
+                          {backendNextAction.title || '继续处理当前建议'}
+                        </div>
+                        <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
+                          {backendNextAction.description}
+                        </div>
+                      </button>
+                    ) : nextSlot ? (
+                      <button
+                        type="button"
+                        disabled={isLoading}
                         onClick={() => {
-                          if (activeSuggestionEntry) {
-                            navigate(buildProjectRoute(ir?.projectId, activeSuggestionEntry.route));
+                          if (nextSlot?.kind === 'stage_gate_transition_confirm') {
+                            const stage = nextSlot.stage;
+                            const dummyFinding: Finding = {
+                              findingId: `overview:stage_transition:${stage}`,
+                              type: 'next_suggestion',
+                              stage: stage as any,
+                              code: stage === 'what' ? 'ENTER_HOW' : 'ENTER_SCOPE',
+                              severity: 'info',
+                              title: stage === 'what' ? '进入 How 阶段' : '进入 Scope 阶段',
+                              description: nextSlot.description || '',
+                              blockingScope: 'none',
+                              metadata: {
+                                action: {
+                                  kind: 'stage_transition',
+                                  transition_action: stage === 'what' ? 'enter_how' : 'enter_scope'
+                                }
+                              }
+                            };
+                            void startFindingSuggestion(dummyFinding, { navigate });
+                          } else if (activeSuggestionEntry) {
+                            const dummyFinding: Finding = {
+                              findingId: `overview:navigate:${activeSuggestionEntry.stage}`,
+                              type: 'next_suggestion',
+                              stage: activeSuggestionEntry.stage as any,
+                              code: 'NAVIGATE_TO_STAGE',
+                              severity: 'info',
+                              title: '前往对应阶段',
+                              description: nextSlot.description || '',
+                              blockingScope: 'none',
+                              metadata: {
+                                action: {
+                                  kind: 'navigate',
+                                  route: buildProjectRoute(ir?.projectId, activeSuggestionEntry.route)
+                                }
+                              }
+                            };
+                            void startFindingSuggestion(dummyFinding, { navigate });
                           }
                         }}
-                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
                       >
                         <div className="mt-2 text-sm font-bold text-slate-900">
                           {nextSlot.actions.manual?.label || nextSlot.actions.ai?.label || '继续处理当前建议'}

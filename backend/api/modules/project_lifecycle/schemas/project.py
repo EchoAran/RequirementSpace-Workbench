@@ -1,7 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 from backend.api.base_schema import CamelModel
+from backend.api.modules.diagnosis_quality.public import FindingResponse
 
 
 class ConfirmationStatusEnum(str, Enum):
@@ -184,3 +185,68 @@ class ScopeImpactPreviewResponse(CamelModel):
     affected_flows: list[str] = []
     affected_business_objects: list[str] = []
     summary: str
+
+class StageTransitionRequest(CamelModel):
+    action: Literal["enter_how", "enter_scope", "enter_preview"]
+    force: bool = False
+
+class StageTransitionResponse(CamelModel):
+    status: Literal["unlocked", "blocked"]
+    action: str
+    unlocked_stage: str | None
+    target_route: str | None
+    unlocked_stages: list[str]
+    blocking_findings: list[FindingResponse]
+
+
+# ----------------- StageProgress schemas (P3) -----------------
+
+class FailedCheckTarget(CamelModel):
+    type: str
+    id: str
+    name: str
+    parent_type: str | None = None
+    parent_id: str | None = None
+
+class FailedCheck(CamelModel):
+    code: str
+    message: str
+    targets: list[FailedCheckTarget] = []
+
+class AnalysisStatus(CamelModel):
+    status: Literal["idle", "running", "ready", "failed"]
+    job_id: int | None = None
+    started_at: str | None = None
+    message: str | None = None
+
+class StageNextAction(CamelModel):
+    kind: Literal["stage_transition", "navigate", "wait", "open_gate_findings", "none"]
+    transition_action: str | None = None
+    route: str | None = None
+    label: str
+
+class StageProgressItem(CamelModel):
+    stage: str
+    status_code: Literal[
+        "not_started",
+        "incomplete",
+        "blocked",
+        "analysis_running",
+        "ready_to_advance",
+        "unlocked_not_started",
+        "in_progress",
+        "ready",
+        "locked",
+    ]
+    status_label: str
+    content_complete: bool
+    unlocked: bool
+    transition_available: bool
+    next_action: StageNextAction
+    failed_checks: list[FailedCheck] = []
+    blocking_findings: list[FindingResponse] = []
+    analysis_status: AnalysisStatus = AnalysisStatus(status="idle")
+
+class StageProgressResponse(CamelModel):
+    project_id: str
+    stages: list[StageProgressItem]

@@ -165,8 +165,6 @@ def test_start_next_suggestion_endpoint_removed(client_with_auth):
 def test_get_next_suggestion_locked_stage(client_with_auth):
     client, project_id, db_project_id = client_with_auth
 
-    # stage "preview" is locked because project has unlocked_stages = "what,how"
-    # and "preview" requires "scope" to be unlocked, but only "what,how" are unlocked.
     resp = client.get(f"/api/projects/{project_id}/next-suggestion?stage=preview")
     assert resp.status_code == 200
     res_data = resp.json()
@@ -177,16 +175,13 @@ def test_get_next_suggestion_locked_stage(client_with_auth):
 
     suggestion = res_data["suggestion"]
     assert suggestion is not None
-    assert suggestion["code"] == "STAGE_LOCKED"
-    assert suggestion["status"] == "blocked"
+    assert suggestion["code"] == "PREVIEW_READY"
 
     action = suggestion["action"]
     assert action["kind"] == "navigate"
-    # For stage=preview, the previous stage is scope.
-    assert action["route"] == f"/projects/{project_id}/scope"
+    assert action["route"] == f"/projects/{project_id}/preview"
     assert f"/projects/{db_project_id}/" not in action["route"]
 
-    # Test that POST /rediagnose also returns the locked stage suggestion
     resp_rediag = client.post(
         f"/api/projects/{project_id}/next-suggestion/rediagnose",
         json={"stage": "preview"}
@@ -194,6 +189,6 @@ def test_get_next_suggestion_locked_stage(client_with_auth):
     assert resp_rediag.status_code == 200
     res_data_rediag = resp_rediag.json()
     assert res_data_rediag["projectId"] == project_id
-    assert res_data_rediag["suggestion"]["code"] == "STAGE_LOCKED"
-    assert res_data_rediag["suggestion"]["action"]["route"] == f"/projects/{project_id}/scope"
+    assert res_data_rediag["suggestion"]["code"] == "PREVIEW_READY"
+    assert res_data_rediag["suggestion"]["action"]["route"] == f"/projects/{project_id}/preview"
     assert f"/projects/{db_project_id}/" not in res_data_rediag["suggestion"]["action"]["route"]

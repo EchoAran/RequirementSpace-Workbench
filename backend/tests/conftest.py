@@ -109,8 +109,8 @@ _orig_pcg_accept_choice = ProjectCreationChoiceGroupService.accept_choice
 _orig_pcg_discard_choice_group = ProjectCreationChoiceGroupService.discard_choice_group
 _orig_pcg_defer_choice_group = ProjectCreationChoiceGroupService.defer_choice_group
 
-async def patch_pcg_create_choice_group(self, user_requirements, owner_user_id=1, candidate_count=None, user_feedback=None, session=None):
-    return await _orig_pcg_create_choice_group(self, user_requirements, owner_user_id, candidate_count, user_feedback, session)
+async def patch_pcg_create_choice_group(self, user_requirements, owner_user_id=1, candidate_count=None, user_feedback=None, session=None, knowledge_workspace_id=None):
+    return await _orig_pcg_create_choice_group(self, user_requirements, owner_user_id, candidate_count, user_feedback, session, knowledge_workspace_id)
 
 async def patch_pcg_get_choice_group(self, group_id, owner_user_id=1, session=None):
     return await _orig_pcg_get_choice_group(self, group_id, owner_user_id, session)

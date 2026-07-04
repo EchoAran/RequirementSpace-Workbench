@@ -51,11 +51,13 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
         self,
         user_requirements: str,
         user_feedback: str | None,
+        knowledge_context: str | None = None,
     ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
         actors_raw = await self._actors_generator.generate(
             ActorsGeneratorInput(
                 user_requirements=user_requirements,
                 user_feedback=user_feedback,
+                knowledge_context=knowledge_context,
             )
         )
 
@@ -83,9 +85,11 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
             )
 
         requirement_text = user_requirements
+        if knowledge_context:
+            requirement_text = f"{requirement_text}\n\n{knowledge_context}"
         if user_feedback:
             requirement_text = (
-                f"{user_requirements}\n\nUser feedback for regeneration:\n{user_feedback}"
+                f"{requirement_text}\n\nUser feedback for regeneration:\n{user_feedback}"
             )
 
         actor_names = [actor.actorName for actor in actor_nodes]

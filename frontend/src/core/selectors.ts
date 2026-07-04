@@ -1005,7 +1005,7 @@ export const projectionPath = (projection: string) => {
 
 export const buildProjectRoute = (
   projectId: string | null | undefined,
-  page: '/overview' | '/what' | '/flow' | '/scope' | '/preview'
+  page: '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge'
 ): string => {
   if (projectId === null || projectId === undefined || projectId === '') return page;
   return `/projects/${projectId}${page}`;
@@ -1013,10 +1013,10 @@ export const buildProjectRoute = (
 
 export const extractWorkspacePage = (
   pathname: string
-): '/overview' | '/what' | '/flow' | '/scope' | '/preview' | null => {
-  const match = pathname.match(/\/projects\/[^/]+(\/overview|\/what|\/flow|\/scope|\/preview)$/);
+): '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge' | null => {
+  const match = pathname.match(/\/projects\/[^/]+(\/overview|\/what|\/flow|\/scope|\/preview|\/knowledge)$/);
   if (match) {
-    return match[1] as '/overview' | '/what' | '/flow' | '/scope' | '/preview';
+    return match[1] as '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge';
   }
 
   if (
@@ -1024,7 +1024,8 @@ export const extractWorkspacePage = (
     pathname === '/what' ||
     pathname === '/flow' ||
     pathname === '/scope' ||
-    pathname === '/preview'
+    pathname === '/preview' ||
+    pathname === '/knowledge'
   ) {
     return pathname;
   }

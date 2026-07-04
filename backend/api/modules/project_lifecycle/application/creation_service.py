@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from uuid import uuid4
 import re
 from sqlalchemy import delete, insert
@@ -59,11 +59,13 @@ class LocalActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
         self,
         user_requirements: str,
         user_feedback: str | None,
+        knowledge_context: str | None = None,
     ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
         actors_raw = await self._actors_generator.generate(
             ActorsGeneratorInput(
                 user_requirements=user_requirements,
                 user_feedback=user_feedback,
+                knowledge_context=knowledge_context,
             )
         )
 
@@ -97,6 +99,7 @@ class LocalActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                 user_requirements=user_requirements,
                 actors=actor_nodes,
                 user_feedback=user_feedback,
+                knowledge_context=knowledge_context,
             )
         )
 
@@ -175,17 +178,57 @@ class ProjectCreationService:
             session,
             project_name: str | None = None,
             project_description: str | None = None,
+            knowledge_workspace_id: str | None = None,
     ) -> dict:
         draft_id = uuid4().hex
+
+        # 1. Retrieve knowledge base context if workspace is active and belongs to user
+        knowledge_context = None
+        from backend.core.config import KNOWLEDGE_BASE_ENABLED
+        if knowledge_workspace_id and KNOWLEDGE_BASE_ENABLED:
+            from backend.database.model import KnowledgeWorkspaceModel
+            from sqlalchemy import select
+            from fastapi import HTTPException
+
+            ws_res = await session.execute(
+                select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
+            )
+            ws = ws_res.scalar_one_or_none()
+            if not ws:
+                raise HTTPException(status_code=404, detail="workspace_not_found")
+            if ws.owner_user_id != owner_user_id:
+                raise HTTPException(status_code=403, detail="forbidden")
+            if ws.status != "active":
+                raise HTTPException(status_code=400, detail="workspace_inactive")
+
+            # Construct combined query for context retrieval
+            query_parts = [user_requirements]
+            if project_name:
+                query_parts.append(project_name)
+            if project_description:
+                query_parts.append(project_description)
+            query_parts.append("生成项目名称、项目描述、参与者、功能树、业务边界")
+            combined_query = " ".join(query_parts)
+
+            from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+            knowledge_context = await KnowledgeContextBuilder.build(
+                workspace_id=ws.id,
+                purpose="project_creation",
+                query=combined_query,
+                token_budget=4000,
+                session=session
+            )
 
         draft_payload, response_payload = await self._generate_preview(
             user_requirements=user_requirements,
             project_name=project_name,
             project_description=project_description,
             user_feedback=None,
+            knowledge_context=knowledge_context,
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["knowledge_workspace_id"] = knowledge_workspace_id
         response_payload["draft_id"] = draft_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -208,6 +251,32 @@ class ProjectCreationService:
             session,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
+        knowledge_workspace_id = draft.get("knowledge_workspace_id")
+
+        # Re-build knowledge context if workspace is active
+        knowledge_context = None
+        if knowledge_workspace_id:
+            from backend.database.model import KnowledgeWorkspaceModel
+            from sqlalchemy import select
+            ws_res = await session.execute(
+                select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
+            )
+            ws = ws_res.scalar_one_or_none()
+            if ws and ws.status == "active":
+                query_parts = [draft["user_requirements"]]
+                if user_feedback:
+                    query_parts.append(user_feedback)
+                query_parts.append("生成项目名称、项目描述、参与者、功能树、业务边界")
+                combined_query = " ".join(query_parts)
+
+                from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+                knowledge_context = await KnowledgeContextBuilder.build(
+                    workspace_id=ws.id,
+                    purpose="project_creation",
+                    query=combined_query,
+                    token_budget=4000,
+                    session=session
+                )
 
         draft_payload, response_payload = await self._generate_preview(
             user_requirements=draft["user_requirements"],
@@ -222,9 +291,11 @@ class ProjectCreationService:
                 else None
             ),
             user_feedback=user_feedback,
+            knowledge_context=knowledge_context,
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["knowledge_workspace_id"] = knowledge_workspace_id
         response_payload["draft_id"] = draft_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -252,6 +323,17 @@ class ProjectCreationService:
             owner_user_id=owner_user_id,
             session=session,
         )
+
+        # Confirm & bind workspace documents/chunks to the new project
+        workspace_public_id = draft.get("knowledge_workspace_id")
+        if workspace_public_id:
+            from backend.services.knowledge.workspace import KnowledgeWorkspaceService
+            await KnowledgeWorkspaceService.bind_workspace_to_project(
+                session=session,
+                workspace_public_id=workspace_public_id,
+                project_id=project.id,
+                owner_user_id=owner_user_id,
+            )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -282,6 +364,7 @@ class ProjectCreationService:
             project_name: str | None = None,
             project_description: str | None = None,
             user_feedback: str | None = None,
+            knowledge_context: str | None = None,
     ) -> tuple[dict, dict]:
         normalized_project_name = self._normalize_optional_text(
             project_name
@@ -295,12 +378,14 @@ class ProjectCreationService:
                 user_requirements=user_requirements,
                 project_name=normalized_project_name,
                 project_description=normalized_project_description,
+                knowledge_context=knowledge_context,
             )
         )
         actor_feature_task = asyncio.create_task(
             self._preview_generator.generate_actor_and_feature_previews(
                 user_requirements=user_requirements,
                 user_feedback=user_feedback,
+                knowledge_context=knowledge_context,
             )
         )
 
@@ -342,6 +427,7 @@ class ProjectCreationService:
         user_requirements: str,
         project_name: str | None,
         project_description: str | None,
+        knowledge_context: str | None = None,
     ) -> dict:
         if project_name is not None and project_description is not None:
             return {
@@ -352,6 +438,7 @@ class ProjectCreationService:
         raw = await self._blank_project_generator.generate(
             BlankProjectGeneratorInput(
                 user_requirements=user_requirements,
+                knowledge_context=knowledge_context,
             )
         )
 

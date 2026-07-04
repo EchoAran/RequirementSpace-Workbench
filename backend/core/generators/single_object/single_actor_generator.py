@@ -6,6 +6,7 @@ from typing import Dict
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
     SingleObjectGeneratorInput,
+    inject_generator_knowledge_context,
 )
 from backend.core.generators.single_object.prompts.single_actor_prompt import (
     SINGLE_ACTOR_GENERATE_PROMPT,
@@ -27,6 +28,7 @@ class SingleActorGenerator(BaseSingleObjectGenerator):
         ).replace(
             "{{existing_actors}}", existing_actors_str
         )
+        prompt = inject_generator_knowledge_context(prompt, input_data.knowledge_context)
 
         # The conversation summary serves as the user message (what the user wants)
         conversation_text = _format_conversation_summary(input_data.conversation_summary)

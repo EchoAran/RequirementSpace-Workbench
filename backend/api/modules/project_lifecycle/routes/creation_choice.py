@@ -48,6 +48,7 @@ async def create_project_creation_choice_group(
             candidate_count=body.candidate_count,
             user_feedback=body.user_feedback,
             session=session,
+            knowledge_workspace_id=body.knowledge_workspace_id,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -115,7 +116,7 @@ async def accept_project_creation_choice(
         err_msg = str(e)
         status = 404 if err_msg in (
             "choice_not_found", "choice_group_not_found"
-        ) else 400
+        ) else 403 if err_msg == "forbidden" else 400
         raise HTTPException(status_code=status, detail=err_msg)
     except HTTPException:
         raise

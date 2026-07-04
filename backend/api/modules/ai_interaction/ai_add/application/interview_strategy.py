@@ -38,6 +38,7 @@ class BaseInterviewStrategy(ABC):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         """
         Process the latest user message and decide the next action.
@@ -57,12 +58,32 @@ class BaseInterviewStrategy(ABC):
         """
         ...
 
+    def _inject_knowledge_context(self, system_prompt: str, knowledge_context: str | None) -> str:
+        if not knowledge_context:
+            return system_prompt
+
+        rules = """
+# 知识库参考信息与规则
+{context}
+
+规则：
+1. 知识库内容用于补充业务事实和约束，帮助你追问更准确的问题。
+2. 用户当前对话的输入和意图优先于知识库中的参考信息。
+3. 如果发现知识库中已存在类似候选对象或重复需求，请友好提醒用户确认。
+4. 不要因为参考信息包含很多内容而尝试生成多个对象，你仍然只专注于当前要添加或编辑的目标对象。
+""".format(context=knowledge_context)
+
+        if "你必须严格以 JSON 格式返回" in system_prompt:
+            return system_prompt.replace("你必须严格以 JSON 格式返回", f"{rules}\n\n你必须严格以 JSON 格式返回")
+        return system_prompt + f"\n\n{rules}"
+
     async def _execute_llm_slot_filling(
         self,
         system_prompt: str,
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         """
         Generic helper to execute multi-turn LLM slot-filling.
@@ -79,8 +100,11 @@ class BaseInterviewStrategy(ABC):
         # 2. Append latest user message
         chat_history.append({"role": "user", "content": latest_user_message})
 
+        # Inject knowledge context
+        injected_system_prompt = self._inject_knowledge_context(system_prompt, knowledge_context)
+
         # 3. Format message history for LLM
-        messages = [{"role": "system", "content": system_prompt}] + chat_history
+        messages = [{"role": "system", "content": injected_system_prompt}] + chat_history
 
         # 4. Call LLM
         response = await llm_call_chat(
@@ -139,6 +163,7 @@ class StubActorInterviewStrategy(BaseInterviewStrategy):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         existing_actors = project_context.get("actors", [])
         existing_actors_str = "\n".join(
@@ -175,6 +200,7 @@ class StubActorInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -189,6 +215,7 @@ class StubFeatureInterviewStrategy(BaseInterviewStrategy):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         existing_actors = project_context.get("actors", [])
         existing_actors_str = "\n".join(
@@ -242,6 +269,7 @@ class StubFeatureInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -256,6 +284,7 @@ class StubFeatureBranchInterviewStrategy(BaseInterviewStrategy):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         existing_features = project_context.get("features", [])
         existing_features_str = "\n".join(
@@ -298,6 +327,7 @@ class StubFeatureBranchInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -312,6 +342,7 @@ class StubFlowInterviewStrategy(BaseInterviewStrategy):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         existing_flows = project_context.get("flows", [])
         existing_flows_str = "\n".join(
@@ -358,6 +389,7 @@ class StubFlowInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -372,6 +404,7 @@ class StubBusinessObjectInterviewStrategy(BaseInterviewStrategy):
         current_summary: dict | None,
         latest_user_message: str,
         llm_call_chat: Callable[..., Coroutine[Any, Any, str | None]],
+        knowledge_context: str | None = None,
     ) -> dict:
         existing_bos = project_context.get("business_objects", [])
         existing_bos_str = "\n".join(
@@ -410,6 +443,7 @@ class StubBusinessObjectInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -423,6 +457,7 @@ class StubEditActorInterviewStrategy(BaseInterviewStrategy):
 
     async def interview(
         self, project_context, anchor, current_summary, latest_user_message, llm_call_chat,
+        knowledge_context: str | None = None,
     ) -> dict:
         target_id = anchor.get("target_id")
         original_actor = None
@@ -463,6 +498,7 @@ class StubEditActorInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -472,6 +508,7 @@ class StubEditFeatureInterviewStrategy(BaseInterviewStrategy):
 
     async def interview(
         self, project_context, anchor, current_summary, latest_user_message, llm_call_chat,
+        knowledge_context: str | None = None,
     ) -> dict:
         target_id = anchor.get("target_id")
         original_feature = None
@@ -520,6 +557,7 @@ class StubEditFeatureInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -529,6 +567,7 @@ class StubEditFlowInterviewStrategy(BaseInterviewStrategy):
 
     async def interview(
         self, project_context, anchor, current_summary, latest_user_message, llm_call_chat,
+        knowledge_context: str | None = None,
     ) -> dict:
         target_id = anchor.get("target_id")
         original_flow = None
@@ -577,6 +616,7 @@ class StubEditFlowInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 
@@ -586,6 +626,7 @@ class StubEditBusinessObjectInterviewStrategy(BaseInterviewStrategy):
 
     async def interview(
         self, project_context, anchor, current_summary, latest_user_message, llm_call_chat,
+        knowledge_context: str | None = None,
     ) -> dict:
         target_id = anchor.get("target_id")
         original_bo = None
@@ -626,6 +667,7 @@ class StubEditBusinessObjectInterviewStrategy(BaseInterviewStrategy):
             current_summary=current_summary,
             latest_user_message=latest_user_message,
             llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
         )
 
 

@@ -1,4 +1,4 @@
-from backend.core.generators.blank_project_generator import (
+﻿from backend.core.generators.blank_project_generator import (
     BlankProjectGenerator,
     BlankProjectGeneratorInput,
 )
@@ -15,6 +15,7 @@ class BlankProjectService:
         project_description: str | None,
         owner_user_id: int,
         session,
+        knowledge_workspace_id: str | None = None,
     ) -> dict:
         from backend.database.model import ProjectModel
 
@@ -50,6 +51,17 @@ class BlankProjectService:
 
         session.add(project)
         await session.flush()
+
+        # Bind creation-phase knowledge workspace if provided
+        if knowledge_workspace_id:
+            from backend.services.knowledge.workspace import KnowledgeWorkspaceService
+            await KnowledgeWorkspaceService.bind_workspace_to_project(
+                session=session,
+                workspace_public_id=knowledge_workspace_id,
+                project_id=project.id,
+                owner_user_id=owner_user_id,
+            )
+
         # Commit before returning so the follow-up GET /projects/{id}
         # in the frontend can always observe the newly created project.
         await session.commit()

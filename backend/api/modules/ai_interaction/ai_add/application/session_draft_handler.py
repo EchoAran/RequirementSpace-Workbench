@@ -1,4 +1,4 @@
-"""
+﻿"""
 Draft handler for managing AI-powered generative drafts.
 """
 
@@ -82,11 +82,37 @@ class AIAddDraftHandler:
             ai_session.project_id, generator_ctx_keys, db_session,
         )
 
+        # Build query for references retrieval
+        query_parts = [ai_session.target_type]
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            known_facts = ai_session.summary_payload.get("known_facts")
+            if known_facts:
+                query_parts.append(str(known_facts))
+        if ai_session.anchor_payload:
+            query_parts.append(str(ai_session.anchor_payload))
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            chat_history = ai_session.summary_payload.get("chat_history", [])
+            for msg in reversed(chat_history):
+                if msg.get("role") == "user":
+                    query_parts.append(msg.get("content"))
+                    break
+        combined_query = " ".join(query_parts)
+
+        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+        knowledge_context = await KnowledgeContextBuilder.build(
+            project_id=ai_session.project_id,
+            purpose="ai_add_generation",
+            query=combined_query,
+            token_budget=5000,
+            session=db_session,
+        )
+
         from backend.core.generators.single_object import SingleObjectGeneratorInput
         gen_input = SingleObjectGeneratorInput(
             user_requirements=project.user_requirements,
             project_context=project_context,
             conversation_summary=ai_session.summary_payload or {},
+            knowledge_context=knowledge_context,
         )
 
         generator = self._service._get_generator(ai_session.target_type)
@@ -189,6 +215,31 @@ class AIAddDraftHandler:
 
         editable = EDITABLE_FIELDS.get(base_type, [])
 
+        # Build query for references retrieval
+        query_parts = [ai_session.target_type]
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            known_facts = ai_session.summary_payload.get("known_facts")
+            if known_facts:
+                query_parts.append(str(known_facts))
+        if ai_session.anchor_payload:
+            query_parts.append(str(ai_session.anchor_payload))
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            chat_history = ai_session.summary_payload.get("chat_history", [])
+            for msg in reversed(chat_history):
+                if msg.get("role") == "user":
+                    query_parts.append(msg.get("content"))
+                    break
+        combined_query = " ".join(query_parts)
+
+        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+        knowledge_context = await KnowledgeContextBuilder.build(
+            project_id=ai_session.project_id,
+            purpose="ai_add_generation",
+            query=combined_query,
+            token_budget=5000,
+            session=db_session,
+        )
+
         gen_input = EditGeneratorInput(
             user_requirements=project.user_requirements,
             project_context=project_context,
@@ -196,6 +247,7 @@ class AIAddDraftHandler:
             target_type=base_type,
             original_object=original_obj,
             editable_fields=editable,
+            knowledge_context=knowledge_context,
         )
 
         generator = self._service._get_generator(ai_session.target_type)

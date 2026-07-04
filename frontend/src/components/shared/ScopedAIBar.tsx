@@ -460,6 +460,10 @@ export function ScopedAIBar() {
             )}
 
             <div className="px-4 pb-3 pt-1 border-t border-slate-100">
+              <div className="flex items-center gap-1.5 text-[9px] text-slate-400 bg-slate-50 border border-slate-100/50 rounded-lg p-1.5 mb-2 font-medium">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span>AI 将参考项目知识库中已启用且处理成功的资料。</span>
+              </div>
               <div className="flex gap-2">
                 <textarea ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={handleExplainKeyDown} placeholder="输入你的问题..." rows={1}
                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed" />
@@ -534,6 +538,10 @@ export function ScopedAIBar() {
                 )}
 
                 <div className="px-4 pb-3 pt-1 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[9px] text-slate-400 bg-slate-50 border border-slate-100/50 rounded-lg p-1.5 mb-1 font-medium">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span>AI 将参考项目知识库中已启用且处理成功的资料。</span>
+                  </div>
                   {editStep === 'chat' && (
                     <div className="flex gap-2">
                       <textarea value={editInput} onChange={e => setEditInput(e.target.value)} onKeyDown={handleEditKeyDown} placeholder="描述修改内容..." rows={1}

@@ -13,6 +13,10 @@ class ProjectCreationChoiceGroupCreateRequest(CamelModel):
         default=None,
         description="用户反馈或额外指导",
     )
+    knowledge_workspace_id: str | None = Field(
+        default=None,
+        description="关联的项目创建期知识库临时工作区ID",
+    )
 
 
 class ProjectCreationChoiceGroupResponse(CamelModel):

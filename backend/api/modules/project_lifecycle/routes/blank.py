@@ -40,6 +40,7 @@ async def create_blank_project(
                     project_description=request.project_description,
                     owner_user_id=user.id,
                     session=session,
+                    knowledge_workspace_id=request.knowledge_workspace_id,
                 )
         else:
             return await blank_project_service.create_project(
@@ -48,6 +49,7 @@ async def create_blank_project(
                 project_description=request.project_description,
                 owner_user_id=user.id,
                 session=session,
+                knowledge_workspace_id=request.knowledge_workspace_id,
             )
     except ValueError as error:
         if str(error) == "invalid_project_payload":
@@ -55,4 +57,10 @@ async def create_blank_project(
                 status_code=502,
                 detail="invalid_project_payload",
             )
+        if str(error) == "workspace_not_found":
+            raise HTTPException(status_code=404, detail="workspace_not_found")
+        if str(error) == "forbidden":
+            raise HTTPException(status_code=403, detail="forbidden")
+        if str(error) == "workspace_inactive":
+            raise HTTPException(status_code=400, detail="workspace_inactive")
         raise

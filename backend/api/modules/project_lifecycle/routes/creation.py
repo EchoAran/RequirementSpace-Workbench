@@ -51,6 +51,7 @@ async def create_project_creation_draft(
             session=session,
             project_name=request.project_name,
             project_description=request.project_description,
+            knowledge_workspace_id=request.knowledge_workspace_id,
         )
     except ValueError as error:
         if str(error) in FEATURE_GENERATION_ERRORS:
@@ -115,6 +116,12 @@ async def confirm_project_creation_draft(
                 status_code=404,
                 detail="draft_not_found",
             )
+        if str(error) == "workspace_not_found":
+            raise HTTPException(status_code=404, detail="workspace_not_found")
+        if str(error) == "forbidden":
+            raise HTTPException(status_code=403, detail="forbidden")
+        if str(error) == "workspace_inactive":
+            raise HTTPException(status_code=400, detail="workspace_inactive")
 
         raise
 

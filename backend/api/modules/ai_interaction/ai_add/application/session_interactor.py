@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from sqlalchemy import select
 from backend.database.model import AIAddSessionModel, ProjectModel
 
@@ -108,14 +108,50 @@ class AIAddSessionInteractor:
                 response_format=response_format,
             )
 
-        # Execute strategy
-        result = await strategy.interview(
-            project_context=project_context,
-            anchor=ai_session.anchor_payload,
-            current_summary=ai_session.summary_payload,
-            latest_user_message=content,
-            llm_call_chat=llm_call_chat,
+        # Build query for references retrieval
+        query_parts = [ai_session.target_type, content]
+        if ai_session.anchor_payload:
+            query_parts.append(str(ai_session.anchor_payload))
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            known_facts = ai_session.summary_payload.get("known_facts")
+            if known_facts:
+                query_parts.append(str(known_facts))
+        combined_query = " ".join(query_parts)
+
+        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+        knowledge_context = await KnowledgeContextBuilder.build(
+            project_id=ai_session.project_id,
+            purpose="ai_add_interview",
+            query=combined_query,
+            token_budget=3000,
+            session=db_session,
         )
+
+        # Execute strategy
+        import inspect
+        sig = inspect.signature(strategy.interview)
+        has_knowledge_context = (
+            "knowledge_context" in sig.parameters
+            or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        )
+
+        if has_knowledge_context:
+            result = await strategy.interview(
+                project_context=project_context,
+                anchor=ai_session.anchor_payload,
+                current_summary=ai_session.summary_payload,
+                latest_user_message=content,
+                llm_call_chat=llm_call_chat,
+                knowledge_context=knowledge_context,
+            )
+        else:
+            result = await strategy.interview(
+                project_context=project_context,
+                anchor=ai_session.anchor_payload,
+                current_summary=ai_session.summary_payload,
+                latest_user_message=content,
+                llm_call_chat=llm_call_chat,
+            )
 
         assistant_message = result.get("assistant_message", "")
         is_ready = bool(result.get("is_ready_to_generate", False))

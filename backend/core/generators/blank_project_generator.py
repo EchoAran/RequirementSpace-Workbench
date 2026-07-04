@@ -9,15 +9,22 @@ from backend.core.generators.base_generator import BaseGenerator, GenerateInput
 @dataclass
 class BlankProjectGeneratorInput(GenerateInput):
     user_requirements: str
+    knowledge_context: str | None = None
 
 class BlankProjectGenerator(BaseGenerator[BlankProjectGeneratorInput]):
     async def generate(self, input_data: BlankProjectGeneratorInput) -> Dict:
         user_requirements_ = input_data.user_requirements
 
+        prompt = blank_project_generate_prompt.replace(
+            "{{user_requirements}}", user_requirements_
+        )
+        if input_data.knowledge_context:
+            prompt = prompt.replace(
+                "# 输出格式说明", f"{input_data.knowledge_context}\n\n# 输出格式说明"
+            )
+
         response = await self._llm_handler.call_llm(
-            prompt=blank_project_generate_prompt.replace(
-                "{{user_requirements}}", user_requirements_
-            ),
+            prompt=prompt,
             print_log=False,
         )
         if not response:

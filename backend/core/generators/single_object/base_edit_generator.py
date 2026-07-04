@@ -29,6 +29,7 @@ class EditGeneratorInput(GenerateInput):
     target_type: str = ""
     original_object: dict = field(default_factory=dict)
     editable_fields: list[str] = field(default_factory=list)
+    knowledge_context: str | None = None
 
 
 class BaseEditGenerator(BaseGenerator[EditGeneratorInput], ABC):

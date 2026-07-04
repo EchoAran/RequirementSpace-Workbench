@@ -12,6 +12,7 @@ class FeaturesGeneratorInput(GenerateInput):
     user_requirements: str
     actors: List[ActorNode]
     user_feedback: str | None = None
+    knowledge_context: str | None = None
 
 class FeaturesGenerator(BaseGenerator[FeaturesGeneratorInput]):
     async def generate(self, input_data: FeaturesGeneratorInput) -> Dict:
@@ -29,11 +30,18 @@ class FeaturesGenerator(BaseGenerator[FeaturesGeneratorInput]):
             indent=2
         )
 
+        prompt = features_generate_prompt.replace(
+            "{{user_requirements}}", f"{user_requirements_}"
+        ).replace(
+            "{{actors}}", f"{actors_}"
+        )
+        if input_data.knowledge_context:
+            prompt = prompt.replace(
+                "# 输出格式说明", f"{input_data.knowledge_context}\n\n# 输出格式说明"
+            )
+
         response = await self._llm_handler.call_llm(
-            prompt=features_generate_prompt.replace(
-                "{{user_requirements}}", f"{user_requirements_}").replace(
-                "{{actors}}", f"{actors_}"
-            ),
+            prompt=prompt,
             query=feedback,
             print_log=False,
         )

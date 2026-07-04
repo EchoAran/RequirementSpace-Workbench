@@ -26,6 +26,8 @@ import {
   BaseNode,
   WorkspaceListItem,
   PendingManualAction,
+  KnowledgeWorkspace,
+  KnowledgeDocument,
 } from '@/core/schema';
 import { workspaceApi } from '@/lib/api';
 import { buildPageHealth } from '@/core/selectors';
@@ -38,7 +40,7 @@ const getConfirmationStatus = (value: unknown): NodeStatus => {
 };
 
 
-export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview';
+export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview' | '/knowledge';
 
 
 
@@ -675,6 +677,28 @@ export interface WorkspaceState {
   regenerateAIOnboarding: (feedback?: string) => Promise<void>;
   discardAIOnboarding: () => Promise<void>;
   createBlankWorkspace: (name: string, description: string, prompt: string) => Promise<void>;
+
+  // Knowledge Base Workspace / Onboarding
+  creationWorkspaceId: string | null;
+  creationDocuments: KnowledgeDocument[];
+  initCreationWorkspace: () => Promise<void>;
+  loadCreationDocuments: () => Promise<void>;
+  uploadCreationDocument: (file: File) => Promise<void>;
+  deleteCreationDocument: (docId: string) => Promise<void>;
+  retryCreationDocument: (docId: string) => Promise<void>;
+
+  // Project-level Knowledge Base
+  projectDocuments: KnowledgeDocument[];
+  isUploadingDocument: boolean;
+  loadProjectDocuments: () => Promise<void>;
+  uploadProjectDocument: (file: File) => Promise<void>;
+  deleteProjectDocument: (docId: string) => Promise<void>;
+  retryProjectDocument: (docId: string) => Promise<void>;
+  toggleDocumentAI: (docId: string, enabled: boolean) => Promise<void>;
+
+  // Feature Flag
+  knowledgeBaseEnabled: boolean;
+  loadKnowledgeConfig: () => Promise<void>;
 
   activeChoiceGroup: any | null;
   choiceGroupGenerationProgress: {
@@ -1466,10 +1490,16 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   return {
     sessionVersion: 0,
     currentSystemView: 'home',
-  setSystemView: (view) => set({ currentSystemView: view, activePage: view === 'workspace' ? get().activePage : '/overview' }),
-  initialPrompt: '',
+    setSystemView: (view) => set({ currentSystemView: view, activePage: view === 'workspace' ? get().activePage : '/overview' }),
+    initialPrompt: '',
 
-  activePage: '/overview',
+    creationWorkspaceId: null,
+    creationDocuments: [],
+    projectDocuments: [],
+    isUploadingDocument: false,
+    knowledgeBaseEnabled: true,
+
+    activePage: '/overview',
   setActivePage: (page) => set({ activePage: page }),
 
   selectedObjectId: null,
@@ -2173,10 +2203,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       choiceGroupGenerationProgress: null,
     });
     try {
-      // Simulate progress polling while the backend generates
       const group = await workspaceApi.createProjectCreationChoiceGroup({
         user_requirements: userRequirements,
         candidate_count: candidateCount || 2,
+        knowledge_workspace_id: get().creationWorkspaceId || undefined,
       });
       if (get().sessionVersion !== version) return;
       set({
@@ -2459,7 +2489,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const res = await workspaceApi.createBlankProject({
         user_requirements: prompt,
         project_name: name,
-        project_description: description
+        project_description: description,
+        knowledge_workspace_id: get().creationWorkspaceId || undefined,
       });
       if (get().sessionVersion !== version) return;
       const projectId = res.projectId ?? res.project_id;
@@ -2484,6 +2515,146 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '鍒涘缓绌虹櫧椤圭洰澶辫触', isLoading: false });
+    }
+  },
+
+  initCreationWorkspace: async () => {
+    await get().loadKnowledgeConfig();
+    if (!get().knowledgeBaseEnabled) return;
+    if (get().creationWorkspaceId) return;
+    try {
+      const ws = await workspaceApi.createKnowledgeWorkspace();
+      set({ creationWorkspaceId: ws.public_id || (ws as any).publicId, creationDocuments: [] });
+    } catch (err) {
+      console.error('Failed to initialize creation knowledge workspace', err);
+    }
+  },
+
+  loadKnowledgeConfig: async () => {
+    try {
+      const config = await workspaceApi.getKnowledgeConfig();
+      set({ knowledgeBaseEnabled: config.enabled });
+    } catch (err) {
+      console.error('Failed to load knowledge base configuration', err);
+    }
+  },
+
+  loadCreationDocuments: async () => {
+    const wsId = get().creationWorkspaceId;
+    if (!wsId) return;
+    try {
+      const docs = await workspaceApi.listWorkspaceDocuments(wsId);
+      set({ creationDocuments: docs });
+    } catch (err) {
+      console.error('Failed to load creation documents', err);
+    }
+  },
+
+  uploadCreationDocument: async (file: File) => {
+    const wsId = get().creationWorkspaceId;
+    if (!wsId) return;
+    set({ isUploadingDocument: true, error: null });
+    try {
+      await workspaceApi.uploadWorkspaceDocument(wsId, file);
+      await get().loadCreationDocuments();
+      set({ isUploadingDocument: false });
+    } catch (err) {
+      set({ 
+        isUploadingDocument: false, 
+        error: err instanceof Error ? err.message : '上传文件失败' 
+      });
+    }
+  },
+
+  deleteCreationDocument: async (docId: string) => {
+    const wsId = get().creationWorkspaceId;
+    if (!wsId) return;
+    set({ error: null });
+    try {
+      await workspaceApi.deleteWorkspaceDocument(wsId, docId);
+      await get().loadCreationDocuments();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '删除文件失败' });
+    }
+  },
+
+  retryCreationDocument: async (docId: string) => {
+    const wsId = get().creationWorkspaceId;
+    if (!wsId) return;
+    set({ error: null });
+    try {
+      await workspaceApi.retryWorkspaceDocument(wsId, docId);
+      await get().loadCreationDocuments();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重试转换文件失败' });
+    }
+  },
+
+  loadProjectDocuments: async () => {
+    await get().loadKnowledgeConfig();
+    if (!get().knowledgeBaseEnabled) return;
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    try {
+      const docs = await workspaceApi.listProjectDocuments(projectId);
+      set({ projectDocuments: docs });
+    } catch (err) {
+      console.error('Failed to load project documents', err);
+    }
+  },
+
+  uploadProjectDocument: async (file: File) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ isUploadingDocument: true, error: null });
+    try {
+      await workspaceApi.uploadProjectDocument(projectId, file);
+      await get().loadProjectDocuments();
+      set({ isUploadingDocument: false, lastActionMessage: '文档上传成功，正在转换解析中...' });
+    } catch (err) {
+      set({ 
+        isUploadingDocument: false, 
+        error: err instanceof Error ? err.message : '上传项目文档失败' 
+      });
+    }
+  },
+
+  deleteProjectDocument: async (docId: string) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ error: null });
+    try {
+      await workspaceApi.deleteProjectDocument(projectId, docId);
+      await get().loadProjectDocuments();
+      set({ lastActionMessage: '文档已成功删除。' });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '删除项目文档失败' });
+    }
+  },
+
+  retryProjectDocument: async (docId: string) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ error: null });
+    try {
+      await workspaceApi.retryProjectDocument(projectId, docId);
+      await get().loadProjectDocuments();
+      set({ lastActionMessage: '已重新触发文档解析。' });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '重试文档解析失败' });
+    }
+  },
+
+  toggleDocumentAI: async (docId: string, enabled: boolean) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) return;
+    set({ error: null });
+    try {
+      await workspaceApi.patchProjectDocument(projectId, docId, { ai_enabled: enabled });
+      await get().loadProjectDocuments();
+      set({ lastActionMessage: enabled ? '已启用该文档的 AI 检索。' : '已禁用该文档的 AI 检索。' });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : '切换文档 AI 状态失败' });
     }
   },
 

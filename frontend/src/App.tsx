@@ -20,6 +20,7 @@ const Home = lazy(() => import('./pages/Home').then((module) => ({ default: modu
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
 const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
 const AccountSettings = lazy(() => import('./pages/AccountSettings').then((module) => ({ default: module.AccountSettings })));
+const ProjectKnowledge = lazy(() => import('./pages/ProjectKnowledge').then((module) => ({ default: module.ProjectKnowledge })));
 
 function RouteFallback() {
   return (
@@ -456,10 +457,12 @@ export function App() {
             }
           />
           <Route path="preview" element={<LazyRoute><Preview /></LazyRoute>} />
+          <Route path="knowledge" element={<LazyRoute><ProjectKnowledge /></LazyRoute>} />
         </Route>
         
         {/* Legacy redirects wrapped in AuthGuard */}
         <Route path="/overview" element={<AuthGuard><LegacyWorkspaceRedirect page="/overview" /></AuthGuard>} />
+        <Route path="/knowledge" element={<AuthGuard><LegacyWorkspaceRedirect page="/knowledge" /></AuthGuard>} />
         <Route path="/what" element={<AuthGuard><LegacyWorkspaceRedirect page="/what" /></AuthGuard>} />
         <Route path="/flow" element={<AuthGuard><LegacyWorkspaceRedirect page="/flow" /></AuthGuard>} />
         <Route path="/scope" element={<AuthGuard><LegacyWorkspaceRedirect page="/scope" /></AuthGuard>} />

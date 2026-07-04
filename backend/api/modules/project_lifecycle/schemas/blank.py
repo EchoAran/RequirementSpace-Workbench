@@ -5,6 +5,7 @@ class BlankProjectCreateRequest(BaseModel):
     user_requirements: str = Field(min_length=1)
     project_name: str | None = None
     project_description: str | None = None
+    knowledge_workspace_id: str | None = None
 
 
 class BlankProjectCreateResponse(BaseModel):

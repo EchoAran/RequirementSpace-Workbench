@@ -15,6 +15,7 @@ class ActorFeaturePreviewGeneratorPort(ABC):
         self,
         user_requirements: str,
         user_feedback: str | None,
+        knowledge_context: str | None = None,
     ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
         """Generate draft previews and response previews for actors and features.
 

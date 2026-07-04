@@ -6,6 +6,7 @@ from typing import Dict
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
     SingleObjectGeneratorInput,
+    inject_generator_knowledge_context,
 )
 from backend.core.generators.single_object.prompts.single_business_object_prompt import (
     SINGLE_BUSINESS_OBJECT_GENERATE_PROMPT,
@@ -34,6 +35,7 @@ class SingleBusinessObjectGenerator(BaseSingleObjectGenerator):
         ).replace(
             "{{existing_flows}}", flows_str
         )
+        prompt = inject_generator_knowledge_context(prompt, input_data.knowledge_context)
 
         conversation_text = _format_conversation_summary(input_data.conversation_summary)
 

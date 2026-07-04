@@ -8,6 +8,8 @@ import {
   ProjectCreationChoiceItem,
   ProjectCreationChoiceGroupDeferResponse,
   ProjectMember,
+  KnowledgeWorkspace,
+  KnowledgeDocument,
 } from '@/core/schema';
 import { http } from './http';
 
@@ -69,7 +71,7 @@ export const workspaceApi = {
       confirmation_status: confirmationStatus,
     });
   },
-  createBlankProject: async (payload: { user_requirements: string; project_name?: string; project_description?: string }): Promise<ProjectCreationConfirmResponse> => {
+  createBlankProject: async (payload: { user_requirements: string; project_name?: string; project_description?: string; knowledge_workspace_id?: string }): Promise<ProjectCreationConfirmResponse> => {
     return http.post<ProjectCreationConfirmResponse>('/blank_projects', payload);
   },
   createProjectCreationDraft: async (payload: { user_requirements: string; project_name?: string; project_description?: string }): Promise<ProjectCreationDraft> => {
@@ -452,6 +454,7 @@ export const workspaceApi = {
     user_requirements: string;
     candidate_count?: number;
     user_feedback?: string;
+    knowledge_workspace_id?: string;
   }): Promise<ProjectCreationChoiceGroup> => {
     return http.post<ProjectCreationChoiceGroup>('/project_creation_choice_groups', payload);
   },
@@ -607,5 +610,46 @@ export const workspaceApi = {
     payload: { api_url: string; api_key: string; model_name: string }
   ): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/llm-config/test`, payload);
+  },
+
+  // Knowledge Workspace management
+  createKnowledgeWorkspace: async (): Promise<KnowledgeWorkspace> => {
+    return http.post<KnowledgeWorkspace>('/knowledge_workspaces');
+  },
+  listWorkspaceDocuments: async (workspaceId: string): Promise<KnowledgeDocument[]> => {
+    return http.get<KnowledgeDocument[]>(`/knowledge_workspaces/${workspaceId}/documents`);
+  },
+  uploadWorkspaceDocument: async (workspaceId: string, file: File): Promise<KnowledgeDocument> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return http.post<KnowledgeDocument>(`/knowledge_workspaces/${workspaceId}/documents`, formData);
+  },
+  deleteWorkspaceDocument: async (workspaceId: string, documentId: string): Promise<void> => {
+    await http.delete(`/knowledge_workspaces/${workspaceId}/documents/${documentId}`);
+  },
+  retryWorkspaceDocument: async (workspaceId: string, documentId: string): Promise<KnowledgeDocument> => {
+    return http.post<KnowledgeDocument>(`/knowledge_workspaces/${workspaceId}/documents/${documentId}/retry`);
+  },
+
+  // Project-level Knowledge management
+  listProjectDocuments: async (projectId: string): Promise<KnowledgeDocument[]> => {
+    return http.get<KnowledgeDocument[]>(`/projects/${projectId}/knowledge/documents`);
+  },
+  uploadProjectDocument: async (projectId: string, file: File): Promise<KnowledgeDocument> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return http.post<KnowledgeDocument>(`/projects/${projectId}/knowledge/documents`, formData);
+  },
+  deleteProjectDocument: async (projectId: string, documentId: string): Promise<void> => {
+    await http.delete(`/projects/${projectId}/knowledge/documents/${documentId}`);
+  },
+  retryProjectDocument: async (projectId: string, documentId: string): Promise<KnowledgeDocument> => {
+    return http.post<KnowledgeDocument>(`/projects/${projectId}/knowledge/documents/${documentId}/retry`);
+  },
+  patchProjectDocument: async (projectId: string, documentId: string, payload: { ai_enabled: boolean }): Promise<KnowledgeDocument> => {
+    return http.patch<KnowledgeDocument>(`/projects/${projectId}/knowledge/documents/${documentId}`, payload);
+  },
+  getKnowledgeConfig: async (): Promise<{ enabled: boolean }> => {
+    return http.get<{ enabled: boolean }>('/knowledge/config');
   },
 };

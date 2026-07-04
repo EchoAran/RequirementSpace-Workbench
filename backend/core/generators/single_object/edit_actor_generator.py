@@ -7,6 +7,8 @@ from backend.core.generators.single_object.base_edit_generator import (
     BaseEditGenerator,
     EditGeneratorInput,
 )
+from backend.core.generators.single_object.base_single_object_generator import inject_generator_knowledge_context
+
 from backend.core.generators.single_object.prompts.edit_actor_prompt import (
     EDIT_ACTOR_GENERATE_PROMPT,
 )
@@ -35,6 +37,7 @@ class EditActorGenerator(BaseEditGenerator):
         ).replace(
             "{{original_object}}", original_str
         )
+        prompt = inject_generator_knowledge_context(prompt, input_data.knowledge_context)
 
         conversation_text = _format_summary(input_data.conversation_summary)
 

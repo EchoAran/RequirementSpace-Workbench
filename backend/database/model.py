@@ -1417,6 +1417,105 @@ class TaskAssigneeModel(TimestampMixin, Base):
     assignee: Mapped["UserModel"] = relationship(foreign_keys=[assignee_user_id])
 
 
+class KnowledgeWorkspaceModel(TimestampMixin, Base):
+    __tablename__ = "knowledge_workspaces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    scope: Mapped[str] = mapped_column(String(50), default="project_creation", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)  # active, attached, expired
+
+    owner: Mapped["UserModel"] = relationship(foreign_keys=[owner_user_id])
+    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
+
+
+class KnowledgeDocumentModel(TimestampMixin, Base):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    markdown_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="uploaded", nullable=False)  # uploaded, converting, ready, failed, deleted
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    workspace: Mapped["KnowledgeWorkspaceModel | None"] = relationship(foreign_keys=[workspace_id])
+    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
+    owner: Mapped["UserModel"] = relationship(foreign_keys=[owner_user_id])
+
+
+class KnowledgeChunkModel(TimestampMixin, Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    heading_path: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    token_estimate: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    document: Mapped["KnowledgeDocumentModel"] = relationship(foreign_keys=[document_id])
+    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
+    workspace: Mapped["KnowledgeWorkspaceModel | None"] = relationship(foreign_keys=[workspace_id])
+
+
 from sqlalchemy import event, text
 
 @event.listens_for(ProjectModel, 'after_insert')

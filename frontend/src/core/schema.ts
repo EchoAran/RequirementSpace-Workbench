@@ -628,3 +628,29 @@ export interface ProjectMember {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface KnowledgeWorkspace {
+  id: number;
+  public_id: string;
+  publicId?: string;
+  scope: string;
+  status: string;
+  projectId: number | null;
+}
+
+export interface KnowledgeDocument {
+  id: number;
+  public_id: string;
+  workspace_id: number | null;
+  project_id: number | null;
+  owner_user_id: number;
+  original_filename: string;
+  content_type: string;
+  file_size: number;
+  status: 'uploaded' | 'converting' | 'ready' | 'failed' | 'deleted';
+  ai_enabled: boolean;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

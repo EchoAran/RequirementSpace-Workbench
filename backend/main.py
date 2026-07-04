@@ -127,6 +127,10 @@ from backend.api.modules.auth_account.routes.auth import (
 from backend.api.modules.auth_account.routes.llm_config import (
     router as account_router,
 )
+from backend.api.modules.project_knowledge.routes import (
+    router as project_knowledge_router,
+    config_router as project_knowledge_config_router,
+)
 
 from backend.database.database import init_db
 
@@ -549,3 +553,5 @@ app.include_router(user_tasks_router)
 app.include_router(notifications_router)
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(project_knowledge_config_router)
+app.include_router(project_knowledge_router)

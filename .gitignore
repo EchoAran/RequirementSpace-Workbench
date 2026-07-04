@@ -64,3 +64,6 @@ Thumbs.db
 
 # develop a document
 docs/
+
+# Local runtime storage
+storage/

@@ -7,6 +7,8 @@ from backend.core.generators.single_object.base_edit_generator import (
     BaseEditGenerator,
     EditGeneratorInput,
 )
+from backend.core.generators.single_object.base_single_object_generator import inject_generator_knowledge_context
+
 from backend.core.generators.single_object.prompts.edit_flow_prompt import (
     EDIT_FLOW_GENERATE_PROMPT,
 )
@@ -37,6 +39,7 @@ class EditFlowGenerator(BaseEditGenerator):
         ).replace(
             "{{original_object}}", _format_original(input_data.original_object)
         )
+        prompt = inject_generator_knowledge_context(prompt, input_data.knowledge_context)
 
         conversation_text = _format_summary(input_data.conversation_summary)
 

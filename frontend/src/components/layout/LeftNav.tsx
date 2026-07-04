@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Target, Activity, CheckSquare, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Target, Activity, CheckSquare, Eye, ChevronLeft, ChevronRight, Database } from 'lucide-react';
 import {
   useWorkspaceStore,
   selectPageHealth
@@ -88,8 +88,11 @@ export function LeftNav() {
     return selectPageHealth({ ir } as any, path);
   };
 
+  const knowledgeBaseEnabled = useWorkspaceStore(s => s.knowledgeBaseEnabled);
+
   const NavItems = [
     { page: '/overview' as const, label: '概览', icon: LayoutDashboard },
+    ...(knowledgeBaseEnabled ? [{ page: '/knowledge' as const, label: '项目知识库', icon: Database }] : []),
     { page: '/what' as const, label: '要做什么', icon: Target },
     { page: '/flow' as const, label: '怎么运作', icon: Activity },
     { page: '/scope' as const, label: '范围与交付', icon: CheckSquare },

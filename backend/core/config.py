@@ -46,3 +46,21 @@ if ENV == "production" and not AUTH_COOKIE_SECURE:
 
 AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", "").strip()
 AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "lax").strip().lower()
+
+# Knowledge Base Settings
+KNOWLEDGE_STORAGE_DIR = os.getenv("KNOWLEDGE_STORAGE_DIR", "storage/knowledge").strip()
+try:
+    KNOWLEDGE_MAX_FILE_SIZE_MB = int(os.getenv("KNOWLEDGE_MAX_FILE_SIZE_MB", "25").strip())
+except ValueError:
+    KNOWLEDGE_MAX_FILE_SIZE_MB = 25
+
+allowed_exts_str = os.getenv("KNOWLEDGE_ALLOWED_EXTENSIONS", ".pdf,.docx,.pptx,.xlsx,.md,.txt,.csv,.json,.html").strip()
+KNOWLEDGE_ALLOWED_EXTENSIONS = [ext.strip().lower() for ext in allowed_exts_str.split(",") if ext.strip()]
+
+try:
+    KNOWLEDGE_MAX_PROJECT_STORAGE_MB = int(os.getenv("KNOWLEDGE_MAX_PROJECT_STORAGE_MB", "200").strip())
+except ValueError:
+    KNOWLEDGE_MAX_PROJECT_STORAGE_MB = 200
+
+# Feature Flag
+KNOWLEDGE_BASE_ENABLED = os.getenv("KNOWLEDGE_BASE_ENABLED", "true").strip().lower() in ("true", "1", "yes")

@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import json
 import logging
@@ -62,8 +62,14 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
                 user_requirements=context.target.get("user_requirements", "")
                 if context.target else "",
                 user_feedback=combined_feedback,
+                knowledge_context=context.target.get("knowledge_context")
+                if context.target else None,
             )
         )
+
+        # Add knowledge_workspace_id to draft_payload so it gets bound upon choice acceptance
+        if context.target and context.target.get("knowledge_workspace_id"):
+            draft_payload["knowledge_workspace_id"] = context.target.get("knowledge_workspace_id")
 
         title = self._make_title(context.strategy, response_payload)
         project_preview = response_payload.get("project_preview", {})
@@ -202,17 +208,57 @@ class ProjectCreationChoiceGroupService:
         candidate_count: int | None = None,
         user_feedback: str | None = None,
         session: AsyncSession | None = None,
+        knowledge_workspace_id: str | None = None,
     ) -> dict:
         """Generate N project draft candidates and store as a choice group draft."""
         config = self._settings.with_overrides(candidate_count)
         group_id = f"pcg_{uuid4().hex[:12]}"
+
+        # 1. Retrieve knowledge base context if workspace is active and belongs to user
+        knowledge_context = None
+        from backend.core.config import KNOWLEDGE_BASE_ENABLED
+        if knowledge_workspace_id and KNOWLEDGE_BASE_ENABLED and session:
+            from backend.database.model import KnowledgeWorkspaceModel
+            from sqlalchemy import select
+            from fastapi import HTTPException
+
+            ws_res = await session.execute(
+                select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
+            )
+            ws = ws_res.scalar_one_or_none()
+            if not ws:
+                raise HTTPException(status_code=404, detail="workspace_not_found")
+            if ws.owner_user_id != owner_user_id:
+                raise HTTPException(status_code=403, detail="forbidden")
+            if ws.status != "active":
+                raise HTTPException(status_code=400, detail="workspace_inactive")
+
+            # Construct combined query for context retrieval
+            query_parts = [user_requirements]
+            if user_feedback:
+                query_parts.append(user_feedback)
+            query_parts.append("生成项目名称、项目描述、参与者、功能树、业务边界")
+            combined_query = " ".join(query_parts)
+
+            from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+            knowledge_context = await KnowledgeContextBuilder.build(
+                workspace_id=ws.id,
+                purpose="project_creation",
+                query=combined_query,
+                token_budget=4000,
+                session=session
+            )
 
         # Prepare context and run concurrent generation
         base_ctx = CandidateContext(
             index=0,
             strategy="balanced",
             user_feedback=user_feedback,
-            target={"user_requirements": user_requirements},
+            target={
+                "user_requirements": user_requirements,
+                "knowledge_context": knowledge_context,
+                "knowledge_workspace_id": knowledge_workspace_id,
+            },
             project_id=None,
         )
         result = await run_candidate_generation(
@@ -391,6 +437,17 @@ class ProjectCreationChoiceGroupService:
             owner_user_id=owner_user_id,
             session=session,
         )
+
+        # Confirm & bind workspace documents/chunks to the new project
+        workspace_public_id = target_choice["payload"].get("knowledge_workspace_id")
+        if workspace_public_id:
+            from backend.services.knowledge.workspace import KnowledgeWorkspaceService
+            await KnowledgeWorkspaceService.bind_workspace_to_project(
+                session=session,
+                workspace_public_id=workspace_public_id,
+                project_id=project.id,
+                owner_user_id=owner_user_id,
+            )
 
         # Update group state
         payload["status"] = "resolved"

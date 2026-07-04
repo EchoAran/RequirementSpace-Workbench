@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import quote
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project
@@ -28,6 +29,12 @@ class LazyProjectServiceProxy:
 
 project_service = LazyProjectServiceProxy()
 from backend.database.database import get_session
+
+
+def _spl_attachment_disposition(filename: str) -> str:
+    fallback = filename.encode("ascii", "ignore").decode("ascii").strip() or "requirement-space.spl"
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(filename)}'
+
 
 router = APIRouter(
     prefix="/api/projects",
@@ -251,6 +258,89 @@ async def export_project_markdown(
                 status_code=404,
                 detail="project_not_found",
             )
+        raise
+
+@router.get(
+    "/{project_id}/export/spl/syntax",
+    response_class=PlainTextResponse,
+)
+async def export_project_spl_syntax(
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
+    session: AsyncSession = Depends(get_session),
+):
+    import re
+    try:
+        spl_text = await project_service.export_project_spl_syntax(
+            project_id=owned_project.id,
+            session=session,
+        )
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", owned_project.name or "").strip()
+        if not safe_name:
+            safe_name = "requirement-space"
+        filename = f"{safe_name}-spl-syntax.spl"
+        return PlainTextResponse(
+            content=spl_text,
+            headers={
+                "Content-Disposition": _spl_attachment_disposition(filename)
+            }
+        )
+    except ValueError as error:
+        err_msg = str(error)
+        if err_msg == "project_not_found":
+            raise HTTPException(status_code=404, detail="project_not_found")
+        if err_msg == "spl_export_skill_unavailable":
+            raise HTTPException(status_code=503, detail="spl_export_skill_unavailable")
+        if err_msg == "spl_export_invalid_skill_output":
+            raise HTTPException(status_code=500, detail="spl_export_invalid_skill_output")
+        raise
+
+from backend.api.dependencies.llm import llm_context_manager
+
+@router.get(
+    "/{project_id}/export/spl/semantic",
+    response_class=PlainTextResponse,
+)
+async def export_project_spl_semantic(
+    project_id: str,
+    owned_project: ProjectModel = Depends(require_owned_project),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    import os
+    import re
+    if os.getenv("SPL_SEMANTIC_EXPORT_ENABLED", "true").lower() == "false":
+        raise HTTPException(status_code=400, detail="spl_export_semantic_disabled")
+
+    try:
+        async with llm_context_manager(user, session, project_id=owned_project.id) as llm_ctx:
+            spl_text = await project_service.export_project_spl_semantic(
+                project_id=owned_project.id,
+                session=session,
+                llm_ctx=llm_ctx,
+            )
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", owned_project.name or "").strip()
+        if not safe_name:
+            safe_name = "requirement-space"
+        filename = f"{safe_name}-spl-semantic.spl"
+        return PlainTextResponse(
+            content=spl_text,
+            headers={
+                "Content-Disposition": _spl_attachment_disposition(filename)
+            }
+        )
+    except ValueError as error:
+        err_msg = str(error)
+        if err_msg == "project_not_found":
+            raise HTTPException(status_code=404, detail="project_not_found")
+        if err_msg == "spl_export_skill_unavailable":
+            raise HTTPException(status_code=503, detail="spl_export_skill_unavailable")
+        if err_msg == "spl_export_invalid_skill_output":
+            raise HTTPException(status_code=500, detail="spl_export_invalid_skill_output")
+        if err_msg == "spl_export_timeout":
+            raise HTTPException(status_code=504, detail="spl_export_timeout")
+        if err_msg == "spl_export_semantic_disabled":
+            raise HTTPException(status_code=400, detail="spl_export_semantic_disabled")
         raise
 
 @router.post(

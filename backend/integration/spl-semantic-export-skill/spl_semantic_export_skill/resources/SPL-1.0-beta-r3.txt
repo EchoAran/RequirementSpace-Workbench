@@ -1,0 +1,676 @@
+SPL_AGENT := "[DEFINE_AGENT:" AGENT_NAME ["\"" STATIC_DESCRIPTION "\""] "]" SPL_PROMPT "[END_AGENT]"
+
+SPL_PROMPT := PERSONA [AUDIENCE] [CONCEPTS] [CONSTRAINTS] [VARIABLES] [FILES] [DATA_VIEWS] [VECTOR_STORES] [APIS] {GUARDRAIL} {INSTRUCTION}
+
+"""
+In SPL, PERSONA (AUDIENCE, GLOBAL_CONSTRAINTS, CONCEPTS) is conceptually the samee as a read-only const global variable with a structured data type whose key corresponds to each aspect one by one.
+READONLY _persona
+{
+    _role: string,
+    ...
+    _aspectn: string
+}
+=
+{
+    _role: "An assistant for healthcare professionals in {{Insert Medical Specialty}}",
+    ...
+    _aspectn: "... the description of aspect n"
+}
+A persona aspect can be referenced and retrieved by PERSONA.ROLE in the SPL DESCRIPTION, which is conceptually _persona._role.
+The SPL is compiled into Python 3.7 dataclass to implement PERSONA and aspects.
+"""
+"""
+An alternative structured data type which is more uniform as all PERSONA/AUDIENCE/GLOBAL_CONSTRAINTS has the same data type.
+But it is not convenient for retrieving _aspect_desc of a specific _aspect_name as it requires iteration of all array elements.
+So we will not adopt this design.
+READONLY _persona
+[
+    {
+        _aspect_name: string,
+        _aspect_desc: string
+    }
+]
+"""
+
+"""One persona and audience ASPECT_NAME appears once and only once"""
+"""UGAiForge provides some default OPTIONAL_ASPECT_NAME for persona such as "MODALITY", "EXPERTISE", "DOMAIN", "TONE", "LANGUAGE"."""
+"""UGAiForge provides some default OPTIONAL_ASPECT_NAME for audience such as "INTEREST", "KNOWLEDGE", "PREFERENCE"."""
+
+"""PERSONA describes the primary role this agent plays and its key attributes for its functionality"""
+PERSONA := "[DEFINE_PERSONA:]" PERSONA_ASPECTS "[END_PERSONA]"
+PERSONA_ASPECTS := ROLE_ASPECT {OPTIONAL_ASPECT}
+ROLE_ASPECT := ROLE_ASPECT_NAME ":" DESCRIPTION_WITH_REFERENCES
+ROLE_ASPECT_NAME := "ROLE"
+
+"""AUDIENCE describes the key attributes of the primary user group that will interact with or benefit from the AI agent"""
+AUDIENCE := "[DEFINE_AUDIENCE:]" AUDIENCE_ASPECTS "[END_AUDIENCE]"
+AUDIENCE_ASPECTS := {OPTIONAL_ASPECT}
+
+"""
+UGAiForge UI and one-key optimization agents are designed to support customizable OPTIONAL_ASPECT
+In the Global Settings, UGAiForge users can add, delete and modify any OPTIONAL_ASPECT_NAME and corresponding definition, including those UGAiForge-provided default optional aspect names for PERSONA, AUDIENCE and GLOBAL_CONSTRAINTS.
+The PERSONA/AUDIENCE/GLOBAL_CONSTRAINTS subsections in SPL Form UI are not fixed but reflect the OPTIONAL_ASPECT_NAME settings.
+UGAiForge's persona, audience, and global-constraint one-key optimization agent loads OPTIONAL_ASPECT_NAME and corresponding definition from the setting file as their CONCEPTS and store them in a global variable _concepts for customizing the agent behavior.
+"""
+
+OPTIONAL_ASPECT := OPTIONAL_ASPECT_NAME ":" DESCRIPTION_WITH_REFERENCES
+OPTIONAL_ASPECT_NAME := <word> """Capitalize the word"""
+ASPECT_NAME := ROLE_ASPECT_NAME | OPTIONAL_ASPECT_NAME
+
+"""
+UGAiForge design for dealing with
+-) a large number of constraints (e.g., company policy) or concepts (e.g., ontology).
+-) constraints and concepts that contain information more than descriptions (e.g., examples, synonyms, relationships).
+Such constraints and concepts have to be handled by FILE and DATA_VIEW.
+Do not need special SPL syntax for such constraint/concept FILE and DATA_VIEW.
+Use such constraint/concept FILE and DATA_VIEW in the same way as RAG:
+-) <REF> _concept_file </REF>
+-) RETRIEVE _concept_file ATTRIBUTES ... FILTERS ...
+-) prepend the retrieved content to the prompt command fed into the LLM
+"""
+
+"""
+CONSTRAINT's ASPECT_NAME : DESCRIPTION_WITH_REFERENCES cardinality is 1 : M.
+_constraints
+{
+    _constraint_name: List[string]
+}
+
+If OPTIONAL_ASPECT_NAME is not provided, use something like anonymous_constraint_x as _constraint_name.
+UGAiForge provides some default OPTIONAL_ASPECT_NAME for global constraints such as "temporal", "geographical", "cultural", "social", "technological", "data", "interaction", "output".
+
+Separation of concerns: constraint declaration, constraint application, and constraint violation handling
+-) In constraint declaration, it can define a default LOG_VIOLATION.
+-) APPLY_CONSTRAINTS to VARIABLE_DECLARATION, INPUTS, OUTPUTS, TYPE_ELEMENT. SPL compiler generates constraint validation code using APIs like Promptfoo or OpenAI Eval.
+-) Constraint violation handling is defined in ALTERNATIVE_FLOW or EXCEPTION_FLOW in WORKER_INSTRUCTION, which can have any BLOCK and customized logging
+"""
+
+"""
+One constraint aspect may have one or more separate constraint descriptions such as
+Violence and Hate: "Should not help people plan or engage in violence."
+Violence and Hate: "Should not encourage people to engage in violence."
+Violence and Hate: "Express hateful, derogatory, or demeaning sentiments against people based on ..."
+Violence and Hate: "Encourage discrimination against people based on those characteristics and should not use slurs or  ..."
+
+Constraints do not have explicit INPUTS. So need to infer the involved arguments from the applicaiton context.
+"""
+"""CONSTRAINTS highlight the limitations and requirements the agent must operate within to be effective and compliant"""
+CONSTRAINTS := "[DEFINE_CONSTRAINTS:]" {CONSTRAINT} "[END_CONSTRAINTS]"
+CONSTRAINT := [OPTIONAL_ASPECT_NAME ":"]  DESCRIPTION_WITH_REFERENCES [LOG_VIOLATION]
+LOG_VIOLATION := "LOG" DESCRIPTION_WITH_REFERENCES
+
+"""term-definition pairs"""
+"""CONCEPTS explain the specific domain knowledge or terms the agent applies in its operations."""
+CONCEPTS := [DEFINE_CONCEPTS:] {CONCEPT} [END_CONCEPTS]
+CONCEPT := OPTIONAL_ASPECT_NAME ":" STATIC_DESCRIPTION """Concepts do not need parameters or references."""
+
+"""
+Data declaration design
+-) Variable data type: UGAiForge users can describe non-simple data type in natural language, which will be translated into SPL data type syntax (use Zod or Pydantic to validate the data type satisfies SPL data type syntax).
+-) UGAiForge allows users to test opening file and database connection and show a fragment of file content or some database records.
+-) If FILE_PATH is < >， it means this file is not specified at compile time so this file has to be uploaded at runtime.
+-) DATABASE_DECLARATION.DATA_TYPE and structured file's DATA_TYPE will be automatically derived from the database or structured file and they are immutable.
+-) DATA_VIEWS must have DATA_TYPE which is the same as the REFERENCE_DATA's DATA_TYPE. For structured data type, UGAiForge users can select which columns to include (like define a view).
+-) DATA_VIEW's DATA_DEFINITION: UGAiForge users can describe DATA_DEFINITION in natural language, which will be translated into SPL Data Operation DSL (use Zod or Pydantic to validate the data operation SPL satisfies SPL Data Operation DSL syntax).
+-) UGAiForge provides a structured UI for viewing, testing and modifying DATA_VIEW's SPL Data Operation DSL. UGAiForge generates (or updates if already exists) DATA_DEFINITION's natural language.
+-) DATA_DEFINITION may be parameterized (e.g., book chapters for test questions).
+-) If a referenced top-tier SIMPLE_NAME is not declared
+   - If the reference is outside INSTRUCTION, one-key optimization should suggest adding a GLOBAL_VARIABLE.
+   - For all non-declared top-tier SIMPLE_NAME outside INSTRUCTION, SPL compiler will add implicit GLOBAL_VARIABLEs.
+   - If the reference is inside INSTRUCTION, one-key optimization should analyze all COMMANDs to determine if SIMPLE_NAME could be an INPUT/OUTPUT variable and make suggestion accordingly.
+   - For all non-declared top-tier SIMPLE_NAME inside INSTRUCTION, SPL compiler will add implicit LOCAL_VARIABLEs.
+
+Data representation design
+-) Global variables as Python dataclass
+-) Unstructured file as a Python file object or as a one-column-one-row relational database?
+-) text/image/audio embeddings indexed in internal vector stores (the index metadata contains ID to the database record if indexing some columns of a database)
+-) Structured files (e.g., CSV) parsed (using for example Pandas, SQLAlchemy, Python built-in csv module) into an internal relational database (in-memory database Redis?)
+-) Relation database as relational database
+_) Data VIEWS as either an internal vector store or an internal relational database (in-memory database Redis?)
+
+Data preparation before agent execution design
+-) Text/image/audio vector store need be indexed and ready for use before agent execution.
+-) Vector store indexing can be done in the UGAiForge's background thread while UGAiForge users edit SPL prompts (similar to file downloading in the browser).
+-) Global variable initialization by Python built-in variable assignment and dataclass init.
+-) If DATAVIEW's DATA_DEFINITION is PRELOAD, SPL compiler-generated agent initialization WORKER_INSTRUCTION executes DATA_DEFINITION to materialize DATA_VIEW before agent execution.
+-) Agent initialization WORKER_INSTRUCTION also Open files and connect to DBs?
+
+Data clean-up design
+-) The special agent clean-up WORKER_INSTRUCTION closes files and DB connections.
+
+Data reference design
+-) Uniform reference form <REF> ... </REF>
+-) SPL compiler analyzes the DESCRIPTION context to determine whether <REF> ... </REF> is use variable value or set variable value
+-) Two ways of use variable value:
+   - use by reference: <REF> NAME </REF>, VM need to prepend NAME = value before the INSTRUCTION prompt. If NAME refers to file or database, VM needs to load file content or select database and assign the value to a temporary variable NAME.
+   - use by value: <REF> *NAME </REF>, i.e., VM retrieve Python variable value and inline variable value at the reference site (used for agent initialization and prompt preparation)
+"""
+
+"""
+Shared global variable can be used and updated by different instructions.
+In the future, UGAiForge will support variable lock for parallel instruction executions.
+All variables must have DATA_TYPE.
+If no data type is explicitly provided for a global variable, treat the variable as text by default.
+"""
+
+"""
+To be determined: APPLY_GUARDRAILS syntax
+-) Guardrails are essentially INSTRUCTION in this version of SPL syntax.
+-) APPLY_GUARDRAILS essentially invoke guardrail instructions.
+-) How to pass arguments to guardrail invoke: provided through argument list or infer involved INPUTS from the guardrail application context
+
+"""
+To be experimented: BEFORE_OR_AFTER_OPERATION
+-) BEFORE_OPERATION: apply guardrail or constraint before data operation, for example sanitize if op-type is allowed or if data is not malicious
+-) AFTER_OPERATION: apply guardrail or constraint after data operation, for example detect and mask the sensitive data in the retrieved data
+"""
+
+"""
+Separation of concerns: guardrail declaration, guardrail application, and guardrail violation handling
+-) Guardrail is declared as INSTRUCTION. It declares exceptions thrown on guardrail violation and use THROW command to throw exceptions.
+-) Guardrails can be applied to variables, files, databases, vector stores on either data retrieval or data update.
+   Guardrails can be applied to API parameters before calling the API and the API return after calling the API.
+   Guardrails can be applied to INSTRUCTION inputs before executing INSTRUCTION workflow and INSTRUCTION outputs before returning the output.
+   Guardrails can be applied to command results before set/append command result to variable.
+-) Guardrail violation is handled through WORKER_INSTRUCTION's exception flow.
+"""
+
+VARIABLES := "[DEFINE_VARIABLES:]" {VARIABLE_DECLARATION} "[END_VARIABLES]"
+VARIABLE_DECLARATION := ["\"" DESCRIPTION_WITH_REFERENCES "\""] ["READONLY"] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] [APPLY_CONSTRAINTS BEFORE_OR_AFTER_OPERATION] [REFERENCE_VECTOR_STORE] VAR_NAME ":" DATA_TYPE ["=" DEFAULT_VALUE]
+VAR_NAME := <word>
+DEFAULT_VALUE := VALUE
+APPLY_GUARDRAILS := "<APPLY_GUARDRAILS>" {GUARDRAIL_NAME ["WITH" ARGUMENT_LIST]} "</APPLY_GUARDRAILS>" """Guardrail arguments can be inferred from the context where the guardrail is applied. So ARGUMENT_LIST may not need to be provided explicitly."""
+APPLY_CONSTRAINTS := "<APPLY_CONSTRAINTS>" {OPTIONAL_ASPECT_NAME | DESCRIPTION_WITH_REFERENCES} "</APPLY_CONSTRAINTS>" """OPTIONAL_ASPECT_NAME should be those of declared constraints. Use Promptfoo API to validate constraints."""
+BEFORE_OR_AFTER_OPERATION := "BEFORE_OPERATION" | "AFTER_OPERATION"
+REFERENCE_VECTOR_STORE := "<VECTOR_STORE>" INDEX_NAME ["." NAMESPACE] "</VECTOR_STORE>" """Contents from multiple data sources can be indexed in the same vector store. No NAMESPACE means default namespace."""
+
+"""<filepath> is relative to agent root"""
+"""if no DATA_TYPE provided for LEAF_FILE_DECLARATION, treat the file content as text, image or audio based on the file type"""
+"""Whether a LEAF_FILE_DECLARATION is a structured or unstructured file will be defined by DATA_TYPE"""
+"""DATA_TYPE is compulsory for DATABASE_DECLARATION"""
+FILES := "[DEFINE_FILES:]" {FILE_DECLARATION} "[END_FILES]"
+FILE_DECLARATION := FOLDER_DECLARATION | LEAF_FILE_DECLARATION | DATABASE_DECLARATION
+
+"""
+File DATA_TYPE should be directly inferred from the file metadata or content.
+UGAiForge allows agent developer to edit the inferred DATA_TYPE.
+"""
+
+FOLDER_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] [REFERENCE_VECTOR_STORE] FILE_NAME FILE_PATH "List [" {FOLDER_DECLARATION | LEAF_FILE_DECLARATION} "]"
+LEAF_FILE_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] ["LOG" <file-exceptions>] [REFERENCE_VECTOR_STORE] FILE_NAME FILE_PATH ":" DATA_TYPE
+FILE_NAME := <word>
+FILE_PATH := <filepath> | "< >" """< > means this file is not specified at compile time so this file has to be uploaded at runtime."""
+
+"""
+-) A database contains one or more tables.
+
+Declare table schema and actual table datatype. Same handling mechanism for CSV files and DATA_VIEWS
+-) The DATA_TYPE of a database is a dictionary of table_name: table_schema such as
+    UnversityDB: {
+        Course: {id: number, name: text, subject: [math, language, law]}
+        Student: {id: number, name: text, enrolyear: number}
+        Staff: {id: number, name: text, departmentid: number}
+        ...
+    }
+-) Table's actual DATA_TYPE will enclose "List[table_schema], such as Course: List[{id: number, name: text, subject: [math, language, law]}]".
+-) The platform allows agent developer to declare only table_schema, without "List[]".
+-) Enclosing "List[]" will be done by the SPL compiler if "List[]" is not present.
+
+Structured data file usage
+-) Structured data file (e.g,. CSV) is parsed into a relational database to use internally.
+-) If indexing some data fields in the CSV in vector store, copy other the content of other data fields as vector store metadata for easy retrieval
+   such as
+   movie_vector_store : List[
+      {id: string, title_vector: List[number], metadata: {title: string, genre: string, year: date}
+   ]
+"""
+
+DATABASE_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] ["LOG" <db-exceptions>] FILE_NAME DATABASE_CONNECTION ":" DATA_TYPE
+DATABASE_CONNECTION := <dburl> <dbuser> <dbpassword>
+
+"""
+Vector store data type:
+-) Text vector store INDEX_NAME [NAMESPACE] has implicit data type: List[{chunk: text, chunk_embedding: List[number], metadata: {ELEMENT_NAME: DATA_TYPE}}].
+-) If an unstructured text file is indexed in a vector store, the file data type becomes conceptually {content: text, content_embedding: List[number]} or {content: text, vector_store: List[{chunk: text, chunk_embedding: List[number]]} depending on indexing the content as a whole or chunks.
+-) If a DB column xxx is indexed in a vector store, the DB data type becomes conceptually with a new embedding column "xxx_embedding: List[number]" or "xxx_vector_store: List[{chunk: text, chunk_embedding: List[number]] depending on indexing the content as a whole or chunks.
+   The id of vector store records should be table primary key.
+
+Vector store configuration:
+-) Embedding text/image/audio and indexing it in vector store requires user configuration.
+-) Vector store configuration must be set at the SPL development time. UGAiForge provides a default configuration. Users can modify default configuration through UGAiForge UI.
+-) Indexing can be done at the SPL development time (e.g., a set of PDF files) or dynamically at runtime (e.g., searched web pages).
+-) Pinecone supports text, image and audio indexing. Need to confirm image and audio embedding configuration.
+
+Reference vector store in global variable, file, type element of structured type:
+-) The data type of such global variable, file, type element must be indexable simple data type (text, image, audio)
+"""
+
+VECTOR_STORES := "[DEFINE_VECTOR_STORES:]" {VECTOR_STORE_DECLARATION} "[END_VECTOR_STORES]"
+VECTOR_STORE_DECLARATION := TEXT_VECTOR_STORE_DECLARATION """In the future, support IMAGE_VECTOR_STORE_DECLARATION and AUDIO_VECTOR_STORE_DECLARATION"""
+TEXT_VECTOR_STORE_DECLARATION  := ["\"" STATIC_DESCRIPTION "\""] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] VECTOR_STORE_SETTING INDEX_NAME ["[" NAMESPACES "] "] EMBEDDING_SETTING METADATA
+VECTOR_STORE_SETTING := <vector-store> <apikey>
+INDEX_NAME := <word>
+NAMESPACES := <word> {"," <word>}
+EMBEDDING_SETTING := <embedding-model> <chunk-algorithm> <chunk-overlap> <chunk-length>
+METADATA := "List [{" {ELEMENT_NAME ":" DATA_TYPE} "}]" """an array of dictionary of key-value pairs associated with index. each record has one dictionary of key-value pairs."""
+
+"""
+<attributes> in DATA_DEFINITION must match DATA_TYPE elements.
+DATA_NAME in <entity-field> in DATA_DEFINITION must match REFERENCE_DATA
+"""
+DATA_VIEWS := "[DEFINE_DATA_VIEWS:]" {DATA_VIEW_DECLARATION} "[END_DATA_VIEWS]"
+DATA_VIEW_DECLARATION := ["\"" DESCRIPTION_WITH_REFERENCES "\""] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] DATA_VIEW_NAME REFERENCE_DATA {REFERENCE_DATA} ":" DATA_TYPE ["\"" DATA_DEFINITION "\""] EXECUTION_TIME
+DATA_DEFINITION := STRUCTURED_TEXT """Data Operation DSL defined below. op-type must be RETRIEVE"""
+DATA_VIEW_NAME := <word>
+EXECUTION_TIME := "PRELOAD" | "JITLOAD" """PRELOAD is the default option which materialize DATA_VIEW when initializing agent. For JITLOAD, SPL compiler inserts a COMMAND executes DATA_DEFINITION at the first reference site."""
+
+DATA_NAME := VAR_NAME | FILE_NAME | DATA_VIEW_NAME | INDEX_NAME ["." NAMESPACE]
+REFERENCE_DATA := "<REF>" DATA_NAME "</REF>"
+
+"""UGAiForge supports the definition of STRUCTURED_DATA_TYPE and ENUM_TYPE as NAMED TYPE"""
+TYPES := "[DEFINE_TYPES:]" {ENUM_TYPE_DECLARATION | STRUCTURED_DATA_TYPE_DECLARATION} "[END_TYPES]"
+ENUM_TYPE_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] DECLARED_TYPE_NAME "=" ENUM_TYPE
+STRUCTURED_DATA_TYPE_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] DECLARED_TYPE_NAME "=" STRUCTURED_DATA_TYPE
+DECLARED_TYPE_NAME := <word>
+
+"""UGAiForge stdlib supports commonly applicable operations to each simple data type such as text substring/concatenation, image loading, math operation, time operation, etc."""
+DATA_TYPE := ARRAY_DATA_TYPE | STRUCTURED_DATA_TYPE | | ENUM_TYPE | TYPE_NAME | AGENT_NAME
+TYPE_NAME := SIMPLE_TYPE_NAME | DECLARED_TYPE_NAME
+SIMPLE_TYPE_NAME := "text" | "image" | "audio" | "number" | "boolean"
+ENUM_TYPE := "[" <word> {, <word>} "]"
+ARRAY_DATA_TYPE := "List [" DATA_TYPE "]"
+STRUCTURED_DATA_TYPE := "{" STRUCTURED_TYPE_BODY "}" ｜ "{ }"
+STRUCTURED_TYPE_BODY := TYPE_ELEMENT | TYPE_ELEMENT "," STRUCTURED_TYPE_BODY
+TYPE_ELEMENT := ["\"" STATIC_DESCRIPTION "\""] [APPLY_GUARDRAILS BEFORE_OR_AFTER_OPERATION] [APPLY_CONSTRAINTS BEFORE_OR_AFTER_OPERATION] [REFERENCE_VECTOR_STORE] ["OPTIONAL"] ELEMENT_NAME ":" DATA_TYPE
+ELEMENT_NAME := <word>
+
+"""
+When setting up APIs, the user specifies whether to attempt retry times and log api exceptions.
+SPL Compiler will enclose API call in a retry-loop in the code executing the API-call prompt.
+Guardrails and controlled-input/controlled-output apply to the API parameters and return in API_IN_SPL.
+"""
+
+APIS := "[DEFINE_APIS:]" {API_DECLARATION} "[END_APIS]"
+API_DECLARATION := ["\"" STATIC_DESCRIPTION "\""] API_NAME "<" AUTHENTICATION ">" ["RETRY" <number>] ["LOG" <api-exceptions>] OPENAPI_SCHEMA API_IN_SPL
+AUTHENTICATION := <none> | <apikey> | <oauth>
+OPENAPI_SCHEMA := STRUCTURED_TEXT """OpenAPI schema expressed in STRUCTURED_TEXT"""
+
+""""
+API_IN_SPL is specialized STRUCTURED_TEXT.
+No need to manually enter API_IN_SPL. It will be automatically derived from OPENAPI_SCHEMA, except for guardrails, controlled input and controlled output.
+UGAiForge UI allows agent developer to optionally add guardrails, controlled input and controlled output for parameters and return.
+
+Trigger controlled input/output validation and guardrails
+-) Before calling the API, validate controlled input and apply guardrails on parameters
+-) After calling the API, validate controlled output and apply guardrails on return
+"""
+
+API_IN_SPL := "{" FUNCTIONS "}"
+FUNCTIONS := "functions:" "[" {FUNCTION} "]"
+FUNCTION := "{" "name:" STATIC_DESCRIPTION "," URL ["," "description:" STATIC_DESCRIPTION] "," PARAMETERS "," RETURN }"
+PARAMETERS := "{" "parameters:" "[" {PARAMETER} "]" "," "controlled-input:" BOOL_VALUE "}"
+PARAMETER := "{" "required:" BOOL_VALUE "," "name:" STATIC_DESCRIPTION "," "type:" PARAMETER_TYPE ["," "guardrails:" "[" GUARDRAIL_NAME {"," GUARDRAIL_NAME} "]"] ["," "description:" STATIC_DESCRIPTION] "}"
+RETURN := "{" "type:" PARAMETER_TYPE "," "controlled-output:" BOOL_VALUE ["," "guardrails:" "[" GUARDRAIL_NAME {"," GUARDRAIL_NAME} "]"] ["," "description:" STATIC_DESCRIPTION] "}"
+BOOL_VALUE := "true" | "false"
+PARAMETER_TYPE := TYPE_NAME | "List [" TYPE_NAME "]"
+
+"""
+*** Just Keep for reference purpose. After testing the viability of GUARDRAIL_INSTRUCTION, this will be removed.
+???Retry if guardrail fails? Where to declare? How to execute retry?
+???What default guardrails does UGAiForge provide?
+???What guardrail template looks like?
+"""Guardrails functions as special WORKER_INSTRUCTION"""
+"""UGAiForge provides some default guardrail types such as "SECURE_TOKEN", "FACTUALITY", "TOPICAL", "RACISM" and corresponding guardrail templates."""
+"""UGAiForge users can add, modify and delete any guardrail types including the default ones"""
+GUARDRAIL := "[DEFINE_GUARDRAIL:" ["\"" STATIC_DESCRIPTION "\""] [GUARDRAIL_TYPE] GUARDRAIL_NAME "]" [GUARDRAIL_DECLARATION] "[END_GUARDRAIL]"
+GUARDRAIL_DECLARATION := {COMMAND} ["[LOG" GUARDRAIL_RESULTS "]"]
+GUARDRAIL_TYPE := "ANONYMIZE_PII" | "VALIDATE_FACT" | "VALIDATE_TOPICAL" | "IDENTIFY_RACISM" | USER_DEFINED_GUARDRAIL_TYPE
+USER_DEFINE_GUARDRAIL_TYPE := STATIC_DESCRIPTION
+GUARDRAIL_NAME := <word>
+GUARDRAIL_RESULTS := RESULT_CODE DESCRIPTION_WITH_REFERENCES ???what to log?
+RESULT_CODE := "SUCCESS" | "FAILURE" ???like API end point response code?
+"""
+
+"""
+UGAiForge should support the following built-in guardrails:
+-) Retrieval guardrails (https://github.com/explodinggradients/ragas/blob/main/src/ragas/metrics/__init__.py)
+    "AnswerCorrectness",
+    "answer_correctness",
+    "Faithfulness",
+    "faithfulness",
+    "AnswerSimilarity",
+    "answer_similarity",
+    "ContextPrecision",
+    "context_precision",
+    "ContextUtilization",
+    "context_utilization",
+    "ContextRecall",
+    "context_recall",
+    "AspectCritique",
+    "context_relevancy",
+    "ContextRelevancy",
+    "AnswerRelevancy",
+    "answer_relevancy",
+    "ContextEntityRecall",
+    "context_entity_recall"
+-) llama guard (https://github.com/NVIDIA/NeMo-Guardrails/blob/88da745847355c97be5f3279e9d04275754e6c48/examples/configs/llama_guard/prompts.yml)
+-) Nemo Guardrail (https://github.com/NVIDIA/NeMo-Guardrails/blob/develop/docs/user_guides/llm-support.md, https://github.com/NVIDIA/NeMo-Guardrails/tree/88da745847355c97be5f3279e9d04275754e6c48/nemoguardrails/library)
+    Fact-checking (implicit hallucination) rails - AlignScore
+    Explicit hallucination rails - Selfcheckgpt
+    Jailbreaking rails - Detecting language model attacks with perplexity
+    Sensitive data - Using Presidio API
+    ActiveFence - "https://apis.activefence.com/sync/v3/content/text
+"""
+
+GUARDRAIL_INSTRUCTION := "[DEFINE_GUARDRAIL:" ["\"" STATIC_DESCRIPTION "\""] GUARDRAIL_NAME [THROW_EXCEPTIONS] ]" [INPUTS] [OUTPUTS] MAIN_FLOW {ALTERNATIVE_FLOW} {EXCEPTION_FLOW} [EXAMPLES] [SCENARIOS]"" "[END_GUARDRAIL]"
+THROW_EXCEPTIONS := "THROWS" EXCEPTION_NAME {"," EXCEPTION_NAME}
+EXCEPTION_NAME := <word> {"," <word>}
+
+"""
+***SIGNIFICANT UPDATE:
+MAIN_FLOW, ALTERNATIVE_FLOW and EXCEPTION_FLOW can have any number of and any combination of SEQUENTIAL_BLOCK | IF_BLOCK | LOOP_BLOCK
+***
+
+Guardrails apply to the referenced input and output.
+
+Examples and scenarios semantic compliance:
+-) EXAMPLES structured text must be consistent with worker input and output declarations and cover one feasible execution path. ???Use Zod or Pydantic or Promptfoo to validate.
+-) SCENARIOS structured text must follow Gherkin syntax and be consistent with worker input/flow/output declaration. ???Use Zod or Pydantic or Promptfoo to validate"""
+"""
+
+INSTRUCTION := WORKER_INSTRUCTION | SELF_CONSISTENCY_INSTRUCTION | GUARDRAIL_INSTRUCTION
+WORKER_INSTRUCTION := "[DEFINE_WORKER:" ["\"" STATIC_DESCRIPTION "\""] WORKER_NAME "]" [INPUTS] [OUTPUTS] MAIN_FLOW {ALTERNATIVE_FLOW} {EXCEPTION_FLOW} [EXAMPLES] [SCENARIOS]"" "[END_WORKER]"
+WORKER_NAME := <word>
+INSTRUCTION_NAME := WORKER_NAME | GUARDRAIL_NAME
+
+"""
+An input or output is required by default if there is no REQUIRED or OPTIONAL annotation.
+A worker may use several outputs to achieve the effect of Python Union, for example, one output variable returns the correct response object, and the other returns an error message.
+"""
+INPUTS := "[INPUTS]" {["REQUIRED" | "OPTIONAL"] [APPLY_GUARDRAILS] [APPLY_CONSTRAINTS] REFERENCE_DATA} "[END_INPUTS]" | "[CONTROLLED_INPUTS]" {["REQUIRED" | "OPTIONAL"] [APPLY_GUARDRAILS] [APPLY_CONSTRAINTS] REFERENCE_DATA} "[END_CONTROLLED_INPUTS]" """REFERENCE should reference DATA_NAME (variable, files, data views)"""
+OUTPUTS := "[OUTPUTS]" {["REQUIRED" | "OPTIONAL"] [APPLY_GUARDRAILS] [APPLY_CONSTRAINTS] REFERENCE_DATA} "[END_OUTPUTS]" | "[CONTROLLED_OUTPUT]" {["REQUIRED" | "OPTIONAL"] [APPLY_GUARDRAILS] [APPLY_CONSTRAINTS] REFERENCE_DATA} "[END_CONTROLLED_OUTPUTS]" """REFERENCE should reference DATA_NAME (variable, files, data views)"""
+
+"""
+Inputs and outputs of an example should match the INPUTS and OUTPUTS schema.
+The example workflow should be a feasible execution path of the declared MAIN_FLOW, ALTERNATIVE_FLOW and/or EXCEPTION_FLOW.
+"""
+
+EXAMPLES := "[EXAMPLES]" { EXPECTED_WORKER_BEHAVIOR | DEFECT_WORKER_BEHAVIOR } "[END_EXAMPLES]"
+
+"""
+An EXPECTED_WORKER_BEHAVIOR is meant to illustrate how the worker should correctly respond (i.e., expected behavior and output ) to both valid and invalid inputs (if applicable) as per its defined logic.
+"""
+EXPECTED_WORKER_BEHAVIOR := "<EXPECTED-WORKER-BEHAVIOR>" "{" EXPECTED_WORKER_BEHAVIOR_DETAILS "}" "</EXPECTED-WORKER-BEHAVIOR>"
+EXPECTED_WORKER_BEHAVIOR_DETAILS :=  INPUT_EXAMPLE"," EXPECTED_OUTPUT_EXAMPLE "," EXECUTION_PATH
+INPUT_EXAMPLE := "inputs:" "{" VAR_VALUE_PAIRS "}" """The input parameters provided to the worker"""
+VAR_VALUE_PAIRS := VAR_NAME ":" VALUE {"," VAR_VALUE_PAIRS}
+EXPECTED_OUTPUT_EXAMPLE := "expected-outputs:" "{" VAR_VALUE_PAIRS "}" """Specifies the expected correct outputs for the given inputs"""
+EXECUTION_PATH := "execution-path:" COMMAND_DECISION_INDEX {"," COMMAND_DECISION_INDEX} """Documents the sequence of commands and decisions (e.g., C-1, D-1, C-3) followed within the worker's logic to produce the outputs"""
+COMMAND_DECISION_INDEX := COMMAND_INDEX | DECISION_INDEX
+
+"""
+A DEFECT_WORKER_BEHAVIOR is meant to illustrate how the worker malfunctions and thus incorrectly respond (i.e., erroneous behavior and output ) to both valid and invalid inputs (if applicable) as per its defined logic.
+
+DEFECT_TYPE definition:
+-) Processing Logic Error pertains to the core operational logic, where the system fails to correctly process inputs due to logic flaws.
+-) Error Handling Error relates to the system's inability to correctly identify and respond to invalid inputs or states.
+-) Output Generation Error involves issues with producing the correct output format or content, even if the input was correctly processed.
+-) Input Specification Error involves failures in meeting the worker's input specifications
+"""
+DEFECT_WORKER_BEHAVIOR := "<DEFECT-WORKER-BEHAVIOR>" "{" DEFECT_WORKER_BEHAVIOR_DETAILS "}" "</DEFECT-WORKER-BEHAVIOR>""
+DEFECT_WORKER_BEHAVIOR_DETAILS := DEFECT_TYPE "," INPUT_EXAMPLE"," DEFECT_OUTPUT_EXAMPLE "," EXECUTION_PATH "," DEFECT_EXPLANATION
+MALFUNCTION_TYPE := "Processing Logic Error" | "Invalid Input Handling Error" | "Output Generation Error" | "Input Specification Error" """"Types of defects in the worker's operation that result in the errors"""
+DEFECT_OUTPUT_EXAMPLE := "defect-outputs:" "{" VAR_VALUE_PAIRS "}" """The outputs that incorrectly result from the defect"""
+DEFECT_EXPLANATION := "defect-explanation:" STATIC_DESCRIPTION """A short description of why the output is incorrect given the specific defect."""
+
+"""
+Gherkin-syntax expressed in specialized STRUCTURED_TEXT
+"""
+SCENARIOS := "[SCENARIOS]" { EXPECTED_WORKER_BEHAVIOR_GHERKIN | DEFECT_WORKER_BEHAVIOR_GHERKIN} "[END_SCENARIOS]"
+EXPECTED_WORKER_BEHAVIOR_GHERKIN := "<EXPECTED-WORKER-BEHAVIOR-GHERKIN>" "{" FEATURE "}" "</EXPECTED-WORKER-BEHAVIOR-GHERKIN>"
+DEFECT_WORKER_BEHAVIOR_GHERKIN := "<DEFECT-WORKER-BEHAVIOR-GHERKIN>" "{" FEATURE "}" "</DEFECT-WORKER-BEHAVIOR-GHERKIN>"
+
+FEATURE := FEATURE_HEADING "{" [BACKGROUND] {SCENARIO | SCENARIO_OUTLINE} "}"
+FEATURE_HEADING := "Feature:" STATIC_DESCRIPTION
+BACKGROUND := BACKGROUND_HEADING "[" GIVEN_STEPS "]"
+BACKGROUND_HEADING := "Background:" STATIC_DESCRIPTION
+SCENARIO := SCENARIO_HEADING ["[" GIVEN_STEPS "]"] "[" WHEN_STEPS "]" "[" THEN_STEPS "]"
+SCENARIO_OUTLINE := SCENARIO_OUTLINE_HEADING ["Given:" "[" GIVEN_STEPS "]"] "When:" "[" WHEN_STEPS "]" "Then:" "[" THEN_STEPS "]" SCENARIO_EXAMPLES
+SCENARIO_HEADING := "Scenario:" STATIC_DESCRIPTION
+SCENARIO_OUTLINE_HEADING := "Scenario Outline:" STATIC_DESCRIPTION
+GIVEN_STEPS := GIVEN_STEP | GIVEN_STEP "," GIVEN_STEPS
+GIVEN_STEP :=  DESCRIPTION_WITH_REFERENCES
+WHEN_STEPS := WHEN_STEP | WHEN_STEP "," WHEN_STEPS
+WHEN_STEP := DESCRIPTION_WITH_REFERENCES
+THEN_STEPS := THEN_STEP | THEN_STEP "," THEN_STEPS
+THEN_STEP := DESCRIPTION_WITH_REFERENCES
+SCENARIO_EXAMPLES := "Examples:" "[" {"{" SCENARIO_INPUT {"," SCENARIO_INPUT} "," SCENARIO_OUTPUT "}"} "]"
+SCENARIO_INPUT := STATIC_DESCRIPTION ":" STATIC_DESCRIPTION
+SCENARIO_OUTPUT := STATIC_DESCRIPTION ":" STATIC_DESCRIPTION
+
+MAIN_FLOW := "[MAIN_FLOW]" {BLOCK} [END_MAIN_FLOW]
+ALTERNATIVE_FLOW := "[ALTERNATIVE_FLOW:" CONDITION "]" {BLOCK} "[END_ALTERNATIVE_FLOW]"
+EXCEPTION_FLOW := "[EXCEPTION_FLOW:" CONDITION "]" ["LOG" DESCRIPTION_WITH_REFERENCES] {BLOCK} "[END_EXCEPTION_FLOW]"
+CONDITION := DESCRIPTION_WITH_REFERENCES
+
+BLOCK := SEQUENTIAL_BLOCK | IF_BLOCK | LOOP_BLOCK | FORK_BLOCK
+SEQUENTIAL_BLOCK := "[SEQUENTIAL_BLOCK]" {COMMAND} "[END_SEQUENTIAL_BLOCK]"
+IF_BLOCK := DECISION_INDEX "[IF" CONDITION "]" {COMMAND} {"[ELSEIF" CONDITION "]" {COMMAND}} ["[ELSE]" {COMMAND}] "END_IF"
+LOOP_BLOCK := WHILE_BLOCK | FOR_BLOCK
+WHILE_BLOCK := DECISION_INDEX "[WHILE" CONDITION "]" {COMMAND} "[END_WHILE]" """For example, [WHILE not found] do something"""
+FOR_BLOCK := DECISION_INDEX "[FOR" CONDITION "]" {COMMAND} [END_FOR] """For example, [For each element in collection] do something"""
+FORK_BLOCK := COMMAND_INDEX "[FORK]" {CALL_API | INVOKE_INSTRUCTION} "[END_FORK]"
+DECISION_INDEX := "DECISION-" <number> """System maintained unique decision point index"""
+
+"""
+For prompt-to-code commands, UGAiForger generates three code candidates. Users can request more.
+UGAiForge allows users to view and select the code candidates (three by default) generated for prompt-to-code commands.
+UGAiForge support users to view and test code.
+More SYSTEM_COMMAND for text, image, file, math, time operations.
+"""
+
+COMMAND := COMMAND_INDEX COMMAND_BODY
+COMMAND_INDEX := "COMMAND-" <number> """System maintained unique command index"""
+COMMAND_BODY := GENERAL_COMMAND | CALL_API | INVOKE_INSTRUCTION | AGENT_INSTANTIATION | REQUEST_INPUT | DISPLAY_MESSAGE | THROW | OPERATE_DATA ｜ EXEC_SPL_PROMPT | EXEC_COMMAND
+
+"""If a command is not prompt-to-code or code, the command is a regular prompt."""
+GENERAL_COMMAND := "[COMMAND" ["PROMPT_TO_CODE" | "CODE"] ["THINK_ALOUD"] DESCRIPTION_WITH_REFERENCES ["STOP" DESCRIPTION_WITH_REFERENCES] ["RESULT" COMMAND_RESULT ["SET" | "APPEND"]] [APPLY_GUARDRAILS] "]" """SET is default operation"""
+DISPLAY_MESSAGE := "[DISPLAY" DESCRIPTION_WITH_REFERENCES "]"
+THROW := "[THROW" EXCEPTION_NAME \" DESCRIPTION_WITH_REFERENCES \" "]"
+REQUEST_INPUT := "[INPUT" ["DISPLAY"] DESCRIPTION_WITH_REFERENCE "VALUE" COMMAND_RESULT ["SET" | "APPEND"] [APPLY_GUARDRAILS] "]" """With DISPLAY, DESCRIPTION_WITH_REFERENCE is regarded as display text. Otherwise, DESCRIPTION_WITH_REFERENCE is a prompt."""
+CALL_API := "[CALL" API_NAME {"," API_NAME} ["WITH" ARGUMENT_LIST {"," ARGUMENT_LIST}] ["RESPONSE" COMMAND_RESULT ["SET" | "APPEND"]] [APPLY_GUARDRAILS] "]" ""Guardrails also apply to API parameters and return definition in API_IN_SPL""""
+INVOKE_INSTRUCTION := "[INVOKE" INSTRUCTION_NAME {"," INSTRUCTION_NAME} ["WITH" ARGUMENT_LIST {"," ARGUMENT_LIST}] ["RESPONSE" COMMAND_RESULT ["SET" | "APPEND"]] [APPLY_GUARDRAILS] "]" """Guardrails also apply to WORKER_INSTRUCTION's inputs and outputs declaration"""
+AGENT_INSTANTIATION := "[INSTANTIATE" AGENT_NAME "WITH" ARGUMENT_LIST "INSTANCE" COMMAND_RESULT "]"
+ARGUMENT_LIST := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Must match the api/instruction's input parameters or the agent instantiation parameters"""
+EXEC_SPL_PROMPT := "[EXECUTE" SPL_PROMPT "]" """Compile and execute a SPL prompt at runtime"""
+EXEC_COMMAND := "[EXECUTE" COMMAND_BODY "]" """Execute a dynamically generated SPL commands"""
+COMMAND_RESULT := VAR_NAME ":" DATA_TYPE | REFERENCE """VAR_NAME ":" DATA_TYPE essentially declares a temporary variable"""
+
+"""Data operation NL description will be refactored into standard data operation NL description mapping directly to Data Operation DSL"""
+"""Data operation DSL is compiled into appropriate data operation API call for vector store or relational database"""
+OPERATE_DATA := CREATE_DATA | RETRIEVE_DATA | UPDATE_DATA | INSERT_DATA
+CREATE_DATA := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Data Operation DSL op-type CREATE: create a data structure or schema"""
+RETRIEVE_DATA := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Data Operation DSL op-type RETRIEVE: retrieve a list of data records"""
+UPDATE_DATA := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Data Operation DSL op-type UPDATE: update one or more data records"""
+INSERT_DATA := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Data Operation DSL op-type INSERT: insert one data record"""
+DELETE_DATA := STRUCTURED_TEXT [APPLY_GUARDRAILS] """Data Operation DSL op-type DELETE: delete one or more data records"""
+
+"""In the first version, support a simplified SELF_CONSISTENCY as a guardrail"""
+SELF_CONSISTENCY_INSTRUCTION := "[DEFINE_SELF_CONSISTENCY:" ["\"" STATIC_DESCRIPTION "\""] WORKER_NAME "]" [INPUTS] [OUTPUTS] BASE_FLOWS {GENERATE_VARIANT_FLOWS} AGGREGATE_ANSWERS "[END_SELF_CONSISTENCY]"
+BASE_FLOWS := BASE_FLOW | BASE_FLOW "," BASE_FLOWS
+BASE_FLOW := "[BASE_FLOW:" [BASE_FLOW_NAME] [BASE_FLOW_WEIGHT] ]" {BLOCK} "[END_BASE_FLOW]"
+BASE_FLOW_NAME := <word>
+BASE_FLOW_WEIGHT := <number> """all flow weights add to 1"""
+GENERATE_VARIANT_FLOWS := "[GENERATE_VARIANT_FLOWS]" REFERENCE_BASE_FLOW VARIANT_QUANTITY "[END_VARIANT_FLOWS]"
+REFERENCE_BASE_FLOW := "<REF>" BASE_FLOW_NAME "</REF>"
+VARIANT_QUANTITY := <number>
+AGGREGATE_ANSWERS := "[AGGREGATE_ANSWERS]" AGGREGATION_METHOD "[END_AGGREGATE_ANSWER]"
+AGGREGATION_METHOD := "Majority Vote" | "Weighted Average"
+
+"""
+REFERENCE design
+-) <REF> can be {{; </REF> can be }}
+-) *NAME means inline the content of the referenced NAME at the reference site before agent execution
+-) NAME[] without array index means all array elements
+-) SIMPLE_NAME must be declared names (ASPECT_NAME, DATA_NAME, GUARDRAIL_NAME, WORKER_NAME, KEY) (NOTE: UGAiForge enforces declaration before use)
+-) If a non-top-tier SIMPLE_NAME is not declared, UGAiForge should remind the user to check and fix the error.
+-) SPL compiler determines whether a reference is use-value or set-value based on the DESCRIPTION context
+
+Parameter initialization design
+-) Referenced names may be agent initialization parameters and instruction input parameters which will be set by agent users.
+-) Custom web UI or chatbot will be developed at the deployment time and will execute to collect user input when starting the agent.
+-) UGAiForge supports agent initialization (execute once when starting the agent) or instruction execution initialization (for each agent use)
+   - Assign user-enter parameter value to corresponding parameter declaration
+   - Inline user-enter parameter value at all <REF> *parametername </REF> sites
+-) Instruction invoke initialization
+   - Assign argument value to corresponding input parameter declaration
+   - Inline argument value at all <REF> *parametername </REF> sites
+
+UGAiForge provides some DESCRIPTION_WITH_REFERENCE templates such as:
+-) "APPLY" STATIC_DESCRIPTION "TO" REFERENCE
+-) "SET" REFERENCE "AS" STATIC_DESCRIPTION
+-) SELECT [<word>, <word>, <word>] or SELECT one value from ENUM_TYPE
+
+Handling implicit NAME references
+-) NAME can be directly used in STATIC_DESCRIPTION without enclosing <REF></REF> tag.
+-) Such NAME references will be initially parsed as <word> according to the SPL syntax.
+-) The differentiation between a plain word and NAME references is then a matter of semantic interpretation rather than syntactic distinction.
+-) A semantic parser becomes crucial in this setup.
+-) The semantic parser will recognize when a <word> represents plain text versus when it encapsulates NAME references.
+"""
+DESCRIPTION_WITH_REFERENCES := STATIC_DESCRIPTION {DESCRIPTION_WITH_REFERENCES} | REFERENCE {DESCRIPTION_WITH_REFERENCES}
+STATIC_DESCRIPTION := <word> | <word> <space> STATIC_DESCRIPTION
+REFERENCE := "<REF>" ["*"] NAME "</REF>"
+NAME := SIMPLE_NAME | QUALIFIED_NAME | ARRAY_ACCESS | DICT_ACCESS
+SIMPLE_NAME := <word>
+QUALIFIED_NAME := NAME "." SIMPLE_NAME | NAME "." ARRAY_ACCESS | NAME "." DICT_ACCESS
+ARRAY_ACCESS := NAME "[" [<number>] "]
+DICT_ACCESS := NAME "[" SIMPLE_NAME "]
+
+STRUCTURED_TEXT := "{" STRUCTURED_TEXT_BODY "}" | "{ }"
+STRUCTURED_TEXT_BODY := FORMAT_ELEMENT | FORMAT_ELEMENT "," STRUCTURED_TEXT_BODY
+FORMAT_ELEMENT := KEY : VALUE | VALUE
+KEY := <word>
+VALUE := DESCRIPTION_WITH_REFERENCES ｜ ARRAY ｜ STRUCTURED_TEXT
+ARRAY := "[" ARRAY_ELEMENTS "]" | "[ ]"
+ARRAY_ELEMENTS := VALUE | VALUE "," ARRAY_ELEMENTS
+
+"""
+Data Operation DSL. Specialized STRUCTURED_TEXT.
+Available functions: SUM(List[number]), COUNT(id), COSINE_SIMILARITY(vector1, vector2), EUCLIDEAN_DISTANCE(vector1, vector2) VECTORIZE(string)
+"""
+<data-operation> := "{" <op-field> "," <entity-field> "," <attributes-field> "," <filters-field> "," [<group-by>] "," [<order-by>] "," [<limit>]"}"
+<op-field> := "operation:" <op-type>
+<op-type> := "CREATE" | "RETRIEVE" | "UPDATE" | "INSERT" | "DELETE"
+<entity-field> := "entity:" DATA_NAME {"join" DATA_NAME "on" <filter>} {"," DATA_NAME {"join" DATA_NAME "on" <filter>}}
+<attributes-field> := "attributes" ":" "[" <attribute> {"," <attribute>} "]"
+<attribute> := DESCRIPTION_WITH_REFERENCES ["AS" <alias>] ["=" DESCRIPTION_WITH_REFERENCES] """Can apply simple math operator to attribute such as SUM(quantity), COUNT(id)"""
+<alias> := SIMPLE_NAME
+<filters-field> := "filters" ":" "[" <filter> {"," <filter>} "]"
+<filter> := DESCRIPTION_WITH_REFERENCES
+<group-by>  := "group-by" ":" "[" DESCRIPTION_WITH_REFERENCE {"," DESCRIPTION_WITH_REFERENCE} "]"
+<order-by>  := "order-by" ":" "[" DESCRIPTION_WITH_REFERENCE <order-option> {"," DESCRIPTION_WITH_REFERENCE <order-option>} "]"
+<order-option> := ASCENDING | DESCENDING
+<limit> := "limit" ":" DESCRIPTION_WITH_REFERENCES
+
+"""Computing concepts used in SPL"""
+<word> is a sequence of characters, digits and symbols without space
+<space> is white space or tab
+<number> is an integer or float number
+<filepath> is a canonical file path string
+<file-exceptions> is a list of file exceptions UGAiForge supports
+<db-exceptions> is a list of database exceptions UGAiForge supports
+<vector-store> is a vector store API such as chroma, pinecone
+<apikey> is an API key string for accessing API services such as OpenAI
+<embedding-model> is the reference to an embedding model such as those hosted on Hugging Face
+<chunk-algorithm> is an algorithm for splitting text
+<chunk-overlap> is the number of tokens overlapping between adjacent chunks
+<chunk-length> is the number of tokens of a chunk
+<dburl> is the URL of a database
+<dbuser> is the user id of a database
+<dbpassword> is the password of the database user
+
+"""AI Transition Template"""
+[DEFINE_CONCEPTS:]
+    Input Category: category1, category2, category3
+    Category1: explain category1 if it is not a common sense
+    Category2: explain category2 if it is not a common sense
+    Category3: explain category3 if it is not a common sense
+[END_CONCEPTS]
+
+[DEFINE_WORKER: AI Transition]
+    [INPUTS]
+        _input: string
+    [END_INPUTS]
+
+    [SEQUENTIAL_BLOCK]
+        [COMMAND Classify _input as one and only one category defined in Input Category RESULTS input_category]
+    [END_SEQUENTIAL_BLOCK]
+
+    [IF input_category is Category1]
+        [PRINT _input is category1]
+    [ELSEIF input_category is Category2]
+        [PRINT _input is category2]
+    [ELSEIF input_category is Category3]
+        [PRINT _input is category3]
+    [ELSE]
+        [PRINT _input is none of Input Category]
+    [END_IF]
+[END_WORKER]
+
+In the future, support AI Transition as SPL idiom like LangChain RunnableBranch, RunnableParallel"""
+[AI_TRANSITION: Classify _input as one and only one category defined in Input Category]
+    [CASE: category 1 {BLOCK} [END_CASE]
+    [CASE: category 1 {BLOCK} [END_CASE]
+[END_AI_TRANSITION]
+
+"""ReAct Prompt Template"""
+"""See the detailed analysis in ReAct Design in SPL.docx"""
+[DEFINE_WORKER: ReAct Template]
+    [INPUTS]
+        _task: string "Specific task description"
+    [END_INPUTS]
+
+    [OUTPUTS]
+        _result: string "Task result"
+    [END_OUTPUTS]
+
+    [MAIN_FLOW]
+        [WHILE the last observation in _scratchpad does not fully solve the _task]
+            [COMMAND Analyze _scratchpad to determine the progress so far RESULT _thought]
+            [COMMAND Determine what to do next using one of the _tools RESULT _tool, _tool_input]
+            [COMMAND INVOKE _tool WITH _tool_input RESULT _observation]
+            [COMMAND Record _thought, _tool, _tool_input, _observation in _scratchpad]
+        [END_WHILE]
+        [COMMAND Store the final observation in _result]
+    [END_MAIN_FLOW]
+
+    [EXAMPLES]
+         [EXAMPLE]
+            [_task: {{HOTPOTQA Question}}"]
+            [Iterative Think-Act-Observe Process:
+               "Thought 1: Analyze the question to identify key entities and relations.
+                Action 1: Search for information about the key entities.
+                Observation 1: Assess the relevance of the information found.
+                ...
+                Observation 3: Obtain the final observation]
+            [_result: Final observation from the iterative research and analysis]
+         [END_EXAMPLE]
+         // Additional HOTPOTQA examples can be provided here
+    [END_EXAMPLES]
+[END_WORKER]
+
+"""NOT SPL Syntax"""
+"""UGAiForge stdlib provides these APIs that do not need to appear in the SPL"""
+<format-validation> := ...""" """Use TypeChat, Pydantic, Zod to implement?
+<constraint-validation> := ... """Use Promptfoo API
+<embedding-data-retrieval> := ... vector store ...
+<structured-data-retrieval> := ... SQL ...
+<sensitive-info-detector> := ... regex, NER, ...
+<sensitive-info-anonymizer> := ... tokenization, mask, remove ...
+<log-input-violation> := "CALL" <ugaiforge-logapi> "WITH" <mismatch-input-error>
+<log-output-violation> := "CALL" <ugaiforge-logapi> "WITH" <unexpected-output-error>
+<log-guardrail-violation> := "CALL" <ugaiforge-logapi> "WITH" <guardrail-violation-type> <guardrail-violation-reason>
+<log-api-error> := "CALL" <ugaiforge-logapi> "WITH" <api-error>
+<log-api-latency> := "CALL" <ugaiforge-logapi> "WITH" <latencytime>
+<log-api-cost> := "CALL" <ugaiforge-logapi> "WITH" <tokencost> ""COST only for LLM APIs?"""

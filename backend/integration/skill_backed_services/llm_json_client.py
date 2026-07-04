@@ -15,8 +15,17 @@ def render_prompt(template: str, replacements: dict[str, str]) -> str:
 
 
 class SkillBackedLLMJsonClient:
-    def __init__(self) -> None:
-        self._llm_handler = LLMHandler()
+    def __init__(
+        self,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model_name: str | None = None
+    ) -> None:
+        self._llm_handler = LLMHandler(
+            api_url=api_url,
+            api_key=api_key,
+            model_name=model_name
+        )
 
     async def ask_json(self, prompt: str) -> dict[str, Any]:
         content = await self._llm_handler.call_llm(
@@ -37,8 +46,17 @@ class SkillBackedLLMJsonClient:
 
 
 class SyncSkillBackedLLMJsonClient:
-    def __init__(self) -> None:
-        self._async_client = SkillBackedLLMJsonClient()
+    def __init__(
+        self,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model_name: str | None = None
+    ) -> None:
+        self._async_client = SkillBackedLLMJsonClient(
+            api_url=api_url,
+            api_key=api_key,
+            model_name=model_name
+        )
 
     def ask_json(self, prompt: str) -> dict[str, Any]:
         try:
@@ -49,4 +67,3 @@ class SyncSkillBackedLLMJsonClient:
         raise RuntimeError(
             "SyncSkillBackedLLMJsonClient.ask_json must run outside an active event loop."
         )
-

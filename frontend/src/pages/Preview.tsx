@@ -567,22 +567,52 @@ export function Preview() {
     }
   }, [activePrototypePageId, rolePrototypePages]);
 
-  const handleExport = (format: 'json' | 'markdown') => {
+  const cleanFilename = (name: string): string => {
+    const cleaned = name.replace(/[\\/*?:"<>|]/g, '').trim();
+    return cleaned || 'requirement-space';
+  };
+
+  const handleExport = (format: 'json' | 'markdown' | 'spl_syntax' | 'spl_semantic') => {
     triggerGateCheck('export', async () => {
       if (!spaceToUse?.projectId) return;
+      const baseName = cleanFilename(spaceToUse.projectName || spaceToUse.projectId);
       setExportState('exporting');
       try {
         if (format === 'markdown') {
           const md = await workspaceApi.exportMarkdown(spaceToUse.projectId);
-          downloadFile(`${spaceToUse.projectName || spaceToUse.projectId || 'requirement-space'}.md`, md, 'text/markdown;charset=utf-8');
-        } else {
+          downloadFile(`${baseName}.md`, md, 'text/markdown;charset=utf-8');
+        } else if (format === 'json') {
           const data = await workspaceApi.exportJson(spaceToUse.projectId);
-          downloadFile(`${data.projectName || data.projectId || 'requirement-space'}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+          const dataName = cleanFilename(data.projectName || data.projectId || spaceToUse.projectName || spaceToUse.projectId);
+          downloadFile(`${dataName}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+        } else if (format === 'spl_syntax') {
+          const spl = await workspaceApi.exportSplSyntax(spaceToUse.projectId);
+          downloadFile(`${baseName}-spl-syntax.spl`, spl, 'text/plain;charset=utf-8');
+        } else if (format === 'spl_semantic') {
+          showToast('正在生成 SPL 语义规格，可能需要几十秒，请勿关闭页面。');
+          const spl = await workspaceApi.exportSplSemantic(spaceToUse.projectId);
+          downloadFile(`${baseName}-spl-semantic.spl`, spl, 'text/plain;charset=utf-8');
         }
         setExportState('success');
         setTimeout(() => setExportState('idle'), 1500);
-      } catch {
+      } catch (err: any) {
         setExportState('idle');
+        const errMsg = err?.message || '';
+        if (errMsg.includes('spl_export_skill_unavailable')) {
+          showToast('当前 SPL 导出能力不可用，可先导出 Markdown 需求规格说明书。');
+        } else if (errMsg.includes('spl_export_semantic_disabled')) {
+          showToast('SPL 语义导出功能已被禁用，请先导出 SPL 语法规格。');
+        } else if (errMsg.includes('spl_export_timeout')) {
+          showToast('SPL 语义导出耗时过长，请稍后重试，或先导出 SPL 语法规格。');
+        } else if (errMsg.includes('spl_export_invalid_skill_output')) {
+          if (format === 'spl_semantic') {
+            showToast('SPL 语义导出失败，请稍后重试或先导出 SPL 语法规格。');
+          } else {
+            showToast('SPL 语法导出失败，请稍后重试。');
+          }
+        } else {
+          showToast(`导出失败：${errMsg || '未知错误'}`);
+        }
       }
     });
   };
@@ -793,7 +823,7 @@ export function Preview() {
                 <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {isExportMenuOpen && (
-                <div className="absolute right-0 top-[calc(100%+10px)] z-20 min-w-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="absolute right-0 top-[calc(100%+10px)] z-20 min-w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
                   <button
                     type="button"
                     onClick={() => {
@@ -817,6 +847,36 @@ export function Preview() {
                   >
                     <FileDown className="h-3.5 w-3.5 text-indigo-500" />
                     导出标准 JSON 资产
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      void handleExport('spl_syntax');
+                    }}
+                    disabled={exportState === 'exporting'}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <FileDown className="h-3.5 w-3.5 text-indigo-500" />
+                    <div className="flex flex-col">
+                      <span>导出 SPL 语法规格</span>
+                      <span className="text-[10px] font-normal text-slate-400">稳定保留结构，输出纯语法规格</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      void handleExport('spl_semantic');
+                    }}
+                    disabled={exportState === 'exporting'}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <FileDown className="h-3.5 w-3.5 text-indigo-500" />
+                    <div className="flex flex-col">
+                      <span>导出 SPL 语义规格</span>
+                      <span className="text-[10px] font-normal text-slate-400">调用 LLM 编译，输出深度语义规约</span>
+                    </div>
                   </button>
                   <button
                     type="button"

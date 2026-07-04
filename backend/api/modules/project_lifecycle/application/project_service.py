@@ -670,6 +670,18 @@ class ProjectService:
 
         return "\n".join(md)
 
+    async def export_project_spl_syntax(self, project_id: int, session: AsyncSession) -> str:
+        from backend.integration.skill_backed_services.spl_syntax_export_service import SplSyntaxExportService
+        detail = await self.get_project_detail(project_id, session)
+        service = SplSyntaxExportService()
+        return await service.export(detail)
+
+    async def export_project_spl_semantic(self, project_id: int, session: AsyncSession, llm_ctx) -> str:
+        from backend.integration.skill_backed_services.spl_semantic_export_service import SplSemanticExportService
+        detail = await self.get_project_detail(project_id, session)
+        service = SplSemanticExportService()
+        return await service.export(detail, llm_ctx)
+
     async def preview_scope_impact(self, project_id: int, feature_id: int, next_status: str, session: AsyncSession) -> dict:
         """根据变更的功能节点进行图引用深层依赖分析，评估暂缓或启用对其他建模资产的影响范围"""
         detail = await self.get_project_detail(project_id, session)

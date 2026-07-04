@@ -256,6 +256,14 @@ export const workspaceApi = {
   exportJson: async (projectId: string): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/export/json`);
   },
+  exportSplSyntax: async (projectId: string): Promise<string> => {
+    return http.get<string>(`/projects/${projectId}/export/spl/syntax`);
+  },
+  exportSplSemantic: async (projectId: string): Promise<string> => {
+    return http.get<string>(`/projects/${projectId}/export/spl/semantic`, undefined, {
+      timeout: 120000,
+    });
+  },
   refineUserRequirements: async (projectId: string, feedback: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/user-requirements/refine`, {
       user_feedback: feedback

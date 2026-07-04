@@ -699,3 +699,39 @@ def test_generative_draft_owner_project_mismatch(isolation_test_db):
 
     # User B tries to confirm the draft, but it should return 404 because project owner != User B
     assert client.post(f"/api/actor_generation_drafts/{draft_id}/confirm").status_code == 404
+
+
+def test_spl_export_ownership_isolation(isolation_test_db):
+    """User A cannot export User B's project in SPL syntax or semantic modes."""
+    client = TestClient(app)
+    user_a_id, cookie_a, user_b_id, cookie_b = _register_users(client)
+
+    async def seed():
+        async with isolation_test_db() as session:
+            pa = ProjectModel(name="ProjA", description="desc", owner_user_id=user_a_id, user_requirements="reqs")
+            pb = ProjectModel(name="ProjB", description="desc", owner_user_id=user_b_id, user_requirements="reqs")
+            session.add_all([pa, pb])
+            await session.flush()
+            return pa.public_id, pb.public_id
+
+    loop = asyncio.get_event_loop()
+    proj_a_id, proj_b_id = loop.run_until_complete(seed())
+
+    # 1. Login as User A and attempt to access Project B
+    client.cookies.clear()
+    client.cookies.set("auth_session", cookie_a)
+
+    # Export syntax of Project B
+    assert client.get(f"/api/projects/{proj_b_id}/export/spl/syntax").status_code == 404
+    # Export semantic of Project B
+    assert client.get(f"/api/projects/{proj_b_id}/export/spl/semantic").status_code == 404
+
+    # 2. Login as User B and attempt to access Project A
+    client.cookies.clear()
+    client.cookies.set("auth_session", cookie_b)
+
+    # Export syntax of Project A
+    assert client.get(f"/api/projects/{proj_a_id}/export/spl/syntax").status_code == 404
+    # Export semantic of Project A
+    assert client.get(f"/api/projects/{proj_a_id}/export/spl/semantic").status_code == 404
+

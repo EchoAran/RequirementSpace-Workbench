@@ -5,6 +5,7 @@ export const API_BASE_URL = rawApiUrl
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
+  timeout?: number;
 }
 
 export class HttpError extends Error {
@@ -37,7 +38,7 @@ function triggerUnauthorized() {
 }
 
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<T> {
-  const { params, headers, body, ...restOptions } = options;
+  const { params, headers, body, timeout, ...restOptions } = options;
 
   // 1. Build Query String if params exist
   let queryString = '';
@@ -76,6 +77,13 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     },
     body: finalBody,
   };
+
+  let timeoutId: any = null;
+  if (timeout) {
+    const controller = new AbortController();
+    config.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), timeout);
+  }
 
   try {
     const response = await fetch(fullUrl, config);
@@ -122,6 +130,13 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     if (error instanceof HttpError) {
       throw error;
     }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new HttpError(
+        504,
+        'Gateway Timeout',
+        '请求超时，后台任务执行时间过长，请稍后重试。'
+      );
+    }
     // Network or other unexpected errors
     throw new HttpError(
       0,
@@ -129,6 +144,10 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
       error instanceof Error ? error.message : '网络连接失败，请检查服务是否正常启动。',
       error
     );
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 

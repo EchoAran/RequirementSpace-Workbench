@@ -690,11 +690,18 @@ export interface WorkspaceState {
   // Project-level Knowledge Base
   projectDocuments: KnowledgeDocument[];
   isUploadingDocument: boolean;
+  projectConfiguration: any | null;
+  isLoadingProjectConfiguration: boolean;
+  isSavingGenerationStrategies: boolean;
   loadProjectDocuments: () => Promise<void>;
   uploadProjectDocument: (file: File) => Promise<void>;
   deleteProjectDocument: (docId: string) => Promise<void>;
   retryProjectDocument: (docId: string) => Promise<void>;
   toggleDocumentAI: (docId: string, enabled: boolean) => Promise<void>;
+  fetchProjectConfiguration: (projectId: string) => Promise<void>;
+  updateProjectGenerationStrategies: (projectId: string, payload: any) => Promise<void>;
+  deleteProjectGenerationStrategies: (projectId: string) => Promise<void>;
+  updateProjectKnowledgeConfig: (projectId: string, payload: { enabled: boolean }) => Promise<void>;
 
   // Feature Flag
   knowledgeBaseEnabled: boolean;
@@ -1497,6 +1504,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     creationDocuments: [],
     projectDocuments: [],
     isUploadingDocument: false,
+    projectConfiguration: null,
+    isLoadingProjectConfiguration: false,
+    isSavingGenerationStrategies: false,
     knowledgeBaseEnabled: true,
 
     activePage: '/overview',
@@ -2655,6 +2665,62 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ lastActionMessage: enabled ? '已启用该文档的 AI 检索。' : '已禁用该文档的 AI 检索。' });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : '切换文档 AI 状态失败' });
+    }
+  },
+
+  fetchProjectConfiguration: async (projectId: string) => {
+    set({ isLoadingProjectConfiguration: true, error: null });
+    try {
+      const config = await workspaceApi.getProjectConfiguration(projectId);
+      set({ projectConfiguration: config, isLoadingProjectConfiguration: false });
+    } catch (err) {
+      set({
+        isLoadingProjectConfiguration: false,
+        error: err instanceof Error ? err.message : '加载项目配置失败',
+      });
+    }
+  },
+
+  updateProjectGenerationStrategies: async (projectId: string, payload: any) => {
+    set({ isSavingGenerationStrategies: true, error: null });
+    try {
+      await workspaceApi.updateProjectGenerationStrategies(projectId, payload);
+      const config = await workspaceApi.getProjectConfiguration(projectId);
+      set({
+        projectConfiguration: config,
+        isSavingGenerationStrategies: false,
+        lastActionMessage: '生成策略配置已保存。',
+      });
+    } catch (err) {
+      set({ isSavingGenerationStrategies: false });
+      throw err;
+    }
+  },
+
+  deleteProjectGenerationStrategies: async (projectId: string) => {
+    set({ isSavingGenerationStrategies: true, error: null });
+    try {
+      await workspaceApi.deleteProjectGenerationStrategies(projectId);
+      const config = await workspaceApi.getProjectConfiguration(projectId);
+      set({
+        projectConfiguration: config,
+        isSavingGenerationStrategies: false,
+        lastActionMessage: '生成策略已恢复系统默认。',
+      });
+    } catch (err) {
+      set({ isSavingGenerationStrategies: false });
+      throw err;
+    }
+  },
+
+  updateProjectKnowledgeConfig: async (projectId: string, payload: { enabled: boolean }) => {
+    set({ error: null });
+    try {
+      await workspaceApi.updateProjectKnowledgeConfig(projectId, payload);
+      const config = await workspaceApi.getProjectConfiguration(projectId);
+      set({ projectConfiguration: config });
+    } catch (err) {
+      throw err;
     }
   },
 

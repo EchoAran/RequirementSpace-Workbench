@@ -31,7 +31,8 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         feature_ids = target.get("feature_ids")
         actor_id = target.get("actor_id")
 
-        strategy_hint = f"请按 {context.strategy} 风格生成本场景集。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成场景集")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -110,9 +111,10 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             "scenarios": scenarios,
         }
 
+        strat_lbl = context.strategy_label or context.strategy
         title = f"场景方案 — {len(scenarios)} 个场景" if generation_mode == "batch" else f"{feature_name} × {actor_name} — {len(scenarios)} 个场景"
-        rationale = f"按 {context.strategy} 策略批量生成的场景集" if generation_mode == "batch" else f"按 {context.strategy} 策略为 {feature_name} × {actor_name} 生成的场景集"
-        comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(context.strategy, scenarios, feature_name, actor_name)
+        rationale = f"按 {strat_lbl} 策略批量生成的场景集" if generation_mode == "batch" else f"按 {strat_lbl} 策略为 {feature_name} × {actor_name} 生成的场景集"
+        comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(strat_lbl, scenarios, feature_name, actor_name)
         apply_desc = "此方案将为选定功能点新增场景" if generation_mode == "batch" else f"此方案将为 {feature_name} × {actor_name} 新增场景"
 
         return GenerationCandidate(
@@ -125,6 +127,8 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             comparison_summary=comparison_summary,
             apply_behavior="append",
             apply_behavior_description=apply_desc,
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:

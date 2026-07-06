@@ -42,7 +42,7 @@ class TestActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     generation_type = "test_actor"
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
-        prefix = context.strategy.capitalize()
+        prefix = context.strategy_label or context.strategy.capitalize()
         return GenerationCandidate(
             title=f"{prefix} Actor方案",
             rationale=f"{prefix} 方案说明",
@@ -53,12 +53,13 @@ class TestActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 ],
             },
             preview={"actor_count": 1, "actors": [f"{prefix}用户"]},
-            # draft_type 与 generation_type 保持一致，确保 applier 能正确查找
             draft_type="test_actor",
             apply_mode="draft_payload",
             comparison_summary=f"{prefix} 方案：专注{context.strategy}风格",
             apply_behavior="overwrite",
             apply_behavior_description="此方案将替换项目当前参与者列表",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
@@ -507,3 +508,154 @@ class TestPatchCompatibility:
 
         # 检查默认值
         assert choice.apply_mode == "patch"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Phase 6: Concurrent Partial-Failure Degradation Tests
+# ═══════════════════════════════════════════════════════════════════
+
+@register_adapter("test_actor_partial_fail")
+class PartialFailActorAdapter(BaseGenerationChoiceAdapter):
+    """测试用 adapter：模拟并发生成中部分候选失败场景（Phase 6 降级验证）。"""
+
+    generation_type = "test_actor_partial_fail"
+    _fail_indices: set[int] = set()
+
+    @classmethod
+    def configure_failures(cls, fail_indices: set[int]):
+        cls._fail_indices = fail_indices
+
+    async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
+        if context.index in self.__class__._fail_indices:
+            raise RuntimeError(f"候选 {context.index} 模拟生成失败")
+        prefix = context.strategy_label or context.strategy.capitalize()
+        return GenerationCandidate(
+            title=f"{prefix} PartialFail Actor方案",
+            rationale=f"{prefix} 降级方案说明",
+            payload={"project_id": context.project_id, "actors": [{"actor_name": f"{prefix}用户", "actor_description": "测试角色"}]},
+            preview={"actor_count": 1},
+            draft_type="test_actor_partial_fail",
+            apply_mode="draft_payload",
+            comparison_summary=f"{prefix} 方案",
+            apply_behavior="overwrite",
+            apply_behavior_description="替换参与者",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
+        )
+
+    async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
+        return {"actors_created": len(payload.get("actors", []))}
+
+    def is_duplicate(self, candidate: GenerationCandidate, existing: list[GenerationCandidate]) -> bool:
+        return False
+
+
+class TestConcurrentPartialFailureDegradation:
+    """
+    Phase 6 验收测试（文档第 12 条）：
+    candidate_count 为上限值时的并发生成测试，
+    覆盖部分候选成功、部分失败的降级返回。
+    """
+
+    @pytest.mark.asyncio
+    async def test_partial_failure_group_still_created(self, db_session, seeded_project):
+        """
+        3 个候选并发生成，1 个失败，2 个成功。
+        验证：
+        - choice group 仍以 status="open" 创建（满足 partial_success_min=1）
+        - success_count=2, failure_count=1
+        - 成功的 choices 可正常读取
+        - 失败的 choice 以 status="failed" 落库，不阻断其他候选
+        """
+        PartialFailActorAdapter.configure_failures({1})  # index=1 fails
+
+        service = GenerationChoiceService(
+            settings=GenerationChoiceSettings(
+                candidate_count=3,
+                max_concurrency=3,
+                partial_success_min=1,
+            )
+        )
+        result = await service.create_choice_group(
+            project_id=seeded_project,
+            generation_type="test_actor_partial_fail",
+            candidate_count=3,
+            session=db_session,
+        )
+
+        assert result["status"] == "open", f"Expected 'open', got: {result['status']}"
+        assert result["success_count"] == 2
+        assert result["failure_count"] == 1
+        assert result["candidate_count"] == 3
+
+        # Successful choices should be accessible
+        successful_choices = [c for c in result["choices"] if c["status"] == "candidate"]
+        assert len(successful_choices) == 2
+
+        # Failed choice must be recorded in DB with error info
+        stmt = select(ChoiceModel).where(
+            ChoiceModel.choice_group_id == result["id"],
+            ChoiceModel.status == "failed",
+        )
+        failed_choices = (await db_session.execute(stmt)).scalars().all()
+        assert len(failed_choices) == 1
+        assert failed_choices[0].error is not None
+        assert "模拟生成失败" in (failed_choices[0].error.get("message") or "")
+
+    @pytest.mark.asyncio
+    async def test_all_candidates_fail_group_marked_failed(self, db_session, seeded_project):
+        """
+        candidate_count=3，全部失败。
+        验证：choice group status="failed"，success_count=0。
+        """
+        PartialFailActorAdapter.configure_failures({0, 1, 2})  # all fail
+
+        service = GenerationChoiceService(
+            settings=GenerationChoiceSettings(
+                candidate_count=3,
+                max_concurrency=3,
+                partial_success_min=1,
+            )
+        )
+        result = await service.create_choice_group(
+            project_id=seeded_project,
+            generation_type="test_actor_partial_fail",
+            candidate_count=3,
+            session=db_session,
+        )
+
+        assert result["status"] == "failed"
+        assert result["success_count"] == 0
+        assert result["failure_count"] == 3
+        assert len(result["choices"]) == 3
+        assert all(c["status"] == "failed" for c in result["choices"])
+        assert all(c["error"] is not None for c in result["choices"])
+
+    @pytest.mark.asyncio
+    async def test_max_candidate_count_partial_failure(self, db_session, seeded_project):
+        """
+        candidate_count=5（上限），2 个失败，3 个成功。
+        验证降级后 group 仍可用，不因部分失败而整体失败。
+        """
+        PartialFailActorAdapter.configure_failures({0, 4})  # indices 0 and 4 fail
+
+        service = GenerationChoiceService(
+            settings=GenerationChoiceSettings(
+                candidate_count=5,
+                max_concurrency=5,
+                partial_success_min=1,
+            )
+        )
+        result = await service.create_choice_group(
+            project_id=seeded_project,
+            generation_type="test_actor_partial_fail",
+            candidate_count=5,
+            session=db_session,
+        )
+
+        assert result["status"] == "open"
+        assert result["success_count"] == 3
+        assert result["failure_count"] == 2
+        assert result["candidate_count"] == 5
+        # Verify we still get the successful candidates
+        assert len([c for c in result["choices"] if c["status"] == "candidate"]) == 3

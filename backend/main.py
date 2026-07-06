@@ -97,6 +97,9 @@ from backend.api.modules.project_lifecycle.routes.members import (
 from backend.api.modules.project_lifecycle.routes.llm_config import (
     router as project_llm_config_router,
 )
+from backend.api.modules.project_configuration.routes import (
+    router as project_configuration_router,
+)
 from backend.api.modules.preview_convergence.routes.prototype import (
     router as prototype_generation_router,
 )
@@ -540,6 +543,7 @@ app.include_router(project_requirements_router, dependencies=[Depends(require_pr
 app.include_router(project_router)
 app.include_router(project_members_router)
 app.include_router(project_llm_config_router)
+app.include_router(project_configuration_router)
 app.include_router(prototype_generation_router, dependencies=[Depends(require_project_member)])
 app.include_router(preview_shadow_router, dependencies=[Depends(require_project_member)])
 app.include_router(ai_add_session_router)

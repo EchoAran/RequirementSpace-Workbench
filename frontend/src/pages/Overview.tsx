@@ -6,13 +6,13 @@ import { StaleChoiceDialog } from '@/components/shared/StaleChoiceDialog';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationWorkspace } from '@/components/collaboration/ConfirmationWorkspace';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { buildOverviewModel, buildPageHealth, buildProjectRoute, projectionPath } from '@/core/selectors';
 import {
   useWorkspaceStore,
   selectChoices
 } from '@/store/useWorkspaceStore';
-import { RefreshCw } from 'lucide-react';
+import { Cpu, Database, RefreshCw, Sliders } from 'lucide-react';
 import { NodeKindToRoute, NodeKindToText, Finding } from '@/core/schema';
 import { findingProjection } from '@/core/findingPresentation';
 import { getAuditActionTypeLabel } from '@/core/auditActionLabels';
@@ -63,6 +63,14 @@ export function Overview() {
   const isLoading = useWorkspaceStore((s) => s.isLoading);
   const backendNextAction = (findingsByView?.next_action || []).find((f) => !!f);
   const stageProgress = useWorkspaceStore((s) => s.stageProgress);
+  const projectConfiguration = useWorkspaceStore((s) => s.projectConfiguration);
+  const fetchProjectConfiguration = useWorkspaceStore((s) => s.fetchProjectConfiguration);
+
+  useEffect(() => {
+    if (ir?.projectId && typeof fetchProjectConfiguration === 'function') {
+      void fetchProjectConfiguration(ir.projectId);
+    }
+  }, [ir?.projectId, fetchProjectConfiguration]);
 
   const activeProgressStage = stageProgress?.stages?.find((s: any) => s.statusCode !== 'ready');
   const progressNextAction = activeProgressStage?.nextAction || activeProgressStage?.next_action;
@@ -245,6 +253,32 @@ export function Overview() {
       tone: 'text-sky-700',
     },
   ];
+  const generationStrategy = projectConfiguration?.generation_strategy;
+  const knowledgeSummary = projectConfiguration?.knowledge;
+  const llmSummary = projectConfiguration?.llm;
+  const configCards = [
+    {
+      key: 'ai-strategies',
+      title: 'AI 生成策略',
+      icon: Sliders,
+      summary: generationStrategy?.source === 'project' ? '项目自定义策略' : '系统默认策略',
+      meta: `${generationStrategy?.candidate_count ?? 2} 个候选 · ${(generationStrategy?.strategies || []).filter((s: any) => s.enabled).length || 2} 个启用策略`,
+    },
+    {
+      key: 'knowledge',
+      title: '项目知识库',
+      icon: Database,
+      summary: `${knowledgeSummary?.document_count ?? 0} 个文档`,
+      meta: `${knowledgeSummary?.ai_enabled_count ?? 0} 个可用于 AI · ${knowledgeSummary?.processing_count ?? 0} 个处理中 · ${knowledgeSummary?.failed_count ?? 0} 个失败`,
+    },
+    {
+      key: 'llm',
+      title: '项目 LLM',
+      icon: Cpu,
+      summary: llmSummary?.configured ? '已配置项目 LLM' : `项目未配置，回退到${llmSummary?.source === 'personal' ? '个人配置' : '系统配置'}`,
+      meta: llmSummary?.configured ? (llmSummary?.model_name || '项目模型') : (llmSummary?.model_name || `当前来源：${llmSummary?.source || 'system'}`),
+    },
+  ];
 
   return (
     <div className="flex-1 flex w-full relative">
@@ -282,6 +316,42 @@ export function Overview() {
                   ))}
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white px-6 py-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">项目配置</h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">管理当前项目的 AI 策略、参考资料和团队模型连接。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => ir?.projectId && navigate(`/projects/${ir.projectId}/configuration`)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+              >
+                打开配置
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {configCards.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <button
+                    key={card.key}
+                    type="button"
+                    onClick={() => ir?.projectId && navigate(`/projects/${ir.projectId}/configuration?tab=${card.key}`)}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-left transition-all hover:border-indigo-200 hover:bg-white hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-indigo-600" />
+                      <span className="text-sm font-black text-slate-900">{card.title}</span>
+                    </div>
+                    <div className="mt-3 text-sm font-bold text-slate-700">{card.summary}</div>
+                    <div className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{card.meta}</div>
+                  </button>
+                );
+              })}
             </div>
           </section>
 

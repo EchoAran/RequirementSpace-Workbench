@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import hashlib
 import json
 import logging
@@ -51,7 +51,8 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
         existing generators do not require signature changes.
         """
         # Build a strategy-aware user_feedback
-        strategy_hint = f"请按 {context.strategy} 风格生成此项目草稿。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成项目草稿")
         feedback = context.user_feedback or ""
         combined_feedback = f"{strategy_hint}\n{feedback}".strip()
 
@@ -71,14 +72,15 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
         if context.target and context.target.get("knowledge_workspace_id"):
             draft_payload["knowledge_workspace_id"] = context.target.get("knowledge_workspace_id")
 
-        title = self._make_title(context.strategy, response_payload)
+        strat_lbl = context.strategy_label or context.strategy
+        title = self._make_title(strat_lbl, response_payload)
         project_preview = response_payload.get("project_preview", {})
         actors = response_payload.get("actors", [])
         features = response_payload.get("features", [])
 
         return GenerationCandidate(
             title=title,
-            rationale=f"按 {context.strategy} 策略生成的项目草稿",
+            rationale=f"按 {strat_lbl} 策略生成的项目草稿",
             payload=draft_payload,
             preview={
                 "project_name": project_preview.get("project_name", ""),
@@ -91,10 +93,12 @@ class ProjectCreationChoiceAdapter(BaseGenerationChoiceAdapter):
             draft_type="project_creation",
             apply_mode="draft_payload",
             comparison_summary=self._make_comparison_summary(
-                context.strategy, project_preview, actors, features,
+                strat_lbl, project_preview, actors, features,
             ),
             apply_behavior="overwrite",
             apply_behavior_description="此方案将基于候选创建新项目",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:

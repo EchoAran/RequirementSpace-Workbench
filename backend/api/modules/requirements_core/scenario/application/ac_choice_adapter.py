@@ -27,7 +27,8 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 "choice group supports single/batch only"
             )
 
-        strategy_hint = f"请按 {context.strategy} 风格生成验收标准。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成验收标准")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -45,9 +46,10 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         # Load scenario name for preview
         scenario_name = target.get("scenario_name", f"scenario_{scenario_id}")
 
+        strat_lbl = context.strategy_label or context.strategy
         return GenerationCandidate(
             title=f"{scenario_name} — {len(criteria)} 条验收标准",
-            rationale=f"按 {context.strategy} 策略生成的验收标准",
+            rationale=f"按 {strat_lbl} 策略生成的验收标准",
             payload=draft_payload,
             preview={
                 "scenario_id": scenario_id,
@@ -65,10 +67,12 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             draft_type="acceptance_criteria",
             apply_mode="draft_payload",
             comparison_summary=self._make_comparison_summary(
-                context.strategy, criteria, scenario_name,
+                strat_lbl, criteria, scenario_name,
             ),
             apply_behavior="append",
             apply_behavior_description=f"此方案将为 {scenario_name} 新增验收标准",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:

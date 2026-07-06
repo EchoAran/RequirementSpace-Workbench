@@ -1030,6 +1030,17 @@
       },
       "BlankProjectCreateRequest": {
         "properties": {
+          "knowledge_workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Workspace Id"
+          },
           "project_description": {
             "anyOf": [
               {
@@ -1876,6 +1887,28 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "strategyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategyid"
+          },
+          "strategyLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategylabel"
           },
           "title": {
             "title": "Title",
@@ -3642,6 +3675,131 @@
         "title": "GenerationChoiceGroupCreateRequest",
         "type": "object"
       },
+      "GenerationStrategyConfigResponse": {
+        "properties": {
+          "candidate_count": {
+            "default": 2,
+            "description": "\u6bcf\u6b21\u751f\u6210\u7684\u5019\u9009\u65b9\u6848\u6570\u91cf",
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "description": "\u662f\u5426\u542f\u7528\u751f\u6210\u7b56\u7565\u81ea\u5b9a\u4e49",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "default",
+            "description": "\u7b56\u7565\u914d\u7f6e\u6765\u6e90\uff1adefault \u6216 project",
+            "title": "Source",
+            "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/GenerationStrategyItemSchema"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "title": "GenerationStrategyConfigResponse",
+        "type": "object"
+      },
+      "GenerationStrategyConfigUpdate": {
+        "properties": {
+          "candidate_count": {
+            "default": 2,
+            "description": "\u6bcf\u6b21\u751f\u6210\u7684\u5019\u9009\u65b9\u6848\u6570\u91cf",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "description": "\u662f\u5426\u542f\u7528\u751f\u6210\u7b56\u7565\u81ea\u5b9a\u4e49",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "strategies": {
+            "description": "\u5b8c\u6574\u7684\u7b56\u7565\u5217\u8868",
+            "items": {
+              "$ref": "#/components/schemas/GenerationStrategyItemSchema"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies"
+        ],
+        "title": "GenerationStrategyConfigUpdate",
+        "type": "object"
+      },
+      "GenerationStrategyItemSchema": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u5bf9\u7b56\u7565\u751f\u6210\u504f\u597d\u7684\u7b80\u77ed\u63cf\u8ff0",
+            "title": "Description"
+          },
+          "enabled": {
+            "default": true,
+            "description": "\u7b56\u7565\u662f\u5426\u5f00\u542f",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "generation_types": {
+            "description": "\u9002\u7528\u6b64\u7b56\u7565\u7684\u751f\u6210\u7c7b\u578b\u5217\u8868",
+            "items": {
+              "type": "string"
+            },
+            "title": "Generation Types",
+            "type": "array"
+          },
+          "id": {
+            "description": "\u7b56\u7565\u7684\u5bf9\u5185\u552f\u4e00\u6807\u8bc6\uff0c\u4f8b\u5982 balanced, custom_xxx",
+            "title": "Id",
+            "type": "string"
+          },
+          "instruction": {
+            "description": "\u7b56\u7565\u5bf9 AI \u5177\u4f53\u7684\u751f\u6210\u6307\u5bfc\u63d0\u793a\u8bcd",
+            "maxLength": 800,
+            "minLength": 20,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "label": {
+            "description": "\u7b56\u7565\u5c55\u73b0\u7ed9\u7528\u6237\u7684\u540d\u79f0",
+            "maxLength": 20,
+            "minLength": 2,
+            "title": "Label",
+            "type": "string"
+          },
+          "order": {
+            "default": 0,
+            "description": "\u7b56\u7565\u5728\u5217\u8868\u4e2d\u7684\u6392\u5e8f",
+            "title": "Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "instruction"
+        ],
+        "title": "GenerationStrategyItemSchema",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5357,6 +5515,32 @@
         "title": "PreviewShadowRegenerateRequest",
         "type": "object"
       },
+      "ProjectConfigurationResponse": {
+        "properties": {
+          "generation_strategy": {
+            "$ref": "#/components/schemas/GenerationStrategyConfigResponse"
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/ProjectKnowledgeSummary"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/ProjectLLMSummary"
+          },
+          "project_id": {
+            "description": "\u9879\u76ee\u7684 UUID / public_id",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "generation_strategy",
+          "knowledge",
+          "llm"
+        ],
+        "title": "ProjectConfigurationResponse",
+        "type": "object"
+      },
       "ProjectCreationChoiceAcceptResponse": {
         "properties": {
           "message": {
@@ -5400,6 +5584,18 @@
             ],
             "description": "\u5019\u9009\u6570\u91cf\uff0c\u8986\u76d6\u9ed8\u8ba4\u914d\u7f6e",
             "title": "Candidatecount"
+          },
+          "knowledgeWorkspaceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u5173\u8054\u7684\u9879\u76ee\u521b\u5efa\u671f\u77e5\u8bc6\u5e93\u4e34\u65f6\u5de5\u4f5c\u533aID",
+            "title": "Knowledgeworkspaceid"
           },
           "userFeedback": {
             "anyOf": [
@@ -5982,6 +6178,54 @@
         "title": "ProjectFindingsResponse",
         "type": "object"
       },
+      "ProjectKnowledgeConfigUpdate": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "description": "\u662f\u5426\u542f\u7528\u9879\u76ee\u77e5\u8bc6\u5e93\u53c2\u8003",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "ProjectKnowledgeConfigUpdate",
+        "type": "object"
+      },
+      "ProjectKnowledgeSummary": {
+        "properties": {
+          "ai_enabled_count": {
+            "default": 0,
+            "title": "Ai Enabled Count",
+            "type": "integer"
+          },
+          "document_count": {
+            "default": 0,
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "failed_count": {
+            "default": 0,
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "processing_count": {
+            "default": 0,
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "ready_count": {
+            "default": 0,
+            "title": "Ready Count",
+            "type": "integer"
+          }
+        },
+        "title": "ProjectKnowledgeSummary",
+        "type": "object"
+      },
       "ProjectLLMConfigRequest": {
         "properties": {
           "apiKey": {
@@ -6126,6 +6370,45 @@
           "success"
         ],
         "title": "ProjectLLMConfigTestResponse",
+        "type": "object"
+      },
+      "ProjectLLMSummary": {
+        "properties": {
+          "api_key_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Last4"
+          },
+          "configured": {
+            "default": false,
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "source": {
+            "default": "system",
+            "description": "\u5f53\u524d\u751f\u6548\u7684 LLM \u8fde\u63a5\u6765\u6e90: project, personal, system",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "ProjectLLMSummary",
         "type": "object"
       },
       "ProjectListItemResponse": {
@@ -10379,6 +10662,53 @@
         "summary": "Health Check"
       }
     },
+    "/api/knowledge/config": {
+      "get": {
+        "operationId": "get_knowledge_config_api_knowledge_config_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Knowledge Config",
+        "tags": [
+          "project_knowledge"
+        ]
+      }
+    },
     "/api/knowledge_workspaces": {
       "post": {
         "description": "Create a new temporary knowledge workspace for onboarding/project creation.",
@@ -13779,6 +14109,315 @@
         "summary": "Reject Choice",
         "tags": [
           "choices"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/configuration": {
+      "get": {
+        "description": "Retrieve aggregated project configurations summary.",
+        "operationId": "get_project_configuration_api_projects__project_id__configuration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectConfigurationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Configuration",
+        "tags": [
+          "project_configuration"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/configuration/generation-strategies": {
+      "delete": {
+        "description": "Reset generation strategy configuration back to default (requires admin role).",
+        "operationId": "delete_generation_strategy_config_api_projects__project_id__configuration_generation_strategies_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Generation Strategy Config",
+        "tags": [
+          "project_configuration"
+        ]
+      },
+      "get": {
+        "description": "Retrieve generation strategy configuration for the project.",
+        "operationId": "get_generation_strategy_config_api_projects__project_id__configuration_generation_strategies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationStrategyConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Generation Strategy Config",
+        "tags": [
+          "project_configuration"
+        ]
+      },
+      "put": {
+        "description": "Update generation strategy configuration (requires admin role).",
+        "operationId": "update_generation_strategy_config_api_projects__project_id__configuration_generation_strategies_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationStrategyConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationStrategyConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Generation Strategy Config",
+        "tags": [
+          "project_configuration"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/configuration/knowledge": {
+      "put": {
+        "description": "Update project-specific knowledge base toggle (requires admin role).",
+        "operationId": "update_project_knowledge_config_api_projects__project_id__configuration_knowledge_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectKnowledgeConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectKnowledgeSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Knowledge Config",
+        "tags": [
+          "project_configuration"
         ]
       }
     },

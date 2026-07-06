@@ -16,7 +16,8 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one flow + business object candidate."""
-        strategy_hint = f"请按 {context.strategy} 风格生成流程与业务对象。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成流程与业务对象")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -29,9 +30,10 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         flows = response_payload.get("flows", [])
         business_objects = response_payload.get("business_objects", [])
 
+        strat_lbl = context.strategy_label or context.strategy
         return GenerationCandidate(
-            title=f"{context.strategy.capitalize()} — {len(flows)} 个流程, {len(business_objects)} 个业务对象",
-            rationale=f"按 {context.strategy} 策略生成的流程与业务对象",
+            title=f"{strat_lbl} — {len(flows)} 个流程, {len(business_objects)} 个业务对象",
+            rationale=f"按 {strat_lbl} 策略生成的流程与业务对象",
             payload=draft_payload,
             preview={
                 "flow_count": len(flows),
@@ -51,9 +53,11 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             },
             draft_type="flow",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(context.strategy, flows, business_objects),
+            comparison_summary=self._make_comparison_summary(strat_lbl, flows, business_objects),
             apply_behavior="append",
             apply_behavior_description="此方案将新增流程与业务对象到项目",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:

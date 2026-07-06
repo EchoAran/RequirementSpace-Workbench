@@ -29,6 +29,10 @@ class CandidateContext:
         default=None,
         metadata={"help": "DB session, adapters can use it to load project context during generate"},
     )
+    strategy_id: str | None = None
+    strategy_label: str | None = None
+    strategy_description: str | None = None
+    strategy_instruction: str | None = None
 
 
 @dataclass
@@ -47,6 +51,8 @@ class GenerationCandidate:
     # UX-6: 采纳行为说明
     apply_behavior: str = "append"  # overwrite | append | merge
     apply_behavior_description: str = ""
+    strategy_id: str | None = None
+    strategy_label: str | None = None
 
 
 @dataclass
@@ -123,5 +129,24 @@ class ChoiceAdapterRegistry:
         _adapter_registry[generation_type] = adapter_cls
         adapter_cls.generation_type = generation_type
         get_generation_choice_applier().register(generation_type, adapter_cls)
+
+
+def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
+    """Helper to build strategy instruction string to inject into user message."""
+    label = context.strategy_label or context.strategy or "默认"
+    desc = context.strategy_description or ""
+    instruction = context.strategy_instruction or ""
+
+    feedback = f"本候选方案的生成策略：\n"
+    feedback += f"- 策略名称：{label}\n"
+    if desc:
+        feedback += f"- 策略说明：{desc}\n"
+    if instruction:
+        feedback += f"- 生成侧重点：{instruction}\n"
+    
+    feedback += f"\n当前任务：{task_label}。\n"
+    feedback += f"请在满足原始需求、项目上下文和输出格式约束的前提下，按上述策略生成本候选。"
+    return feedback
+
 
 

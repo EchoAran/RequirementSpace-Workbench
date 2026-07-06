@@ -66,7 +66,11 @@ class ProjectLLMConfigService:
         api_key = req.api_key.strip() if req.api_key else ""
         model_name = req.model_name.strip() if req.model_name else ""
 
-        if not api_url or not api_key or not model_name:
+        stmt = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
+        res = await session.execute(stmt)
+        db_config = res.scalar_one_or_none()
+
+        if not api_url or not model_name or (not api_key and not db_config):
             raise ValueError("llm_config_invalid")
 
         if len(api_url) > 500 or len(model_name) > 255:
@@ -77,17 +81,14 @@ class ProjectLLMConfigService:
             raise ValueError("llm_config_invalid")
 
         api_url = api_url.rstrip("/")
-        encrypted_key = encrypt_llm_api_key(api_key)
+        encrypted_key = encrypt_llm_api_key(api_key) if api_key else None
         last4 = api_key[-4:] if len(api_key) >= 4 else api_key
-
-        stmt = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
-        res = await session.execute(stmt)
-        db_config = res.scalar_one_or_none()
 
         if db_config:
             db_config.api_url = api_url
-            db_config.encrypted_api_key = encrypted_key
-            db_config.api_key_last4 = last4
+            if encrypted_key is not None:
+                db_config.encrypted_api_key = encrypted_key
+                db_config.api_key_last4 = last4
             db_config.model_name = model_name
             db_config.updated_by_user_id = user_id
         else:
@@ -128,17 +129,20 @@ class ProjectLLMConfigService:
     async def test_config(
         self, project_id: int, req: ProjectLLMConfigTestRequest, session: AsyncSession
     ) -> ProjectLLMConfigTestResponse:
-        params = [req.api_url, req.api_key, req.model_name]
-        has_any = any(p is not None for p in params)
-        has_all = all(p is not None for p in params)
+        has_any = any(p is not None for p in (req.api_url, req.api_key, req.model_name))
+        stmt = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
+        res = await session.execute(stmt)
+        db_config = res.scalar_one_or_none()
 
-        if has_any and not has_all:
-            raise ValueError("llm_config_invalid")
-
-        if has_all:
+        if has_any:
+            if req.api_url is None or req.model_name is None:
+                raise ValueError("llm_config_invalid")
             api_url = req.api_url.strip()
-            api_key = req.api_key.strip()
+            api_key = req.api_key.strip() if req.api_key is not None else ""
             model_name = req.model_name.strip()
+
+            if not api_key and db_config:
+                api_key = decrypt_llm_api_key(db_config.encrypted_api_key)
 
             if not api_url or not api_key or not model_name:
                 raise ValueError("llm_config_invalid")
@@ -152,9 +156,6 @@ class ProjectLLMConfigService:
 
             api_url = api_url.rstrip("/")
         else:
-            stmt = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
-            res = await session.execute(stmt)
-            db_config = res.scalar_one_or_none()
             if not db_config:
                 raise ValueError("llm_config_required")
             api_url = db_config.api_url

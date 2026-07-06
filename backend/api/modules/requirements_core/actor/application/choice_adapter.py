@@ -24,7 +24,8 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         Injects strategy hint via user_feedback so existing generators
         produce varied outputs (balanced / comprehensive / minimal…).
         """
-        strategy_hint = f"请按 {context.strategy} 风格生成本候选参与者列表。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成参与者列表")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -39,9 +40,10 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
         # Determine apply_behavior based on existing actor count
         # (checked at accept time, but we set a default here)
+        strat_lbl = context.strategy_label or context.strategy
         return GenerationCandidate(
-            title=f"{context.strategy.capitalize()} — {len(actors)} 名参与者",
-            rationale=f"按 {context.strategy} 策略生成的参与者列表",
+            title=f"{strat_lbl} — {len(actors)} 名参与者",
+            rationale=f"按 {strat_lbl} 策略生成的参与者列表",
             payload=draft_payload,
             preview={
                 "actor_count": len(actors),
@@ -49,9 +51,11 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             },
             draft_type="actor",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(context.strategy, actors),
+            comparison_summary=self._make_comparison_summary(strat_lbl, actors),
             apply_behavior="overwrite",
             apply_behavior_description="此方案将替换项目当前参与者列表",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:

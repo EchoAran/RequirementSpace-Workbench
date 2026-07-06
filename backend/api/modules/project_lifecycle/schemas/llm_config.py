@@ -9,7 +9,7 @@ class ProjectLLMConfigResponse(CamelModel):
 
 class ProjectLLMConfigRequest(CamelModel):
     api_url: str = Field(..., min_length=1)
-    api_key: str = Field(..., min_length=1)
+    api_key: str | None = None
     model_name: str = Field(..., min_length=1)
 
 class ProjectLLMConfigTestRequest(CamelModel):

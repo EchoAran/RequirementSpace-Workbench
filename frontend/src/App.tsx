@@ -20,7 +20,7 @@ const Home = lazy(() => import('./pages/Home').then((module) => ({ default: modu
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
 const Register = lazy(() => import('./pages/Register').then((module) => ({ default: module.Register })));
 const AccountSettings = lazy(() => import('./pages/AccountSettings').then((module) => ({ default: module.AccountSettings })));
-const ProjectKnowledge = lazy(() => import('./pages/ProjectKnowledge').then((module) => ({ default: module.ProjectKnowledge })));
+const ProjectConfiguration = lazy(() => import('./pages/ProjectConfiguration').then((module) => ({ default: module.ProjectConfiguration })));
 
 function RouteFallback() {
   return (
@@ -140,6 +140,14 @@ function LegacyWorkspaceRedirect({ page }: { page: WorkspacePage }) {
   return <Navigate to={buildProjectRoute(ir.projectId, page)} replace />;
 }
 
+function LegacyProjectKnowledgeRedirect() {
+  const { projectId } = useParams();
+  if (!projectId) {
+    return <Navigate to="/home" replace />;
+  }
+  return <Navigate to={`/projects/${projectId}/configuration?tab=knowledge`} replace />;
+}
+
 export function GlobalToast() {
   const message = useWorkspaceStore((s) => s.lastActionMessage);
   const error = useWorkspaceStore((s) => s.error);
@@ -179,7 +187,8 @@ export function GlobalToast() {
         <div 
           onClick={() => {
             if (isLlmRequired) {
-              navigate('/settings');
+              const projectId = useWorkspaceStore.getState().ir?.projectId;
+              navigate(projectId ? `/projects/${projectId}/configuration?tab=llm` : '/settings');
               setError(null);
               setVisibleError(null);
               setRawError(null);
@@ -457,7 +466,8 @@ export function App() {
             }
           />
           <Route path="preview" element={<LazyRoute><Preview /></LazyRoute>} />
-          <Route path="knowledge" element={<LazyRoute><ProjectKnowledge /></LazyRoute>} />
+          <Route path="knowledge" element={<LegacyProjectKnowledgeRedirect />} />
+          <Route path="configuration" element={<LazyRoute><ProjectConfiguration /></LazyRoute>} />
         </Route>
         
         {/* Legacy redirects wrapped in AuthGuard */}

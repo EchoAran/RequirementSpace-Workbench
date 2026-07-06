@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from pydantic import Field
 from backend.api.base_schema import CamelModel
 
@@ -19,6 +19,8 @@ class ChoiceResponse(CamelModel):
     preview: dict | None = None
     score: dict | None = None
     error: dict | None = None
+    strategy_id: str | None = None
+    strategy_label: str | None = None
     created_at: datetime
     updated_at: datetime
 

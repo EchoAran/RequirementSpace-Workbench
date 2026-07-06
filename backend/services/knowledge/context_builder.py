@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from backend.services.knowledge.chunking import estimate_tokens
 from backend.services.knowledge.retrieval import KnowledgeRetrievalService
 
@@ -29,10 +29,18 @@ class KnowledgeContextBuilder:
         token_budget: int = 4000,
         session,
     ) -> str:
-        """
-        Build the references reference prompt block matching context criteria.
-        Returns empty string if no references matches.
-        """
+        # Check project-level knowledge enabled setting if project_id is provided
+        if project_id is not None and session is not None:
+            from backend.database.model import ProjectGenerationStrategyConfigModel
+            from sqlalchemy import select
+            stmt = select(ProjectGenerationStrategyConfigModel).where(
+                ProjectGenerationStrategyConfigModel.project_id == project_id
+            )
+            res = await session.execute(stmt)
+            db_config = res.scalar_one_or_none()
+            if db_config is not None and not db_config.knowledge_enabled:
+                return ""
+
         # 1. Retrieve ranked matching chunks
         chunks = await KnowledgeRetrievalService.retrieve_chunks(
             session=session,

@@ -612,6 +612,22 @@ export const workspaceApi = {
     return http.post<any>(`/projects/${projectId}/llm-config/test`, payload);
   },
 
+  getProjectConfiguration: async (projectId: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/configuration`);
+  },
+
+  updateProjectGenerationStrategies: async (projectId: string, payload: any): Promise<any> => {
+    return http.put<any>(`/projects/${projectId}/configuration/generation-strategies`, payload);
+  },
+
+  deleteProjectGenerationStrategies: async (projectId: string): Promise<any> => {
+    return http.delete<any>(`/projects/${projectId}/configuration/generation-strategies`);
+  },
+
+  updateProjectKnowledgeConfig: async (projectId: string, payload: { enabled: boolean }): Promise<any> => {
+    return http.put<any>(`/projects/${projectId}/configuration/knowledge`, payload);
+  },
+
   // Knowledge Workspace management
   createKnowledgeWorkspace: async (): Promise<KnowledgeWorkspace> => {
     return http.post<KnowledgeWorkspace>('/knowledge_workspaces');

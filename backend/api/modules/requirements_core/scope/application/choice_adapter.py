@@ -17,7 +17,8 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one scope/Kano candidate."""
         # Full scope can be heavy; limit to 2 candidates
-        strategy_hint = f"请按 {context.strategy} 风格生成范围分析。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成范围分析")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -30,9 +31,10 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         scopes = response_payload.get("scopes", [])
 
         # Build lightweight preview (omit base64 for candidate comparison)
+        strat_lbl = context.strategy_label or context.strategy
         return GenerationCandidate(
-            title=f"{context.strategy.capitalize()} — {len(scopes)} 项范围决策",
-            rationale=f"按 {context.strategy} 策略生成的范围分析",
+            title=f"{strat_lbl} — {len(scopes)} 项范围决策",
+            rationale=f"按 {strat_lbl} 策略生成的范围分析",
             payload=draft_payload,
             preview={
                 "scope_count": len(scopes),
@@ -48,9 +50,11 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             },
             draft_type="scope",
             apply_mode="draft_payload",
-            comparison_summary=self._make_comparison_summary(context.strategy, scopes),
+            comparison_summary=self._make_comparison_summary(strat_lbl, scopes),
             apply_behavior="overwrite",
             apply_behavior_description="此方案将替换当前范围决策",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:

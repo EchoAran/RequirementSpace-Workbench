@@ -19,7 +19,8 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def generate_candidate(self, context: CandidateContext) -> GenerationCandidate:
         """Generate one feature tree candidate."""
-        strategy_hint = f"请按 {context.strategy} 风格生成功能树。"
+        from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
+        strategy_hint = build_strategy_feedback(context, "生成功能树")
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -31,9 +32,10 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
         features = response_payload.get("features", [])
 
+        strat_lbl = context.strategy_label or context.strategy
         return GenerationCandidate(
-            title=f"{context.strategy.capitalize()} — {len(features)} 项功能",
-            rationale=f"按 {context.strategy} 策略生成的功能树",
+            title=f"{strat_lbl} — {len(features)} 项功能",
+            rationale=f"按 {strat_lbl} 策略生成功能树",
             payload=draft_payload,
             preview={
                 "feature_count": len(features),
@@ -42,10 +44,12 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             draft_type="feature",
             apply_mode="draft_payload",
             comparison_summary=self._make_comparison_summary(
-                context.strategy, features,
+                strat_lbl, features,
             ),
             apply_behavior="overwrite",
             apply_behavior_description="此方案将替换项目的完整功能树",
+            strategy_id=context.strategy_id,
+            strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:

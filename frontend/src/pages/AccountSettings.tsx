@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { accountApi, LLMConfigResponse } from '../lib/accountApi';
@@ -39,10 +39,14 @@ export function AccountSettings() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const ir = useWorkspaceStore(state => state.ir);
+  const workspaces = useWorkspaceStore(state => state.workspaces);
+  const loadWorkspaces = useWorkspaceStore(state => state.loadWorkspaces);
   const projectId = ir?.projectId;
   const projectName = ir?.projectName;
 
   const [activeTab, setActiveTab] = useState<'personal' | 'project'>('personal');
+  const [projectConfigSummaries, setProjectConfigSummaries] = useState<Record<string, any>>({});
+  const [isLoadingProjectIndex, setIsLoadingProjectIndex] = useState(false);
 
   // Project LLM states
   const [projectConfig, setProjectConfig] = useState<any | null>(null);
@@ -94,10 +98,52 @@ export function AccountSettings() {
 
   useEffect(() => {
     void fetchConfig();
+    void loadWorkspaces();
     if (projectId) {
       void fetchProjectConfig();
     }
-  }, [projectId]);
+  }, [projectId, loadWorkspaces]);
+
+  useEffect(() => {
+    if (activeTab !== 'project' || workspaces.length === 0) return;
+
+    let cancelled = false;
+    const fetchSummaries = async () => {
+      setIsLoadingProjectIndex(true);
+      try {
+        const entries = await Promise.all(
+          workspaces.map(async (project) => {
+            try {
+              const config = await workspaceApi.getProjectConfiguration(project.id);
+              return [project.id, config] as const;
+            } catch {
+              return [project.id, null] as const;
+            }
+          })
+        );
+        if (!cancelled) {
+          setProjectConfigSummaries(Object.fromEntries(entries));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingProjectIndex(false);
+        }
+      }
+    };
+
+    void fetchSummaries();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, workspaces]);
+
+  const sortedProjectConfigItems = useMemo(() => {
+    return [...workspaces].sort((a, b) => {
+      if (a.id === projectId) return -1;
+      if (b.id === projectId) return 1;
+      return a.updatedAt < b.updatedAt ? 1 : -1;
+    });
+  }, [projectId, workspaces]);
 
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,7 +184,7 @@ export function AccountSettings() {
 
   const handleDeleteProject = async () => {
     if (!projectId) return;
-    const confirm = window.confirm('确定要清除项目的团队 LLM 配置吗？清除后将恢复使用个人配置或系统配置。');
+    const confirm = window.confirm('确定要清除项目 LLM 配置吗？清除后将恢复使用个人配置或系统配置。');
     if (!confirm) return;
 
     setActionError(null);
@@ -424,7 +470,7 @@ export function AccountSettings() {
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
-                项目团队配置 ({projectName})
+                项目配置索引
               </button>
             </div>
           )}
@@ -634,157 +680,125 @@ export function AccountSettings() {
           ) : (
             /* PROJECT TAB */
             <div className="space-y-6">
-              {!isEditingProject && projectConfig?.configured && (
-                /* Config overview state */
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-medium">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">API 根地址</span>
-                      <span className="font-extrabold text-slate-800 break-all">{projectConfig.apiUrl}</span>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">模型名称</span>
-                      <span className="font-extrabold text-slate-800 break-all">{projectConfig.modelName}</span>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">API Key 密文</span>
-                      <span className="font-extrabold text-slate-800">••••••••{projectConfig.apiKeyLast4}</span>
-                    </div>
-                  </div>
+              <div className="p-4 bg-indigo-50/50 border border-indigo-100 text-indigo-900 rounded-2xl text-xs leading-relaxed">
+                项目级配置按具体项目维护。这里提供可管理项目的配置总览；当前项目会置顶展示，编辑策略、知识库和项目 LLM 请进入对应项目配置页完成。
+              </div>
 
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <button
-                      onClick={() => handleTestProject()}
-                      disabled={isTestingProject}
-                      className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 active:scale-[0.99] transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {isTestingProject ? (
-                        <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-400 border-t-white animate-spin" />
-                      ) : (
-                        <>
-                          <Activity className="w-3.5 h-3.5" />
-                          测试连通性
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setIsEditingProject(true)}
-                      className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                      修改配置
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProject()}
-                      className="px-4 py-2 border border-rose-200 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl hover:bg-rose-100 active:scale-[0.99] transition-all flex items-center gap-1.5 ml-auto cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      清除配置
-                    </button>
-                  </div>
+              {isLoadingProjectIndex ? (
+                <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
+                  <span className="text-xs text-slate-400 font-medium">正在拉取项目配置总览...</span>
                 </div>
-              )}
+              ) : sortedProjectConfigItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs font-medium text-slate-400">
+                  暂无可管理项目。
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sortedProjectConfigItems.map((project) => {
+                    const config = projectConfigSummaries[project.id];
+                    const strategy = config?.generation_strategy;
+                    const knowledge = config?.knowledge;
+                    const llm = config?.llm;
+                    const enabledStrategies = (strategy?.strategies || []).filter((item: any) => item.enabled).length;
+                    const isCurrent = project.id === projectId;
 
-              {(!projectConfig?.configured || isEditingProject) && (
-                /* Config editing/creation form */
-                <form onSubmit={handleSaveProject} className="space-y-5">
-                  <div className="p-4 bg-indigo-50/50 border border-indigo-100 text-indigo-900 rounded-2xl text-xs leading-relaxed">
-                    项目团队 LLM 配置将由项目所有者/管理员统一维护，项目内的协同编辑、AI 建议生成将优先选用项目专属通道，保障团队模型的隔离性与数据合规。
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        API 根地址 (API Base URL) <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="url"
-                          placeholder="https://api.openai.com"
-                          value={projectApiUrl}
-                          onChange={(e) => setProjectApiUrl(e.target.value)}
-                          className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold transition-all"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        大模型名称 (Model Name) <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Cpu className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="gpt-4o"
-                          value={projectModelName}
-                          onChange={(e) => setProjectModelName(e.target.value)}
-                          className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold transition-all"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                        项目共享密钥 (API Key) <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="password"
-                          placeholder={projectConfig?.configured ? '未更改（请输入新 Key 替换）' : '请输入项目共享 API Key'}
-                          value={projectApiKey}
-                          onChange={(e) => setProjectApiKey(e.target.value)}
-                          className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold transition-all"
-                          required={!projectConfig?.configured}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 active:scale-[0.99] transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-600/10 cursor-pointer"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      保存项目配置
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleTestProject()}
-                      disabled={isTestingProject}
-                      className="px-5 py-2.5 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
-                    >
-                      {isTestingProject ? (
-                        <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
-                      ) : (
-                        <>
-                          <Activity className="w-3.5 h-3.5" />
-                          测试连通性
-                        </>
-                      )}
-                    </button>
-                    {projectConfig?.configured && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingProject(false);
-                          setProjectApiUrl(projectConfig.apiUrl || '');
-                          setProjectModelName(projectConfig.modelName || '');
-                          setProjectApiKey('');
-                          setProjectTestResult(null);
-                        }}
-                        className="px-5 py-2.5 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-colors ml-auto cursor-pointer shadow-sm"
+                    return (
+                      <div
+                        key={project.id}
+                        className={`rounded-2xl border p-4 transition-colors ${
+                          isCurrent ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-white'
+                        }`}
                       >
-                        取消
-                      </button>
-                    )}
-                  </div>
-                </form>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-black text-slate-800">{project.name}</h3>
+                              {isCurrent && (
+                                <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                                  当前项目
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-500">
+                              {project.description || project.idea || '暂无项目说明'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/projects/${project.id}/configuration`)}
+                            className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700"
+                          >
+                            打开配置
+                          </button>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                          <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-400">AI 生成策略</span>
+                              <span className="font-bold text-slate-600">{strategy?.source === 'project' ? '项目自定义' : '系统默认'}</span>
+                            </div>
+                            <div className="mt-2 font-extrabold text-slate-800">
+                              {strategy?.candidate_count ?? 2} 个候选 · {enabledStrategies || 2} 个启用策略
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/projects/${project.id}/configuration?tab=ai-strategies`)}
+                              className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
+                            >
+                              查看策略
+                            </button>
+                          </div>
+
+                          <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-400">项目知识库</span>
+                              <span className={`font-bold ${knowledge?.enabled === false ? 'text-slate-400' : 'text-slate-600'}`}>
+                                {knowledge?.enabled === false ? '已关闭' : '已开启'}
+                              </span>
+                            </div>
+                            <div className="mt-2 font-extrabold text-slate-800">
+                              {knowledge?.document_count ?? 0} 个文档 · {knowledge?.ai_enabled_count ?? 0} 个可用于 AI
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium text-slate-400">
+                              {knowledge?.processing_count ?? 0} 处理中 · {knowledge?.failed_count ?? 0} 失败
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/projects/${project.id}/configuration?tab=knowledge`)}
+                              className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
+                            >
+                              查看知识库
+                            </button>
+                          </div>
+
+                          <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-400">项目 LLM</span>
+                              <span className={`font-bold ${llm?.configured ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                {llm?.configured ? '项目已配置' : '项目未配置'}
+                              </span>
+                            </div>
+                            <div className="mt-2 font-extrabold text-slate-800">
+                              {llm?.configured ? (llm?.model_name || '项目模型') : `回退到${llm?.source === 'personal' ? '个人配置' : '系统配置'}`}
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium text-slate-400">
+                              生效模型：{llm?.model_name || '-'}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/projects/${project.id}/configuration?tab=llm`)}
+                              className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
+                            >
+                              查看项目 LLM
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}

@@ -1055,6 +1055,15 @@ class ChoiceModel(TimestampMixin, Base):
         comment="候选生成失败时的错误信息。失败候选可保留 error 但 status 为 failed"
     )
 
+    strategy_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default=None,
+        comment="生成此候选所使用的策略 ID 快照"
+    )
+    strategy_label: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, default=None,
+        comment="生成此候选所使用的策略 Label 快照"
+    )
+
     choice_group: Mapped[ChoiceGroupModel] = relationship(back_populates="choices")
 
 
@@ -1329,6 +1338,7 @@ class ProjectLLMConfigModel(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
+        unique=True,
         index=True,
     )
     api_url: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -1514,6 +1524,29 @@ class KnowledgeChunkModel(TimestampMixin, Base):
     document: Mapped["KnowledgeDocumentModel"] = relationship(foreign_keys=[document_id])
     project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
     workspace: Mapped["KnowledgeWorkspaceModel | None"] = relationship(foreign_keys=[workspace_id])
+
+
+class ProjectGenerationStrategyConfigModel(TimestampMixin, Base):
+    __tablename__ = "project_generation_strategy_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    candidate_count: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    knowledge_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    strategies: Mapped[dict] = mapped_column(JSON, nullable=False)
+    updated_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+    updated_by: Mapped["UserModel | None"] = relationship(foreign_keys=[updated_by_user_id])
 
 
 from sqlalchemy import event, text

@@ -4,11 +4,12 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
 from backend.database.model import Base, ProjectModel, ProjectMemberModel, ProjectLLMConfigModel
 from backend.database.database import get_session
-from backend.core.security.encryption import decrypt_llm_api_key
+from backend.core.security.encryption import decrypt_llm_api_key, encrypt_llm_api_key
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -104,6 +105,32 @@ async def test_project_llm_config_workflow(test_db):
     assert res_get_updated.json()["configured"] is True
     assert res_get_updated.json()["apiUrl"] == "http://mock-llm.api"
 
+    # Test connection may omit apiKey when an existing project config is present.
+    res_test_without_key = client.post(
+        f"/api/projects/{project_public_id}/llm-config/test",
+        json={
+            "apiUrl": "http://mock-llm.api",
+            "modelName": "gpt-4o"
+        }
+    )
+    assert res_test_without_key.status_code == 200
+
+    # Project LLM config is 1:1 per project at the database layer.
+    async with test_db() as session:
+        duplicate = ProjectLLMConfigModel(
+            project_id=project_id,
+            api_url="http://duplicate-llm.api",
+            encrypted_api_key=encrypt_llm_api_key("sk-duplicate"),
+            api_key_last4="cate",
+            model_name="gpt-4o",
+            created_by_user_id=owner_id,
+            updated_by_user_id=owner_id,
+        )
+        session.add(duplicate)
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
+
     # 4. Delete config - should succeed
     res_delete = client.delete(f"/api/projects/{project_public_id}/llm-config")
     assert res_delete.status_code == 200
@@ -160,4 +187,3 @@ async def test_project_llm_config_workflow(test_db):
         }
     )
     assert res_editor_test.status_code == 403
-

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from backend.api.modules.project_lifecycle.schemas.project import ProjectDetailResponse
+from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
 

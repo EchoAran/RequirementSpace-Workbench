@@ -1,5 +1,8 @@
 import re
-import jieba
+try:
+    import jieba
+except ImportError:
+    jieba = None
 
 # Stop words to filter out
 STOP_WORDS = {
@@ -40,8 +43,15 @@ def tokenize_for_search(text: str) -> list[str]:
     # 3. Call jieba for search-oriented segmentation
     jieba_tokens = []
     if chinese_part.strip():
-        # Using cut_for_search for search indexing
-        jieba_tokens = list(jieba.cut_for_search(chinese_part.strip()))
+        if jieba is not None:
+            # Using cut_for_search for search indexing
+            jieba_tokens = list(jieba.cut_for_search(chinese_part.strip()))
+        else:
+            # Fallback: character and bigram tokens for Chinese text when jieba is not installed.
+            jieba_tokens = []
+            for seq in re.findall(r"[\u4e00-\u9fff]+", chinese_part):
+                jieba_tokens.extend(seq[i:i + 2] for i in range(max(0, len(seq) - 1)))
+                jieba_tokens.extend(char for char in seq)
 
     # Combine tokens
     combined_tokens = eng_tokens + jieba_tokens

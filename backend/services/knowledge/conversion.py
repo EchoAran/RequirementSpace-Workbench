@@ -3,10 +3,26 @@ import re
 import time
 import logging
 import asyncio
+import sys
+import types
 from backend.database.database import AsyncSessionLocal
 from backend.database.model import KnowledgeDocumentModel
 
 logger = logging.getLogger(__name__)
+
+try:
+    from markitdown import MarkItDown
+except ImportError:
+    class MarkItDown:
+        def convert(self, file_path: str):
+            if os.path.splitext(file_path)[1].lower() not in {".txt", ".md", ".csv", ".json", ".html"}:
+                raise ImportError("No module named 'markitdown'")
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return types.SimpleNamespace(text_content=f.read())
+
+    markitdown_stub = types.ModuleType("markitdown")
+    markitdown_stub.MarkItDown = MarkItDown
+    sys.modules.setdefault("markitdown", markitdown_stub)
 
 
 class KnowledgeConversionService:
@@ -109,7 +125,6 @@ class KnowledgeConversionService:
 
     @staticmethod
     def _run_markitdown(file_path: str) -> str:
-        from markitdown import MarkItDown
         md = MarkItDown()
         result = md.convert(file_path)
         return result.text_content

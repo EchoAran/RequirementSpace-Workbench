@@ -21,7 +21,7 @@ import {
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { workspaceApi } from '@/lib/api';
-import { ProjectMember } from '@/core/schema';
+import { ProjectMember, getScopeStatusText } from '@/core/schema';
 import { TaskDecisionModal } from '../shared/TaskDecisionModal';
 
 // Node kind mapping helper
@@ -59,6 +59,7 @@ export function ConfirmationWorkspace() {
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [decisionTask, setDecisionTask] = useState<any | null>(null);
+  const [collapsedTargetTasks, setCollapsedTargetTasks] = useState<Set<number>>(new Set());
 
   // Create task form state
   const [assigneeId, setAssigneeId] = useState<number | ''>('');
@@ -116,7 +117,8 @@ export function ConfirmationWorkspace() {
         });
       });
       if (f.scope) {
-        pushLedger('scope', f.featureId, `${f.featureName} - 范围`, f.scope.positiveSummary || '', f.scope.confirmationStatus || f.confirmationStatus);
+        const scopeId = f.scope.scopeId ?? f.scope.id ?? f.scope.scope_id;
+        pushLedger('scope', scopeId, `${f.featureName} - 范围`, f.scope.positiveSummary || '', f.scope.confirmationStatus || f.confirmationStatus);
       }
     });
     (ir.businessObjects || []).forEach((b: any) => {
@@ -227,6 +229,28 @@ export function ConfirmationWorkspace() {
   };
 
   const filteredTasks = getFilteredTasks();
+  const getTargetDisplayName = (target: any) => {
+    if (target.node_kind === 'scope') {
+      const featureId = target.snapshot?.feature_id;
+      const feature = (ir?.features || []).find((item: any) => item.featureId === featureId);
+      const featureName = feature?.featureName || (featureId ? `功能 #${featureId}` : '功能');
+      const scopeStatus = target.snapshot?.status ? ` ${getScopeStatusText(target.snapshot.status)}` : '';
+      return `${featureName}${scopeStatus}`;
+    }
+    return target.node_name || target.snapshot?.name || target.snapshot?.content || `${NodeKindLabels[target.node_kind] || target.node_kind} #${target.node_id}`;
+  };
+
+  const toggleTargetsCollapsed = (taskId: number) => {
+    setCollapsedTargetTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="bg-slate-50/50 h-full p-6 space-y-6 flex flex-col">
@@ -457,7 +481,9 @@ export function ConfirmationWorkspace() {
                   <p className="text-sm">当前分类下暂无确认任务</p>
                 </div>
               ) : (
-                filteredTasks.map((task) => (
+                filteredTasks.map((task) => {
+                  const targetsCollapsed = collapsedTargetTasks.has(task.id);
+                  return (
                   <div
                     key={task.id}
                     className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition-all space-y-4 bg-white shadow-sm"
@@ -540,22 +566,29 @@ export function ConfirmationWorkspace() {
                     {/* Target nodes details list */}
                     {task.taskType !== 'resolve_conflict' && task.taskType !== 'review_draft' && (
                       <div className="border border-slate-100 rounded-xl bg-slate-50/30 overflow-hidden text-xs">
-                        <div className="bg-slate-50/70 px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>待确认资产清单</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleTargetsCollapsed(task.id)}
+                          className="w-full bg-slate-50/70 px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition-colors"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${targetsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
+                            <span>待确认资产清单</span>
+                          </span>
                           <span>共 {task.targets?.length ?? 1} 个节点</span>
-                        </div>
-                        <div className="divide-y divide-slate-100">
+                        </button>
+                        {!targetsCollapsed && <div className="divide-y divide-slate-100">
                           {task.targets?.map((target: any, idx: number) => (
                             <div key={idx} className="px-3.5 py-2 flex items-center justify-between gap-3 bg-white">
                               <span className="font-semibold text-slate-700 truncate">
-                                {target.node_name || target.snapshot?.name || target.snapshot?.content || `${NodeKindLabels[target.node_kind] || target.node_kind} #${target.node_id}`}
+                                {getTargetDisplayName(target)}
                               </span>
                               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide shrink-0">
                                 {NodeKindLabels[target.node_kind] || target.node_kind}
                               </span>
                             </div>
                           ))}
-                        </div>
+                        </div>}
                       </div>
                     )}
 
@@ -597,7 +630,8 @@ export function ConfirmationWorkspace() {
                       </div>
                     )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

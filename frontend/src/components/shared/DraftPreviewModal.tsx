@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 import { ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
+import { getScopeStatusText } from '@/core/schema';
 
 type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
 
@@ -419,7 +420,7 @@ export function DraftPreviewModal({
                     <h4 className="text-sm font-extrabold text-slate-900">{itemTitle(item, index)}</h4>
                     {(item.scope_status || item.scopeStatus) && (
                       <span className="shrink-0 rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                        {item.scope_status || item.scopeStatus}
+                        {getScopeStatusText(item.scope_status || item.scopeStatus)}
                       </span>
                     )}
                   </div>

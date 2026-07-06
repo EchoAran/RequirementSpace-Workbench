@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, AlertTriangle, MessageSquare, ShieldAlert } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { getScopeStatusText } from '@/core/schema';
 
 interface TaskDecisionModalProps {
   task: any;
@@ -43,6 +44,254 @@ const formatValue = (val: unknown) => {
   return String(val);
 };
 
+const DetailLine = ({ label, value }: { label: string; value: unknown }) => (
+  <div className="space-y-1">
+    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{label}</div>
+    <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap break-words">{formatValue(value)}</div>
+  </div>
+);
+
+type ResolveName = (kind: string, id: unknown) => string | undefined;
+
+const formatRef = (kind: string, id: unknown, resolveName: ResolveName) => {
+  if (id === null || id === undefined || id === '') return formatValue(id);
+  return resolveName(kind, id) || `#${String(id)}`;
+};
+
+const RefList = ({ label, kind, values, resolveName }: { label: string; kind: string; values: unknown; resolveName: ResolveName }) => {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {values.map((value) => (
+          <span key={String(value)} className="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
+            {formatRef(kind, value, resolveName)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const FieldTable = ({ snapshot }: { snapshot: Record<string, unknown> }) => {
+  const entries = Object.entries(snapshot);
+  return (
+    <table className="w-full border-collapse">
+      <tbody>
+        {entries.map(([key, val]) => (
+          <tr key={key} className="border-b border-slate-100 last:border-b-0">
+            <td className="px-3.5 py-2 text-[11px] font-semibold text-slate-500 bg-slate-50/50 w-1/3 border-r border-slate-100">
+              {fieldLabels[key] || key}
+            </td>
+            <td className="px-3.5 py-2 text-slate-700 break-all leading-normal whitespace-pre-wrap">
+              {formatValue(val)}
+            </td>
+          </tr>
+        ))}
+        {entries.length === 0 && (
+          <tr>
+            <td className="px-4 py-3 text-slate-400 text-center italic">
+              没有可展示的内容字段
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+};
+
+const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: string; snapshot: Record<string, unknown>; resolveName: ResolveName }) => {
+  if (nodeKind === 'actor') {
+    return <div className="p-4 space-y-3"><DetailLine label="角色名称" value={snapshot.name} /><DetailLine label="职责说明" value={snapshot.description} /></div>;
+  }
+  if (nodeKind === 'feature') {
+    return (
+      <div className="p-4 space-y-3">
+        <DetailLine label="功能名称" value={snapshot.name} />
+        <DetailLine label="功能说明" value={snapshot.description} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <DetailLine label="父功能" value={formatRef('feature', snapshot.parent_id, resolveName)} />
+          <RefList label="关联参与者" kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
+        </div>
+      </div>
+    );
+  }
+  if (nodeKind === 'scenario') {
+    return (
+      <div className="p-4 space-y-3">
+        <DetailLine label="场景名称" value={snapshot.name} />
+        <DetailLine label="场景内容" value={snapshot.content} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <DetailLine label="所属功能" value={formatRef('feature', snapshot.feature_id, resolveName)} />
+          <DetailLine label="参与者" value={formatRef('actor', snapshot.actor_id, resolveName)} />
+        </div>
+      </div>
+    );
+  }
+  if (nodeKind === 'acceptance_criterion') {
+    return <div className="p-4 space-y-3"><DetailLine label="验收标准" value={snapshot.content} /><DetailLine label="所属场景" value={formatRef('scenario', snapshot.scenario_id, resolveName)} /></div>;
+  }
+  if (nodeKind === 'business_object') {
+    const attrs = Array.isArray(snapshot.attributes) ? snapshot.attributes : [];
+    return (
+      <div className="p-4 space-y-3">
+        <DetailLine label="业务对象" value={snapshot.name} />
+        <DetailLine label="对象说明" value={snapshot.description} />
+        {attrs.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">字段</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {attrs.map((attr: any, idx: number) => (
+                <div key={`${attr.name || 'attr'}-${idx}`} className="rounded-lg border border-slate-150 bg-white p-2.5">
+                  <div className="text-xs font-bold text-slate-700">{formatValue(attr.name)}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">{formatValue(attr.data_type)}</div>
+                  {attr.description && <div className="text-[11px] text-slate-600 mt-1 leading-relaxed">{attr.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (nodeKind === 'business_object_attribute') {
+    return <div className="p-4 space-y-3"><DetailLine label="字段名" value={snapshot.name} /><DetailLine label="字段说明" value={snapshot.description} /><DetailLine label="数据类型" value={snapshot.data_type} /><DetailLine label="示例" value={snapshot.example} /></div>;
+  }
+  if (nodeKind === 'flow') {
+    const steps = Array.isArray(snapshot.steps) ? snapshot.steps : [];
+    return (
+      <div className="p-4 space-y-3">
+        <DetailLine label="流程名称" value={snapshot.name} />
+        <DetailLine label="流程说明" value={snapshot.description} />
+        {steps.length > 0 && (
+          <ol className="space-y-2">
+            {steps.map((step: any, idx: number) => (
+              <li key={`${step.position ?? idx}-${step.name || idx}`} className="rounded-lg border border-slate-150 bg-white p-2.5">
+                <div className="text-[11px] font-bold text-indigo-600">步骤 {formatValue(step.position ?? idx + 1)}</div>
+                <div className="text-xs font-bold text-slate-700 mt-1">{formatValue(step.name)}</div>
+                <div className="text-[11px] text-slate-600 mt-1 leading-relaxed">{formatValue(step.description)}</div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    );
+  }
+  if (nodeKind === 'flow_step') {
+    return (
+      <div className="p-4 space-y-3">
+        <DetailLine label="步骤名称" value={snapshot.name} />
+        <DetailLine label="步骤说明" value={snapshot.description} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <DetailLine label="步骤序号" value={snapshot.position} />
+          <DetailLine label="步骤类型" value={snapshot.step_type} />
+          <RefList label="参与者" kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
+          <RefList label="输入对象" kind="business_object" values={snapshot.input_business_object_ids} resolveName={resolveName} />
+          <RefList label="输出对象" kind="business_object" values={snapshot.output_business_object_ids} resolveName={resolveName} />
+        </div>
+      </div>
+    );
+  }
+  if (nodeKind === 'scope') {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-700">{getScopeStatusText(snapshot.status) || formatValue(snapshot.status)}</span>
+          {snapshot.kano_category && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">Kano: {formatValue(snapshot.kano_category)}</span>}
+        </div>
+        <DetailLine label="纳入理由" value={snapshot.positive_summary} />
+        <DetailLine label="不纳入影响" value={snapshot.negative_summary} />
+        <DetailLine label="决策原因" value={snapshot.reason} />
+      </div>
+    );
+  }
+  return <FieldTable snapshot={snapshot} />;
+};
+
+const inferNodeKind = (snapshot: Record<string, unknown>) => {
+  if ('positive_summary' in snapshot || 'negative_summary' in snapshot || 'kano_category' in snapshot) return 'scope';
+  if ('steps' in snapshot) return 'flow';
+  if ('parent_id' in snapshot) return 'feature';
+  if ('actor_ids' in snapshot || 'input_business_object_ids' in snapshot || 'output_business_object_ids' in snapshot) return 'flow_step';
+  if ('attributes' in snapshot) return 'business_object';
+  if ('data_type' in snapshot || 'example' in snapshot) return 'business_object_attribute';
+  if ('content' in snapshot && 'scenario_id' in snapshot) return 'acceptance_criterion';
+  if ('content' in snapshot) return 'scenario';
+  if ('name' in snapshot && 'description' in snapshot) return 'actor';
+  return undefined;
+};
+
+const toNumber = (value: unknown) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const makeNameResolver = (ir: any): ResolveName => {
+  return (kind, id) => {
+    const numId = toNumber(id);
+    if (!ir || numId === null) return undefined;
+
+    if (kind === 'actor') {
+      return (ir.actors || []).find((actor: any) => actor.actorId === numId)?.actorName;
+    }
+
+    if (kind === 'feature') {
+      return (ir.features || []).find((feature: any) => feature.featureId === numId)?.featureName;
+    }
+
+    if (kind === 'scenario') {
+      for (const feature of ir.features || []) {
+        const scenario = (feature.scenarios || []).find((item: any) => item.scenarioId === numId);
+        if (scenario) return scenario.scenarioName;
+      }
+    }
+
+    if (kind === 'acceptance_criterion') {
+      for (const feature of ir.features || []) {
+        for (const scenario of feature.scenarios || []) {
+          const criterion = (scenario.acceptanceCriteria || []).find((item: any) => item.criterionId === numId);
+          if (criterion) return criterion.criterionContent;
+        }
+      }
+    }
+
+    if (kind === 'business_object') {
+      return (ir.businessObjects || []).find((item: any) => item.businessObjectId === numId)?.businessObjectName;
+    }
+
+    if (kind === 'business_object_attribute') {
+      for (const object of ir.businessObjects || []) {
+        const attrs = object.attributes || object.businessObjectAttributes || [];
+        const attr = attrs.find((item: any) => item.attributeId === numId || item.businessObjectAttributeId === numId);
+        if (attr) return attr.attributeName || attr.businessObjectAttributeName;
+      }
+    }
+
+    if (kind === 'flow') {
+      return (ir.flows || []).find((item: any) => item.flowId === numId)?.flowName;
+    }
+
+    if (kind === 'flow_step') {
+      for (const flow of ir.flows || []) {
+        const steps = flow.steps || flow.flowSteps || [];
+        const step = steps.find((item: any) => item.stepId === numId);
+        if (step) return step.stepName;
+      }
+    }
+
+    if (kind === 'scope') {
+      const feature = (ir.features || []).find((item: any) => {
+        const scope = item.scope;
+        return scope && (scope.scopeId === numId || scope.id === numId || scope.scope_id === numId);
+      });
+      return feature ? `${feature.featureName} - 范围` : undefined;
+    }
+
+    return undefined;
+  };
+};
+
 const getSnapshotTitle = (task: any, target?: any, index?: number) => {
   const snapshot = target?.snapshot || task.contentSnapshot || {};
   const snapshotName = snapshot.name || snapshot.content;
@@ -57,23 +306,28 @@ const getSnapshotGroups = (task: any) => {
   if (Array.isArray(task.targets) && task.targets.length > 0) {
     return task.targets.map((target: any, index: number) => ({
       title: getSnapshotTitle(task, target, index),
+      nodeKind: target.node_kind || inferNodeKind(target.snapshot || {}),
       snapshot: target.snapshot || {},
     }));
   }
 
+  const snapshot = task.contentSnapshot || {};
   return [{
     title: getSnapshotTitle(task),
-    snapshot: task.contentSnapshot || {},
+    nodeKind: task.targetType || task.target_type || inferNodeKind(snapshot),
+    snapshot,
   }];
 };
 
 export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskDecisionModalProps) {
   const decideTask = useWorkspaceStore((state) => state.decideTask);
+  const ir = useWorkspaceStore((state) => state.ir);
   const [decisionNote, setDecisionNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const snapshotGroups = getSnapshotGroups(task);
+  const resolveName = makeNameResolver(ir);
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     try {
@@ -144,7 +398,6 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">发起确认时的内容记录</div>
             <div className="space-y-3">
               {snapshotGroups.map((group, index) => {
-                const entries = Object.entries(group.snapshot);
                 return (
                   <div key={`${group.title}-${index}`} className="border border-slate-150 rounded-xl overflow-hidden bg-slate-50/30 text-xs">
                     {snapshotGroups.length > 1 && (
@@ -152,27 +405,7 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
                         {group.title}
                       </div>
                     )}
-                    <table className="w-full border-collapse">
-                      <tbody>
-                        {entries.map(([key, val]) => (
-                          <tr key={key} className="border-b border-slate-100 last:border-b-0">
-                            <td className="px-3.5 py-2 text-[11px] font-semibold text-slate-500 bg-slate-50/50 w-1/3 border-r border-slate-100">
-                              {fieldLabels[key] || key}
-                            </td>
-                            <td className="px-3.5 py-2 text-slate-700 break-all leading-normal whitespace-pre-wrap">
-                              {formatValue(val)}
-                            </td>
-                          </tr>
-                        ))}
-                        {entries.length === 0 && (
-                          <tr>
-                            <td className="px-4 py-3 text-slate-400 text-center italic">
-                              该确认对象没有可展示的内容字段
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                    <SnapshotPreview nodeKind={group.nodeKind} snapshot={group.snapshot} resolveName={resolveName} />
                   </div>
                 );
               })}

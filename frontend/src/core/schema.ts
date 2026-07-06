@@ -472,6 +472,12 @@ export const ScopeStatusToText: Record<string, string> = {
   excluded: '排除',
 };
 
+export function getScopeStatusText(status: unknown): string {
+  const key = String(status ?? '').trim();
+  if (!key) return '';
+  return ScopeStatusToText[key] || ScopeStatusToText[key.toLowerCase()] || key;
+}
+
 export type ImpactPreview = any;
 
 export type RequirementSpaceIR = RequirementSpace;
@@ -653,4 +659,3 @@ export interface KnowledgeDocument {
   created_at: string;
   updated_at: string;
 }
-

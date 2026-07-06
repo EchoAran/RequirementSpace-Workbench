@@ -7,6 +7,7 @@ import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { workspaceApi } from '@/lib/api';
 import { Sparkles, Check, X, RefreshCw, CheckSquare } from 'lucide-react';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
+import { getScopeStatusText } from '@/core/schema';
 import { 
   useWorkspaceStore, 
   selectScopeItems,
@@ -338,18 +339,20 @@ export function ScopeAndDelivery() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
-                {activeDraft.scopes?.map((sc: any, idx: number) => (
+                {activeDraft.scopes?.map((sc: any, idx: number) => {
+                  const scopeStatusText = getScopeStatusText(sc.scope_status);
+                  return (
                   <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50 flex flex-col justify-between">
                     <div>
                       <div className="flex justify-between items-center mb-1.5">
                         <h4 className="font-bold text-slate-800 text-xs">{sc.feature_name}</h4>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          sc.scope_status === '本期'
+                          scopeStatusText === '本期'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                            : sc.scope_status === '暂缓'
+                            : scopeStatusText === '暂缓'
                             ? 'bg-sky-50 text-sky-700 border border-sky-100'
                             : 'bg-rose-50 text-rose-700 border border-rose-100'
-                        }`}>{sc.scope_status}</span>
+                        }`}>{scopeStatusText}</span>
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed mb-3">{sc.reason}</p>
                     </div>
@@ -359,7 +362,8 @@ export function ScopeAndDelivery() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

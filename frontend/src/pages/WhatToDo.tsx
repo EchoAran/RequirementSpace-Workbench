@@ -610,7 +610,7 @@ export function WhatToDo() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-200/60">
                   {activeDraft.actors?.map((act: any, idx: number) => (
                     <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
-                      <span className="font-bold text-xs text-slate-800">👤 {act.actor_name}</span>
+          <span className="font-bold text-xs text-slate-800">{act.actor_name}</span>
                       <p className="text-xs text-slate-500 mt-1 leading-normal">{act.actor_description}</p>
                     </div>
                   ))}
@@ -678,7 +678,7 @@ export function WhatToDo() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
                   {activeDraft.features?.map((feat: any, idx: number) => (
                     <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
-                      <span className="font-bold text-xs text-slate-800">🌳 功能模块: {feat.feature_name}</span>
+          <span className="font-bold text-xs text-slate-800">功能模块: {feat.feature_name}</span>
                       <p className="text-xs text-slate-500 mt-1 leading-normal mb-2">{feat.feature_description}</p>
                       {feat.actor_names && feat.actor_names.length > 0 && (
                         <div className="flex flex-wrap gap-1">
@@ -754,7 +754,7 @@ export function WhatToDo() {
                   {activeDraft.scenarios?.map((sc: any, idx: number) => (
                     <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50 flex flex-col justify-between">
                       <div>
-                        <span className="font-bold text-xs text-slate-800 block">🎬 {sc.scenario_name}</span>
+          <span className="font-bold text-xs text-slate-800 block">{sc.scenario_name}</span>
                         <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100/50 mt-1.5 italic">
                           "{sc.scenario_content}"
                         </p>
@@ -1155,11 +1155,11 @@ export function WhatToDo() {
                                             className="bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-md shadow-sm transition-all"
                                             title={`已关联参与者: ${boundActors.map((a: any) => a.actorName).join(', ')}`}
                                           >
-                                            👤 {capActors.length} 个参与者: {boundActors.map((a: any) => a.actorName).join(', ')}
+          {capActors.length} 个参与者: {boundActors.map((a: any) => a.actorName).join(', ')}
                                           </span>
                                         ) : (
                                           <span className="bg-rose-50 border border-rose-200 text-rose-600 px-2 py-0.5 rounded-md shadow-sm transition-all font-bold">
-                                            ⚠️ 未绑定参与者
+          未绑定参与者
                                           </span>
                                         )}
                                       </div>
@@ -1173,7 +1173,7 @@ export function WhatToDo() {
                                           }}
                                           className="text-[10px] bg-slate-900 hover:bg-indigo-600 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm flex items-center gap-1 shrink-0"
                                         >
-                                          🎬 场景与验收标准
+        场景与验收标准
                                         </button>
                                       ) : (
                                         <button
@@ -1299,7 +1299,7 @@ export function WhatToDo() {
                                   </span>
                                 ) : (
                                   <span className="bg-rose-50 border border-rose-100 text-rose-600 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md">
-                                    ⚠️ 未关联参与者
+          未关联参与者
                                   </span>
                                 )}
                               </div>
@@ -1346,7 +1346,7 @@ export function WhatToDo() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-extrabold text-sm text-slate-800">👤 手动创建参与者</h3>
+        <h3 className="font-extrabold text-sm text-slate-800">手动创建参与者</h3>
               <p className="text-[10px] text-slate-500 mt-1">手动在当前工作区添加业务操作参与者，用以绑定功能节点或流程步骤。</p>
             </div>
             <div className="p-6 space-y-4">
@@ -1402,7 +1402,7 @@ export function WhatToDo() {
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
               <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
-                🌳 手动创建能力功能结点
+        手动创建能力功能结点
               </h3>
               <p className="text-[10px] text-slate-500 mt-1">手动在当前工作区的能力树中添加功能模块或具体的叶子功能结点。</p>
             </div>
@@ -1490,7 +1490,7 @@ export function WhatToDo() {
             <div className="p-6 border-b border-slate-200/50 flex justify-between items-center bg-slate-50/50">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
-                  🎬 场景与验收标准
+        场景与验收标准
                 </h3>
                 <p className="text-[10px] text-indigo-700 mt-1 font-bold">
                   具体功能特征: <span className="bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded text-indigo-800 font-extrabold">{managedFeatObj.featureName}</span>

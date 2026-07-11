@@ -122,7 +122,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 <div className="mt-2.5 flex flex-col gap-2">
                   {isOverridden && (
                     <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
-                      ⚠️ 已手动覆盖 AI 原推荐 ({originalAiRec})
+          已手动覆盖 AI 原推荐 ({originalAiRec})
                     </span>
                   )}
                   <button
@@ -133,7 +133,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                     }}
                     className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold transition-colors border border-indigo-100/50 flex items-center justify-center gap-1 shadow-sm select-none"
                   >
-                    📊 查看 Kano 分析评估
+          查看 Kano 分析评估
                   </button>
                 </div>
               )}
@@ -163,7 +163,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50 shrink-0 flex justify-between items-start">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-                  <span>📊</span> Kano 智能决策分析报告：{activeKanoItem.title}
+        Kano 智能决策分析报告：{activeKanoItem.title}
                 </h3>
                 {activeKanoItem.parentModuleName && (
                   <p className="text-[10px] text-indigo-600 font-bold mt-1">所属模块：{activeKanoItem.parentModuleName}</p>
@@ -174,7 +174,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 onClick={() => setActiveKanoItem(null)}
                 className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
               >
-                ✕
+          关闭
               </button>
             </div>
 
@@ -185,7 +185,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 {activeKanoItem.scope.positiveSummary && (
                   <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-                      💡 有该功能时的用户感受
+        有该功能时的用户感受
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-emerald-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.positiveSummary}"
@@ -196,7 +196,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 {activeKanoItem.scope.negativeSummary && (
                   <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-rose-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-                      ⚠️ 缺少该功能时的用户感受
+        缺少该功能时的用户感受
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-rose-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.negativeSummary}"
@@ -211,7 +211,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   {activeKanoItem.scope.positivePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-indigo-700 flex items-center gap-1 text-xs">
-                        📊 有该功能时的体验影响图
+        有该功能时的体验影响图
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -226,7 +226,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   {activeKanoItem.scope.negativePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-slate-700 flex items-center gap-1 text-xs">
-                        📉 缺少该功能时的体验影响图
+        缺少该功能时的体验影响图
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 

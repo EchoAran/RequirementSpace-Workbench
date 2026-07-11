@@ -418,7 +418,7 @@ export function HowItWorks() {
             onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
-            → 前往 What 阶段进行参与者与能力建模
+          前往 What 阶段进行参与者与能力建模
           </button>
         </div>
       </div>
@@ -795,7 +795,7 @@ export function HowItWorks() {
                                   title="缩小 (Zoom Out)"
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] text-slate-600 hover:text-slate-800 transition-colors shadow-sm"
                                 >
-                                  ➖
+          减少
                                 </button>
                                 <span className="text-[10px] font-extrabold text-slate-500 min-w-[36px] text-center">
                                   {Math.round(currentPanZoom.scale * 100)}%
@@ -814,7 +814,7 @@ export function HowItWorks() {
                                   title="放大 (Zoom In)"
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] text-slate-600 hover:text-slate-800 transition-colors shadow-sm"
                                 >
-                                  ➕
+          增加
                                 </button>
                                 <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
                                 <button
@@ -829,7 +829,7 @@ export function HowItWorks() {
                                   title="重置视图"
                                   className="px-2 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] font-extrabold text-indigo-600 hover:text-indigo-700 transition-colors shadow-sm"
                                 >
-                                  🔄 重置
+          重置
                                 </button>
                               </div>
 
@@ -1226,7 +1226,7 @@ export function HowItWorks() {
                                       }}
                                       className="text-[10px] bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:text-indigo-700 rounded-md px-2 py-0.5 font-medium transition-all"
                                     >
-                                      ⚙️ {s.title}
+          {s.title}
                                     </button>
                                   ))}
                                 </div>
@@ -1340,7 +1340,7 @@ export function HowItWorks() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-lg w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-extrabold text-sm text-slate-800">📂 手动组建业务流程</h3>
+        <h3 className="font-extrabold text-sm text-slate-800">手动组建业务流程</h3>
               <p className="text-[10px] text-slate-500 mt-1">创建一条核心业务流转主线，并关联相应的叶子功能（Leaf Features）。</p>
             </div>
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">

@@ -122,7 +122,7 @@ export function AIAddObjectDialog({
         setStep('ready');
       }
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${err?.detail || '发送消息失败，请稍后重试'}` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: err?.detail || '发送消息失败，请稍后重试' }]);
     } finally {
       setIsSending(false);
     }

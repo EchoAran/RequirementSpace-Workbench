@@ -57,11 +57,11 @@ function getDraftItems(draft: any, draftType: DraftType) {
     }
     if (preview.affected_relations?.length > 0) {
       preview.affected_relations.forEach((r: any) => {
-        items.push({ _kind: 'relation', _label: r.change || '关系变更', name: `${r.source || '?'} → ${r.target || '?'}` });
+  items.push({ _kind: 'relation', _label: r.change || '关系变更', name: `${r.source || '?'} 至 ${r.target || '?'}` });
       });
     }
     if (preview.risk_level) {
-      const riskLabel = preview.risk_level === 'high' ? '⚠️ 高风险' : preview.risk_level === 'medium' ? '• 中等风险' : '✓ 低风险';
+  const riskLabel = preview.risk_level === 'high' ? '高风险' : preview.risk_level === 'medium' ? '中等风险' : '低风险';
       items.push({ _kind: 'risk', _label: '风险等级', name: riskLabel });
     }
     if (preview.summary && items.length === 0) {

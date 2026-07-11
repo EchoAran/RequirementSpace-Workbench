@@ -1491,7 +1491,7 @@ export const getGuardRedirect = (
     if (!whatGate.passed) {
       return {
         targetRoute: '/what',
-        errorToast: '⚠️ 需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
+    errorToast: '需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
       };
     }
   }
@@ -1500,13 +1500,13 @@ export const getGuardRedirect = (
     if (!whatGate.passed) {
       return {
         targetRoute: '/what',
-        errorToast: '⚠️ 需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
+    errorToast: '需先补齐 What 阶段：至少存在角色与叶子功能，每个功能需关联角色、典型场景，且所有成功标准非空，且无阻碍性感知槽。'
       };
     }
     if (!howGate.passed) {
       return {
         targetRoute: '/flow',
-        errorToast: '⚠️ 需先补齐 How 阶段：至少存在一条核心业务流程且拓扑关联关系完整，字段属性满足非平衡校验，且无阻碍性感知槽。'
+    errorToast: '需先补齐 How 阶段：至少存在一条核心业务流程且拓扑关联关系完整，字段属性满足非平衡校验，且无阻碍性感知槽。'
       };
     }
   }

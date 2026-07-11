@@ -207,13 +207,13 @@ export function Preview() {
     const isLoading = prototypeState === 'loading';
     if (!isGenerating && !isLoading) {
       if (activeShadowDraftRef.current?.status === 'failed' && hasRequestedShadowPreview) {
-        setProgressSubtitle('❌ 影子原型推演失败！已为您捕获关键日志信息。');
+    setProgressSubtitle('影子原型推演失败！已为您捕获关键日志信息。');
         setIsModalOpen(true); // Keep modal open to show traceback!
         return;
       }
       if (smoothProgress > 0 && smoothProgress < 100) {
         setSmoothProgress(100);
-        setProgressSubtitle('🪄 影子原型推演成功！正在加载预览...');
+    setProgressSubtitle('影子原型推演成功！正在加载预览...');
         const t = setTimeout(() => {
           setIsModalOpen(false);
           setSmoothProgress(0);
@@ -285,13 +285,13 @@ export function Preview() {
             if (currentUnreadyGates.length === 0) {
               setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
             } else if (nextVal < 35) {
-              setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+    setProgressSubtitle('AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
             } else if (nextVal < 70) {
-              setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+    setProgressSubtitle('AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
             } else if (nextVal < 90) {
-              setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+    setProgressSubtitle('AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
             } else if (nextVal < 98) {
-              setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+    setProgressSubtitle('影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
             }
           }
 
@@ -316,13 +316,13 @@ export function Preview() {
             if (currentUnreadyGates.length === 0) {
               setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
             } else if (prev < 35) {
-              setProgressSubtitle('🪄 AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+    setProgressSubtitle('AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
             } else if (prev < 70) {
-              setProgressSubtitle('🪄 AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+    setProgressSubtitle('AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
             } else if (prev < 90) {
-              setProgressSubtitle('🪄 AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+    setProgressSubtitle('AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
             } else if (prev < 98) {
-              setProgressSubtitle('🪄 影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+    setProgressSubtitle('影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
             }
           }
 
@@ -691,11 +691,11 @@ export function Preview() {
     try {
       setIsPostCommitCompiling(true); // Trigger compiling overlay in prototype pane
       await commitShadowDraft(activeShadowDraft.draftId);
-      showToast('🎉 影子沙盒已成功合并！所有规约已闭环并生成正式 prototype。');
+    showToast('影子沙盒已成功合并！所有规约已闭环并生成正式 prototype。');
     } catch (err) {
       setIsPostCommitCompiling(false);
       if (err instanceof Error && err.message.includes('shadow_draft_conflict')) {
-        showToast('❌ 合并冲突：在影子草稿推演期间，该项目的真实规约已被其他修改更改，请刷新后重新推演。');
+    showToast('合并冲突：在影子草稿推演期间，该项目的真实规约已被其他修改更改，请刷新后重新推演。');
       } else {
         showToast('采纳影子草稿失败：' + (err instanceof Error ? err.message : String(err)));
       }
@@ -1174,7 +1174,7 @@ export function Preview() {
           {unresolvedIssues.length > 0 && (
             <section className="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm">
               <h3 className="font-bold text-amber-900 mb-1.5 flex items-center gap-1.5 text-xs">
-                <span>⚠️ 发现未闭环的系统设计 Issue ({unresolvedIssues.length} 项)</span>
+          <span>发现未闭环的系统设计 Issue ({unresolvedIssues.length} 项)</span>
               </h3>
               <p className="text-xs text-amber-800 leading-relaxed font-medium">
                 工作区目前包含未决的业务冲突或流程空白，建议在最终导出产品规格说明前，返回“做什么”和“如何工作”页面修复这些问题。
@@ -1202,7 +1202,7 @@ export function Preview() {
                         : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
                     }`}
                   >
-                    🌊 {flow.flowName}
+          {flow.flowName}
                   </button>
                 ))}
               </div>
@@ -1323,7 +1323,7 @@ export function Preview() {
               {activeShadowDraft?.status === 'failed' ? (
                 <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> 智能推演异常断裂</span>
               ) : smoothProgress === 100 ? (
-                <span className="text-emerald-600 font-extrabold">🪄 影子原型推演成功</span>
+          <span className="text-emerald-600 font-extrabold">影子原型推演成功</span>
               ) : isShadowOverlay ? (
                 <span className="text-slate-800">AI 正在补齐规约并生成影子预览</span>
               ) : (

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronDown, ChevronRight, User, Cpu, GitBranch } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 
 function asArray(value: any): any[] {
@@ -70,9 +71,9 @@ export function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; dept
             className="mt-0.5 p-0.5 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0 flex items-center justify-center focus:outline-none"
           >
             {isExpanded ? (
-              <span className="block text-[8px] leading-none font-bold select-none transform scale-90">▼</span>
+              <ChevronDown className="h-3 w-3" />
             ) : (
-              <span className="block text-[8px] leading-none font-bold select-none transform scale-90">▶</span>
+              <ChevronRight className="h-3 w-3" />
             )}
           </button>
         ) : (
@@ -398,7 +399,7 @@ function FlowPreview({
                             {number}
                           </span>
                           <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 leading-none">
-                            {type === 'actorAction' ? '👤 交互' : type === 'systemAction' ? '⚙️ 自动' : '🔀 分支'}
+            {type === 'actorAction' ? <><User className="h-3 w-3" /> 交互</> : type === 'systemAction' ? <><Cpu className="h-3 w-3" /> 自动</> : <><GitBranch className="h-3 w-3" /> 分支</>}
                           </span>
                           <h6 className="text-xs font-bold text-slate-800 leading-none">{name}</h6>
                         </div>

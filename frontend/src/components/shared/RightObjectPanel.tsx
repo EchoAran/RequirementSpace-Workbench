@@ -558,7 +558,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
       )}
 
       {activePage === '/scope' && feat.scope && (feat.scope.positiveSummary || feat.scope.negativeSummary || feat.scope.positivePictureBase64 || feat.scope.negativePictureBase64) && (
-        <Section title="📊 Kano 智能需求分析">
+      <Section title="Kano 智能需求分析">
           {feat.scope.positiveSummary && (
             <div className="mb-4 space-y-2">
               <div>
@@ -650,7 +650,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
                 onClick={() => setSelectedObject(parentCap)}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold bg-indigo-50/50 border border-indigo-100/60 rounded-lg px-2.5 py-1.5 transition-all text-left w-full truncate"
               >
-                📁 {parentCap.parentId === null ? (ir?.projectName || parentCap.featureName) : parentCap.featureName}
+              {parentCap.parentId === null ? (ir?.projectName || parentCap.featureName) : parentCap.featureName}
               </button>
             ) : (
               <span className="text-xs text-slate-400 italic">无（当前是顶级功能结点）</span>
@@ -668,7 +668,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
                     onClick={() => setSelectedObject(c)}
                     className="text-[10px] bg-slate-50 border border-slate-200 text-slate-700 hover:border-indigo-300 hover:text-indigo-700 hover:bg-white rounded-md px-2 py-0.5 font-medium transition-all"
                   >
-                    📄 {c.featureName}
+                  {c.featureName}
                   </button>
                 ))}
               </div>
@@ -701,7 +701,7 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
                       }
                     }}
                   />
-                  <span>👤 {actor.actorName}</span>
+                <span>{actor.actorName}</span>
                 </label>
               );
             })}
@@ -996,7 +996,7 @@ function FlowStepObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: 
         </div>
         {stepType === 'actorAction' && selectedActorIds.length === 0 && (
           <div className="text-[10px] text-amber-600 font-bold mt-1.5 flex items-center gap-1">
-            ⚠️ 交互类型步骤必须至少勾选一个关联参与者。
+            交互类型步骤必须至少勾选一个关联参与者。
           </div>
         )}
       </Section>
@@ -1197,7 +1197,7 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            ⚡ 可视化设计器
+            可视化设计器
           </button>
           <button
             type="button"
@@ -1208,7 +1208,7 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            📝 原生 Gherkin 文本
+            原生 Gherkin 文本
           </button>
         </div>
       </div>
@@ -1242,7 +1242,7 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
             </ActionButton>
           </ActionRow>
         ) : (
-          <div className="text-xs text-rose-500 italic mt-2 font-medium">⚠️ 无法定位该验收标准所属的父级功能及场景，属性只读。</div>
+          <div className="text-xs text-rose-500 italic mt-2 font-medium">无法定位该验收标准所属的父级功能及场景，属性只读。</div>
         )}
       </Section>
     </PanelShell>

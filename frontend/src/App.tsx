@@ -9,6 +9,7 @@ import { buildProjectRoute, extractWorkspacePage, getGuardRedirect } from './cor
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { GuestGuard } from './components/auth/GuestGuard';
+import { Lock } from 'lucide-react';
 
 const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })));
 const WhatToDo = lazy(() => import('./pages/WhatToDo').then((module) => ({ default: module.WhatToDo })));
@@ -383,7 +384,7 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
     <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-6 animate-in fade-in duration-300">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-500 text-xl font-bold">
-          🔒
+                <Lock className="h-4 w-4" />
         </div>
         <div className="space-y-2">
           <h3 className="text-base font-black text-slate-800 tracking-tight">{stageNameLabel} 阶段尚未解锁</h3>

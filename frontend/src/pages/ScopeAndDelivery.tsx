@@ -159,7 +159,7 @@ export function ScopeAndDelivery() {
             onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
-            → 前往 What 阶段完善特征树结构
+          前往 What 阶段完善特征树结构
           </button>
         </div>
       </div>
@@ -358,7 +358,7 @@ export function ScopeAndDelivery() {
                     </div>
                     {sc.positive_summary && (
                       <div className="text-[10px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 font-medium">
-                        💡 {sc.positive_summary}
+                {sc.positive_summary}
                       </div>
                     )}
                   </div>
@@ -400,7 +400,7 @@ export function ScopeAndDelivery() {
                       className="flex items-center gap-1.5 text-xs bg-slate-100 text-slate-500 font-bold px-4 py-2.5 rounded-xl border border-slate-200/50"
                     >
                       <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                      🤖 AI 正在评估中，请稍候...
+              AI 正在评估中，请稍候...
                     </button>
                   )}
 
@@ -410,7 +410,7 @@ export function ScopeAndDelivery() {
                         onClick={confirmScope}
                         className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
                       >
-                        🎨 确认并采纳 AI 范围建议
+            确认并采纳 AI 范围建议
                       </button>
                     </>
                   )}
@@ -495,7 +495,7 @@ export function ScopeAndDelivery() {
               <div className="mx-auto w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center text-indigo-600 mb-3 shadow-sm">
                 <RefreshCw className={`w-5 h-5 ${isImpactLoading ? 'animate-spin' : ''}`} />
               </div>
-              <h3 className="text-base font-black text-slate-900 tracking-tight">🔄 范围调整影响评估</h3>
+          <h3 className="text-base font-black text-slate-900 tracking-tight">范围调整影响评估</h3>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                 确认将该功能点的交付范围调整为：<span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/50">{pendingMoveLabel}</span> 吗？
               </p>
@@ -508,7 +508,7 @@ export function ScopeAndDelivery() {
               </div>
             ) : previewError ? (
               <div className="text-xs text-rose-600 font-medium py-4 text-center bg-rose-50 rounded-2xl border border-rose-200/50">
-                ⚠️ {previewError}
+            {previewError}
               </div>
             ) : (
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 shadow-inner max-h-[250px] overflow-y-auto">

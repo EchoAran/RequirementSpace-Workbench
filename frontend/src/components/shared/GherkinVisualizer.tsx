@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
 
 export interface GherkinClause {
   keyword: 'Given' | 'When' | 'Then' | 'And' | 'But';
@@ -557,7 +558,7 @@ export const GherkinVisualEditor: React.FC<{
                 title="删除此行子句"
                 className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 border border-slate-200 bg-white hover:bg-rose-50 transition-all text-xs"
               >
-                ✕
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
@@ -609,7 +610,7 @@ export const GherkinVisualEditor: React.FC<{
                           title="删除此变量列"
                           className="text-[9px] text-slate-300 hover:text-rose-500 font-bold leading-none p-0.5"
                         >
-                          ✕
+                          <X className="h-3 w-3" />
                         </button>
                       </div>
                     </th>
@@ -638,7 +639,7 @@ export const GherkinVisualEditor: React.FC<{
                         title="删除此测试行"
                         className="text-[10px] text-slate-400 hover:text-rose-500 font-bold p-0.5"
                       >
-                        ✕
+                        <X className="h-3 w-3" />
                       </button>
                     </td>
                   </tr>

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { extractWorkspacePage } from '@/core/selectors';
 import { useAuthStore } from '@/store/useAuthStore';
-import { Settings, LogOut, User, Shield, Users, ClipboardList, Clock, Bell } from 'lucide-react';
+import { Settings, LogOut, User, Shield, Users, ClipboardList, Clock, Bell, ArrowLeft } from 'lucide-react';
 import ProjectMembersModal from '../project/ProjectMembersModal';
 import { TaskDecisionModal } from '../shared/TaskDecisionModal';
 import { workspaceApi } from '@/lib/api';
@@ -112,7 +112,7 @@ export function TopBar() {
             navigate('/home');
           }}
           className="text-xs text-slate-500 hover:text-slate-800 transition-colors mr-2 flex items-center gap-1 font-medium cursor-pointer"
-        >← 返回</button>
+        ><ArrowLeft className="h-3.5 w-3.5" /> 返回</button>
         <div className="h-4 w-[1px] bg-slate-300"></div>
         <h1 className="text-lg font-bold text-slate-800">{ir?.projectName || (ir as any)?.name || '需求探索项目'}</h1>
         <div className="h-4 w-[1px] bg-slate-300"></div>
@@ -165,7 +165,7 @@ export function TopBar() {
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-72">
                 {openTasksCount === 0 ? (
                   <div className="py-10 text-center text-slate-400 text-xs">
-                    🎉 暂无待处理的确认指派任务！
+          暂无待处理的确认指派任务
                   </div>
                 ) : (
                   userTasks.map((wrapper: any) => {
@@ -261,7 +261,7 @@ export function TopBar() {
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-72">
                 {notifications.length === 0 ? (
                   <div className="py-10 text-center text-slate-400 text-xs">
-                    🔔 暂无通知消息！
+          暂无通知消息
                   </div>
                 ) : (
                   notifications.map((n: any) => (

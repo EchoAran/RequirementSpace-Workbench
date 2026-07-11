@@ -3633,7 +3633,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
-      set({ lastActionMessage: `宸插垱寤轰笟鍔″璞★細${name}` });
+    set({ lastActionMessage: `已创建业务对象：${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : '鍒涘缓涓氬姟瀵硅薄澶辫触' });
@@ -3796,7 +3796,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ lastActionMessage: `宸茬粍寤轰笟鍔℃祦绋嬶細${name}` });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '缁勫缓涓氬姟娴佺▼澶辫触' });
+    set({ error: err instanceof Error ? err.message : '构建业务流程失败' });
     }
   },
 
@@ -3820,7 +3820,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (err?.status === 409) {
         set({ error: '更新失败：检测到并行的冲突编辑。该流程已被其他成员修改，请刷新页面以加载最新版本。' });
       } else {
-        set({ error: err instanceof Error ? err.message : '鏇存柊娴佺▼淇℃伅澶辫触' });
+    set({ error: err instanceof Error ? err.message : '更新流程信息失败' });
       }
     }
   },
@@ -3843,7 +3843,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '鍒犻櫎娴佺▼澶辫触' });
+    set({ error: err instanceof Error ? err.message : '删除流程失败' });
     }
   },
 

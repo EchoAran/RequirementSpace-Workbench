@@ -270,7 +270,7 @@ export function ScopedAIBar() {
     } catch (err: any) {
       const m = err?.detail || '请求失败，请稍后重试';
       setError(m);
-      setMessages(prev => [...prev, { role: 'assistant', content: `⚠ ${m}` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: m }]);
     } finally { setIsLoading(false); }
   }, [question, isLoading, scope, toExplainScope, ir]);
 
@@ -309,7 +309,7 @@ export function ScopedAIBar() {
       setEditMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       if (res.isReadyToGenerate ?? res.is_ready_to_generate) setEditStep('ready');
     } catch (err: any) {
-      setEditMessages(prev => [...prev, { role: 'assistant', content: `⚠ ${err?.detail || '发送失败'}` }]);
+      setEditMessages(prev => [...prev, { role: 'assistant', content: err?.detail || '发送失败' }]);
     } finally { setEditIsSending(false); }
   }, [editInput, editSessionId, editIsSending]);
 
@@ -580,7 +580,7 @@ export function ScopedAIBar() {
                       <div key={field} className="bg-white border border-amber-100 rounded-xl p-3">
                         <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">{field}</div>
                         <div className="text-xs text-rose-600 line-through mb-0.5">{String(change.old || '')}</div>
-                        <div className="text-xs text-emerald-700 font-bold">→ {String(change.new || '')}</div>
+              <div className="text-xs text-emerald-700 font-bold">{String(change.new || '')}</div>
                       </div>
                     ))}
                   </div>

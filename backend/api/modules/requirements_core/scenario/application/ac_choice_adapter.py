@@ -4,6 +4,8 @@ from backend.api.modules.decision_workflow.ports.ports import (
     BaseGenerationChoiceAdapter,
 )
 from backend.api.modules.requirements_core.ports import get_acceptance_criteria_generation_service
+from backend.database.model import ScenarioAcceptanceCriterionModel
+from sqlalchemy import delete
 
 
 class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -69,13 +71,21 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             comparison_summary=self._make_comparison_summary(
                 strat_lbl, criteria, scenario_name,
             ),
-            apply_behavior="append",
+            apply_behavior="overwrite",
             apply_behavior_description=f"此方案将为 {scenario_name} 新增验收标准",
             strategy_id=context.strategy_id,
             strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
+        scenario_ids = payload.get("scenario_ids", [])
+        if scenario_ids:
+            await session.execute(
+                delete(ScenarioAcceptanceCriterionModel).where(
+                    ScenarioAcceptanceCriterionModel.scenario_id.in_(scenario_ids)
+                )
+            )
+            await session.flush()
         """Persist AC payload — append mode."""
         result = await self._service._persist_acceptance_criteria_generation_draft(
             draft=payload, session=session,

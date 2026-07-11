@@ -247,7 +247,7 @@ async def test_ai_add_knowledge_retrieval_and_prompts(test_db, service):
     session_id = session_res["session_id"]
 
     # 3. Test interview phase: check if knowledge_context is retrieved and injected into prompt
-    from backend.services.LLM_service import LLMHandler
+    from backend.services.llm_handler_service import LLMHandler
     with patch.object(LLMHandler, "call_chat", new_callable=AsyncMock) as mock_call_chat:
         mock_call_chat.return_value = '{"assistant_message": "Ask details?", "is_ready_to_generate": true, "known_facts": [{"key": "name", "value": "Admin"}], "missing_facts": []}'
         

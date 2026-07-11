@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 
 # 定义输入参数基类
 @dataclass

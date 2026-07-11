@@ -15,6 +15,19 @@ function asArray(value: any): any[] {
   return Array.isArray(value) ? value : [];
 }
 
+function confirmRegeneration(draftType: string): boolean {
+  const targets: Record<string, string> = {
+    actor: '现有参与者，以及其关联场景',
+    feature: '现有完整功能树，以及关联场景、验收标准和范围分析',
+    scenario: '目标功能下现有场景及验收标准',
+    acceptance_criteria: '目标场景的现有验收标准',
+    flow: '现有流程、流程步骤、业务对象及属性',
+    scope: '现有范围与 Kano 分析结果',
+  };
+  const target = targets[draftType];
+  return !target || window.confirm(`采纳该方案将重新生成${target}，原有内容会被替换。确定继续吗？`);
+}
+
 function CandidateComparisonView({
   choices,
   draftType,
@@ -29,6 +42,7 @@ function CandidateComparisonView({
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   const handleAcceptClick = async (choiceId: string) => {
+    if (!confirmRegeneration(draftType)) return;
     setSubmittingId(choiceId);
     try {
       await onAccept(choiceId);
@@ -996,6 +1010,11 @@ export function ChoiceGroupPreviewModal({
   const draftType = activeChoice?.draftType || group.generationType || '';
   const showCompareOption = totalSuccessful > 1;
   const compareActive = isCompareMode && showCompareOption;
+  const handleAcceptClick = (choiceId: string) => {
+    if (confirmRegeneration(draftType)) {
+      void onAccept(choiceId);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm select-text">
@@ -1155,7 +1174,7 @@ export function ChoiceGroupPreviewModal({
               {!compareActive && activeChoice && (
                 <button
                   type="button"
-                  onClick={() => void onAccept(activeChoice.id)}
+                  onClick={() => handleAcceptClick(activeChoice.id)}
                   disabled={isWorking}
                   className="inline-flex items-center gap-1.5 h-10 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-750 text-xs font-bold text-white shadow-lg shadow-indigo-100 transition-colors disabled:opacity-50 active:scale-[0.98]"
                 >

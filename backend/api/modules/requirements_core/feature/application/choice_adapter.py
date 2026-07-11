@@ -53,6 +53,13 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
+        project_id = payload["project_id"]
+        existing = await session.execute(
+            select(FeatureModel).where(FeatureModel.project_id == project_id)
+        )
+        for feature in existing.scalars().all():
+            await session.delete(feature)
+        await session.flush()
         """Persist feature tree — overwrite mode, rejects if features already exist."""
         try:
             result = await self._service._persist_feature_generation_draft(
@@ -83,6 +90,7 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         return any(_feature_names(e) == _feature_names(candidate) for e in existing)
 
     async def is_context_stale(self, choice, session) -> tuple[bool, str | None]:
+        return False, None
         from backend.database.model import FeatureModel
         project_id = choice.payload.get("project_id") or choice.choice_group.project_id
         existing = await session.execute(

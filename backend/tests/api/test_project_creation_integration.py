@@ -140,7 +140,7 @@ async def test_project_creation_without_workspace(creation_test_db):
     client.cookies.set("auth_session", cookie_a)
 
     mock_llm = await mock_call_llm_factory()
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
         # 1. Create creation draft without workspace_id
         res = client.post(
             "/api/project_creation_drafts",
@@ -243,7 +243,7 @@ async def test_project_creation_with_active_workspace_empty_documents(creation_t
     workspace_public_id = ws_res.json()["public_id"]
 
     mock_llm = await mock_call_llm_factory()
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
         res = client.post(
             "/api/project_creation_drafts",
             json={
@@ -302,7 +302,7 @@ async def test_project_creation_with_active_workspace_having_documents(creation_
     # Track prompt to check if knowledge context was injected
     tracker = []
     mock_llm = await mock_call_llm_factory(tracker)
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
         # 1. Create creation draft with workspace
         res = client.post(
             "/api/project_creation_drafts",
@@ -394,7 +394,7 @@ async def test_project_creation_with_discard_draft(creation_test_db):
         await session.commit()
 
     mock_llm = await mock_call_llm_factory()
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock, side_effect=mock_llm):
         # 1. Create creation draft
         res = client.post(
             "/api/project_creation_drafts",

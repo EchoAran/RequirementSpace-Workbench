@@ -160,5 +160,5 @@ class AIExplainService:
     @staticmethod
     def _get_llm_handler():
         """Lazy import to avoid circular dependency."""
-        from backend.services.LLM_service import LLMHandler
+        from backend.services.llm_handler_service import LLMHandler
         return LLMHandler()

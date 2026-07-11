@@ -1,2 +1,4 @@
-from backend.core.generators import *
-from backend.core.perceptrons import *
+"""Core package marker.
+
+Core subpackages should be imported explicitly to avoid package-import side effects.
+"""

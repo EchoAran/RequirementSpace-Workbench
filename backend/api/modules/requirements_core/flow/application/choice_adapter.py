@@ -4,6 +4,8 @@ from backend.api.modules.decision_workflow.ports.ports import (
     BaseGenerationChoiceAdapter,
 )
 from backend.api.modules.requirements_core.flow.application.flow_generation_service import FlowGenerationService
+from backend.database.model import BusinessObjectModel, FlowModel
+from sqlalchemy import select
 
 
 class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -54,13 +56,24 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             draft_type="flow",
             apply_mode="draft_payload",
             comparison_summary=self._make_comparison_summary(strat_lbl, flows, business_objects),
-            apply_behavior="append",
+            apply_behavior="overwrite",
             apply_behavior_description="此方案将新增流程与业务对象到项目",
             strategy_id=context.strategy_id,
             strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
+        project_id = payload["project_id"]
+        flows = await session.execute(select(FlowModel).where(FlowModel.project_id == project_id))
+        for flow in flows.scalars().all():
+            await session.delete(flow)
+        await session.flush()
+        business_objects = await session.execute(
+            select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
+        )
+        for business_object in business_objects.scalars().all():
+            await session.delete(business_object)
+        await session.flush()
         result = await self._service._persist_flow_generation_draft(
             draft=payload, session=session,
         )

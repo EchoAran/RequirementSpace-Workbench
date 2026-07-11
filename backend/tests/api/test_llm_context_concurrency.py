@@ -44,7 +44,7 @@ from backend.core.llm_context import (
     current_llm_context, is_web_request_ctx,
     LLMRequestContext, LLMContextMissingError, LLMConfigError,
 )
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

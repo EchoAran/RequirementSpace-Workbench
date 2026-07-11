@@ -4,7 +4,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 from backend.core.logging.context import clear_log_context, set_log_context
 
 

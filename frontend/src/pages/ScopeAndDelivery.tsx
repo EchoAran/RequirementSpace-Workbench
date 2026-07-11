@@ -389,7 +389,7 @@ export function ScopeAndDelivery() {
                         className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                       >
                         <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isWorking ? 'animate-pulse' : ''}`} />
-                        AI 自动划分范围
+                        AI 智能生成范围与 Kano 分析
                       </button>
                     </>
                   )}

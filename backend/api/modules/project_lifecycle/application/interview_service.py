@@ -110,5 +110,5 @@ class ProjectInterviewService:
 
     @staticmethod
     def _get_llm_handler():
-        from backend.services.LLM_service import LLMHandler
+        from backend.services.llm_handler_service import LLMHandler
         return LLMHandler()

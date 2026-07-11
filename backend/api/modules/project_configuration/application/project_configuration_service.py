@@ -58,7 +58,7 @@ class ProjectConfigurationService:
 
         # 3. Check System-level LLM Config (From server-side environment variables)
         if effective_source == "system":
-            from backend.services.LLM_service import load_llm_config
+            from backend.services.llm_handler_service import load_llm_config
             server_config = load_llm_config()
             if server_config:
                 effective_model_name = server_config.get("model_name")

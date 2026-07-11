@@ -99,7 +99,7 @@ async def test_structured_audit_logs_endpoints(test_db):
     app.dependency_overrides[get_llm_context] = lambda: unittest.mock.AsyncMock()
 
     try:
-        with unittest.mock.patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=unittest.mock.AsyncMock) as mock_call:
+        with unittest.mock.patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=unittest.mock.AsyncMock) as mock_call:
             mock_call.return_value = "Refined Requirements content."
             res = client.post(
                 f"/api/projects/{project_public_id}/user-requirements/refine",
@@ -210,4 +210,3 @@ async def test_actor_creation_audit_actor_user(test_db):
             diff_val = json.loads(diff_val)
         assert diff_val["name"] == "Audited Actor"
         assert log.request_id is not None
-

@@ -211,6 +211,7 @@ export function HowItWorks() {
   };
 
   const ir = useWorkspaceStore(state => state.ir);
+  const hasFlowsOrBusinessObjects = (ir?.flows || []).length > 0 || (ir?.businessObjects || []).length > 0;
   const pageHealth = selectPageHealth({ ir } as any, '/flow');
   const selectedObject = useWorkspaceStore(selectSelectedObject);
   const system = buildSystemProjection(ir);
@@ -602,7 +603,7 @@ export function HowItWorks() {
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
                     <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isGenerating || isLoading ? 'animate-pulse' : ''}`} />
-                    AI 智能推演流程与对象
+                    {hasFlowsOrBusinessObjects ? 'AI 重新生成流程与数据对象' : 'AI 智能生成流程与数据对象'}
                   </button>
                 </div>
               </div>

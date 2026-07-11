@@ -7,6 +7,7 @@ from backend.api.modules.decision_workflow.ports.ports import (
     BaseGenerationChoiceAdapter,
 )
 from backend.api.modules.requirements_core.ports import get_scenario_generation_service
+from backend.database.model import ScenarioModel
 
 
 class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -117,6 +118,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(strat_lbl, scenarios, feature_name, actor_name)
         apply_desc = "此方案将为选定功能点新增场景" if generation_mode == "batch" else f"此方案将为 {feature_name} × {actor_name} 新增场景"
 
+        apply_desc = "此方案将清空并重建目标范围内的场景与验收标准"
         return GenerationCandidate(
             title=title,
             rationale=rationale,
@@ -125,13 +127,24 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             draft_type="scenario",
             apply_mode="draft_payload",
             comparison_summary=comparison_summary,
-            apply_behavior="append",
+            apply_behavior="overwrite",
             apply_behavior_description=apply_desc,
             strategy_id=context.strategy_id,
             strategy_label=context.strategy_label,
         )
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
+        project_id = payload["project_id"]
+        feature_ids = payload.get("feature_ids") or ([payload["feature_id"]] if payload.get("feature_id") else [])
+        statement = select(ScenarioModel).where(ScenarioModel.project_id == project_id)
+        if feature_ids:
+            statement = statement.where(ScenarioModel.feature_id.in_(feature_ids))
+        if payload.get("actor_id"):
+            statement = statement.where(ScenarioModel.actor_id == payload["actor_id"])
+        existing = await session.execute(statement)
+        for scenario in existing.scalars().all():
+            await session.delete(scenario)
+        await session.flush()
         """Persist scenario payload to ScenarioModel (append mode), including generated AC."""
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,

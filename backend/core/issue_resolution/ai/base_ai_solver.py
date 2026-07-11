@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 
 
 @dataclass

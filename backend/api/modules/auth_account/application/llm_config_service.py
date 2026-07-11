@@ -20,7 +20,7 @@ from backend.core.logging.events import (
     LLM_CONFIG_RESOLVED,
     LLM_CONFIG_SAVED,
 )
-from backend.services.LLM_service import load_llm_config
+from backend.services.llm_handler_service import load_llm_config
 
 logger = get_logger("backend.api.modules.auth_account.application.llm_config_service")
 

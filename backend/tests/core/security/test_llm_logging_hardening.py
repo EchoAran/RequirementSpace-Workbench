@@ -2,7 +2,7 @@ import pytest
 import logging
 import httpx
 from unittest.mock import AsyncMock, patch
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 from backend.core.llm_context import current_llm_context, LLMRequestContext
 
 

@@ -71,7 +71,7 @@ async def test_actor_without_feature_solver(db_session, seeded_project):
         ]
     }
 
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
 
         res = await service.resolve(
@@ -139,7 +139,7 @@ async def test_scenario_actor_consistency_solver(db_session, seeded_project):
         ]
     }
 
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
 
         res = await service.resolve(
@@ -191,7 +191,7 @@ async def test_duplicate_scenario_name_solver(db_session, seeded_project):
         ]
     }
 
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
 
         res = await service.resolve(
@@ -239,7 +239,7 @@ async def test_flow_without_steps_solver(db_session, seeded_project):
         }
     }
 
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
 
         res = await service.resolve(
@@ -271,7 +271,7 @@ async def test_business_object_without_usage_solver(db_session, seeded_project):
         }
     }
 
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
 
         res = await service.resolve(
@@ -335,4 +335,3 @@ async def test_scenario_without_acceptance_criteria_choice_group_metadata(db_ses
             assert kwargs["source_type"] == "issue_repair"
             assert kwargs["source_id"] is not None  # fingerprint
             assert kwargs["context_hash"] is not None
-

@@ -239,7 +239,7 @@ def test_resolve_issue_gate_feature_actor_pair_active(client_with_auth, test_db)
     }
 
     # 3. Call issues/resolve and verify it actually succeeds with repair_draft and not already_resolved or unsupported
-    with patch("backend.services.LLM_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("backend.services.llm_handler_service.LLMHandler.call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = json.dumps(mock_llm_response)
         
         payload = {

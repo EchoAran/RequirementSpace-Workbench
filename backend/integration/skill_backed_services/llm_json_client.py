@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 
 
 def render_prompt(template: str, replacements: dict[str, str]) -> str:

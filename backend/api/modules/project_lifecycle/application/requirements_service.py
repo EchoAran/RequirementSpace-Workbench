@@ -5,7 +5,7 @@ from backend.api.modules.project_lifecycle.schemas.audit import (
     AuditLogResponse,
     UserRequirementsResponse,
 )
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 from backend.core.actor_context import ActorContext
 from backend.services.audit_service import AuditService
 

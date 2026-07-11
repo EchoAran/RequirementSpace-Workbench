@@ -624,6 +624,11 @@ def _accept_message(result: dict) -> str:
 
 
 def _get_apply_behavior(draft_type: str, choice: ChoiceModel) -> dict:
+    if draft_type in {"scenario", "acceptance_criteria", "flow"}:
+        return {
+            "behavior": "overwrite",
+            "description": "采纳该方案会替换对应的现有 AI 生成内容",
+        }
     """从 choice 数据中提取采纳行为说明。暂用 draft_type 给出默认值。"""
     behaviors = {
         "actor": ("overwrite", "此方案将替换项目当前参与者列表"),

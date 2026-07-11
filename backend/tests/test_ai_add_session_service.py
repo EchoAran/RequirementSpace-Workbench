@@ -21,7 +21,7 @@ from backend.api.modules.ai_interaction.ai_add.application.interview_strategy im
     BaseInterviewStrategy,
 )
 from backend.core.generators.single_object import SingleObjectGeneratorInput
-from backend.services.LLM_service import LLMHandler
+from backend.services.llm_handler_service import LLMHandler
 
 
 # ---------------------------------------------------------------------------

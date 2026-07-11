@@ -346,6 +346,7 @@ export function WhatToDo() {
     const isParent = (ir?.features || []).some(child => child.parentId === f.featureId);
     return f.parentId !== null && !isParent;
   });
+  const hasScenarios = (ir?.features || []).some(feature => (feature.scenarios || []).length > 0);
 
   const managedFeatObj = ir?.features?.find(f => f.featureId === scenarioManagerFeature?.featureId);
   const managedFeatureActors = useMemo(
@@ -873,7 +874,7 @@ export function WhatToDo() {
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                    AI 智能生成参与者
+                    {actors.length > 0 ? 'AI 重新生成参与者' : 'AI 智能生成参与者'}
                   </button>
                 </div>
                 {actors.length === 0 ? (
@@ -955,7 +956,7 @@ export function WhatToDo() {
                         className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                        AI 智能分解功能
+                        {rootCapabilities.length > 0 ? 'AI 重新生成功能' : 'AI 智能生成功能'}
                       </button>
                       <button
                         onClick={() => setIsScenarioModalOpen(true)}
@@ -964,7 +965,7 @@ export function WhatToDo() {
                         title="智能推演系统业务场景"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                        AI智能推演场景
+                        {hasScenarios ? 'AI 重新生成场景' : 'AI 智能生成场景'}
                       </button>
                     </div>
                   </div>
@@ -1190,7 +1191,7 @@ export function WhatToDo() {
                                           ) : (
                                             <Sparkles className="w-3 h-3 text-indigo-200" />
                                           )}
-                                          生成场景与验收标准
+                                          {(child.scenarios || []).length > 0 ? 'AI 重新生成场景与验收标准' : 'AI 智能生成场景与验收标准'}
                                         </button>
                                       )}
                                     </div>
@@ -1221,7 +1222,7 @@ export function WhatToDo() {
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-indigo-500" />
-                  AI 智能推演场景功能选择
+                  AI 生成场景功能选择
                 </h3>
                 <p className="text-[10px] text-slate-500 mt-1">请选择需要进行业务场景及验收标准 (AC) 推演的功能模块。</p>
               </div>
@@ -1334,7 +1335,7 @@ export function WhatToDo() {
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
-                开始 AI 推演场景 ({selectedFeatureIds.length})
+                {selectedFeatureIds.some(featureId => (ir?.features || []).some(feature => feature.featureId === featureId && (feature.scenarios || []).length > 0)) ? '开始 AI 重新生成场景' : '开始 AI 智能生成场景'} ({selectedFeatureIds.length})
               </button>
             </div>
           </div>

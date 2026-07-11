@@ -57,13 +57,19 @@ temp/
 *.iml
 .DS_Store
 Thumbs.db
+.codex/
+.agents/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
 
 # develop a document
-docs/
+docs/*
+!docs/development_specifications/
+docs/development_specifications/*
+!docs/development_specifications/file_and_structure_guidelines.md
 
 # Local runtime storage
 storage/
+

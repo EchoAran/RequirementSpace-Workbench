@@ -14,6 +14,7 @@ describe('ChoiceGroupPreviewModal generation progress', () => {
           isGeneratingChoices={true}
           generationProgress={{
             totalCandidates: 2,
+            candidateLabels: ['均衡版', '全面版'],
             completedCandidates: 0,
             candidateStatuses: {
               0: 'pending',
@@ -37,5 +38,28 @@ describe('ChoiceGroupPreviewModal generation progress', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('renders configured strategy labels for every candidate', () => {
+    render(
+      <ChoiceGroupPreviewModal
+        group={null}
+        isWorking={true}
+        isGeneratingChoices={true}
+        generationProgress={{
+          totalCandidates: 3,
+          candidateLabels: ['均衡版', '风险规避版', '流程优先版'],
+          completedCandidates: 0,
+          candidateStatuses: { 0: 'pending', 1: 'pending', 2: 'pending' },
+        }}
+        onAccept={vi.fn()}
+        onDiscard={vi.fn()}
+        onDefer={vi.fn()}
+        onRegenerate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('风险规避版')).toBeTruthy();
+    expect(screen.getByText('流程优先版')).toBeTruthy();
   });
 });

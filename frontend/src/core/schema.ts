@@ -402,6 +402,8 @@ export interface Choice {
   comparisonSummary?: string;
   score?: any;
   error?: any;
+  strategyId?: string;
+  strategyLabel?: string;
 }
 
 export interface ChoiceGroup {
@@ -566,6 +568,8 @@ export interface ProjectCreationChoiceItem {
   score?: any;
   comparisonSummary?: string;
   error?: { error_type: string; message: string };
+  strategyId?: string;
+  strategyLabel?: string;
 }
 
 export interface ProjectCreationChoiceGroup {

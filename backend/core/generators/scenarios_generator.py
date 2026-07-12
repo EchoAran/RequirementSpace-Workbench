@@ -44,6 +44,8 @@ class ScenariosGenerator(BaseGenerator[ScenariosGeneratorInput]):
             query=feedback,
             print_log=False,
         )
+        if response is None:
+            raise ValueError("invalid_llm_response")
         return json.loads(response)
 
 if __name__ == "__main__":

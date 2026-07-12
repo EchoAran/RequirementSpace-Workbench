@@ -285,7 +285,7 @@ export function WhatToDo() {
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
     updateScenario, updateAcceptanceCriterion,
     setNodeStatus,
-    deleteActor, deleteFeature, expandSlot, runDiagnosis, unlockStageGate, triggerGateCheck, requestStageTransition,
+    deleteActor, deleteFeature, expandSlot, runDiagnosis, triggerGateCheck, requestStageTransition,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,

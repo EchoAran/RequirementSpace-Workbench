@@ -16,7 +16,6 @@ from backend.api.modules.project_lifecycle.schemas.project import (
     ProjectUpdateResponse,
     ScopeImpactPreviewRequest,
     ScopeImpactPreviewResponse,
-    UnlockStageRequest,
     StageTransitionRequest,
     StageTransitionResponse,
     StageProgressResponse,
@@ -79,35 +78,6 @@ async def get_project_detail(
             raise HTTPException(
                 status_code=404,
                 detail="project_not_found",
-            )
-        raise
-
-
-@router.post(
-    "/{project_id}/unlock-stage",
-)
-async def unlock_stage(
-    project_id: str,
-    request: UnlockStageRequest,
-    owned_project: ProjectModel = Depends(require_owned_project),
-    session: AsyncSession = Depends(get_session),
-):
-    try:
-        return await project_service.unlock_stage(
-            project_id=owned_project.id,
-            stage=request.stage,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        if str(error) == "invalid_stage":
-            raise HTTPException(
-                status_code=400,
-                detail="invalid_stage",
             )
         raise
 

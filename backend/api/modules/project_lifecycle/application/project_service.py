@@ -411,32 +411,6 @@ class ProjectService:
             unresolved_gates=unresolved_gates_list,
         )
 
-    async def unlock_stage(self, project_id: int, stage: str, session: AsyncSession) -> dict:
-        stmt = select(ProjectModel).where(ProjectModel.id == project_id)
-        result = await session.execute(stmt)
-        p = result.scalar_one_or_none()
-        if p is None:
-            raise ValueError("project_not_found")
-
-        STAGES_ORDER = ["what", "how", "scope"]
-        stage_clean = stage.strip().lower()
-        if stage_clean not in STAGES_ORDER:
-            raise ValueError("invalid_stage")
-
-        unlocked_set = {s.strip().lower() for s in p.unlocked_stages.split(",") if s.strip()} if p.unlocked_stages else set()
-        unlocked_set.add(stage_clean)
-        
-        ordered_unlocked = [s for s in STAGES_ORDER if s in unlocked_set]
-        p.unlocked_stages = ",".join(ordered_unlocked)
-        await session.commit()
-
-        return {
-            "project_id": p.public_id,
-            "stage": stage_clean,
-            "message": "stage_unlocked",
-            "unlocked_stages": ordered_unlocked
-        }
-
     async def delete_project(self, project_id: int, session: AsyncSession) -> dict:
         stmt = select(ProjectModel).where(ProjectModel.id == project_id)
         result = await session.execute(stmt)

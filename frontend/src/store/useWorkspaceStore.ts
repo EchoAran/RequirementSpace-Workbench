@@ -77,6 +77,8 @@ const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
       comparisonSummary: c.comparisonSummary ?? c.comparison_summary,
       score: c.score,
       error: c.error,
+      strategyId: c.strategyId ?? c.strategy_id,
+      strategyLabel: c.strategyLabel ?? c.strategy_label,
     }))
   };
 };
@@ -560,10 +562,11 @@ const findConflictingChoiceGroup = (
 
 const GENERATION_CONFLICT_PENDING_ERROR = 'generation_choice_conflict_pending';
 
-const buildInitialChoiceProgress = (candidateCount?: number) => {
+const buildInitialChoiceProgress = (candidateCount?: number, candidateLabels: string[] = []) => {
   const totalCandidates = candidateCount || 2;
   return {
     totalCandidates,
+    candidateLabels,
     completedCandidates: 0,
     candidateStatuses: Object.fromEntries(
       Array.from({ length: totalCandidates }, (_, index) => [index, 'pending'])
@@ -710,6 +713,7 @@ export interface WorkspaceState {
   activeChoiceGroup: any | null;
   choiceGroupGenerationProgress: {
     totalCandidates: number;
+    candidateLabels: string[];
     completedCandidates: number;
     candidateStatuses: Record<number, 'pending' | 'generating' | 'complete' | 'failed'>;
   } | null;
@@ -854,7 +858,6 @@ export interface WorkspaceState {
   discardShadowDraft: (draftId: string) => Promise<void>;
   commitShadowDraft: (draftId: string) => Promise<void>;
   regenerateShadowDraft: (draftId: string, feedback?: string) => Promise<any>;
-  unlockStageGate: (stage: string) => Promise<void>;
   requestStageTransition: (
     action: 'enter_how' | 'enter_scope' | 'enter_preview',
     options?: { navigate?: (path: string) => void; force?: boolean }
@@ -1606,8 +1609,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   openExistingProject: async () => {
-    const version = get().sessionVersion;
-    set({ isLoading: true, error: null });
+    const version = get().sessionVersion + 1;
+    set({ sessionVersion: version, stageProgress: null, isLoading: true, error: null });
     try {
       const list = await workspaceApi.list();
       if (get().sessionVersion !== version) return;
@@ -1631,6 +1634,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           console.warn('Failed to load choice groups in openExistingProject:', cgErr);
         }
         await get().loadAuditLogs(projectId);
+        if (get().sessionVersion !== version) return;
+        await get().loadStageProgress(projectId);
         if (get().sessionVersion !== version) return;
 
         set({
@@ -1659,8 +1664,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   openWorkspace: async (workspaceId) => {
-    const version = get().sessionVersion;
-    set({ isLoading: true, error: null });
+    const version = get().sessionVersion + 1;
+    set({ sessionVersion: version, stageProgress: null, isLoading: true, error: null });
     try {
       const space = await workspaceApi.getById(workspaceId);
       if (get().sessionVersion !== version) return;
@@ -1756,23 +1761,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ stageProgress: progress });
     } catch (err) {
       console.error('Failed to load stage progress:', err);
-    }
-  },
-
-  unlockStageGate: async (stage: string) => {
-    const version = get().sessionVersion;
-    const projectId = get().ir?.projectId;
-    if (!projectId) return;
-    set({ isLoading: true, error: null });
-    try {
-      await workspaceApi.unlockStage(projectId, stage);
-      if (get().sessionVersion !== version) return;
-      await get().refreshWorkspace();
-      if (get().sessionVersion !== version) return;
-      set({ isLoading: false });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : '解锁阶段失败', isLoading: false });
     }
   },
 
@@ -2437,11 +2425,29 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       throw new Error(GENERATION_CONFLICT_PENDING_ERROR);
     }
 
+    let effectiveCandidateCount = candidateCount;
+    let candidateLabels: string[] = [];
+
+    if (effectiveCandidateCount === undefined) {
+      try {
+        const projectConfiguration = await workspaceApi.getProjectConfiguration(projectId);
+        const strategyConfig = projectConfiguration?.generation_strategy;
+        effectiveCandidateCount = strategyConfig?.candidate_count;
+        candidateLabels = (strategyConfig?.strategies || [])
+          .filter((strategy: any) => strategy.enabled)
+          .slice(0, effectiveCandidateCount)
+          .map((strategy: any) => strategy.label);
+        set({ projectConfiguration });
+      } catch {
+        // Keep generation available when the configuration summary cannot be loaded.
+      }
+    }
+
     const version = get().sessionVersion;
     set({
       isGeneratingChoices: true,
       error: null,
-      choiceGroupGenerationProgress: buildInitialChoiceProgress(candidateCount),
+      choiceGroupGenerationProgress: buildInitialChoiceProgress(effectiveCandidateCount, candidateLabels),
       lastActionMessage: `正在生成 ${generationType} 候选方案...`,
     });
 
@@ -2463,7 +2469,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         project_id: projectId,
         generation_type: generationType,
         target: target || null,
-        candidate_count: candidateCount || 2,
+        candidate_count: candidateCount,
         user_feedback: userFeedback || null,
       });
       if (get().sessionVersion !== version) return null;
@@ -2732,7 +2738,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const group = await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'actor',
-        candidateCount: 2,
         forceReplace,
         conflictAction: 'generateActors',
       });
@@ -2816,7 +2821,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const group = await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'feature',
-        candidateCount: 2,
         forceReplace,
         conflictAction: 'generateFeatures',
       });
@@ -2901,7 +2905,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const group = await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'flow',
-        candidateCount: 2,
         forceReplace,
         conflictAction: 'generateFlowsAndObjects',
       });
@@ -2994,7 +2997,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         target: isSingleTarget
           ? { generation_mode: 'single', feature_id: targetFeatureId }
           : { generation_mode: 'batch', feature_ids: targetFeatureIds },
-        candidateCount: 2,
         forceReplace,
         conflictAction: 'generateScenarios',
         conflictArgs: { featureIds },
@@ -3121,7 +3123,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           projectId: pId,
           generationType: 'acceptance_criteria',
           target: { generation_mode: 'single', scenario_ids: scenarioIds },
-          candidateCount: 2,
           forceReplace,
           conflictAction: 'generateAcceptanceCriteria',
           conflictArgs: { scenarioIds },
@@ -3209,7 +3210,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const group = await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'scope',
-        candidateCount: 2,
         forceReplace,
         conflictAction: 'generateScope',
       });

@@ -105,14 +105,10 @@ def test_project_crud_contract_flow(crud_test_db):
     assert up["description"] == "Updated Description"
     assert up["message"] == "project_updated"
 
-    # 5. Unlock stage
+    # 5. Direct stage unlock must not be exposed.
     unlock_payload = {"stage": "what"}
     response = client.post(f"/api/projects/{project_id}/unlock-stage", json=unlock_payload)
-    assert response.status_code == 200
-    unlocked = response.json()
-    assert unlocked["project_id"] == project_id
-    assert unlocked["stage"] == "what"
-    assert "what" in unlocked["unlocked_stages"]
+    assert response.status_code == 404
 
     # 6. Delete perception slot
     response = client.delete(f"/api/projects/{project_id}/perception-slot")

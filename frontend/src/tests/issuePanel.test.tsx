@@ -106,4 +106,21 @@ describe('IssuePanel - capability-driven action button', () => {
     render(<IssuePanel issue={issueNoCap} ir={baseIr} />);
     expect(screen.queryByText('查看处理建议')).not.toBeNull();
   });
+
+  it('renders feature and actor names for a feature-actor pair target', () => {
+    render(<IssuePanel issue={{
+      ...baseIssue,
+      code: 'FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO',
+      target: { targetType: 'feature_actor_pair', targetId: '42:7' },
+      metadata: { feature_id: 42, actor_id: 7 },
+    }} ir={{
+      ...baseIr,
+      features: [{ featureId: 42, featureName: '订单查询' }],
+      actors: [{ actorId: 7, actorName: '客户' }],
+    } as any} />);
+
+    expect(screen.queryByText('订单查询')).not.toBeNull();
+    expect(screen.queryByText('客户')).not.toBeNull();
+    expect(screen.queryByText('对象 #42')).toBeNull();
+  });
 });

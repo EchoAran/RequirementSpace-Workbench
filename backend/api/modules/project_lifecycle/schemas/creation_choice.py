@@ -47,6 +47,8 @@ class ProjectCreationChoiceItem(CamelModel):
     score: dict | None = None
     comparison_summary: str = ""
     error: dict | None = None
+    strategy_id: str | None = None
+    strategy_label: str | None = None
 
 
 class ProjectCreationChoiceAcceptResponse(CamelModel):

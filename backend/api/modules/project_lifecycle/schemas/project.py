@@ -173,9 +173,6 @@ class ProjectDetailResponse(CamelModel):
     current_user_role: Optional[str] = None
     members_summary: Optional[list[dict]] = None
 
-class UnlockStageRequest(CamelModel):
-    stage: str
-
 class ScopeImpactPreviewRequest(CamelModel):
     feature_id: int
     next_status: str

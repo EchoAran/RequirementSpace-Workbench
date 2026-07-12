@@ -312,9 +312,11 @@ class ProjectCreationChoiceGroupService:
                 "payload": c.payload,
                 "preview": c.preview,
                 "score": c.score,
-                "comparison_summary": c.comparison_summary,
-                "apply_behavior": c.apply_behavior,
-                "apply_behavior_description": c.apply_behavior_description,
+                  "comparison_summary": c.comparison_summary,
+                  "apply_behavior": c.apply_behavior,
+                  "apply_behavior_description": c.apply_behavior_description,
+                  "strategy_id": c.strategy_id,
+                  "strategy_label": c.strategy_label,
             }
             choices.append(choice)
 
@@ -330,8 +332,10 @@ class ProjectCreationChoiceGroupService:
                 "payload": {},
                 "preview": {},
                 "score": {},
-                "comparison_summary": "",
-                "error": {"error_type": e.error_type, "message": e.message},
+                  "comparison_summary": "",
+                  "error": {"error_type": e.error_type, "message": e.message},
+                  "strategy_id": e.strategy,
+                  "strategy_label": e.strategy,
             })
 
         # Compute context_hash
@@ -574,9 +578,11 @@ class ProjectCreationChoiceGroupService:
                 draft_type=candidate.get("draft_type", "project_creation"),
                 apply_mode=candidate.get("apply_mode", "draft_payload"),
                 preview=candidate.get("preview") or {},
-                score=candidate.get("score"),
-                error=candidate.get("error"),
-            )
+                  score=candidate.get("score"),
+                  error=candidate.get("error"),
+                  strategy_id=candidate.get("strategy_id"),
+                  strategy_label=candidate.get("strategy_label"),
+              )
             session.add(choice)
             created_choices.append(choice)
 

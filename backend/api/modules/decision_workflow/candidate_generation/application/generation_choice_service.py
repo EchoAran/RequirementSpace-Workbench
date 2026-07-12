@@ -371,9 +371,12 @@ class GenerationChoiceService:
             project_id=project_id,
             session=session,
         )
+        # Scenario candidates already fan out over feature/actor pairs internally.
+        # Serializing the outer candidates prevents multiplying provider requests.
+        candidate_concurrency = 1 if generation_type == "scenario" else config.max_concurrency
         result = await run_candidate_generation(
             count=run_count,
-            max_concurrency=config.max_concurrency,
+            max_concurrency=candidate_concurrency,
             timeout_seconds=config.timeout_seconds,
             generate_one=adapter.generate_candidate,
             progress_callback=progress_callback,

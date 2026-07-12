@@ -1354,6 +1354,9 @@ export function RightObjectPanel() {
     if (kind === 'flow') {
       return <FlowObjectPanel selectedObject={selectedObject} />;
     }
+    if (kind === 'finding' || selectedObject.findingId) {
+      return <IssuePanel issue={selectedObject as Finding} ir={ir} />;
+    }
 
     // Fallback for legacy indexing kinds
     const objId = selectedObject.id || selectedObject.perceptionSlotId?.toString();

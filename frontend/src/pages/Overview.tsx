@@ -357,7 +357,7 @@ export function Overview() {
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             <div className="xl:col-span-8 flex flex-col">
-              <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden h-[600px]">
+              <section className="h-[760px] shrink-0 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-slate-100 shrink-0">
                   <h2 className="text-lg font-black text-slate-900">待处理问题</h2>
                   {highRiskIssues.length > 0 && (
@@ -366,7 +366,7 @@ export function Overview() {
                     </span>
                   )}
                 </div>
-                <div className="p-6 overflow-y-auto flex-1">
+                <div className="min-h-0 flex-1 overflow-y-auto p-6">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {openIssues.map(issue => (
                       <IssueCard

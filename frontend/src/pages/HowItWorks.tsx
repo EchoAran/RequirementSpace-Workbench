@@ -127,7 +127,6 @@ export function HowItWorks() {
     addFlowStep,
     deleteFlowStep,
     runDiagnosis,
-    unlockStageGate,
     triggerGateCheck,
     requestStageTransition,
     confirmRepairDraft,

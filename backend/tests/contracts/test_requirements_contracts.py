@@ -81,7 +81,6 @@ def _register_login_and_create_project(client):
     }
     res = client.post("/api/blank_projects", json=create_payload)
     project_id = res.json()["project_id"]
-    client.post(f"/api/projects/{project_id}/unlock-stage", json={"stage": "what"})
     
     # Configure dummy LLM config to avoid 409 Conflict (llm_config_required)
     client.put("/api/account/llm-config", json={

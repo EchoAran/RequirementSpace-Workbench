@@ -32,9 +32,6 @@ export const workspaceApi = {
   updateProject: async (projectId: string, payload: { name: string; description: string }): Promise<any> => {
     return http.put<any>(`/projects/${projectId}`, payload);
   },
-  unlockStage: async (projectId: string, stage: string): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/unlock-stage`, { stage });
-  },
   stageTransition: async (
     projectId: string,
     payload: { action: 'enter_how' | 'enter_scope' | 'enter_preview'; force?: boolean }

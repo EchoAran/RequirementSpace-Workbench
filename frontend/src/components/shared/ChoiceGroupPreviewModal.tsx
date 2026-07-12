@@ -15,6 +15,11 @@ function asArray(value: any): any[] {
   return Array.isArray(value) ? value : [];
 }
 
+function getChoiceStrategyLabel(choice: any, fallback: string): string {
+  const strategyLabel = choice?.strategyLabel ?? choice?.strategy_label;
+  return typeof strategyLabel === 'string' && strategyLabel.trim() ? strategyLabel : fallback;
+}
+
 function confirmRegeneration(draftType: string): boolean {
   const targets: Record<string, string> = {
     actor: '现有参与者，以及其关联场景',
@@ -338,9 +343,7 @@ function CandidateComparisonView({
           <tr>
             <th className="px-4 py-3.5 font-extrabold text-slate-500 w-[140px] border-r border-slate-200 bg-slate-50/90 tracking-wider">比较维度</th>
             {choices.map((c, i) => {
-              const compTitle = (draftType === 'project')
-                ? (i === 0 ? '均衡版' : i === 1 ? '全面版' : c.title || `方案 ${i + 1}`)
-                : (c.title || `方案 ${['A', 'B', 'C', 'D'][i] ?? (i + 1)}`);
+              const compTitle = getChoiceStrategyLabel(c, `方案 ${i + 1}`);
               return (
                 <th key={c.id || i} className="px-5 py-3.5 font-extrabold text-slate-800 border-r border-slate-200 last:border-r-0 min-w-[240px]">
                   <div className="flex flex-col gap-2.5">
@@ -657,6 +660,7 @@ interface ChoiceGroupPreviewModalProps {
   isGeneratingChoices: boolean;
   generationProgress: {
     totalCandidates: number;
+    candidateLabels: string[];
     completedCandidates: number;
     candidateStatuses: Record<number, 'pending' | 'generating' | 'complete' | 'failed'>;
   } | null;
@@ -804,13 +808,10 @@ export function ChoiceGroupPreviewModal({
 
     let completed = generationProgress?.completedCandidates || 0;
     if (useSimulatedProgress) {
-      if (simulatedProgress >= 90) {
-        completed = Math.min(2, total);
-      } else if (simulatedProgress >= 45) {
-        completed = 1;
-      } else {
-        completed = 0;
-      }
+      completed = Math.min(
+        Math.floor(simulatedProgress / (90 / total)),
+        Math.max(0, total - 1)
+      );
     }
     const progressPercent = useSimulatedProgress
       ? Math.round(simulatedProgress)
@@ -911,13 +912,9 @@ export function ChoiceGroupPreviewModal({
                 if (!useSimulatedProgress && generationProgress) {
                   status = generationProgress.candidateStatuses?.[i] || 'generating';
                 } else {
-                  if (i === 0) {
-                    status = simulatedProgress >= 45 ? 'complete' : 'generating';
-                  } else if (i === 1) {
-                    status = simulatedProgress >= 90 ? 'complete' : (simulatedProgress >= 45 ? 'generating' : 'pending');
-                  }
+                  status = i < completed ? 'complete' : i === completed ? 'generating' : 'pending';
                 }
-                const label = ['均衡版', '全面版', '方案 C', '方案 D', '方案 E'][i] || `方案 ${i + 1}`;
+                const label = generationProgress?.candidateLabels?.[i] || `方案 ${i + 1}`;
                 
                 return (
                   <div 
@@ -1062,9 +1059,7 @@ export function ChoiceGroupPreviewModal({
               <div className="w-[1px] h-5 bg-slate-200 self-center mx-1 shrink-0" />
 
               {successfulChoices.map((c: any, i: number) => {
-                const tabTitle = (draftType === 'project' || group.generationType === 'project')
-                  ? (i === 0 ? '均衡版' : i === 1 ? '全面版' : c.title || `方案 ${i + 1}`)
-                  : (c.title || `方案 ${['A', 'B', 'C', 'D'][i] ?? (i + 1)}`);
+                const tabTitle = getChoiceStrategyLabel(c, `方案 ${i + 1}`);
                 return (
                   <button
                     key={c.id}

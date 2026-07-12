@@ -214,30 +214,9 @@ async def test_stage_transition_endpoints(transition_test_db):
             assert log.payload["blocking_finding_ids"] == ["how:FLOW_ERROR:flow:1"]
             assert log.payload["operator_id"] == user_id
 
-    # 6. Test unlock-stage route with invalid stage (should return 400)
+    # 6. Direct unlock route must not be exposed.
     response = client.post(
         f"/api/projects/{project_id}/unlock-stage",
         json={"stage": "invalid-stage-name"}
     )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "invalid_stage"
-
-    # 7. Test unlock-stage route stable ordering and deduplication
-    # Initial stages in db are "what,how" (unlocked in step 4).
-    # We call unlock-stage with "what" again, should be idempotent and return stable sorted ["what", "how"]
-    response = client.post(
-        f"/api/projects/{project_id}/unlock-stage",
-        json={"stage": "what"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["unlocked_stages"] == ["what", "how"]
-
-    # Now we call unlock-stage with "scope", should return ["what", "how", "scope"]
-    response = client.post(
-        f"/api/projects/{project_id}/unlock-stage",
-        json={"stage": "scope"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["unlocked_stages"] == ["what", "how", "scope"]
+    assert response.status_code == 404

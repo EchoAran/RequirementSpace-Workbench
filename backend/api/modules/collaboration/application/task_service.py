@@ -14,6 +14,9 @@ from backend.api.modules.collaboration.application.node_snapshot_service import 
 audit_service = AuditService()
 snapshot_service = NodeSnapshotService()
 
+SINGLE_TASK_TITLE_KEY = "collaboration.taskTitles.singleConfirmation"
+BATCH_TASK_TITLE_KEY = "collaboration.taskTitles.batchConfirmation"
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -105,7 +108,7 @@ class TaskService:
                 session=session,
                 project_id=project_id,
                 action_type="task_superseded",
-                summary=f"任务已冲销: 关联节点发起新确认任务",
+                summary="task_superseded",
                 target_type="task",
                 target_id=old_task.id,
                 task_id=old_task.id,
@@ -118,7 +121,7 @@ class TaskService:
             node.confirmation_status = ConfirmationStatus.NEEDS_CONFIRMATION.value
 
         # 6. Create the task
-        default_title = f"请确认 {node_kind}: {getattr(node, 'name', '') or str(node_id)}"
+        default_title = SINGLE_TASK_TITLE_KEY
         task = CollaborationTaskModel(
             project_id=project_id,
             task_type="confirm_node",
@@ -143,8 +146,8 @@ class TaskService:
             project_id=project_id,
             task_id=task.id,
             event_type="task_assigned",
-            title="收到新的确认任务指派",
-            body=f"您被指派了确认任务 '{task.title}'。"
+            title="collaboration.notifications.singleTaskAssigned.title",
+            body="collaboration.notifications.singleTaskAssigned.body"
         )
         session.add(notif)
 
@@ -158,7 +161,7 @@ class TaskService:
             session=session,
             project_id=project_id,
             action_type="task_created",
-            summary=f"创建确认任务: {task.title}",
+            summary="task_created",
             target_type="task",
             target_id=task.id,
             task_id=task.id,
@@ -252,7 +255,7 @@ class TaskService:
                     session=session,
                     project_id=project_id,
                     action_type="task_superseded",
-                    summary=f"批量确认任务已失效 (内容被编辑): {task.title}",
+                    summary="task_superseded",
                     target_type="task",
                     target_id=task.id,
                     task_id=task.id,
@@ -277,7 +280,7 @@ class TaskService:
                     session=session,
                     project_id=project_id,
                     action_type="task_approved",
-                    summary=f"批量确认任务已通过: {task.title}",
+                    summary="task_approved",
                     target_type="task",
                     target_id=task.id,
                     task_id=task.id,
@@ -311,7 +314,7 @@ class TaskService:
                     session=session,
                     project_id=project_id,
                     action_type="task_rejected",
-                    summary=f"批量确认任务已驳回: {task.title}",
+                    summary="task_rejected",
                     target_type="task",
                     target_id=task.id,
                     task_id=task.id,
@@ -346,9 +349,9 @@ class TaskService:
 
             from backend.database.model import NotificationModel
             event_type = "task_decided"
-            title = "批量确认任务已被处理"
-            decision_str = "已通过" if decision == "approve" else "已驳回"
-            body = f"您指派的批量确认任务 '{task.title}' {decision_str}。"
+            result_key = "Approved" if decision == "approve" else "Rejected"
+            title = f"collaboration.notifications.batchTask{result_key}.title"
+            body = f"collaboration.notifications.batchTask{result_key}.body"
             
             notif = NotificationModel(
                 recipient_user_id=task.created_by_user_id,
@@ -394,7 +397,7 @@ class TaskService:
                     session=session,
                     project_id=project_id,
                     action_type="task_approved",
-                    summary=f"采纳冲突/草稿建议: {task.title}",
+                    summary="task_approved",
                     target_type="task",
                     target_id=task.id,
                     task_id=task.id,
@@ -406,7 +409,7 @@ class TaskService:
                     session=session,
                     project_id=project_id,
                     action_type="task_rejected",
-                    summary=f"丢弃冲突/草稿建议: {task.title}",
+                    summary="task_rejected",
                     target_type="task",
                     target_id=task.id,
                     task_id=task.id,
@@ -417,9 +420,9 @@ class TaskService:
 
             from backend.database.model import NotificationModel
             event_type = "task_decided"
-            title = "冲突/草稿任务已被处理"
-            decision_str = "已采纳" if decision == "approve" else "已丢弃"
-            body = f"您处理的冲突/草稿建议 '{task.title}' {decision_str}。"
+            result_key = "Approved" if decision == "approve" else "Rejected"
+            title = f"collaboration.notifications.conflictTask{result_key}.title"
+            body = f"collaboration.notifications.conflictTask{result_key}.body"
             
             notif = NotificationModel(
                 recipient_user_id=task.created_by_user_id,
@@ -448,7 +451,7 @@ class TaskService:
                 session=session,
                 project_id=project_id,
                 action_type="task_superseded",
-                summary=f"任务已冲销: 关联节点内容发生语义变更",
+                summary="task_superseded",
                 target_type="task",
                 target_id=task.id,
                 task_id=task.id,
@@ -477,7 +480,7 @@ class TaskService:
                 session=session,
                 project_id=project_id,
                 action_type="task_approved",
-                summary=f"确认任务已通过: {task.title}",
+                summary="task_approved",
                 target_type="task",
                 target_id=task.id,
                 task_id=task.id,
@@ -512,7 +515,7 @@ class TaskService:
                 session=session,
                 project_id=project_id,
                 action_type="task_rejected",
-                summary=f"确认任务已驳回: {task.title}",
+                summary="task_rejected",
                 target_type="task",
                 target_id=task.id,
                 task_id=task.id,
@@ -543,9 +546,9 @@ class TaskService:
 
         from backend.database.model import NotificationModel
         event_type = "task_decided"
-        title = "确认任务已被处理"
-        decision_str = "已通过" if decision == "approve" else "已驳回"
-        body = f"您指派的确认任务 '{task.title}' {decision_str}。"
+        result_key = "Approved" if decision == "approve" else "Rejected"
+        title = f"collaboration.notifications.singleTask{result_key}.title"
+        body = f"collaboration.notifications.singleTask{result_key}.body"
         
         notif = NotificationModel(
             recipient_user_id=task.created_by_user_id,
@@ -594,7 +597,7 @@ class TaskService:
             session=session,
             project_id=project_id,
             action_type="task_cancelled",
-            summary=f"取消确认任务: {task.title}",
+            summary="task_cancelled",
             target_type="task",
             target_id=task.id,
             task_id=task.id
@@ -695,7 +698,7 @@ class TaskService:
             })
 
         # 4. Create task
-        task_title = title or f"批量确认任务 ({len(targets)}项)"
+        task_title = title or BATCH_TASK_TITLE_KEY
         task = CollaborationTaskModel(
             project_id=project_id,
             task_type="confirm_nodes",
@@ -719,8 +722,8 @@ class TaskService:
             project_id=project_id,
             task_id=task.id,
             event_type="task_assigned",
-            title="收到新的批量确认指派",
-            body=f"您被指派了批量确认任务 '{task.title}'。"
+            title="collaboration.notifications.batchTaskAssigned.title",
+            body="collaboration.notifications.batchTaskAssigned.body"
         )
         session.add(notif)
 
@@ -729,7 +732,7 @@ class TaskService:
             session=session,
             project_id=project_id,
             action_type="task_created",
-            summary=f"创建批量确认任务: {task.title}",
+            summary="task_created",
             target_type="task",
             target_id=task.id,
             task_id=task.id,

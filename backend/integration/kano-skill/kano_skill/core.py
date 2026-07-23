@@ -5,6 +5,7 @@ import os
 import re
 from collections import Counter, namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from importlib import resources
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -144,7 +145,7 @@ def _parallel_map(items: list[T], worker: Callable[[T], R]) -> list[R]:
     results: list[R | None] = [None] * len(items)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(worker, item): index
+            executor.submit(copy_context().run, worker, item): index
             for index, item in enumerate(items)
         }
         for future in as_completed(futures):

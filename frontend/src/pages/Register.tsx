@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { Mail, Lock, Key, ArrowRight, ShieldAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function Register() {
+  const { t } = useTranslation();
   const register = useAuthStore(state => state.register);
   const error = useAuthStore(state => state.error);
   const navigate = useNavigate();
@@ -22,17 +24,17 @@ export function Register() {
 
     const emailTrim = email.trim();
     if (!emailTrim || !password || !confirmPassword) {
-      setValidationError('请填写所有必填字段');
+      setValidationError(t('auth.register.fieldsRequired'));
       return;
     }
 
     if (password.length < 8) {
-      setValidationError('密码长度至少为 8 位');
+      setValidationError(t('auth.register.passwordLength'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setValidationError('两次输入的密码不一致');
+      setValidationError(t('auth.register.passwordsMismatch'));
       return;
     }
 
@@ -68,10 +70,10 @@ export function Register() {
           </div>
           <div className="space-y-1">
             <h1 className="text-2xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight">
-              创建您的账户
+              {t('auth.register.title')}
             </h1>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              即刻注册，构建智能化的需求空间与高保真原型
+              {t('auth.register.subtitle')}
             </p>
           </div>
         </div>
@@ -80,14 +82,15 @@ export function Register() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {currentError && (
             <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">
-              {currentError === 'email_already_registered' ? '该邮箱已被注册，请尝试直接登录' :
-               currentError === 'invalid_invite_code' ? '邀请码无效，管理员注册失败' : currentError}
+              {currentError === 'email_already_registered' ? t('auth.register.emailAlreadyRegistered') :
+               currentError === 'invalid_invite_code' ? t('auth.register.invalidInviteCode') :
+               currentError === 'register_failed' ? t('auth.register.registerFailed') : currentError}
             </div>
           )}
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-              电子邮箱 <span className="text-rose-500">*</span>
+              {t('auth.register.emailLabel')} <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -105,13 +108,13 @@ export function Register() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-              密码密码 <span className="text-rose-500">*</span> (至少 8 位)
+              {t('auth.register.passwordLabel')} <span className="text-rose-500">*</span> {t('auth.register.passwordRule')}
             </label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
-                placeholder="请输入密码"
+                placeholder={t('auth.register.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
@@ -123,13 +126,13 @@ export function Register() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-              确认密码 <span className="text-rose-500">*</span>
+              {t('auth.register.confirmPasswordLabel')} <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
-                placeholder="请再次输入密码"
+                placeholder={t('auth.register.confirmPasswordPlaceholder')}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={isSubmitting}
@@ -151,25 +154,25 @@ export function Register() {
               className="inline-flex items-center gap-1.5 text-xs text-indigo-600 font-bold hover:text-indigo-700 hover:underline transition-all cursor-pointer"
             >
               <Key className="w-3.5 h-3.5" />
-              {showInviteField ? '作为普通用户注册（无需邀请码）' : '使用管理员邀请码注册（可使用全局 LLM）'}
+              {showInviteField ? t('auth.register.userRegister') : t('auth.register.inviteCodeRegister')}
             </button>
           </div>
 
           {showInviteField && (
             <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
               <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <span>管理员邀请码</span>
+                <span>{t('auth.register.inviteCodeLabel')}</span>
                 <span className="text-rose-500">*</span>
                 <span className="normal-case font-medium text-slate-400 flex items-center gap-1 ml-auto">
                   <ShieldAlert className="w-3 h-3 text-indigo-500" />
-                  管理员将使用共享 API 密钥
+                  {t('auth.register.inviteCodeNotice')}
                 </span>
               </div>
               <div className="relative">
                 <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="请输入邀请码"
+                  placeholder={t('auth.register.inviteCodePlaceholder')}
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   disabled={isSubmitting}
@@ -189,7 +192,7 @@ export function Register() {
               <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
             ) : (
               <>
-                完成注册并登录
+                {t('auth.register.submit')}
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}
@@ -199,12 +202,12 @@ export function Register() {
         {/* Footer */}
         <div className="border-t border-slate-100 pt-6 text-center">
           <p className="text-xs text-slate-500 font-medium">
-            已有账户？{' '}
+            {t('auth.register.hasAccount')}{' '}
             <Link
               to="/login"
               className="text-indigo-600 font-bold hover:text-indigo-700 hover:underline transition-colors"
             >
-              立即登录
+              {t('auth.register.loginLink')}
             </Link>
           </p>
         </div>

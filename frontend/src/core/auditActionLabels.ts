@@ -75,20 +75,125 @@ export const auditActionTypeLabels: Record<string, string> = {
   update_scenario: '更新场景',
   update_scope: '更新范围决策',
   update_user_requirements: '更新用户需求',
+  update_project_locale: '更新项目内容语言',
   approve_task: '审批通过',
   commit_shadow_draft: '提交影子草稿',
   complete_confirmation_task: '完成确认任务',
+  update_task: '更新任务',
+  submit_task: '提交任务审核',
 };
 
-export const getAuditActionTypeLabel = (actionType: string | null | undefined) => {
-  if (!actionType) return '未知操作';
-  return auditActionTypeLabels[actionType] || actionType;
+export const auditActionTypeLabelsEn: Record<string, string> = {
+  accept_choice: 'Accept Candidate Option',
+  ai_action: 'AI Action',
+  ai_draft_applied_by_user: 'Adopt AI Draft',
+  ai_draft_conflict_detected: 'AI Draft Conflict Detected',
+  ai_draft_generated: 'AI Draft Generated',
+  create_ac: 'Add Acceptance Criteria',
+  create_acceptance_criterion: 'Add Acceptance Criteria',
+  create_actor: 'Add Actor',
+  create_business_object: 'Add Business Object',
+  create_business_object_attribute: 'Add Object Attribute',
+  create_choice_group: 'Generate Candidate Options Group',
+  create_confirmation_task: 'Create Confirmation Task',
+  create_feature: 'Add Feature',
+  create_flow: 'Add Flow',
+  create_flow_step: 'Add Flow Step',
+  create_scenario: 'Add Scenario',
+  create_task: 'Create Task',
+  delete_ac: 'Delete Acceptance Criteria',
+  delete_acceptance_criterion: 'Delete Acceptance Criteria',
+  delete_actor: 'Delete Actor',
+  delete_business_object: 'Delete Business Object',
+  delete_business_object_attribute: 'Delete Object Attribute',
+  delete_feature: 'Delete Feature',
+  delete_flow: 'Delete Flow',
+  delete_flow_step: 'Delete Flow Step',
+  delete_scenario: 'Delete Scenario',
+  discard_choice_group: 'Discard Repair Options Group',
+  discard_shadow_draft: 'Discard Shadow Draft',
+  generation_choice_accepted: 'Accept Generated Option',
+  generation_choice_group_created: 'Generated Options Group',
+  generation_choice_group_discarded: 'Discard Generated Options Group',
+  generation_choice_group_stale: 'Candidate Option Expired',
+  generation_choice_rejected: 'Reject Generated Option',
+  issue_repair_confirmed: 'Confirm Issue Repair',
+  issue_repair_discarded: 'Discard Issue Repair',
+  member_added: 'Add Project Member',
+  member_removed: 'Remove Project Member',
+  member_role_changed: 'Update Member Role',
+  member_role_updated: 'Update Member Role',
+  member_status_changed: 'Update Member Status',
+  member_invitation_accepted: 'Accept Member Invitation',
+  member_invitation_declined: 'Decline Member Invitation',
+  member_invitation_revoked: 'Revoke Member Invitation',
+  refine_user_requirements: 'AI Refine User Requirements',
+  regenerate_choice_group: 'Regenerate Options Group',
+  regenerate_shadow_draft: 'Regenerate Shadow Draft',
+  reject_choice: 'Reject Candidate Option',
+  reject_task: 'Approval Rejected',
+  reorder_flow_steps: 'Reorder Flow Steps',
+  set_kano_status: 'Update Kano Analysis Status',
+  skip_kano: 'Skip Kano Analysis',
+  stage_transition_forced: 'Force Stage Transition',
+  stage_transition_unlocked: 'Unlock Stage',
+  supersede_confirmation_task: 'Supersede Confirmation Task',
+  task_approved: 'Approval Approved',
+  task_cancelled: 'Cancel Task',
+  task_created: 'Create Task',
+  task_rejected: 'Approval Rejected',
+  task_superseded: 'Task Superseded',
+  task_superseded_by_node_update: 'Task Invalidated by Node Update',
+  test_action: 'Test Action',
+  unlock_stage_gate: 'Unlock Stage Gate',
+  update_ac: 'Update Acceptance Criteria',
+  update_acceptance_criterion: 'Update Acceptance Criteria',
+  update_actor: 'Update Actor',
+  update_business_object: 'Update Business Object',
+  update_business_object_attribute: 'Update Object Attribute',
+  update_confirmation_status: 'Update Confirmation Status',
+  batch_update_confirmation_status: 'Bulk Update Confirmation Status',
+  update_confirmation_task: 'Update Confirmation Task',
+  update_feature: 'Update Feature',
+  update_flow: 'Update Flow',
+  update_flow_step: 'Update Flow Step',
+  update_project_locale: 'Update Project Content Language',
+  update_scenario: 'Update Scenario',
+  update_scope: 'Update Scope Decision',
+  update_user_requirements: 'Update User Requirements',
+  update_task: 'Update Task',
+  submit_task: 'Submit Task for Review',
+  approve_task: 'Approve Task',
+  commit_shadow_draft: 'Submit Shadow Draft',
+  complete_confirmation_task: 'Complete Confirmation Task',
 };
 
-export const withAuditActionTypeLabel = <T extends { actionType?: string; action_type?: string }>(log: T) => {
+export const getAuditActionTypeLabel = (actionType: string | null | undefined, lang: string = 'zh-CN') => {
+  if (!actionType) return lang === 'zh-CN' ? '未知操作' : 'Unknown Operation';
+  if (lang === 'en-US') {
+    return auditActionTypeLabelsEn[actionType] || 'Unknown Operation';
+  }
+  return auditActionTypeLabels[actionType] || '未知操作';
+};
+
+export const getAuditSummary = (
+  log: { actionType?: string; action_type?: string; summary?: string },
+  lang: string = 'zh-CN',
+) => {
+  const actionType = log.actionType || log.action_type;
+  const summary = log.summary?.trim();
+  if (!summary) return getAuditActionTypeLabel(actionType, lang);
+  if (/^[a-z][a-z0-9_]*$/.test(summary)) return getAuditActionTypeLabel(summary, lang);
+  if (lang === 'en-US' && /[\u4e00-\u9fff]/.test(summary)) {
+    return getAuditActionTypeLabel(actionType, lang);
+  }
+  return summary;
+};
+
+export const withAuditActionTypeLabel = <T extends { actionType?: string; action_type?: string }>(log: T, lang: string = 'zh-CN') => {
   const actionType = log.actionType || log.action_type;
   return {
     ...log,
-    actionTypeLabel: getAuditActionTypeLabel(actionType),
+    actionTypeLabel: getAuditActionTypeLabel(actionType, lang),
   };
 };

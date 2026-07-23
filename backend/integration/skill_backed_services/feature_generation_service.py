@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.api.modules.requirements_core.public import FeatureGenerationService
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.integration.skill_backed_services.feature_tree_adapter import FeatureTreeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
@@ -35,7 +36,14 @@ class SkillBackedFeatureGenerationService(FeatureGenerationService):
 
         actor_names = [actor.actorName for actor in actor_nodes]
         prompt = self._skill_generator._build_prompt(requirement_text, actor_names)
-        raw_feature_tree: dict[str, Any] = await self._llm_json_client.ask_json(prompt)
+        raw_feature_tree: dict[str, Any] = await self._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_requirements,
+                user_feedback,
+                actor_names,
+            ),
+        )
 
         features = self._adapter.to_current_features(
             raw_feature_tree=raw_feature_tree,

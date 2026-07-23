@@ -21,6 +21,7 @@ from backend.database.model import Base, ChoiceGroupModel, ChoiceModel, ProjectM
 from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     GenerationChoiceSettings,
     GenerationCandidate,
+    CandidateRunResult,
     CandidateContext,
     run_candidate_generation,
     BaseGenerationChoiceAdapter,
@@ -293,6 +294,87 @@ class TestAdapterRegistry:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestGenerationChoiceService:
+    @pytest.mark.asyncio
+    async def test_single_scenario_candidates_run_two_at_a_time(
+        self, db_session, seeded_project, monkeypatch
+    ):
+        from backend.api.modules.decision_workflow.candidate_generation.application import (
+            generation_choice_service as service_module,
+        )
+
+        candidates = [
+            GenerationCandidate(
+                title=f"Scenario {index}",
+                rationale="test",
+                payload={"scenarios": []},
+                draft_type="scenario",
+            )
+            for index in range(2)
+        ]
+        runner = AsyncMock(return_value=CandidateRunResult(
+            candidates=candidates,
+            errors=[],
+            total_count=2,
+            success_count=2,
+            failure_count=0,
+            duration_ms=1,
+        ))
+        monkeypatch.setattr(service_module, "run_candidate_generation", runner)
+        monkeypatch.setattr(service_module, "get_adapter", lambda _type: TestActorGenerationChoiceAdapter())
+
+        service = GenerationChoiceService(settings=GenerationChoiceSettings(candidate_count=2))
+        await service.create_choice_group(
+            project_id=seeded_project,
+            generation_type="scenario",
+            target={"generation_mode": "single", "feature_id": 1},
+            candidate_count=2,
+            session=db_session,
+        )
+
+        assert runner.await_args.kwargs["max_concurrency"] == 2
+
+    @pytest.mark.asyncio
+    async def test_large_scenario_batch_uses_one_candidate_and_scaled_timeout(
+        self, db_session, seeded_project, monkeypatch
+    ):
+        from backend.api.modules.decision_workflow.candidate_generation.application import (
+            generation_choice_service as service_module,
+        )
+
+        candidate = GenerationCandidate(
+            title="Scenario batch",
+            rationale="test",
+            payload={"scenarios": []},
+            draft_type="scenario",
+        )
+        runner = AsyncMock(return_value=CandidateRunResult(
+            candidates=[candidate],
+            errors=[],
+            total_count=1,
+            success_count=1,
+            failure_count=0,
+            duration_ms=1,
+        ))
+        monkeypatch.setattr(service_module, "run_candidate_generation", runner)
+        monkeypatch.setattr(service_module, "get_adapter", lambda _type: TestActorGenerationChoiceAdapter())
+
+        service = GenerationChoiceService(settings=GenerationChoiceSettings(
+            candidate_count=2,
+            timeout_seconds=100,
+            partial_success_min=2,
+        ))
+        result = await service.create_choice_group(
+            project_id=seeded_project,
+            generation_type="scenario",
+            target={"generation_mode": "batch", "feature_ids": list(range(67))},
+            candidate_count=2,
+            session=db_session,
+        )
+
+        assert runner.await_args.kwargs["count"] == 1
+        assert runner.await_args.kwargs["timeout_seconds"] == 200
+        assert result["status"] == "open"
+
     @pytest.mark.asyncio
     async def test_create_choice_group_success(self, db_session, seeded_project):
         service = GenerationChoiceService()

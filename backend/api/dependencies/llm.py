@@ -8,6 +8,7 @@ from backend.database.model import UserModel
 from backend.api.modules.auth_account.public import LLMConfigService
 from backend.database.database import get_session
 from backend.core.llm_context import current_llm_context, LLMRequestContext
+from backend.core.locale import resolve_effective_locale
 
 llm_config_service = LLMConfigService()
 
@@ -17,13 +18,17 @@ async def llm_context_manager(
     user: UserModel,
     session: AsyncSession,
     project_id: int | None = None,
-) -> AsyncIterator[LLMRequestContext]:
+    require_config: bool = True,
+) -> AsyncIterator[LLMRequestContext | None]:
     """Context manager to resolve user LLM configuration and set request context."""
     try:
         config_data = await llm_config_service.resolve_for_user(user.id, session, project_id=project_id)
     except ValueError as e:
         err_msg = str(e)
         if err_msg in ("llm_config_required", "server_llm_config_not_configured"):
+            if not require_config:
+                yield None
+                return
             raise HTTPException(status_code=409, detail=err_msg)
         raise HTTPException(status_code=400, detail=err_msg)
 
@@ -32,12 +37,30 @@ async def llm_context_manager(
     model_name = config_data.get("model_name")
 
     if not api_url or not api_key or not model_name:
+        if not require_config:
+            yield None
+            return
         raise HTTPException(status_code=409, detail="llm_config_required")
+
+    project_content_locale = None
+    if project_id:
+        from backend.database.model import ProjectModel
+        from sqlalchemy import select
+        stmt = select(ProjectModel.content_locale).where(ProjectModel.id == project_id)
+        res = await session.execute(stmt)
+        project_content_locale = res.scalar_one_or_none()
+
+    effective_content_locale, content_locale_source = resolve_effective_locale(
+        project_content_locale,
+        getattr(user, "preferred_locale", None),
+    )
 
     ctx = LLMRequestContext(
         api_url=api_url,
         api_key=api_key,
-        model_name=model_name
+        model_name=model_name,
+        content_locale=effective_content_locale,
+        content_locale_source=content_locale_source,
     )
 
     token = current_llm_context.set(ctx)

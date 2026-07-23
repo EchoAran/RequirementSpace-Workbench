@@ -10,6 +10,7 @@ import { workspaceApi } from '../lib/api';
 import { AuthGuard } from '../components/auth/AuthGuard';
 import { GuestGuard } from '../components/auth/GuestGuard';
 import { GlobalToast } from '../App';
+import i18n from '@/i18n';
 
 // Mock http client
 vi.mock('../lib/http', async (importOriginal) => {
@@ -52,7 +53,7 @@ describe('Extended Security & Routing Isolation Matrix', () => {
     useAuthStore.getState().clearAuth();
     useWorkspaceStore.setState({
       error: null,
-      lastActionMessage: null,
+      lastActionMessageToken: null,
       isLoading: false,
       ir: null,
     });
@@ -108,14 +109,15 @@ describe('Extended Security & Routing Isolation Matrix', () => {
       );
 
       const friendlyMsg = getFriendlyErrorMessage('llm_config_required');
-      expect(screen.queryByText(friendlyMsg)).not.toBeNull();
+      const translatedMsg = i18n.t(friendlyMsg);
+      expect(screen.queryByText(translatedMsg)).not.toBeNull();
       
       // Ensure '前往设置' indicator/button is rendered
       const button = screen.queryByText('前往设置');
       expect(button).not.toBeNull();
 
       // Click to trigger navigate('/settings')
-      fireEvent.click(screen.getByText(friendlyMsg));
+      fireEvent.click(screen.getByText(translatedMsg));
 
       // Assert redirection took place
       expect(screen.getByTestId('location').textContent).toBe('/settings');

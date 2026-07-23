@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -11,7 +12,6 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import {
   useWorkspaceStore,
   selectSelectedObject,
-  selectPageHealth,
 } from '@/store/useWorkspaceStore';
 import { findingProjection, findingTargetIds } from '@/core/findingPresentation';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
@@ -99,6 +99,7 @@ const getFeaturePath = (featureId: number, features: any[]): string => {
 };
 
 export function HowItWorks() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const {
@@ -211,7 +212,6 @@ export function HowItWorks() {
 
   const ir = useWorkspaceStore(state => state.ir);
   const hasFlowsOrBusinessObjects = (ir?.flows || []).length > 0 || (ir?.businessObjects || []).length > 0;
-  const pageHealth = selectPageHealth({ ir } as any, '/flow');
   const selectedObject = useWorkspaceStore(selectSelectedObject);
   const system = buildSystemProjection(ir);
   const [flowViews, setFlowViews] = useState<Record<number, 'canvas' | 'list'>>({});
@@ -254,7 +254,7 @@ export function HowItWorks() {
   const getStepTypeMeta = (stepType: 'actorAction' | 'systemAction' | 'judgment') => {
     if (stepType === 'judgment') {
       return {
-        label: '分支结点',
+        label: t('how.branchNode'),
         badgeClass: 'bg-amber-50 border-amber-200 text-amber-800',
         numberClass: 'bg-amber-500 text-white',
         cardClass: 'border-amber-300/90 bg-amber-50/70 hover:border-amber-400 border-dashed',
@@ -271,7 +271,7 @@ export function HowItWorks() {
 
     if (stepType === 'systemAction') {
       return {
-        label: '系统动作',
+        label: t('how.stepType.systemAction'),
         badgeClass: 'bg-sky-50 border-sky-200 text-sky-800',
         numberClass: 'bg-sky-500 text-white',
         cardClass: 'border-sky-200 bg-sky-50/45 hover:border-sky-400',
@@ -287,7 +287,7 @@ export function HowItWorks() {
     }
 
     return {
-      label: '用户动作',
+      label: t('how.stepType.actorAction'),
       badgeClass: 'bg-indigo-50 border-indigo-200 text-indigo-800',
       numberClass: 'bg-indigo-600 text-white',
       cardClass: 'border-slate-200 bg-white hover:border-indigo-400',
@@ -406,19 +406,19 @@ export function HowItWorks() {
             <Workflow className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-black text-slate-900 tracking-tight">业务流程建模前置依赖未满足</h3>
+          <h3 className="text-lg font-black text-slate-900 tracking-tight">{t('how.dependenciesTitle')}</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              根据高一致性建模方法论，业务流程 (How) 是<b>执行参与者</b>针对系统中的<b>功能特征点</b>展开的流转演化。
+            {t('how.dependenciesDescription')}
             </p>
             <p className="text-xs text-slate-400 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100/60">
-              请先在 <b>“要做什么 (What)”</b> 页面中至少定义一个参与者与系统功能节点，然后才能在此处定义流程步骤及输入输出实体关系。
+            {t('how.dependenciesAction')}
             </p>
           </div>
           <button
             onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
-          前往 What 阶段进行参与者与能力建模
+            {t('how.goToWhat')}
           </button>
         </div>
       </div>
@@ -481,15 +481,15 @@ export function HowItWorks() {
                     </span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">AI 推荐的业务流程与实体草稿已生成</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">AI 自动设计了契合系统模型的泳道步骤与关联业务数据对象。</p>
+            <h3 className="text-base font-bold text-slate-900">{t('how.generatedDraftTitle')}</h3>
+            <p className="text-xs text-slate-500 mt-0.5">{t('how.generatedDraftDescription')}</p>
                       </div>
                       <div className="flex gap-2 items-center max-w-md">
                         <input
                           type="text"
                           value={flowFeedback}
                           onChange={(e) => setFlowFeedback(e.target.value)}
-                          placeholder="补充流程调整意见 (可选)"
+            placeholder={t('how.generatedDraftFeedbackPlaceholder')}
                           className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
                           disabled={isGenerating || isLoading}
                         />
@@ -502,7 +502,7 @@ export function HowItWorks() {
                           className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          重新推演
+                          {t('how.regenerateBtn')}
                         </button>
                       </div>
                     </div>
@@ -514,7 +514,7 @@ export function HowItWorks() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      采纳并合并推荐
+                      {t('how.aiAdoptBtn')}
                     </button>
                     <button
                       onClick={discardDraft}
@@ -522,7 +522,7 @@ export function HowItWorks() {
                       className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
-                      放弃
+                      {t('scope.modal.discard')}
                     </button>
                   </div>
                 </div>
@@ -533,14 +533,14 @@ export function HowItWorks() {
                     <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
                       <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1">
                         <Workflow className="w-3.5 h-3.5 text-indigo-500" />
-                        流程: {fl.flow_name}
+                        {t('how.flowLabelFormat', { name: fl.flow_name })}
                       </h4>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">{fl.flow_description}</p>
                       <div className="mt-3 space-y-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">设计步骤:</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{t('how.flowStepLabel')}:</span>
                         {fl.steps?.map((st: any, i: number) => (
                           <div key={i} className="text-[10px] text-slate-600 bg-slate-50 px-2.5 py-1 rounded border border-slate-100 font-medium">
-                            步骤 {i + 1}: <span className="font-bold text-slate-700">{st.step_name}</span> ({st.step_type})
+                            {t('how.flowStepLabel')} {i + 1}: <span className="font-bold text-slate-700">{st.step_name}</span> ({st.step_type === 'actorAction' ? t('how.stepType.actorAction') : st.step_type === 'systemAction' ? t('how.stepType.systemAction') : t('how.stepType.judgment')})
                           </div>
                         ))}
                       </div>
@@ -548,7 +548,7 @@ export function HowItWorks() {
                   ))}
                   {activeDraft.business_objects && activeDraft.business_objects.length > 0 && (
                     <div className="bg-white/80 p-4 rounded-xl border border-slate-200/50 sm:col-span-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">生成的数据对象 Business Objects:</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('how.businessObjectsHeader')}</span>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {activeDraft.business_objects?.map((bo: any, idx: number) => (
                           <div key={idx} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/50">
@@ -568,29 +568,29 @@ export function HowItWorks() {
               <div className="flex items-start justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">系统业务流程模型</h2>
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">{t('how.title')}</h2>
                     <div className="relative group">
                       <button
                         onClick={() => setIsAddFlowModalOpen(true)}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        aria-label="手动添加业务对象"
+                        aria-label={t('how.manualFlowBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                       <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        手动组建业务流程
+                        {t('how.manualFlowBtn')}
                       </div>
                     </div>
                     <div className="relative group">
                       <button
                         onClick={() => setAiDialogTarget({ targetType: 'flow' })}
                         className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                        aria-label="AI 对话添加流程"
+                        aria-label={t('how.aiChatFlowBtn')}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                       </button>
                       <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        AI 对话添加流程
+                        {t('how.aiChatFlowBtn')}
                       </div>
                     </div>
                   </div>
@@ -602,7 +602,7 @@ export function HowItWorks() {
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
                     <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isGenerating || isLoading ? 'animate-pulse' : ''}`} />
-                    {hasFlowsOrBusinessObjects ? 'AI 重新生成流程与数据对象' : 'AI 智能生成流程与数据对象'}
+                    {hasFlowsOrBusinessObjects ? t('how.regenerateBtn') : t('how.generateBtn')}
                   </button>
                 </div>
               </div>
@@ -610,17 +610,17 @@ export function HowItWorks() {
               <div className="space-y-8">
                 {(!ir?.flows || ir.flows.length === 0) && (
                   <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl text-slate-500 italic text-sm flex flex-col items-center justify-center gap-4 select-none">
-                    <span>当前需求空间没有定义任何业务流程。您可以尝试通过 AI 智能推演生成，或者手动组建业务流程。</span>
+                    <span>{t('how.emptyTip')}</span>
                     <div className="relative group">
                       <button
                         onClick={() => setIsAddFlowModalOpen(true)}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        aria-label="手动组建业务流程"
+                        aria-label={t('how.manualCreateBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                       <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        手动组建首条业务流程
+                        {t('how.manualCreateBtn')}
                       </div>
                     </div>
                   </div>
@@ -664,29 +664,29 @@ export function HowItWorks() {
                                         setIsAddStepModalOpen(true);
                                       }}
                                       className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                      aria-label="添加流程步骤"
+                                      aria-label={t('how.addStepBtn')}
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                     </button>
                                     <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                                      手动添加步骤
+                                      {t('how.addStepBtn')}
                                     </div>
                                   </div>
                                   <div className="relative group">
                                     <button
                                       type="button"
                                       onClick={async () => {
-                                        const ok = window.confirm(`确认要删除业务流程“${flow.flowName}”吗？此操作无法撤销。`);
+                                        const ok = window.confirm(t('how.deleteConfirm', { name: flow.flowName }));
                                         if (!ok) return;
                                         await deleteFlow(flow.flowId);
                                       }}
                                       className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none"
-                                      aria-label="删除流程"
+                                      aria-label={t('how.deleteBtn')}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                     <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                                      删除流程
+                                      {t('how.deleteBtn')}
                                     </div>
                                   </div>
                                 </div>
@@ -699,7 +699,7 @@ export function HowItWorks() {
                                 setCollapsedFlows(prev => ({ ...prev, [flow.flowId]: !prev[flow.flowId] }));
                               }}
                               className="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors shrink-0"
-                              title={isCollapsed ? '展开流程' : '折叠流程'}
+                              title={isCollapsed ? t('how.expandBtn') : t('how.collapseBtn')}
                             >
                               {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                             </button>
@@ -707,7 +707,7 @@ export function HowItWorks() {
                           <p className="text-xs text-slate-500 leading-relaxed">{flow.flowDescription}</p>
                           {featNames.length > 0 && (
                             <div className="flex items-center gap-2 bg-indigo-50/40 border border-indigo-100/50 rounded-xl px-3 py-1.5 text-xs text-indigo-700 font-medium w-full">
-                              <span className="shrink-0 flex items-center gap-1 font-extrabold text-indigo-800"><Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> 覆盖功能域：</span>
+                              <span className="shrink-0 flex items-center gap-1 font-extrabold text-indigo-800"><Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {t('how.flowBindFeaturesLabel')}</span>
                               <span className="truncate font-semibold text-indigo-700">{featNames.join(' · ')}</span>
                             </div>
                           )}
@@ -729,7 +729,7 @@ export function HowItWorks() {
                                   }`}
                                 >
                                   <GitBranch className="w-3 h-3" />
-                                  拓扑画布
+                                  {t('how.graphView')}
                                 </button>
                                 <button
                                   type="button"
@@ -741,7 +741,7 @@ export function HowItWorks() {
                                   }`}
                                 >
                                   <Workflow className="w-3 h-3" />
-                                  序列模式
+                                  {t('how.listView')}
                                 </button>
                               </div>
                             </div>
@@ -792,10 +792,10 @@ export function HowItWorks() {
                                       };
                                     });
                                   }}
-                                  title="缩小 (Zoom Out)"
+                                  title={t('how.zoomOut')}
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] text-slate-600 hover:text-slate-800 transition-colors shadow-sm"
                                 >
-          减少
+          {t('how.zoomOut')}
                                 </button>
                                 <span className="text-[10px] font-extrabold text-slate-500 min-w-[36px] text-center">
                                   {Math.round(currentPanZoom.scale * 100)}%
@@ -811,10 +811,10 @@ export function HowItWorks() {
                                       };
                                     });
                                   }}
-                                  title="放大 (Zoom In)"
+                                  title={t('how.zoomIn')}
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] text-slate-600 hover:text-slate-800 transition-colors shadow-sm"
                                 >
-          增加
+          {t('how.zoomIn')}
                                 </button>
                                 <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
                                 <button
@@ -826,10 +826,10 @@ export function HowItWorks() {
                                     }));
                                     setCustomStepPositions({}); // Reset panned nodes to their BFS default positions!
                                   }}
-                                  title="重置视图"
+                                  title={t('how.fitView')}
                                   className="px-2 h-7 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 text-[10px] font-extrabold text-indigo-600 hover:text-indigo-700 transition-colors shadow-sm"
                                 >
-          重置
+          {t('how.fitView')}
                                 </button>
                               </div>
 
@@ -975,12 +975,12 @@ export function HowItWorks() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              const ok = window.confirm(`确认删除步骤“${step.stepName}”吗？`);
+                                              const ok = window.confirm(`t('how.stepDeleteConfirm', { name: step.stepName })`);
                                               if (!ok) return;
                                               await deleteFlowStep(flow.flowId, step.stepId);
                                             }}
                                             className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent opacity-0 group-hover:opacity-100 transition-all"
-                                            title="删除步骤"
+                                            title={t('how.deleteStepBtn')}
                                           >
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>
@@ -1001,7 +1001,7 @@ export function HowItWorks() {
                                               <div className={`mt-1 text-[10px] truncate font-semibold ${stepMeta.actorToneClass}`}>
                                                 <span className="flex items-center gap-1">
                                                   <User className="w-3 h-3 text-slate-400 shrink-0" />
-                                                  {stepActors.length > 0 ? stepActors.join(', ') : '待绑定角色'}
+                                                  {stepActors.length > 0 ? stepActors.join(', ') : t('how.bindActorPlaceholder')}
                                                 </span>
                                               </div>
                                             )}
@@ -1018,7 +1018,7 @@ export function HowItWorks() {
                                         <div className="mt-1 space-y-1 border-t border-slate-100/80 pt-2">
                                           {stepDetail.inputs.length > 0 && (
                                             <div className="flex items-start gap-1.5">
-                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-slate-400">输入</span>
+                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-slate-400">{t('how.stepInputBoLabel')}</span>
                                               <div className="min-w-0 flex flex-1 flex-nowrap gap-1 overflow-hidden">
                                                 {renderIoTokens(stepDetail.inputs, 'input', ioVisibleCount)}
                                               </div>
@@ -1026,7 +1026,7 @@ export function HowItWorks() {
                                           )}
                                           {stepDetail.outputs.length > 0 && (
                                             <div className="flex items-start gap-1.5">
-                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-emerald-500">输出</span>
+                                              <span className="shrink-0 pt-0.5 text-[10px] font-extrabold text-emerald-500">{t('how.stepOutputBoLabel')}</span>
                                               <div className="min-w-0 flex flex-1 flex-nowrap gap-1 overflow-hidden">
                                                 {renderIoTokens(stepDetail.outputs, 'output', ioVisibleCount)}
                                               </div>
@@ -1082,12 +1082,12 @@ export function HowItWorks() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              const ok = window.confirm(`确认删除步骤“${step.stepName}”吗？`);
+                                              const ok = window.confirm(`t('how.stepDeleteConfirm', { name: step.stepName })`);
                                               if (!ok) return;
                                               await deleteFlowStep(flow.flowId, step.stepId);
                                             }}
                                             className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-colors"
-                                            title="删除此步骤"
+                                            title={t('how.deleteStepBtn')}
                                           >
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>
@@ -1100,7 +1100,7 @@ export function HowItWorks() {
                                           <span className="text-[10px] font-bold text-indigo-600">
                                             <span className="flex items-center gap-1">
                                               <User className="w-3 h-3 text-slate-400 shrink-0" />
-                                              {stepActors.length > 0 ? stepActors.join(', ') : '待绑定角色'}
+                                              {stepActors.length > 0 ? stepActors.join(', ') : t('how.bindActorPlaceholder')}
                                             </span>
                                           </span>
                                         )}
@@ -1115,13 +1115,13 @@ export function HowItWorks() {
                                         <div className="border-t border-slate-100 pt-2 mt-auto space-y-1.5">
                                           {stepDetail.inputs.length > 0 && (
                                             <div className="flex flex-wrap gap-1 items-center">
-                                              <span className="text-[10px] text-slate-400 font-bold shrink-0">输入:</span>
+                                              <span className="text-[10px] text-slate-400 font-bold shrink-0">{t('how.stepInputBoLabel')}:</span>
                                               {renderIoTokens(stepDetail.inputs, 'input')}
                                             </div>
                                           )}
                                           {stepDetail.outputs.length > 0 && (
                                             <div className="flex flex-wrap gap-1 items-center">
-                                              <span className="text-[10px] text-slate-500 font-bold shrink-0">输出:</span>
+                                              <span className="text-[10px] text-slate-500 font-bold shrink-0">{t('how.stepOutputBoLabel')}:</span>
                                               {renderIoTokens(stepDetail.outputs, 'output')}
                                             </div>
                                           )}
@@ -1151,18 +1151,18 @@ export function HowItWorks() {
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-3">
                 <div className="flex-1">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    <span className="flex items-center gap-2"><Database className="w-5 h-5 text-indigo-600 shrink-0" /> 业务数据</span>
+                    <span className="flex items-center gap-2"><Database className="w-5 h-5 text-indigo-600 shrink-0" /> {t('how.businessObjectsTitle')}</span>
                     <button
                       onClick={() => setIsAddBusinessObjectModalOpen(true)}
                       className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                      title="手动创建业务对象"
+                      title={t('how.manualBoBtn')}
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setAiDialogTarget({ targetType: 'business_object' })}
                       className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                      title="AI 对话添加业务对象"
+                      title={t('how.aiChatBoBtn')}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                     </button>
@@ -1171,7 +1171,7 @@ export function HowItWorks() {
               </div>
               {businessObjects.length === 0 ? (
                 <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-500 shadow-sm select-none">
-                  当前工作区还没有任何业务数据对象。请通过 AI 智能推演生成，或点击左上角加号手动添加。
+                  {t('how.boEmptyText')}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -1199,13 +1199,13 @@ export function HowItWorks() {
                           <div className="min-w-0">
                             <h4 className="font-extrabold text-slate-800 text-sm truncate">{object.businessObjectName || object.title}</h4>
                             <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
-                              {(object.businessObjectAttributes || []).length} 个字段属性
+                              {t('how.boFieldsFormat', { count: (object.businessObjectAttributes || []).length })}
                             </span>
                           </div>
                           <StatusBadge status={objectStatus} className="scale-90 origin-right shrink-0" />
                         </div>
                         <div className="text-xs text-slate-500 leading-relaxed line-clamp-3">
-                          {object.businessObjectDescription || object.description || '暂无业务对象描述说明。'}
+                          {object.businessObjectDescription || object.description || t('how.boNoDesc')}
                         </div>
 
                         {/* Merged Related Steps and State Transitions */}
@@ -1213,7 +1213,7 @@ export function HowItWorks() {
                           <div className="mt-2 pt-3 border-t border-slate-100 space-y-3 shrink-0">
                             {relatedSteps.length > 0 && (
                               <div className="space-y-1.5">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">关联操作步骤</span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.boRelatedStepsLabel')}</span>
                                 <div className="flex flex-wrap gap-1">
                                   {relatedSteps.map((s) => (
                                     <button
@@ -1235,7 +1235,7 @@ export function HowItWorks() {
 
                             {stateChanges.length > 0 && (
                               <div className="space-y-1.5">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">生命周期状态变迁</span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.boStateTransitionsLabel')}</span>
                                 <div className="flex flex-wrap gap-1">
                                   {stateChanges.map((item) => (
                                     <span
@@ -1256,12 +1256,12 @@ export function HowItWorks() {
                           type="button"
                           onClick={async (e) => {
                             e.stopPropagation();
-                            const ok = window.confirm(`确定删除业务实体“${object.businessObjectName || object.title}”吗？这会清除其所有属性和流程步骤中的输入输出绑定。`);
+    const ok = window.confirm(t('how.deleteBusinessObjectConfirm', { name: object.businessObjectName || object.title }));
                             if (!ok) return;
                             await deleteBusinessObject(object.businessObjectId || Number(object.id));
                           }}
                           className="absolute right-4 bottom-4 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                          title="删除该业务对象"
+                          title={t('how.boDeleteBtn')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1281,26 +1281,26 @@ export function HowItWorks() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-extrabold text-sm text-slate-800">手动创建业务对象</h3>
-              <p className="text-[10px] text-slate-500 mt-1">补充系统流程中会流转的数据对象。</p>
+              <h3 className="font-extrabold text-sm text-slate-800">{t('how.manualBoTitle')}</h3>
+              <p className="text-[10px] text-slate-500 mt-1">{t('how.manualBoDesc')}</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">对象名称</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.boNameLabel')}</label>
                 <input
                   type="text"
                   value={newBusinessObjectName}
                   onChange={(e) => setNewBusinessObjectName(e.target.value)}
-                  placeholder="例如：播放状态"
+                  placeholder={t('how.boNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">对象描述</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.boDescLabel')}</label>
                 <textarea
                   value={newBusinessObjectDesc}
                   onChange={(e) => setNewBusinessObjectDesc(e.target.value)}
-                  placeholder="说明该业务对象承载的数据内容与用途"
+                  placeholder={t('how.boDescPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                 />
@@ -1315,7 +1315,7 @@ export function HowItWorks() {
                 }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+              {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1328,49 +1328,49 @@ export function HowItWorks() {
                 disabled={!newBusinessObjectName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                确定创建
+                {t('scope.modal.confirm')}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 手动组建业务流程 Modal */}
+      {/* {t('how.manualFlowTitle')} Modal */}
       {isAddFlowModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-lg w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-        <h3 className="font-extrabold text-sm text-slate-800">手动组建业务流程</h3>
-              <p className="text-[10px] text-slate-500 mt-1">创建一条核心业务流转主线，并关联相应的叶子功能（Leaf Features）。</p>
+        <h3 className="font-extrabold text-sm text-slate-800">{t('how.manualFlowTitle')}</h3>
+              <p className="text-[10px] text-slate-500 mt-1">{t('how.manualFlowDesc')}</p>
             </div>
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">流程名称</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.flowNameLabel')}</label>
                 <input
                   type="text"
                   value={newFlowName}
                   onChange={(e) => setNewFlowName(e.target.value)}
-                  placeholder="例如：本地歌词匹配流程"
+                  placeholder={t('how.flowNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">流程描述</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.flowDescLabel')}</label>
                 <textarea
                   value={newFlowDesc}
                   onChange={(e) => setNewFlowDesc(e.target.value)}
-                  placeholder="说明该流程的业务目标、参与者和关键流转"
+                  placeholder={t('how.flowDescPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
-                  关联业务功能域 (仅限勾选叶子功能)
+                  {t('how.flowBindFeaturesLabel')}
                 </label>
                 <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[180px] overflow-y-auto">
                   {(ir?.features || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">当前工作区暂无任何功能模块。</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.noFeaturesTip')}</div>
                   ) : (
                     (ir?.features || []).map((feat: FeatureNode) => {
                       const isLeaf = !feat.childrenIds || feat.childrenIds.length === 0;
@@ -1399,7 +1399,7 @@ export function HowItWorks() {
                           />
                           <span>{pathStr}</span>
                           {!isLeaf && (
-                            <span className="text-[10px] text-slate-400 font-bold ml-1.5">(父级分类，不可选)</span>
+                            <span className="text-[10px] text-slate-400 font-bold ml-1.5">({t('how.parentCategory')})</span>
                           )}
                         </label>
                       );
@@ -1418,7 +1418,7 @@ export function HowItWorks() {
                 }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+              {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1432,7 +1432,7 @@ export function HowItWorks() {
                 disabled={!newFlowName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                确定创建
+                {t('scope.modal.confirm')}
               </button>
             </div>
           </div>
@@ -1444,38 +1444,38 @@ export function HowItWorks() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-lg w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-extrabold text-sm text-slate-800">手动添加流程步骤</h3>
-              <p className="text-[10px] text-slate-500 mt-1">为当前流程补充步骤、参与者、输入对象与输出对象。</p>
+              <h3 className="font-extrabold text-sm text-slate-800">{t('how.manualStepTitle')}</h3>
+              <p className="text-[10px] text-slate-500 mt-1">{t('how.manualStepDesc')}</p>
             </div>
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">步骤名称 (必填)</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.stepNameLabel')}</label>
                 <input
                   type="text"
                   value={newStepName}
                   onChange={(e) => setNewStepName(e.target.value)}
-                  placeholder="例如：选择本地歌词目录"
+                  placeholder={t('how.stepNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">步骤执行类型 (必填)</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepTypeLabel')}</label>
                 <select
                   value={newStepType}
                   onChange={(e) => setNewStepType(e.target.value as any)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-semibold"
                 >
-                  <option value="actorAction">用户参与者交互步骤 (actorAction)</option>
-                  <option value="systemAction">系统后台自动步骤 (systemAction)</option>
-                  <option value="judgment">逻辑分支判定步骤 (judgment)</option>
+                  <option value="actorAction">{t('how.stepPerformerUser')}</option>
+                  <option value="systemAction">{t('how.stepPerformerSystem')}</option>
+                  <option value="judgment">{t('how.stepPerformerJudgment')}</option>
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">步骤描述</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('how.stepDescLabel')}</label>
                 <textarea
                   value={newStepDesc}
                   onChange={(e) => setNewStepDesc(e.target.value)}
-                  placeholder="说明该步骤的触发条件、处理动作和产出"
+                  placeholder={t('how.stepDescPlaceholder')}
                   rows={2}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                 />
@@ -1484,11 +1484,11 @@ export function HowItWorks() {
               {/* Actors Checklist */}
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                  参与执行参与者 {newStepType === 'actorAction' && <span className="text-amber-600 font-bold">(交互步骤必选)</span>}
+                  {t('how.stepActorsLabel')} {newStepType === 'actorAction' && <span className="text-amber-600 font-bold">{t('how.stepActorsRequired')}</span>}
                 </label>
                 <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[110px] overflow-y-auto">
                   {(ir?.actors || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">暂无可用参与者，请在 What 阶段定义。</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.stepActorsEmpty')}</div>
                   ) : (
                     (ir?.actors || []).map((actor: ActorNode) => (
                       <label key={actor.actorId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
@@ -1513,10 +1513,10 @@ export function HowItWorks() {
 
               {/* Inputs Checklist */}
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">输入业务对象</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepInputBoLabel')}</label>
                 <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[110px] overflow-y-auto">
                   {(ir?.businessObjects || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">暂无可用业务数据对象。</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.stepInputBoEmpty')}</div>
                   ) : (
                     (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
                       <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
@@ -1541,10 +1541,10 @@ export function HowItWorks() {
 
               {/* Outputs Checklist */}
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">输出业务对象</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepOutputBoLabel')}</label>
                 <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[110px] overflow-y-auto">
                   {(ir?.businessObjects || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">暂无可用业务数据对象。</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.stepInputBoEmpty')}</div>
                   ) : (
                     (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
                       <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
@@ -1581,13 +1581,13 @@ export function HowItWorks() {
                 }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
                   if (!newStepName.trim()) return;
                   if (newStepType === 'actorAction' && newStepActorIds.length === 0) {
-                    alert('用户参与者交互步骤必须勾选至少一个参与者！');
+      alert(t('how.actorRequired'));
                     return;
                   }
                   if (activeFlowIdForNewStep === null) return;
@@ -1611,7 +1611,7 @@ export function HowItWorks() {
                 disabled={!newStepName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                确定添加
+                {t('how.stepAdoptText')}
               </button>
             </div>
           </div>
@@ -1657,8 +1657,8 @@ export function HowItWorks() {
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800">业务对象删除受阻</h3>
-                <p className="text-[10px] text-slate-500 mt-0.5">该对象正在被流程步骤引用。</p>
+                <h3 className="font-extrabold text-sm text-slate-800">{t('how.boDeleteBlocked')}</h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">{t('how.boReferencedTip')}</p>
               </div>
             </div>
             <div className="p-6 space-y-4">
@@ -1672,7 +1672,7 @@ export function HowItWorks() {
                 onClick={() => setBoDeletionError(null)}
                 className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all shadow-md shadow-slate-200/80"
               >
-                我明白了
+                {t('how.boUnderstand')}
               </button>
             </div>
           </div>

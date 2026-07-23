@@ -5,6 +5,8 @@ export interface User {
   email: string;
   role: 'admin' | 'user';
   is_active: boolean;
+  preferred_locale?: 'zh-CN' | 'en-US';
+  preferredLocale?: 'zh-CN' | 'en-US';
 }
 
 export interface RegisterRequest {
@@ -24,15 +26,38 @@ export interface LogoutResponse {
 }
 
 export const authApi = {
-  register: (data: RegisterRequest) => 
-    http.post<User>('/auth/register', data),
+  register: async (data: RegisterRequest) => {
+    const user = await http.post<User>('/auth/register', data);
+    if (user) {
+      user.preferredLocale = user.preferred_locale;
+    }
+    return user;
+  },
 
-  login: (data: LoginRequest) => 
-    http.post<User>('/auth/login', data),
+  login: async (data: LoginRequest) => {
+    const user = await http.post<User>('/auth/login', data);
+    if (user) {
+      user.preferredLocale = user.preferred_locale;
+    }
+    return user;
+  },
 
   logout: () => 
     http.post<LogoutResponse>('/auth/logout'),
 
-  getMe: () => 
-    http.get<User>('/auth/me'),
+  getMe: async () => {
+    const user = await http.get<User>('/auth/me');
+    if (user) {
+      user.preferredLocale = user.preferred_locale;
+    }
+    return user;
+  },
+
+  updatePreferences: async (data: { preferred_locale: 'zh-CN' | 'en-US' }) => {
+    const res = await http.put<{ preferred_locale: 'zh-CN' | 'en-US' }>('/account/preferences', data);
+    return {
+      preferred_locale: res.preferred_locale,
+      preferredLocale: res.preferred_locale,
+    };
+  },
 };

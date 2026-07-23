@@ -107,6 +107,30 @@ class PerceptionJobService:
             public_project_id=public_project_id,
         )
 
+    async def get_active_slot_suggestion(
+        self,
+        project_id: int,
+        stage: str,
+        session,
+        public_project_id: str | None = None,
+    ) -> NextSuggestion | None:
+        from backend.database.model import PerceptionJobModel, PerceptionSlotModel
+
+        result = await session.execute(
+            select(PerceptionJobModel)
+            .join(PerceptionSlotModel, PerceptionSlotModel.id == PerceptionJobModel.id)
+            .where(
+                PerceptionJobModel.project_id == project_id,
+                PerceptionJobModel.stage == stage,
+                PerceptionJobModel.status == PerceptionJobStatus.DONE_WITH_SLOT.value,
+            )
+            .order_by(PerceptionJobModel.id.desc())
+        )
+        job = result.scalars().first()
+        if job is None:
+            return None
+        return self._build_slot_suggestion(project_id, job, public_project_id)
+
     # ------------------------------------------------------------------
     # Compatibility Shims & Internal Delegation
     # ------------------------------------------------------------------
@@ -225,17 +249,6 @@ class PerceptionJobService:
             )
 
         if job.status == PerceptionJobStatus.FAILED.value:
-            if background_tasks is not None:
-                job.status = PerceptionJobStatus.RUNNING.value
-                job.result_slot_payload = None
-                job.error_message = ""
-                await session.flush()
-                await self._schedule_perception_job(
-                    background_tasks=background_tasks,
-                    session=session,
-                    job_id=job.id,
-                )
-                return self._build_running_suggestion(job)
             return self._build_failed_suggestion(job)
 
         if job.status == PerceptionJobStatus.STALE.value:
@@ -276,8 +289,12 @@ class PerceptionJobService:
     ) -> None:
         await self.executor._schedule_perception_job(background_tasks, session, job_id)
 
-    async def run_perception_job(self, job_id: int) -> None:
-        await self.executor.run_perception_job(job_id)
+    async def run_perception_job(
+        self,
+        job_id: int,
+        llm_context=None,
+    ) -> None:
+        await self.executor.run_perception_job(job_id, llm_context)
 
     def _build_context_hash(
         self,

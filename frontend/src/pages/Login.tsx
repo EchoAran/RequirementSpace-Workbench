@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function Login() {
+  const { t } = useTranslation();
   const login = useAuthStore(state => state.login);
   const error = useAuthStore(state => state.error);
   const navigate = useNavigate();
@@ -20,12 +22,12 @@ export function Login() {
 
     const emailTrim = email.trim();
     if (!emailTrim || !password) {
-      setValidationError('邮箱和密码不能为空');
+      setValidationError(t('auth.login.emailRequired'));
       return;
     }
 
     if (password.length < 8) {
-      setValidationError('密码长度至少为 8 位');
+      setValidationError(t('auth.login.passwordLength'));
       return;
     }
 
@@ -58,10 +60,10 @@ export function Login() {
           </div>
           <div className="space-y-1">
             <h1 className="text-2xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight">
-              登录需求空间工作台
+              {t('auth.login.title')}
             </h1>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              探索 AI 驱动的无缝产品需求生命周期管理
+              {t('auth.login.subtitle')}
             </p>
           </div>
         </div>
@@ -70,14 +72,15 @@ export function Login() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {currentError && (
             <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">
-              {currentError === 'invalid_credentials' ? '邮箱或密码错误，请重新输入' : 
-               currentError === 'account_disabled' ? '账户已被停用，请联系管理员' : currentError}
+              {currentError === 'invalid_credentials' ? t('auth.login.invalidCredentials') :
+               currentError === 'account_disabled' ? t('auth.login.accountDisabled') :
+               currentError === 'login_failed' ? t('auth.login.loginFailed') : currentError}
             </div>
           )}
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-              电子邮箱
+              {t('auth.login.emailLabel')}
             </label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -95,13 +98,13 @@ export function Login() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-              安全密码
+              {t('auth.login.passwordLabel')}
             </label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
-                placeholder="请输入密码"
+                placeholder={t('auth.login.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
@@ -120,7 +123,7 @@ export function Login() {
               <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
             ) : (
               <>
-                进入工作区
+                {t('auth.login.submit')}
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}
@@ -130,12 +133,12 @@ export function Login() {
         {/* Footer */}
         <div className="border-t border-slate-100 pt-6 text-center">
           <p className="text-xs text-slate-500 font-medium">
-            还没有账户？{' '}
+            {t('auth.login.noAccount')}{' '}
             <Link
               to="/register"
               className="text-indigo-600 font-bold hover:text-indigo-700 hover:underline transition-colors"
             >
-              免费注册
+              {t('auth.login.registerLink')}
             </Link>
           </p>
         </div>

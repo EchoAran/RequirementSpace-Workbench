@@ -240,3 +240,17 @@ async def test_batch_confirmation_tasks_workflow(test_db):
     async with test_db() as session:
         actor_db = await session.get(ActorModel, actor_id)
         assert actor_db.confirmation_status == "needs_confirmation"
+
+    client.cookies.set("auth_session", editor_cookie)
+    res_default_title = client.post(
+        f"/api/projects/{project_public_id}/tasks/confirm-nodes",
+        json={
+            "targets": [
+                {"node_kind": "actor", "node_id": actor_id},
+                {"node_kind": "feature", "node_id": feat_id},
+            ],
+            "assigned_to_user_id": reviewer_id,
+        },
+    )
+    assert res_default_title.status_code == 200
+    assert res_default_title.json()["title"] == "collaboration.taskTitles.batchConfirmation"

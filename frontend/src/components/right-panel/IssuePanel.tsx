@@ -1,25 +1,27 @@
-import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Finding, RequirementSpaceIR } from '@/core/schema';
 import { getFindingCapability, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { findingTargetIds } from '@/core/findingPresentation';
 import { ActionButton, ActionRow, PanelShell, Section } from './shared';
+import { getFindingText } from '@/core/findingText';
 
 export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpaceIR }) {
+  const { t } = useTranslation();
   const { updateIssueAttributes, executeFindingIssueResolution, expandSlot } = useWorkspaceStore();
-  const [description] = useState(issue.description || '');
+  const localizedIssue = getFindingText(issue, t);
   const targetIds = findingTargetIds(issue);
   const capability = getFindingCapability(issue);
   const targetType = issue.target?.targetType || issue.target?.target_type;
   const targetTypeLabel: Record<string, string> = {
-    actor: '参与者',
-    feature: '功能',
-    scenario: '场景',
-    acceptance_criterion: '验收标准',
-    business_object: '业务对象',
-    flow: '业务流程',
-    step: '流程步骤',
-    scope: '范围项',
-    project: '项目',
+    actor: t('panel.actor'),
+    feature: t('panel.feature'),
+    scenario: t('panel.scenario'),
+    acceptance_criterion: t('panel.acceptance_criterion'),
+    business_object: t('panel.business_object'),
+    flow: t('panel.flow'),
+    step: t('panel.step'),
+    scope: t('panel.scope'),
+    project: t('panel.project'),
   };
   const findTargetName = (targetId: string) => {
     return ir.nodes?.[targetId]?.title
@@ -34,13 +36,13 @@ export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpace
         const resolvedFeatureId = String(issue.metadata?.feature_id ?? featureId);
         const resolvedActorId = String(issue.metadata?.actor_id ?? actorId);
         return [
-          { label: '功能', value: findTargetName(resolvedFeatureId) || '未找到对应功能' },
-          { label: '参与者', value: findTargetName(resolvedActorId) || '未找到对应参与者' },
+          { label: t('panel.feature'), value: findTargetName(resolvedFeatureId) || t('panel.relatedTargetEmpty') },
+          { label: t('panel.actor'), value: findTargetName(resolvedActorId) || t('panel.relatedTargetEmpty') },
         ];
       })()
     : targetIds.map((targetId) => ({
-        label: targetTypeLabel[targetType || ''] || '关联对象',
-        value: findTargetName(targetId) || '未找到关联对象',
+        label: targetTypeLabel[targetType || ''] || t('panel.node'),
+        value: findTargetName(targetId) || t('panel.relatedTargetEmpty'),
       }));
 
   const openIssueFlow = async () => {
@@ -51,13 +53,13 @@ export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpace
   };
 
   return (
-    <PanelShell title={issue.title} subtitle="Issue">
-      <Section title="说明">
-        <div className="text-sm leading-relaxed text-slate-600">{description}</div>
+    <PanelShell title={localizedIssue.title} subtitle={t('panel.issue')}>
+      <Section title={t('panel.description')}>
+        <div className="text-sm leading-relaxed text-slate-600">{localizedIssue.description}</div>
       </Section>
 
-      <Section title="关联节点">
-        {relatedTargets.length === 0 && <div className="text-xs text-slate-400 italic">暂无关联节点</div>}
+      <Section title={t('panel.dependencies')}>
+        {relatedTargets.length === 0 && <div className="text-xs text-slate-400 italic">{t('panel.relatedTargetEmpty')}</div>}
         {relatedTargets.map((target) => (
           <div key={target.label} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
             <span className="text-slate-400">{target.label}：</span>{target.value}
@@ -65,7 +67,7 @@ export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpace
         ))}
       </Section>
 
-      <Section title="动作">
+      <Section title={t('panel.actionTitle')}>
         <ActionRow>
           {(() => {
             return (
@@ -78,7 +80,7 @@ export function IssuePanel({ issue, ir }: { issue: Finding; ir: RequirementSpace
             );
           })()}
           <ActionButton variant="secondary" onClick={() => void updateIssueAttributes(issue.findingId, { status: 'ignored' })}>
-            忽略 Issue
+            {t('panel.ignoreIssue')}
           </ActionButton>
         </ActionRow>
       </Section>

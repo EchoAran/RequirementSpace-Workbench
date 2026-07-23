@@ -19,3 +19,4 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    preferred_locale: str

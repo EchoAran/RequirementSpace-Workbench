@@ -37,7 +37,7 @@ async def generate_prototype_preview(
     try:
         # Commit request session early to release db connection before long-running LLM call
         await session.commit()
-        return await get_prototype_generation_service().generate_preview(
+        return await get_prototype_generation_service().start_generation(
             project_id=owned_project.id,
             force_regenerate=(
                 request.force_regenerate
@@ -66,6 +66,7 @@ async def generate_prototype_preview(
 async def get_latest_prototype_preview(
     project_id: str,
     session: AsyncSession = Depends(get_session),
+    llm_ctx=Depends(get_llm_context),
     owned_project: ProjectModel = Depends(require_owned_project)):
     try:
         latest = await get_prototype_generation_service().get_latest_preview(
@@ -75,6 +76,11 @@ async def get_latest_prototype_preview(
         )
         if latest is None:
             return PrototypePreviewNotFoundResponse(project_id=owned_project.public_id)
+        if latest.status == "generating":
+            get_prototype_generation_service().ensure_generation_running(
+                latest.prototype_id,
+                owned_project.id,
+            )
         return latest
     except ValueError as error:
         if str(error) == "project_not_found":

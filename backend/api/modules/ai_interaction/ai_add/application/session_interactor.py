@@ -1,5 +1,7 @@
 ﻿import logging
 from sqlalchemy import select
+
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.database.model import AIAddSessionModel, ProjectModel
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,12 @@ class AIAddSessionInteractor:
             strategy.required_context,
             db_session,
         )
+        protected_inputs = collect_protected_texts(
+            project_context,
+            ai_session.anchor_payload,
+            ai_session.summary_payload,
+            content,
+        )
 
         # Build llm_call_chat function the strategy can use
         llm_handler = self._get_llm_handler()
@@ -106,6 +114,7 @@ class AIAddSessionInteractor:
             return await llm_handler.call_chat(
                 messages=messages,
                 response_format=response_format,
+                protected_inputs=protected_inputs,
             )
 
         # Build query for references retrieval
@@ -126,6 +135,7 @@ class AIAddSessionInteractor:
             token_budget=3000,
             session=db_session,
         )
+        protected_inputs += collect_protected_texts(knowledge_context)
 
         # Execute strategy
         import inspect

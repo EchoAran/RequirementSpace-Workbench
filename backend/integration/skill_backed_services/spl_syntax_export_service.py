@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
+from backend.core.locale import DEFAULT_LOCALE, SupportedLocale
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
 
@@ -23,7 +24,11 @@ class SplSyntaxExportService:
             logger.error(f"Failed to load spl-syntax-export-skill: {exc}")
             self._available = False
 
-    async def export(self, detail: ProjectDetailResponse) -> str:
+    async def export(
+        self,
+        detail: ProjectDetailResponse,
+        content_locale: SupportedLocale = DEFAULT_LOCALE.value,
+    ) -> str:
         if not self._available:
             raise ValueError("spl_export_skill_unavailable")
 
@@ -43,7 +48,7 @@ class SplSyntaxExportService:
             "unresolved_gates": detail_dict.get("unresolved_gates", []),
             "export_options": {
                 "mode": "syntax",
-                "language": "zh-CN",
+                "language": content_locale,
                 "include_trace_links": True,
                 "include_warnings": True,
             }

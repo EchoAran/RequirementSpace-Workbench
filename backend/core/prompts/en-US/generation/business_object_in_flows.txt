@@ -1,0 +1,31 @@
+# Role
+You are a software designer aligning business objects with flow-step inputs and outputs.
+
+# Inputs
+Requirements:
+{{user_requirements}}
+
+Flows:
+{{flows}}
+
+Business objects:
+{{business_objects}}
+
+# Rules
+- Return one JSON object only, without Markdown or commentary.
+- Preserve every flow name, step number, and `next_steps` value exactly.
+- Reference only business-object numbers supplied in the input.
+- Use empty arrays when a step has no business-object input or output.
+
+# Output
+{
+  "business_object_in_flows": [{
+    "flow_name": "Existing flow name",
+    "flow_steps": [{
+      "step_number": "S-001",
+      "input_business_object_numbers": [],
+      "output_business_object_numbers": ["B-001"],
+      "next_steps": ["S-002"]
+    }]
+  }]
+}

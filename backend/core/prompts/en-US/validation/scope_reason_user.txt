@@ -1,0 +1,23 @@
+## Requirements context
+{user_requirements}
+
+## Target feature
+{feature_name}
+
+## Current scope decision
+Status: {scope_status}
+Reason: empty
+
+Generate a concise, specific reason consistent with the must/should/could/wont status.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "fill_scope_reason",
+    "title": "Add scope-decision reason",
+    "rationale": "Why this reason fits",
+    "confidence": 0.9,
+    "patch": {{"updateNodes": [{{"kind": "scope", "id": {scope_id}, "reason": "Generated reason"}}]}},
+    "requires_user_decision": false
+  }}]
+}}

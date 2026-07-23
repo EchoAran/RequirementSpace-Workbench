@@ -12,7 +12,7 @@ vi.mock('../lib/api', () => ({
   }
 }));
 
-describe('LeftNav and Selector Health Status Tests', () => {
+describe('LeftNav backend health status tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkspaceStore.setState({
@@ -31,13 +31,21 @@ describe('LeftNav and Selector Health Status Tests', () => {
         next_action: [],
         gate: [],
         health: []
-      }
+      },
+      stageProgress: null,
     });
   });
 
   it('should show Ready (已就绪) status when only next action and health hints exist', () => {
     // Set next action finding and health hint finding
     useWorkspaceStore.setState({
+      stageProgress: {
+        stages: [
+          { stage: 'what', unlocked: true, statusCode: 'ready', statusLabel: '已就绪', blockingFindings: [] },
+          { stage: 'how', unlocked: false, statusCode: 'locked', statusLabel: '未解锁', blockingFindings: [] },
+          { stage: 'scope', unlocked: false, statusCode: 'locked', statusLabel: '未解锁', blockingFindings: [] },
+        ]
+      } as any,
       findingsByView: {
         issues: [], // No countable issues
         next_action: [
@@ -108,6 +116,19 @@ describe('LeftNav and Selector Health Status Tests', () => {
 
   it('should show Needs Attention (待处理) when a real countable issue exists', () => {
     useWorkspaceStore.setState({
+      stageProgress: {
+        stages: [
+          {
+            stage: 'what',
+            unlocked: true,
+            statusCode: 'blocked',
+            statusLabel: '待处理',
+            blockingFindings: [{ findingId: 'what:LEAF_FEATURE_WITHOUT_ACTOR:feature:10' }],
+          },
+          { stage: 'how', unlocked: false, statusCode: 'locked', statusLabel: '未解锁', blockingFindings: [] },
+          { stage: 'scope', unlocked: false, statusCode: 'locked', statusLabel: '未解锁', blockingFindings: [] },
+        ]
+      } as any,
       findingsByView: {
         issues: [
           {
@@ -157,9 +178,8 @@ describe('LeftNav and Selector Health Status Tests', () => {
       </MemoryRouter>
     );
 
-    // LeftNav should display '待处理' and '1 待处理'
-    expect(screen.queryByText('待处理')).not.toBeNull();
-    expect(screen.queryByText('1 待处理')).not.toBeNull();
-    expect(screen.queryByText('已就绪')).toBeNull();
+    // LeftNav should display the backend issue count and no ready state.
+    expect(screen.queryByText(/1 (待处理|pending)/i)).not.toBeNull();
+    expect(screen.queryByText(/^(已就绪|ready)$/i)).toBeNull();
   });
 });

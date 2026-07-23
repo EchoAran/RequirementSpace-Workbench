@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import { NodeStatus } from "@/core/schema";
 import { StatusBadge } from "./StatusBadge";
 import { ObjectLinkChips } from "./ObjectLinkChips";
@@ -23,6 +25,7 @@ export interface FlowStepCardProps {
 }
 
 export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules, stateChanges, relatedPages, relatedIssueCount, relatedChoiceCount, nextSteps, exceptionSteps, slots, onClick, onSlotClick, active }: FlowStepCardProps) {
+  const { t } = useTranslation();
   return (
     <div 
       onClick={onClick}
@@ -44,25 +47,25 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
       <div className="space-y-2 mt-3 text-sm">
         {inputs && inputs.length > 0 && (
           <div className="flex gap-2 items-start">
-            <span className="text-slate-400 text-xs mt-0.5 w-10 flex-shrink-0">输入</span>
+            <span className="text-slate-400 text-xs mt-0.5 w-10 flex-shrink-0">{t('flowStepCard.inputLabel')}</span>
             <span className="text-slate-700">{inputs.join(", ")}</span>
           </div>
         )}
         {outputs && outputs.length > 0 && (
           <div className="flex gap-2 items-start">
-            <span className="text-slate-400 text-xs mt-0.5 w-10 flex-shrink-0">输出</span>
+            <span className="text-slate-400 text-xs mt-0.5 w-10 flex-shrink-0">{t('flowStepCard.outputLabel')}</span>
             <span className="text-slate-700">{outputs.join(", ")}</span>
           </div>
         )}
         {rules && rules.length > 0 && (
           <div className="flex gap-2 items-start">
-            <span className="text-amber-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">触发规则</span>
+            <span className="text-amber-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">{t('flowStepCard.triggerRuleLabel')}</span>
             <span className="text-amber-800 bg-amber-50 rounded px-1 -mx-1">{rules.join(", ")}</span>
           </div>
         )}
         {stateChanges && stateChanges.length > 0 && (
           <div className="flex gap-2 items-start">
-            <span className="text-indigo-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">状态</span>
+            <span className="text-indigo-500 text-xs mt-0.5 w-10 flex-shrink-0 font-medium">{t('flowStepCard.statusLabel')}</span>
             <span className="text-indigo-800 bg-indigo-50 rounded px-1 -mx-1">{stateChanges.join(", ")}</span>
           </div>
         )}
@@ -79,14 +82,14 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
               <div className="flex justify-between items-center mb-1">
                 <span className="font-bold text-purple-700 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                  槽位：{s.title}
+                  {t('flowStepCard.slotTitle', { title: s.title })}
                 </span>
                 <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">
-                  {(s as any).status === 'filled' ? '已填补' : (s as any).status === 'deferred' ? '已暂缓' : '待决策'}
+                  {(s as any).status === 'filled' ? t('flowStepCard.slotStatus.filled') : (s as any).status === 'deferred' ? t('flowStepCard.slotStatus.deferred') : t('flowStepCard.slotStatus.pending')}
                 </span>
               </div>
               <div className="text-purple-600/80 pl-2.5">
-                {s.choiceCount > 0 ? `${s.choiceCount} 个 Choice` : (s as any).status === 'empty' ? '点击展开 Slot' : '生成中...'}
+                {s.choiceCount > 0 ? t('flowStepCard.choiceCount', { count: s.choiceCount }) : (s as any).status === 'empty' ? t('flowStepCard.expandSlot') : t('flowStepCard.generating')}
               </div>
             </div>
           ))}
@@ -97,12 +100,12 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
         <div className="mt-3 flex flex-wrap gap-2">
           {(relatedIssueCount || 0) > 0 && (
             <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
-              {relatedIssueCount} 个关联 Issue
+              {t('flowStepCard.relatedIssues', { count: relatedIssueCount })}
             </span>
           )}
           {(relatedChoiceCount || 0) > 0 && (
             <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-              {relatedChoiceCount} 个关联 Choice
+              {t('flowStepCard.relatedChoices', { count: relatedChoiceCount })}
             </span>
           )}
         </div>
@@ -110,7 +113,7 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
 
       {relatedPages && relatedPages.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-100">
-           <ObjectLinkChips objects={relatedPages.map(p => ({ id: p, name: p, type: '页面' }))} />
+            <ObjectLinkChips objects={relatedPages.map(p => ({ id: p, name: p, type: 'page' }))} />
         </div>
       )}
 
@@ -118,13 +121,13 @@ export function FlowStepCard({ name, type, actor, status, inputs, outputs, rules
         <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
           {nextSteps && nextSteps.length > 0 && (
             <div className="text-xs text-slate-500 flex items-center gap-1.5">
-              <span className="text-slate-400 font-medium w-10 flex-shrink-0">下一步</span>
+              <span className="text-slate-400 font-medium w-10 flex-shrink-0">{t('flowStepCard.nextStepLabel')}</span>
               <span className="font-medium text-slate-700">{nextSteps.join("、")}</span>
             </div>
           )}
           {exceptionSteps && exceptionSteps.length > 0 && (
             <div className="text-xs text-rose-500 flex items-center gap-1.5">
-              <span className="text-rose-400 font-medium w-10 flex-shrink-0">异常分支</span>
+              <span className="text-rose-400 font-medium w-10 flex-shrink-0">{t('flowStepCard.exceptionBranchLabel')}</span>
               <span className="font-medium text-rose-700">{exceptionSteps.join("、")}</span>
             </div>
           )}

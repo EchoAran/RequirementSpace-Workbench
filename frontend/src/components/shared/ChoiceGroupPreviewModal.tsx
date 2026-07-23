@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import React, { useEffect, useState } from 'react';
 import {
   Check,
@@ -9,28 +11,51 @@ import {
   Trash2,
 } from 'lucide-react';
 import { ChoicePreviewRenderer, ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { getFriendlyErrorMessage, useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { resolveLocalizedMessage } from '@/core/localizedMessage';
+import { getChoiceGenerationStrategyLabel } from '@/core/generationStrategyPresentation';
+import { getChoicePresentation } from '@/core/choicePresentation';
 
 function asArray(value: any): any[] {
   return Array.isArray(value) ? value : [];
 }
 
 function getChoiceStrategyLabel(choice: any, fallback: string): string {
-  const strategyLabel = choice?.strategyLabel ?? choice?.strategy_label;
-  return typeof strategyLabel === 'string' && strategyLabel.trim() ? strategyLabel : fallback;
+  return getChoiceGenerationStrategyLabel(
+    choice?.strategyId ?? choice?.strategy_id,
+    choice?.strategyLabel ?? choice?.strategy_label,
+    fallback,
+    i18n,
+  );
+}
+
+function getFailedChoiceTitle(choice: any, generationType: string | undefined, t: any): string {
+  return getChoicePresentation(
+    { ...choice, draftType: choice?.draftType ?? choice?.draft_type ?? generationType },
+    t,
+    i18n,
+  ).title;
+}
+
+function getFailedChoiceError(choice: any, fallback: string, t: any): string {
+  const rawError = choice?.error?.message || '';
+  if (!rawError) return fallback;
+  const message = getFriendlyErrorMessage(rawError);
+  if (message !== rawError) return resolveLocalizedMessage(t, message);
+  return i18n.language === 'en-US' && /[\u4e00-\u9fff]/.test(rawError) ? fallback : rawError;
 }
 
 function confirmRegeneration(draftType: string): boolean {
   const targets: Record<string, string> = {
-    actor: '现有参与者，以及其关联场景',
-    feature: '现有完整功能树，以及关联场景、验收标准和范围分析',
-    scenario: '目标功能下现有场景及验收标准',
-    acceptance_criteria: '目标场景的现有验收标准',
-    flow: '现有流程、流程步骤、业务对象及属性',
-    scope: '现有范围与 Kano 分析结果',
+    actor: i18n.t('choiceGroupPreview.targets.actor'),
+    feature: i18n.t('choiceGroupPreview.targets.feature'),
+    scenario: i18n.t('choiceGroupPreview.targets.scenario'),
+    acceptance_criteria: i18n.t('choiceGroupPreview.targets.acceptance_criteria'),
+    flow: i18n.t('choiceGroupPreview.targets.flow'),
+    scope: i18n.t('choiceGroupPreview.targets.scope'),
   };
   const target = targets[draftType];
-  return !target || window.confirm(`采纳该方案将重新生成${target}，原有内容会被替换。确定继续吗？`);
+  return !target || window.confirm(i18n.t('choiceGroupPreview.confirmAdopt', { target }));
 }
 
 function CandidateComparisonView({
@@ -98,30 +123,33 @@ function CandidateComparisonView({
       || asArray(choice?.payload?.business_objects || choice?.payload?.businessObjects).length;
 
     if (draftType === 'actor') {
-      return [`参与者 ${actors}`];
+      return [i18n.t('choiceGroupPreview.stats.actors', { count: actors })];
     }
     if (draftType === 'feature') {
-      return [`功能 ${features}`];
+      return [i18n.t('choiceGroupPreview.stats.features', { count: features })];
     }
     if (draftType === 'flow') {
-      return [`流程 ${flows}`, `对象 ${businessObjects}`];
+      return [
+        i18n.t('choiceGroupPreview.stats.flows', { count: flows }),
+        i18n.t('choiceGroupPreview.stats.businessObjects', { count: businessObjects })
+      ];
     }
     if (draftType === 'scenario') {
-      return [`场景 ${scenarios}`];
+      return [i18n.t('choiceGroupPreview.stats.scenarios', { count: scenarios })];
     }
     if (draftType === 'acceptance_criteria') {
-      return [`验收标准 ${criteria}`];
+      return [i18n.t('choiceGroupPreview.stats.criteria', { count: criteria })];
     }
     if (draftType === 'scope') {
-      return [`范围决策 ${scopes}`];
+      return [i18n.t('choiceGroupPreview.stats.scopes', { count: scopes })];
     }
     return [
-      `参与者 ${actors}`,
-      `功能 ${features}`,
-      ...(flows > 0 ? [`流程 ${flows}`] : []),
-      ...(businessObjects > 0 ? [`对象 ${businessObjects}`] : []),
-      ...(scenarios > 0 ? [`场景 ${scenarios}`] : []),
-      ...(criteria > 0 ? [`验收标准 ${criteria}`] : []),
+      i18n.t('choiceGroupPreview.stats.actors', { count: actors }),
+      i18n.t('choiceGroupPreview.stats.features', { count: features }),
+      ...(flows > 0 ? [i18n.t('choiceGroupPreview.stats.flows', { count: flows })] : []),
+      ...(businessObjects > 0 ? [i18n.t('choiceGroupPreview.stats.businessObjects', { count: businessObjects })] : []),
+      ...(scenarios > 0 ? [i18n.t('choiceGroupPreview.stats.scenarios', { count: scenarios })] : []),
+      ...(criteria > 0 ? [i18n.t('choiceGroupPreview.stats.criteria', { count: criteria })] : []),
     ];
   }
 
@@ -341,9 +369,9 @@ function CandidateComparisonView({
       <table className="min-w-full divide-y divide-slate-200 text-left text-xs border-collapse bg-white">
         <thead className="bg-slate-50/80 sticky top-0 z-10 backdrop-blur-sm">
           <tr>
-            <th className="px-4 py-3.5 font-extrabold text-slate-500 w-[140px] border-r border-slate-200 bg-slate-50/90 tracking-wider">比较维度</th>
+            <th className="px-4 py-3.5 font-extrabold text-slate-500 w-[140px] border-r border-slate-200 bg-slate-50/90 tracking-wider">{i18n.t('choiceGroupPreview.compDimension')}</th>
             {choices.map((c, i) => {
-              const compTitle = getChoiceStrategyLabel(c, `方案 ${i + 1}`);
+              const compTitle = getChoiceStrategyLabel(c, i18n.t('choiceGroupPreview.planLabel', { index: i + 1 }));
               return (
                 <th key={c.id || i} className="px-5 py-3.5 font-extrabold text-slate-800 border-r border-slate-200 last:border-r-0 min-w-[240px]">
                   <div className="flex flex-col gap-2.5">
@@ -368,7 +396,7 @@ function CandidateComparisonView({
                       ) : (
                         <Check className="w-3.5 h-3.5" />
                       )}
-                      {isWorking && submittingId === String(c.id) ? '正在采纳...' : '采纳此方案'}
+                      {isWorking && submittingId === String(c.id) ? i18n.t('choiceGroupPreview.adoptingBtn') : i18n.t('choiceGroupPreview.adoptBtn')}
                     </button>
                   </div>
                 </th>
@@ -379,7 +407,7 @@ function CandidateComparisonView({
         <tbody className="divide-y divide-slate-200 text-xs">
           {/* Row 1: Object Stats */}
           <tr className="hover:bg-slate-50/40 transition-colors">
-            <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">对象统计</td>
+            <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.stats.title')}</td>
             {choices.map((c, i) => {
               const stats = getObjectStats(c);
               return (
@@ -399,7 +427,7 @@ function CandidateComparisonView({
           {/* Row 2: Actor Differences */}
           {hasActors && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">参与者设置差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.actorsDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffActors: any[] = getDiffActors(c, choices);
                 return (
@@ -409,9 +437,9 @@ function CandidateComparisonView({
                         <div key={actIdx} className="p-2.5 rounded-xl border border-indigo-100 bg-indigo-50/10 space-y-1 hover:border-indigo-250 transition-colors shadow-sm text-left">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {actor._diffType === 'unique' ? (
-                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">方案独有角色</span>
+                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.actorsDiffUnique')}</span>
                             ) : (
-                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">职责定义差异</span>
+                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.actorsDiffModified')}</span>
                             )}
                             <span className="text-[11px] font-extrabold text-slate-800 leading-none">{actor.actor_name || actor.name}</span>
                           </div>
@@ -424,7 +452,7 @@ function CandidateComparisonView({
                       ))
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      参与者职责设置与其它方案完全一致
+      {i18n.t('choiceGroupPreview.actorsDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -436,7 +464,7 @@ function CandidateComparisonView({
           {/* Row 3: Feature Differences */}
           {hasFeatures && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">核心功能设置差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.featuresDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffFeatures: any[] = getDiffFeatures(c, choices);
                 return (
@@ -451,9 +479,9 @@ function CandidateComparisonView({
                           <div key={featIdx} className="p-2.5 rounded-xl border border-emerald-100 bg-emerald-50/10 space-y-1 hover:border-emerald-250 transition-colors shadow-sm text-left">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {feat._diffType === 'unique' ? (
-                                <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">方案独有功能</span>
+                                <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.featuresDiffUnique')}</span>
                               ) : (
-                                <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">节点定义差异</span>
+                                <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.featuresDiffModified')}</span>
                               )}
                               {featNum && (
                                 <span className="rounded bg-slate-100 border border-slate-200/50 px-1 py-0.2 text-[8px] font-bold text-slate-500 font-mono tracking-tighter leading-none select-none">
@@ -481,7 +509,7 @@ function CandidateComparisonView({
                       })
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      核心功能分解与其它方案完全一致
+      {i18n.t('choiceGroupPreview.featuresDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -493,7 +521,7 @@ function CandidateComparisonView({
           {/* Row 4: Flow Differences */}
           {hasFlows && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">业务流程设置差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.flowsDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffFlows: any[] = getDiffFlows(c, choices);
                 return (
@@ -503,9 +531,9 @@ function CandidateComparisonView({
                         <div key={flowIdx} className="p-2.5 rounded-xl border border-indigo-100 bg-indigo-50/10 space-y-1 hover:border-indigo-250 transition-colors shadow-sm text-left">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {flow._diffType === 'unique' ? (
-                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">方案独有流程</span>
+                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.flowsDiffUnique')}</span>
                             ) : (
-                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">步骤/数量差异</span>
+                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.flowsDiffModified')}</span>
                             )}
                             <span className="text-[11px] font-extrabold text-slate-800 leading-none">{flow.flow_name}</span>
                           </div>
@@ -516,7 +544,7 @@ function CandidateComparisonView({
                       ))
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      业务流程节点与其它方案完全一致
+      {i18n.t('choiceGroupPreview.flowsDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -528,7 +556,7 @@ function CandidateComparisonView({
           {/* Row 5: Scenario Differences */}
           {hasScenarios && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">业务场景差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.scenariosDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffScenarios: any[] = getDiffScenarios(c, choices);
                 return (
@@ -538,9 +566,9 @@ function CandidateComparisonView({
                         <div key={scIdx} className="p-2.5 rounded-xl border border-amber-100 bg-amber-50/10 space-y-1 hover:border-amber-250 transition-colors shadow-sm text-left">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {sc._diffType === 'unique' ? (
-                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">方案独有场景</span>
+                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.scenariosDiffUnique')}</span>
                             ) : (
-                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">场景内容差异</span>
+                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.scenariosDiffModified')}</span>
                             )}
                             <span className="text-[11px] font-extrabold text-slate-800 leading-none">{sc.scenario_name}</span>
                           </div>
@@ -553,7 +581,7 @@ function CandidateComparisonView({
                       ))
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      业务场景设置与其它方案完全一致
+      {i18n.t('choiceGroupPreview.scenariosDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -565,7 +593,7 @@ function CandidateComparisonView({
           {/* Row 6: Acceptance Criteria Differences */}
           {hasCriteria && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">验收标准差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.criteriaDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffCriteria: any[] = getDiffCriteria(c, choices);
                 return (
@@ -576,7 +604,7 @@ function CandidateComparisonView({
                         return (
                           <div key={acIdx} className="p-2.5 rounded-xl border border-indigo-100 bg-indigo-50/10 space-y-1 hover:border-indigo-250 transition-colors shadow-sm text-left">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[8px] bg-indigo-50 border border-indigo-100 text-indigo-650 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">差异验收标准</span>
+                              <span className="text-[8px] bg-indigo-50 border border-indigo-100 text-indigo-650 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.criteriaDiffModified')}</span>
                             </div>
                             <p className="text-[10px] text-slate-600 font-mono mt-1 whitespace-pre-wrap leading-relaxed">
                               {text}
@@ -586,7 +614,7 @@ function CandidateComparisonView({
                       })
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      验收标准文本与其它方案完全一致
+      {i18n.t('choiceGroupPreview.criteriaDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -598,7 +626,7 @@ function CandidateComparisonView({
           {/* Row 7: Scope Differences */}
           {hasScopes && (
             <tr className="hover:bg-slate-50/40 transition-colors">
-              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">范围决策差异</td>
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.scopesDiffTitle')}</td>
               {choices.map((c, i) => {
                 const diffScopes: any[] = getDiffScopes(c, choices);
                 return (
@@ -606,24 +634,24 @@ function CandidateComparisonView({
                     {diffScopes.length > 0 ? (
                       diffScopes.map((sc: any, scIdx: number) => {
                         const rawStatus = String(sc.scope_status || '').toLowerCase();
-                        const statusZh = rawStatus === 'current' || rawStatus === '本期'
-                          ? '本期'
-                          : rawStatus === 'postponed' || rawStatus === '暂缓'
-                          ? '暂缓'
-                          : '不纳入';
+                        const statusZh = rawStatus === 'current' || rawStatus === i18n.t('choiceGroupPreview.scopeStatus.current')
+                          ? i18n.t('choiceGroupPreview.scopeStatus.current')
+                          : rawStatus === 'postponed' || rawStatus === i18n.t('choiceGroupPreview.scopeStatus.postponed')
+                          ? i18n.t('choiceGroupPreview.scopeStatus.postponed')
+                          : i18n.t('choiceGroupPreview.scopeStatus.exclude');
                         return (
                           <div key={scIdx} className="p-2.5 rounded-xl border border-indigo-150 bg-indigo-50/10 space-y-1 hover:border-indigo-250 transition-colors shadow-sm text-left animate-in fade-in duration-200">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {sc._diffType === 'unique' ? (
-                                <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">方案独有功能范围</span>
+                                <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.scopesDiffUnique')}</span>
                               ) : (
-                                <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">决策状态差异</span>
+                                <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1.5 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.scopesDiffModified')}</span>
                               )}
                               <span className="text-[11px] font-extrabold text-slate-800 leading-none">{sc.feature_name}</span>
                               <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md ${
-                                statusZh === '本期'
+                                statusZh === i18n.t('choiceGroupPreview.scopeStatus.current')
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                  : statusZh === '暂缓'
+                                  : statusZh === i18n.t('choiceGroupPreview.scopeStatus.postponed')
                                   ? 'bg-sky-50 text-sky-700 border border-sky-100'
                                   : 'bg-rose-50 text-rose-700 border border-rose-100'
                               }`}>{statusZh}</span>
@@ -638,7 +666,7 @@ function CandidateComparisonView({
                       })
                     ) : (
                       <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
-      范围划分决策与其它方案完全一致
+      {i18n.t('choiceGroupPreview.scopesDiffIdentical')}
                       </div>
                     )}
                   </td>
@@ -672,66 +700,16 @@ interface ChoiceGroupPreviewModalProps {
 }
 
 const subtasksRecord: Record<string, string[]> = {
-  project: [
-    "正在检索项目愿景与核心诉求...",
-    "正在分析行业标杆与最佳商业模式实践...",
-    "正在推演初始项目概要与核心价值定位...",
-    "正在智能抽象核心参与者角色及其核心诉求...",
-    "正在为您规划与架构核心系统能力树结构...",
-    "正在生成并对比 2 套差异化初始方案...",
-    "正在最后微调，以提供最佳差异对比矩阵..."
-  ],
-  actor: [
-    "正在检索系统上下文与现有业务流程...",
-    "正在识别潜在的用户类型、系统交互者与前后台管理角色...",
-    "正在推演各角色的核心职责边界与痛点...",
-    "正在对比不同方案对权限分配与角色颗粒度的定义...",
-    "正在精炼与精细化角色矩阵，提供多套对比方案..."
-  ],
-  feature: [
-    "正在分析现有角色诉求与业务领域模型...",
-    "正在智能进行核心系统功能模块的垂直与水平划分...",
-    "正在拆解一级、二级和叶子功能节点，构建完整架构树...",
-    "正在推演不同业务侧重点下方案的功能树形态差异...",
-    "正在进行高内聚低耦合度校验，整理差异化候选方案..."
-  ],
-  flow: [
-    "正在读取功能树与参与者定义，建立流程骨架...",
-    "正在推演核心业务链路的主流、支流及异常流节点...",
-    "正在识别流程步骤中的输入输出，推演业务数据对象及属性...",
-    "正在分析流程复杂度，生成 2 套不同自动化水平 of 端到端方案...",
-    "正在构建可视化业务泳道，准备差异对比视图..."
-  ],
-  scenario: [
-    "正在锁定核心功能叶子节点，梳理业务事件源...",
-    "正在匹配相关角色与上下文，模拟实际人机交互行为...",
-    "正在智能推演各种业务逻辑分支、极端情况与边界用例...",
-    "正在对比不同设计下用户操作的便捷度与转化率方案...",
-    "正在合并高质量场景集合，提炼黄金体验路径对比..."
-  ],
-  acceptance_criteria: [
-    "正在深度剖析业务场景详情与输入边界条件...",
-    "正在基于 BDD 行为驱动开发理念，编写 Given-When-Then 标准化测试用例...",
-    "正在校验测试用例的覆盖率、二义性与业务闭环性...",
-    "正在推演不同颗粒度和严格程度的方案对比...",
-    "正在格式化为 Given-When-Then 代码级验收标准..."
-  ],
-  scope: [
-    "正在扫描核心功能特征列表及关联的业务场景...",
-    "正在基于 Kano 满意度模型计算各功能的必备、期望与魅力属性...",
-    "正在结合开发性价比、技术壁垒进行 MVP 交付范围多阶段评估...",
-    "正在对比两套侧重于'极速上线'与'体验卓越'的差异化交付规划...",
-    "正在整理 Kano 交付矩阵，等待采纳决策..."
-  ]
+  project: ["vision", "benchmarking", "outline", "actors", "featureTree", "candidates", "tuning"],
+  actor: ["context", "roles", "responsibilities", "roleDiff", "refiningRoles"],
+  feature: ["domainModel", "partitioning", "leafNodes", "treeDiff", "coupling"],
+  flow: ["skeleton", "mainFlow", "io", "complexity", "swimlanes"],
+  scenario: ["events", "mocking", "branches", "usability", "goldenPath"],
+  acceptance_criteria: ["boundary", "bdd", "coverage", "strictness", "gherkin"],
+  scope: ["mvp", "kano", "cost", "mvpDiff", "kanoMatrix"]
 };
 
-const genericSubtasks = [
-  "正在建立与 AI 智能体的大语言模型连接...",
-  "正在推演多套模型分歧点，以提供最佳差异对比...",
-  "正在深度挖掘业务边界并生成核心场景与功能架构...",
-  "正在执行质量完整性校验，构建多方案对比分析...",
-  "正在为您精炼与格式化最终的结构化候选方案..."
-];
+const genericSubtasks = ["llm", "분기", "deepDigging", "validation", "formatting"];
 
 export function ChoiceGroupPreviewModal({
   group,
@@ -744,6 +722,7 @@ export function ChoiceGroupPreviewModal({
   onDefer,
   onRegenerate,
 }: ChoiceGroupPreviewModalProps) {
+  const { t } = useTranslation();
   const [activeChoiceIndex, setActiveChoiceIndex] = useState(0);
   const [isCompareMode, setIsCompareMode] = useState(true);
   const [simulatedProgress, setSimulatedProgress] = useState(0);
@@ -793,7 +772,8 @@ export function ChoiceGroupPreviewModal({
   }, [group, initialChoiceId]);
 
   /* ── Progress overlay during generation (show even without group) ── */
-  const lastActionMessage = useWorkspaceStore(s => s.lastActionMessage);
+  const lastActionMessageToken = useWorkspaceStore(s => s.lastActionMessageToken);
+  const messageInterpolation = useWorkspaceStore(s => s.lastActionMessageTokenInterpolation);
   const generatingChoiceGroupType = useWorkspaceStore(s => s.generatingChoiceGroupType);
 
   if (isGeneratingChoices) {
@@ -818,42 +798,42 @@ export function ChoiceGroupPreviewModal({
       : Math.round((completed / total) * 100);
 
     // Determine the display title for loading dynamically
-    let loadingTitle = '正在生成项目方案，请稍候...';
+    let loadingTitle = t('choiceGroupPreview.loadingSteps.generic');
     const type = group?.generationType || generatingChoiceGroupType;
     
     if (type === 'actor') {
-      loadingTitle = '正在推演与精炼参与者角色方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericActor');
     } else if (type === 'scenario') {
-      loadingTitle = '正在推演最佳系统业务场景方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericScenario');
     } else if (type === 'feature') {
-      loadingTitle = '正在为您架构与分解核心能力树方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericFeature');
     } else if (type === 'flow') {
-      loadingTitle = '正在生成与重构业务流程与对象方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericFlow');
     } else if (type === 'scope') {
-      loadingTitle = '正在进行交付范围分析与Kano模型计算...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
     } else if (type === 'acceptance_criteria') {
-      loadingTitle = '正在为您编写 Given-When-Then 结构化验收标准方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
     } else if (type === 'project') {
-      loadingTitle = '正在为您规划与推演初始项目草稿方案...';
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
     } else {
-      // If group is null and type is null, infer from lastActionMessage
-      const msg = String(lastActionMessage || '').toLowerCase();
-      if (msg.includes('actor') || msg.includes('角色') || msg.includes('参与者')) {
-        loadingTitle = '正在推演与精炼参与者角色方案...';
-      } else if (msg.includes('scenario') || msg.includes('场景')) {
-        loadingTitle = '正在推演最佳系统业务场景方案...';
-      } else if (msg.includes('feature') || msg.includes('功能')) {
-        loadingTitle = '正在为您架构与分解核心能力树方案...';
-      } else if (msg.includes('flow') || msg.includes('流程')) {
-        loadingTitle = '正在生成与重构业务流程与对象方案...';
-      } else if (msg.includes('scope') || msg.includes('范围')) {
-        loadingTitle = '正在进行交付范围分析与Kano模型计算...';
-      } else if (msg.includes('acceptance') || msg.includes('验收') || msg.includes('ac')) {
-        loadingTitle = '正在为您编写 Given-When-Then 结构化验收标准方案...';
-      } else if (msg.includes('多套') || msg.includes('项目') || msg.includes('草稿')) {
-        loadingTitle = '正在为您规划与推演初始项目草稿方案...';
-      } else if (lastActionMessage) {
-        loadingTitle = lastActionMessage;
+      // If group is null and type is null, infer from lastActionMessageToken
+      const msg = String(lastActionMessageToken || '').toLowerCase();
+      if (msg.includes('actor')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericActor');
+      } else if (msg.includes('scenario')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericScenario');
+      } else if (msg.includes('feature')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericFeature');
+      } else if (msg.includes('flow')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericFlow');
+      } else if (msg.includes('scope') || msg.includes('kano')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
+      } else if (msg.includes('acceptance') || msg.includes('.ac')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
+      } else if (msg.includes('project')) {
+        loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
+      } else if (lastActionMessageToken) {
+        loadingTitle = resolveLocalizedMessage(t, lastActionMessageToken, messageInterpolation);
       }
     }
 
@@ -880,21 +860,21 @@ export function ChoiceGroupPreviewModal({
               {loadingTitle}
             </h3>
             <p className="text-[10px] text-slate-400 font-medium px-4 mb-6 leading-normal">
-              AI 正在进行智能推演与多方案发散，为您提供最佳设计分歧矩阵
+              {t('choiceGroupPreview.panelSubTitle')}
             </p>
 
             {/* Dynamic Active Sub-task Ticker */}
             <div className="mb-6 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-start gap-2.5 text-left">
               <div className="mt-1 flex h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
               <div className="text-xs font-bold text-slate-600 leading-relaxed font-sans">
-                {activeSubtask}
+                {t('choiceGroupPreview.loadingSteps.' + activeSubtask)}
               </div>
             </div>
 
             {/* Sleek Progress Bar */}
             <div className="space-y-1.5 text-left bg-slate-50 border border-slate-100/50 rounded-2xl p-4">
               <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 font-mono px-0.5">
-                <span className="uppercase tracking-widest text-slate-400">推演总进度</span>
+                <span className="uppercase tracking-widest text-slate-400">{t('choiceGroupPreview.progressLabel')}</span>
                 <span className="text-indigo-600 font-extrabold">{progressPercent}% ({completed}/{total})</span>
               </div>
               <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner">
@@ -914,7 +894,7 @@ export function ChoiceGroupPreviewModal({
                 } else {
                   status = i < completed ? 'complete' : i === completed ? 'generating' : 'pending';
                 }
-                const label = generationProgress?.candidateLabels?.[i] || `方案 ${i + 1}`;
+                const label = generationProgress?.candidateLabels?.[i] || i18n.t('choiceGroupPreview.planLabel', { index: i + 1 });
                 
                 return (
                   <div 
@@ -942,10 +922,10 @@ export function ChoiceGroupPreviewModal({
                       <span className="text-xs font-bold font-sans tracking-tight">{label}</span>
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider font-mono">
-                      {status === 'complete' && '已就绪'}
-                      {status === 'failed' && '失败'}
-                      {status === 'generating' && '推演中'}
-                      {status === 'pending' && '排队中'}
+                      {status === 'complete' && t('choiceGroupPreview.status.ready')}
+                      {status === 'failed' && t('choiceGroupPreview.status.failed')}
+                      {status === 'generating' && t('choiceGroupPreview.status.generating')}
+                      {status === 'pending' && t('choiceGroupPreview.status.pending')}
                     </span>
                   </div>
                 );
@@ -973,15 +953,18 @@ export function ChoiceGroupPreviewModal({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg mx-4 p-8 text-center">
           <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-2">所有候选方案生成失败</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-2">{t('choiceGroupPreview.failTitle')}</h3>
           <p className="text-sm text-slate-500 mb-6">
-            {group.statusDetail?.error_summary || '生成过程出现错误，请重试。'}
+            {i18n.language === 'en-US' && /[\u4e00-\u9fff]/.test(group.statusDetail?.error_summary || '')
+              ? t('choiceGroupPreview.failDesc')
+              : group.statusDetail?.error_summary || t('choiceGroupPreview.failDesc')}
           </p>
           {failedChoices.length > 0 && (
             <div className="text-left space-y-2 mb-6">
               {failedChoices.map((fc: any) => (
                 <div key={fc.id} className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-xs text-rose-600">
-                  <strong>{fc.title}</strong>: {fc.error?.message || '未知错误'}
+                  <strong>{getFailedChoiceTitle(fc, group.generationType, t)}</strong>:{' '}
+                  {getFailedChoiceError(fc, t('choiceGroupPreview.unknownError'), t)}
                 </div>
               ))}
             </div>
@@ -990,12 +973,12 @@ export function ChoiceGroupPreviewModal({
             {onRegenerate && (
               <button onClick={() => onRegenerate()} className="inline-flex items-center gap-2 h-11 px-6 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors">
                 <RefreshCw className="w-4 h-4" />
-                重新生成
+                {t('choiceGroupPreview.retryBtn')}
               </button>
             )}
             <button onClick={onDiscard} className="inline-flex items-center gap-2 h-11 px-6 rounded-xl border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors">
               <X className="w-4 h-4" />
-              关闭
+              {t('choiceGroupPreview.closeDialog')}
             </button>
           </div>
         </div>
@@ -1020,22 +1003,22 @@ export function ChoiceGroupPreviewModal({
         <div className="p-6 border-b border-slate-100 shrink-0 bg-slate-50/50 rounded-t-3xl">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-lg font-bold text-slate-800">
-              {draftType === 'actor' ? '选择参与者方案' :
-               draftType === 'scenario' ? '选择场景方案' :
-               draftType === 'feature' ? '选择功能树方案' :
-               draftType === 'flow' ? '选择流程与对象方案' :
-               draftType === 'scope' ? '选择范围分析方案' :
-               draftType === 'acceptance_criteria' ? '选择验收标准方案' :
-               '选择项目草稿方案'}
+              {draftType === 'actor' ? t('choiceGroupPreview.draftTypes.actor') :
+               draftType === 'scenario' ? t('choiceGroupPreview.draftTypes.scenario') :
+               draftType === 'feature' ? t('choiceGroupPreview.draftTypes.feature') :
+               draftType === 'flow' ? t('choiceGroupPreview.draftTypes.flow') :
+               draftType === 'scope' ? t('choiceGroupPreview.draftTypes.scope') :
+               draftType === 'acceptance_criteria' ? t('choiceGroupPreview.draftTypes.acceptance_criteria') :
+               t('choiceGroupPreview.draftTypes.generic')}
             </h3>
-            <button onClick={onDefer} className="text-slate-400 hover:text-slate-600 transition-colors" title="稍后选择">
+            <button onClick={onDefer} className="text-slate-400 hover:text-slate-600 transition-colors" title={t('choiceGroupPreview.deferTitle')}>
               <X className="w-5 h-5" />
             </button>
           </div>
           {hasPartialFailure && (
             <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-xl text-[10px] text-amber-700 flex items-center gap-2 font-semibold">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              {totalSuccessful} 个方案已生成，{totalFailed} 个方案生成失败
+              {t('choiceGroupPreview.resultDesc', { success: totalSuccessful, failed: totalFailed })}
             </div>
           )}
         </div>
@@ -1053,13 +1036,13 @@ export function ChoiceGroupPreviewModal({
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                方案差异对比表
+                {t('choiceGroupPreview.diffTable')}
               </button>
               
               <div className="w-[1px] h-5 bg-slate-200 self-center mx-1 shrink-0" />
 
               {successfulChoices.map((c: any, i: number) => {
-                const tabTitle = getChoiceStrategyLabel(c, `方案 ${i + 1}`);
+                const tabTitle = getChoiceStrategyLabel(c, i18n.t('choiceGroupPreview.planLabel', { index: i + 1 }));
                 return (
                   <button
                     key={c.id}
@@ -1108,13 +1091,14 @@ export function ChoiceGroupPreviewModal({
           <div className="px-6 pb-2 shrink-0 bg-white border-t border-slate-50 pt-2">
             <details className="group">
               <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none">
-                {failedChoices.length} 个生成失败的方案（点击展开查看）
+                {t('choiceGroupPreview.failedChoicesTitle', { count: failedChoices.length })}
               </summary>
               <div className="mt-2 space-y-2">
                 {failedChoices.map((fc: any) => (
                   <div key={fc.id} className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50 border border-rose-100">
                     <div className="text-xs text-rose-600 font-medium">
-                      <strong>{fc.title}</strong>: {fc.error?.message || '生成中因意外中断或语法约束校验未通过。'}
+                      <strong>{getFailedChoiceTitle(fc, group.generationType, t)}</strong>:{' '}
+                      {getFailedChoiceError(fc, t('choiceGroupPreview.failedChoicesDesc'), t)}
                     </div>
                     {onRegenerate && (
                       <button
@@ -1122,7 +1106,7 @@ export function ChoiceGroupPreviewModal({
                         onClick={() => onRegenerate(fc.id)}
                         className="text-xs text-indigo-600 hover:text-indigo-800 font-bold shrink-0 ml-2"
                       >
-                        重试
+                        {t('choiceGroupPreview.retryBtn')}
                       </button>
                     )}
                   </div>
@@ -1142,7 +1126,7 @@ export function ChoiceGroupPreviewModal({
                 disabled={isWorking}
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 shadow-sm"
               >
-                稍后处理
+                {t('choiceGroupPreview.laterBtn')}
               </button>
               <button
                 type="button"
@@ -1151,7 +1135,7 @@ export function ChoiceGroupPreviewModal({
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-red-200 bg-white text-xs font-bold text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 shadow-sm"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                丢弃全部方案
+                {t('choiceGroupPreview.discardAllBtn')}
               </button>
             </div>
             <div className="flex gap-2">
@@ -1163,7 +1147,7 @@ export function ChoiceGroupPreviewModal({
                   className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 shadow-sm"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
-                  全部重新生成
+                  {t('choiceGroupPreview.retryAllBtn')}
                 </button>
               )}
               {!compareActive && activeChoice && (
@@ -1178,7 +1162,7 @@ export function ChoiceGroupPreviewModal({
                   ) : (
                     <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                   )}
-                  {isWorking ? '正在采纳当前方案...' : '采纳当前选中方案'}
+                  {isWorking ? t('choiceGroupPreview.adoptingPlanBtn') : t('choiceGroupPreview.adoptPlanBtn')}
                 </button>
               )}
             </div>

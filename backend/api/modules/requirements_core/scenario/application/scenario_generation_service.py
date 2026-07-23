@@ -25,6 +25,14 @@ class ScenarioGenerationService:
             "SCENARIO_GENERATION_MAX_CONCURRENCY",
             5,
         )
+        self._batch_max_concurrency = self._read_int_env(
+            "SCENARIO_BATCH_GENERATION_MAX_CONCURRENCY",
+            10,
+        )
+        self._generation_semaphores = {
+            self._max_concurrency: asyncio.Semaphore(self._max_concurrency),
+            self._batch_max_concurrency: asyncio.Semaphore(self._batch_max_concurrency),
+        }
 
     @staticmethod
     def _read_int_env(name: str, default: int) -> int:
@@ -484,8 +492,13 @@ class ScenarioGenerationService:
         feature_node_map: dict[int, FeatureNode],
         target_pairs: list[tuple[int, int]],
         user_feedback: str | None = None,
+        max_concurrency: int | None = None,
     ) -> list[dict]:
-        semaphore = asyncio.Semaphore(self._max_concurrency)
+        concurrency = max_concurrency or self._max_concurrency
+        semaphore = self._generation_semaphores.setdefault(
+            concurrency,
+            asyncio.Semaphore(concurrency),
+        )
 
         async def generate_one(
             feature_id: int,
@@ -555,7 +568,13 @@ class ScenarioGenerationService:
         feature_node_map: dict[int, FeatureNode],
         generated_scenarios: list[dict],
         user_feedback: str | None = None,
+        max_concurrency: int | None = None,
     ) -> list[dict]:
+        concurrency = max_concurrency or self._max_concurrency
+        semaphore = self._generation_semaphores.setdefault(
+            concurrency,
+            asyncio.Semaphore(concurrency),
+        )
         scenario_nodes = [
             ScenarioNode(
                 scenarioId=index,
@@ -576,6 +595,8 @@ class ScenarioGenerationService:
             feature_node_map=feature_node_map,
             scenario_nodes=scenario_nodes,
             user_feedback=user_feedback,
+            max_concurrency=max_concurrency,
+            semaphore=semaphore,
         )
 
         criteria_by_scenario_id = {

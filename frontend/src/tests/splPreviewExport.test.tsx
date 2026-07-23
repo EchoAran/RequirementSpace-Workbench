@@ -4,6 +4,7 @@ import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { Preview } from '../pages/Preview';
 import { workspaceApi } from '../lib/api';
+import { useTranslation } from 'react-i18next';
 
 // Mock sub-components
 vi.mock('../components/shared/ChoiceGroupPreviewModal', () => ({
@@ -70,6 +71,7 @@ vi.mock('../lib/api', () => ({
 describe('SPL Export Frontend UI Preview Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    void useTranslation().i18n.changeLanguage('zh-CN');
   });
 
   it('renders SPL export buttons in the menu and triggers syntax download', async () => {
@@ -80,14 +82,14 @@ describe('SPL Export Frontend UI Preview Page', () => {
     );
 
     // 1. Click "导出资产" to open dropdown menu after loading completes
-    const exportBtn = await screen.findByText('导出资产');
+    const exportBtn = await screen.findByRole('button', { name: useTranslation().t('preview.exportSection') });
     act(() => {
       fireEvent.click(exportBtn);
     });
 
     // 2. Assert syntax and semantic export items are in the DOM
-    expect(screen.getByText('导出 SPL 语法规格')).toBeDefined();
-    expect(screen.getByText('导出 SPL 语义规格')).toBeDefined();
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSyntax')) })).toBeDefined();
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSemantic')) })).toBeDefined();
 
     // Mock API resolutions
     vi.mocked(workspaceApi.exportSplSyntax).mockResolvedValue('Syntax SPL text');
@@ -100,7 +102,7 @@ describe('SPL Export Frontend UI Preview Page', () => {
 
     // 3. Trigger Syntax Export Click
     act(() => {
-      fireEvent.click(screen.getByText('导出 SPL 语法规格'));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSyntax')) }));
     });
     await waitFor(() => {
       expect(workspaceApi.exportSplSyntax).toHaveBeenCalledWith('proj_123');
@@ -119,14 +121,14 @@ describe('SPL Export Frontend UI Preview Page', () => {
     );
 
     // 1. Click "导出资产" to open dropdown menu after loading completes
-    const exportBtn = await screen.findByText('导出资产');
+    const exportBtn = await screen.findByRole('button', { name: useTranslation().t('preview.exportSection') });
     act(() => {
       fireEvent.click(exportBtn);
     });
 
     // 2. Assert syntax and semantic export items are in the DOM
-    expect(screen.getByText('导出 SPL 语法规格')).toBeDefined();
-    expect(screen.getByText('导出 SPL 语义规格')).toBeDefined();
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSyntax')) })).toBeDefined();
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSemantic')) })).toBeDefined();
 
     // Mock API resolutions
     vi.mocked(workspaceApi.exportSplSemantic).mockResolvedValue('Semantic SPL text');
@@ -139,7 +141,7 @@ describe('SPL Export Frontend UI Preview Page', () => {
 
     // 3. Trigger Semantic Export Click
     act(() => {
-      fireEvent.click(screen.getByText('导出 SPL 语义规格'));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSemantic')) }));
     });
     await waitFor(() => {
       expect(workspaceApi.exportSplSemantic).toHaveBeenCalledWith('proj_123');
@@ -150,6 +152,18 @@ describe('SPL Export Frontend UI Preview Page', () => {
     window.URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
+  it('renders the export menu in en-US', async () => {
+    await act(async () => {
+      await useTranslation().i18n.changeLanguage('en-US');
+    });
+    render(<MemoryRouter><Preview /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole('button', { name: useTranslation().t('preview.exportSection') }));
+
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSyntax')) })).toBeDefined();
+    expect(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSemantic')) })).toBeDefined();
+  });
+
   it('displays correct error toast message on API failure', async () => {
     render(
       <MemoryRouter>
@@ -158,7 +172,7 @@ describe('SPL Export Frontend UI Preview Page', () => {
     );
 
     // Open menu after loading completes
-    const exportBtn = await screen.findByText('导出资产');
+    const exportBtn = await screen.findByRole('button', { name: useTranslation().t('preview.exportSection') });
     act(() => {
       fireEvent.click(exportBtn);
     });
@@ -168,12 +182,12 @@ describe('SPL Export Frontend UI Preview Page', () => {
 
     // Trigger Syntax Export Click
     act(() => {
-      fireEvent.click(screen.getByText('导出 SPL 语法规格'));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSyntax')) }));
     });
 
     // Verify correct toast alert message is shown in the UI
     await waitFor(() => {
-      expect(screen.getByText('当前 SPL 导出能力不可用，可先导出 Markdown 需求规格说明书。')).toBeDefined();
+    expect(screen.getByText(useTranslation().t('preview.full.splUnavailable'))).toBeDefined();
     });
   });
 
@@ -185,7 +199,7 @@ describe('SPL Export Frontend UI Preview Page', () => {
     );
 
     // Open menu after loading completes
-    const exportBtn = await screen.findByText('导出资产');
+    const exportBtn = await screen.findByRole('button', { name: useTranslation().t('preview.exportSection') });
     act(() => {
       fireEvent.click(exportBtn);
     });
@@ -195,12 +209,12 @@ describe('SPL Export Frontend UI Preview Page', () => {
 
     // Trigger Semantic Export Click
     act(() => {
-      fireEvent.click(screen.getByText('导出 SPL 语义规格'));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(useTranslation().t('preview.full.exportSplSemantic')) }));
     });
 
     // Verify correct toast alert message is shown in the UI
     await waitFor(() => {
-      expect(screen.getByText('SPL 语义导出功能已被禁用，请先导出 SPL 语法规格。')).toBeDefined();
+    expect(screen.getByText(useTranslation().t('preview.full.splSemanticDisabled'))).toBeDefined();
     });
   });
 });

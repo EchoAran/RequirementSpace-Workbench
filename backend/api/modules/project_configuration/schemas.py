@@ -3,6 +3,7 @@ from typing import Optional, List
 
 class GenerationStrategyItemSchema(BaseModel):
     id: str = Field(..., description="策略的对内唯一标识，例如 balanced, custom_xxx")
+    is_builtin: bool = Field(False, description="是否为系统内置策略；用户策略始终为 false")
     label: str = Field(..., min_length=2, max_length=20, description="策略展现给用户的名称")
     description: Optional[str] = Field(None, max_length=120, description="对策略生成偏好的简短描述")
     instruction: str = Field(..., min_length=20, max_length=800, description="策略对 AI 具体的生成指导提示词")
@@ -42,6 +43,10 @@ class ProjectLLMSummary(BaseModel):
 
 class ProjectConfigurationResponse(BaseModel):
     project_id: str = Field(..., description="项目的 UUID / public_id")
+    content_locale: Optional[str] = Field(None, description="AI project content language: zh-CN, en-US, or null")
     generation_strategy: GenerationStrategyConfigResponse
     knowledge: ProjectKnowledgeSummary
     llm: ProjectLLMSummary
+
+class ProjectConfigurationUpdate(BaseModel):
+    content_locale: Optional[str] = Field(None, description="AI project content language: zh-CN, en-US, or null")

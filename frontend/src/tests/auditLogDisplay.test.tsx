@@ -1,8 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Overview } from '../pages/Overview';
+
+function LocaleSetter({ locale }: { locale: string }) {
+  const { i18n } = useTranslation();
+  return <button onClick={() => void i18n.changeLanguage(locale)}>set-locale</button>;
+}
+
+function setTestLocale(locale: string) {
+  render(<LocaleSetter locale={locale} />);
+  fireEvent.click(screen.getByText('set-locale'));
+  cleanup();
+}
 
 // Mock sub-components rendered by Overview to avoid deep selector dependency issues
 vi.mock('../components/shared/RightObjectPanel', () => ({
@@ -209,6 +221,10 @@ vi.mock('../store/useWorkspaceStore', () => {
 });
 
 describe('Audit Log Display rendering on Overview Page', () => {
+  beforeEach(() => {
+    setTestLocale('zh-CN');
+  });
+
   it('renders recent audit logs with correct details including user email and AI badge', () => {
     render(
       <MemoryRouter>
@@ -272,5 +288,20 @@ describe('Audit Log Display rendering on Overview Page', () => {
     fireEvent.click(screen.getByText('全部'));
 
     expect(screen.getByText('调整流程步骤描述')).toBeDefined();
+  });
+
+  it('uses English action labels and summaries in English mode', () => {
+    setTestLocale('en-US');
+    render(
+      <MemoryRouter>
+        <Overview />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Recent Change History')).toBeDefined();
+    expect(screen.getAllByText('Update User Requirements').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('AI Refine User Requirements').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('更新用户需求')).toBeNull();
+    expect(screen.queryByText('手动更新用户需求文档')).toBeNull();
   });
 });

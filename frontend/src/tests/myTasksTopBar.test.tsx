@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { TopBar } from '../components/layout/TopBar';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { useAuthStore } from '../store/useAuthStore';
+
+const mocks = vi.hoisted(() => ({ loadMyTasks: vi.fn() }));
 
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
@@ -50,7 +52,7 @@ vi.mock('../store/useWorkspaceStore', () => ({
           contentChanged: false
         }
       ],
-      loadMyTasks: vi.fn(),
+      loadMyTasks: mocks.loadMyTasks,
       refreshWorkspace: vi.fn(),
       loadConfirmationSummary: vi.fn(),
     };
@@ -69,6 +71,10 @@ vi.mock('../store/useAuthStore', () => ({
 }));
 
 describe('TopBar - My Tasks Checklist Popover', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders task count badge in header button', () => {
     render(<TopBar />);
     // Badge has count '1'
@@ -81,6 +87,7 @@ describe('TopBar - My Tasks Checklist Popover', () => {
     // Clicking the trigger button
     const trigger = screen.getByTitle('待我审批确认的任务');
     fireEvent.click(trigger);
+    expect(mocks.loadMyTasks).toHaveBeenCalledTimes(2);
     
     // Check if popover shows
     expect(screen.getByText('待办审批确认清单')).toBeDefined();

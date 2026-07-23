@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -21,23 +22,27 @@ import {
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { workspaceApi } from '@/lib/api';
-import { ProjectMember, getScopeStatusText } from '@/core/schema';
+import { ProjectMember } from '@/core/schema';
+import { getScopeStatusText } from '@/core/presentationLabels';
+import { getCollaborationTaskDescription, getCollaborationTaskTitle } from '@/core/collaborationPresentation';
 import { TaskDecisionModal } from '../shared/TaskDecisionModal';
 
-// Node kind mapping helper
-const NodeKindLabels: Record<string, string> = {
-  actor: '角色 (Actor)',
-  feature: '功能特性 (Feature)',
-  scenario: '场景 (Scenario)',
-  acceptance_criterion: '验收标准 (Acceptance Criterion)',
-  business_object: '业务对象 (Business Object)',
-  business_object_attribute: '对象属性 (Attribute)',
-  flow: '业务流程 (Flow)',
-  flow_step: '流程步骤 (Flow Step)',
-  scope: '范围规划 (Scope)'
-};
+
 
 export function ConfirmationWorkspace() {
+  const { t, i18n } = useTranslation();
+
+  const NodeKindLabels: Record<string, string> = {
+    actor: t('confirmationWorkspace.nodeKindLabels.actor'),
+    feature: t('confirmationWorkspace.nodeKindLabels.feature'),
+    scenario: t('confirmationWorkspace.nodeKindLabels.scenario'),
+    acceptance_criterion: t('confirmationWorkspace.nodeKindLabels.acceptance_criterion'),
+    business_object: t('confirmationWorkspace.nodeKindLabels.business_object'),
+    business_object_attribute: t('confirmationWorkspace.nodeKindLabels.business_object_attribute'),
+    flow: t('confirmationWorkspace.nodeKindLabels.flow'),
+    flow_step: t('confirmationWorkspace.nodeKindLabels.flow_step'),
+    scope: t('confirmationWorkspace.nodeKindLabels.scope'),
+  };
   const ir = useWorkspaceStore((state) => state.ir);
   const projectId = ir?.projectId;
   const currentUserId = useAuthStore((state) => state.user?.id);
@@ -118,7 +123,7 @@ export function ConfirmationWorkspace() {
       });
       if (f.scope) {
         const scopeId = f.scope.scopeId ?? f.scope.id ?? f.scope.scope_id;
-        pushLedger('scope', scopeId, `${f.featureName} - 范围`, f.scope.positiveSummary || '', f.scope.confirmationStatus || f.confirmationStatus);
+        pushLedger('scope', scopeId, `${f.featureName} - ${t('confirmationWorkspace.nodeKindLabels.scope')}`, f.scope.positiveSummary || '', f.scope.confirmationStatus || f.confirmationStatus);
       }
     });
     (ir.businessObjects || []).forEach((b: any) => {
@@ -181,7 +186,7 @@ export function ConfirmationWorkspace() {
       }));
 
     if (targets.length === 0) {
-      setFormError('请选择至少一个确认目标节点。');
+      setFormError(t('confirmationWorkspace.formErrorEmpty'));
       return;
     }
 
@@ -206,7 +211,7 @@ export function ConfirmationWorkspace() {
       setPriority('medium');
       setDueAt('');
     } catch (err: any) {
-      setFormError(err?.response?.data?.detail || err?.message || '创建确认任务失败');
+      setFormError(err?.response?.data?.detail || err?.message || t('confirmationWorkspace.formErrorFail'));
     } finally {
       setSubmitting(false);
     }
@@ -233,7 +238,7 @@ export function ConfirmationWorkspace() {
     if (target.node_kind === 'scope') {
       const featureId = target.snapshot?.feature_id;
       const feature = (ir?.features || []).find((item: any) => item.featureId === featureId);
-      const featureName = feature?.featureName || (featureId ? `功能 #${featureId}` : '功能');
+      const featureName = feature?.featureName || (featureId ? `${t('confirmationWorkspace.nodeKindLabels.feature')} #${featureId}` : t('confirmationWorkspace.unnamedFeature'));
       const scopeStatus = target.snapshot?.status ? ` ${getScopeStatusText(target.snapshot.status)}` : '';
       return `${featureName}${scopeStatus}`;
     }
@@ -264,7 +269,7 @@ export function ConfirmationWorkspace() {
             <Layers className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-semibold">AI 假设节点</div>
+            <div className="text-xs text-slate-400 font-semibold">{t('confirmationWorkspace.aiAssumptions')}</div>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
               {confirmationSummary?.aiAssumptionCount ?? 0}
             </div>
@@ -277,7 +282,7 @@ export function ConfirmationWorkspace() {
             <Inbox className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-semibold">未完结任务</div>
+            <div className="text-xs text-slate-400 font-semibold">{t('confirmationWorkspace.openTasks')}</div>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
               {confirmationSummary?.openTaskCount ?? 0}
             </div>
@@ -290,7 +295,7 @@ export function ConfirmationWorkspace() {
             <UserCheck className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-semibold">指派给我</div>
+            <div className="text-xs text-slate-400 font-semibold">{t('confirmationWorkspace.assignedToMe')}</div>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
               {confirmationSummary?.assignedToMeCount ?? 0}
             </div>
@@ -303,7 +308,7 @@ export function ConfirmationWorkspace() {
             <Send className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-semibold">我创建的</div>
+            <div className="text-xs text-slate-400 font-semibold">{t('confirmationWorkspace.myCreated')}</div>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
               {confirmationSummary?.createdByMeCount ?? 0}
             </div>
@@ -316,7 +321,7 @@ export function ConfirmationWorkspace() {
             <XCircle className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-semibold">已驳回任务</div>
+            <div className="text-xs text-slate-400 font-semibold">{t('confirmationWorkspace.rejectedTasks')}</div>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
               {confirmationSummary?.rejectedCount ?? 0}
             </div>
@@ -336,7 +341,7 @@ export function ConfirmationWorkspace() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            待审批资产 ({filteredAssumptions.length})
+            {t('confirmationWorkspace.assumptionsTab', { count: filteredAssumptions.length })}
           </button>
           <button
             onClick={() => setActiveTab('tasks')}
@@ -346,7 +351,7 @@ export function ConfirmationWorkspace() {
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            确认任务列表 ({(tasks || []).length})
+            {t('confirmationWorkspace.tasksTab', { count: (tasks || []).length })}
           </button>
         </div>
 
@@ -356,7 +361,7 @@ export function ConfirmationWorkspace() {
             className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 text-sm font-semibold shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>发起确认指派 ({selectedAssumptions.size})</span>
+            <span>{t('confirmationWorkspace.assignConfirmBtn', { count: selectedAssumptions.size })}</span>
           </button>
         )}
       </div>
@@ -372,7 +377,7 @@ export function ConfirmationWorkspace() {
                 <Search className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
                   type="text"
-                  placeholder="搜索资产标题或背景描述..."
+                  placeholder={t('confirmationWorkspace.filterSearchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="text-xs text-slate-700 focus:outline-none w-full bg-transparent"
@@ -385,7 +390,7 @@ export function ConfirmationWorkspace() {
                   onChange={(e) => setKindFilter(e.target.value)}
                   className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 bg-white focus:outline-none focus:border-slate-300"
                 >
-                  <option value="all">所有类型</option>
+                  <option value="all">{t('confirmationWorkspace.filterCategoryAll')}</option>
                   {Object.entries(NodeKindLabels).map(([k, label]) => (
                     <option key={k} value={k}>{label}</option>
                   ))}
@@ -395,7 +400,7 @@ export function ConfirmationWorkspace() {
                   onClick={handleToggleSelectAll}
                   className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 cursor-pointer"
                 >
-                  {selectedAssumptions.size === filteredAssumptions.length ? '取消全选' : '全选'}
+                  {selectedAssumptions.size === filteredAssumptions.length ? t('confirmationWorkspace.deselectAll') : t('confirmationWorkspace.selectAll')}
                 </button>
               </div>
             </div>
@@ -405,7 +410,7 @@ export function ConfirmationWorkspace() {
               {filteredAssumptions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
                   <FileText className="w-12 h-12 stroke-[1.5]" />
-                  <p className="text-sm">暂无符合筛选条件的 AI 假设资产</p>
+                  <p className="text-sm">{t('confirmationWorkspace.noAssumptions')}</p>
                 </div>
               ) : (
                 filteredAssumptions.map((item) => {
@@ -432,7 +437,7 @@ export function ConfirmationWorkspace() {
                             {NodeKindLabels[item.nodeKind] || item.nodeKind}
                           </span>
                           <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            AI 假设
+                            {t('confirmationWorkspace.aiAssumptionBadge')}
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-800 mt-2">{item.title}</h4>
@@ -454,10 +459,10 @@ export function ConfirmationWorkspace() {
             {/* Filter tabs */}
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30 flex items-center gap-2">
               {[
-                { key: 'all', label: '全部任务' },
-                { key: 'assigned_to_me', label: '指派给我' },
-                { key: 'created_by_me', label: '我创建的' },
-                { key: 'rejected', label: '驳回/拒绝' }
+                { key: 'all', label: t('confirmationWorkspace.taskFilters.all') },
+                { key: 'assigned_to_me', label: t('confirmationWorkspace.taskFilters.assigned_to_me') },
+                { key: 'created_by_me', label: t('confirmationWorkspace.taskFilters.created_by_me') },
+                { key: 'rejected', label: t('confirmationWorkspace.taskFilters.rejected') }
               ].map(f => (
                 <button
                   key={f.key}
@@ -478,7 +483,7 @@ export function ConfirmationWorkspace() {
               {filteredTasks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
                   <Inbox className="w-12 h-12 stroke-[1.5]" />
-                  <p className="text-sm">当前分类下暂无确认任务</p>
+                  <p className="text-sm">{t('confirmationWorkspace.noTasks')}</p>
                 </div>
               ) : (
                 filteredTasks.map((task) => {
@@ -500,7 +505,7 @@ export function ConfirmationWorkspace() {
                               ? 'bg-amber-50 text-amber-600'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低'} 优先级
+                            {t('confirmationWorkspace.priorityLabel.' + task.priority)}{t('confirmationWorkspace.prioritySuffix')}
                           </span>
                           
                           {/* Status badge */}
@@ -513,18 +518,18 @@ export function ConfirmationWorkspace() {
                               ? 'bg-rose-50 text-rose-600'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {task.status === 'open' ? '办理中' : task.status === 'done' ? '已确认' : task.status === 'rejected' ? '已驳回' : '失效/取消'}
+                            {t('confirmationWorkspace.taskStatus.' + task.status)}
                           </span>
 
                           {/* Content changed notification */}
                           {task.contentChanged && (
                             <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                              <span>内容已变更</span>
+                              <span>{t('confirmationWorkspace.supersededBadge')}</span>
                             </span>
                           )}
                         </div>
-                        <h4 className="text-sm font-bold text-slate-800 mt-1">{task.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 mt-1">{getCollaborationTaskTitle(task, t)}</h4>
                       </div>
 
                       {/* Decides button */}
@@ -533,15 +538,15 @@ export function ConfirmationWorkspace() {
                           onClick={() => setDecisionTask(task)}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors cursor-pointer"
                         >
-                          办理决策
+                          {t('confirmationWorkspace.confirmTitle')}
                         </button>
                       )}
                     </div>
 
                     {/* Description */}
-                    {task.description && (
+                    {getCollaborationTaskDescription(task, t) && (
                       <p className="text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-100 leading-relaxed">
-                        {task.description}
+                        {getCollaborationTaskDescription(task, t)}
                       </p>
                     )}
 
@@ -550,15 +555,15 @@ export function ConfirmationWorkspace() {
                       <div className="flex flex-wrap items-center gap-4">
                         <span className="flex items-center gap-1">
                           <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span>指派给: <span className="font-semibold text-slate-500">{task.assigneeEmail}</span></span>
+                          <span>{t('confirmationWorkspace.assignedTo')}: <span className="font-semibold text-slate-500">{task.assigneeEmail}</span></span>
                         </span>
-                        <span>发起人: <span className="font-semibold text-slate-500">{task.creatorEmail}</span></span>
+                        <span>{t('confirmationWorkspace.creator')}: <span className="font-semibold text-slate-500">{task.creatorEmail}</span></span>
                       </div>
                       
                       {task.dueAt && (
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>截止日: {new Date(task.dueAt).toLocaleDateString()}</span>
+                          <span>{t('confirmationWorkspace.deadline', { date: new Date(task.dueAt).toLocaleDateString(i18n.language) })}</span>
                         </span>
                       )}
                     </div>
@@ -573,9 +578,9 @@ export function ConfirmationWorkspace() {
                         >
                           <span className="flex items-center gap-1.5">
                             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${targetsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
-                            <span>待确认资产清单</span>
+                            <span>{t('confirmationWorkspace.targetsList')}</span>
                           </span>
-                          <span>共 {task.targets?.length ?? 1} 个节点</span>
+                          <span>{t('confirmationWorkspace.targetsCount', { count: task.targets?.length ?? 1 })}</span>
                         </button>
                         {!targetsCollapsed && <div className="divide-y divide-slate-100">
                           {task.targets?.map((target: any, idx: number) => (
@@ -597,12 +602,12 @@ export function ConfirmationWorkspace() {
                       <div className="border border-amber-200 rounded-xl bg-amber-50/10 overflow-hidden text-xs space-y-3 p-4">
                         <div className="flex items-center gap-1.5 text-amber-800 font-bold">
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
-                          <span>检测到 AI 写入冲突 ({task.payload.target_type})</span>
+                          <span>{t('confirmationWorkspace.diffConflictTitle', { type: task.payload.target_type })}</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Stale AI Suggestion */}
                           <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2">
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">AI 冲突建议内容</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('confirmationWorkspace.diffConflictBadge')}</div>
                             <div className="bg-slate-50 rounded-lg p-2.5 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
                               {JSON.stringify(task.payload.stale_ai_result, null, 2)}
                             </div>
@@ -610,7 +615,7 @@ export function ConfirmationWorkspace() {
 
                           {/* Current Project Context */}
                           <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2">
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">当前项目上下文</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('confirmationWorkspace.diffTargetBadge')}</div>
                             <div className="bg-slate-50 rounded-lg p-2.5 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
                               {JSON.stringify(task.payload.current_snapshot, null, 2)}
                             </div>
@@ -624,7 +629,7 @@ export function ConfirmationWorkspace() {
                       <div className="bg-rose-50/40 border border-rose-100/60 rounded-xl p-3.5 text-xs text-rose-800 space-y-1">
                         <div className="font-bold flex items-center gap-1.5 text-rose-900">
                           <MessageSquare className="w-4 h-4 text-rose-600" />
-                          <span>驳回意见:</span>
+                          <span>{t('confirmationWorkspace.diffChangeLabel')}</span>
                         </div>
                         <p className="leading-relaxed whitespace-pre-wrap">{task.decisionNote}</p>
                       </div>
@@ -645,7 +650,7 @@ export function ConfirmationWorkspace() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-150 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-base font-bold text-slate-800">发起资产确认指派</h3>
+              <h3 className="text-base font-bold text-slate-800">{t('confirmationWorkspace.assignModalHeader')}</h3>
               <button 
                 onClick={() => setIsCreateModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -664,29 +669,29 @@ export function ConfirmationWorkspace() {
 
               {/* Targets Summary info */}
               <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 text-xs flex items-center justify-between">
-                <span className="text-slate-500">确认资产范围</span>
-                <span className="font-bold text-slate-800">共选择了 {selectedAssumptions.size} 个节点</span>
+                <span className="text-slate-500">{t('confirmationWorkspace.scopeTitle')}</span>
+                <span className="font-bold text-slate-800">{t('confirmationWorkspace.selectedCount', { count: selectedAssumptions.size })}</span>
               </div>
 
               {/* Title */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500">指派标题 (选填)</label>
+                <label className="text-xs font-bold text-slate-500">{t('confirmationWorkspace.assignTitleLabel')}</label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="例如: 核心流与特性资产校验"
+                  placeholder={t('confirmationWorkspace.assignTitlePlaceholder')}
                   className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500">指派说明 (选填)</label>
+                <label className="text-xs font-bold text-slate-500">{t('confirmationWorkspace.assignNoteLabel')}</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="请说明校验指派的具体意图或确认范围..."
+                  placeholder={t('confirmationWorkspace.assignNotePlaceholder')}
                   className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[80px] focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
@@ -694,7 +699,7 @@ export function ConfirmationWorkspace() {
               {/* Assignee Selection */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 flex items-center gap-0.5">
-                  <span>选择指派确认人</span>
+                  <span>{t('confirmationWorkspace.selectAssigneeLabel')}</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
@@ -704,7 +709,7 @@ export function ConfirmationWorkspace() {
                     required
                     className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors"
                   >
-                    <option value="">-- 请选择拥有编辑权限的成员 --</option>
+                    <option value="">{t('confirmationWorkspace.selectAssigneePlaceholder')}</option>
                     {eligibleAssignees.map(m => (
                       <option key={m.userId} value={m.userId}>
                         {m.email} ({m.role})
@@ -718,23 +723,23 @@ export function ConfirmationWorkspace() {
               {/* Two columns: priority & due date */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">优先级</label>
+                  <label className="text-xs font-bold text-slate-500">{t('confirmationWorkspace.priorityLabelTitle')}</label>
                   <div className="relative">
                     <select
                       value={priority}
                       onChange={(e: any) => setPriority(e.target.value)}
                       className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors"
                     >
-                      <option value="low">低 (Low)</option>
-                      <option value="medium">中 (Medium)</option>
-                      <option value="high">高 (High)</option>
+                      <option value="low">{t('confirmationWorkspace.priorityOptions.low')}</option>
+                      <option value="medium">{t('confirmationWorkspace.priorityOptions.medium')}</option>
+                      <option value="high">{t('confirmationWorkspace.priorityOptions.high')}</option>
                     </select>
                     <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-3 pointer-events-none" />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">截止日期 (选填)</label>
+                  <label className="text-xs font-bold text-slate-500">{t('confirmationWorkspace.deadlineLabel')}</label>
                   <div className="relative">
                     <input
                       type="date"
@@ -754,14 +759,14 @@ export function ConfirmationWorkspace() {
                   onClick={() => setIsCreateModalOpen(false)}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
                 >
-                  取消
+                  {t('confirmationWorkspace.cancelBtn')}
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {submitting ? '提交中...' : '确认指派'}
+                  {submitting ? t('confirmationWorkspace.submitting') : t('confirmationWorkspace.submitBtn')}
                 </button>
               </div>
 

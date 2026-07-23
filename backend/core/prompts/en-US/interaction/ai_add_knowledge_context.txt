@@ -1,0 +1,7 @@
+# Knowledge-base reference
+{{knowledge_context}}
+
+Rules:
+1. Use this only for supporting business facts and constraints; the user's current input and intent take priority.
+2. Ask the user to confirm when the knowledge base suggests a duplicate or similar object.
+3. Stay focused on the single object currently being added or edited.

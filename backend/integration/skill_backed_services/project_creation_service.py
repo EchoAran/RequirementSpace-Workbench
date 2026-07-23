@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from backend.api.modules.project_lifecycle.ports import ActorFeaturePreviewGeneratorPort
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.generators.actors_generator import ActorsGenerator, ActorsGeneratorInput
 from backend.integration.skill_backed_services.feature_tree_adapter import FeatureTreeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SkillBackedLLMJsonClient
@@ -94,7 +95,15 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
 
         actor_names = [actor.actorName for actor in actor_nodes]
         prompt = self._feature_tree_skill._build_prompt(requirement_text, actor_names)
-        raw_feature_tree: dict[str, Any] = await self._llm_json_client.ask_json(prompt)
+        raw_feature_tree: dict[str, Any] = await self._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_requirements,
+                knowledge_context,
+                user_feedback,
+                actor_nodes,
+            ),
+        )
         raw_features = self._feature_tree_adapter.to_current_features(
             raw_feature_tree=raw_feature_tree,
             actors=actor_nodes,

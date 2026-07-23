@@ -102,14 +102,13 @@ async def prepare_shadow_draft(
             )
             if preview is None:
                 # Fallback: if no real preview exists, generate one automatically
-                preview = await get_prototype_generation_service().generate_preview(
+                preview = await get_prototype_generation_service().start_generation(
                     project_id=owned_project.id,
-                    session=session,
                     force_regenerate=True,
                 )
             return PreviewShadowDraftResponse(
                 source="real_project",
-                status="ready",
+                status=preview.status,
                 prototype_preview=preview,
             )
         except HTTPException:
@@ -180,6 +179,8 @@ async def prepare_shadow_draft(
             api_url=llm_ctx.api_url,
             api_key=llm_ctx.api_key,
             model_name=llm_ctx.model_name,
+            content_locale=llm_ctx.content_locale,
+            content_locale_source=llm_ctx.content_locale_source,
         )
     )
 
@@ -354,6 +355,8 @@ async def regenerate_shadow_draft(
             api_url=llm_ctx.api_url,
             api_key=llm_ctx.api_key,
             model_name=llm_ctx.model_name,
+            content_locale=llm_ctx.content_locale,
+            content_locale_source=llm_ctx.content_locale_source,
         )
     )
 

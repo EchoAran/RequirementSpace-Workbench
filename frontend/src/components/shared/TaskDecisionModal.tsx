@@ -1,7 +1,10 @@
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import React, { useState } from 'react';
 import { X, CheckCircle2, AlertTriangle, MessageSquare, ShieldAlert } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { getScopeStatusText } from '@/core/schema';
+import { getScopeStatusText } from '@/core/presentationLabels';
+import { getCollaborationTaskDescription, getCollaborationTaskTitle } from '@/core/collaborationPresentation';
 
 interface TaskDecisionModalProps {
   task: any;
@@ -11,36 +14,36 @@ interface TaskDecisionModalProps {
 }
 
 const fieldLabels: Record<string, string> = {
-  name: '名称',
-  description: '说明',
-  content: '内容',
-  data_type: '数据类型',
-  example: '示例',
-  position: '位置',
-  step_type: '步骤类型',
-  status: '状态',
-  positive_summary: '纳入范围',
-  negative_summary: '排除范围',
-  reason: '原因',
-  kano_category: 'Kano 分类',
-};
+  get name() { return i18n.t('taskDecision.fieldLabels.name') || 'Name'; },
+  get description() { return i18n.t('taskDecision.fieldLabels.description') || 'Description'; },
+  get content() { return i18n.t('taskDecision.fieldLabels.content') || 'Content'; },
+  get data_type() { return i18n.t('taskDecision.fieldLabels.data_type') || 'Data Type'; },
+  get example() { return i18n.t('taskDecision.fieldLabels.example') || 'Example'; },
+  get position() { return i18n.t('taskDecision.fieldLabels.position') || 'Position'; },
+  get step_type() { return i18n.t('taskDecision.fieldLabels.step_type') || 'Step Type'; },
+  get status() { return i18n.t('taskDecision.fieldLabels.status') || 'Status'; },
+  get positive_summary() { return i18n.t('taskDecision.fieldLabels.positive_summary') || 'In Scope'; },
+  get negative_summary() { return i18n.t('taskDecision.fieldLabels.negative_summary') || 'Out of Scope'; },
+  get reason() { return i18n.t('taskDecision.fieldLabels.reason') || 'Reason'; },
+  get kano_category() { return i18n.t('taskDecision.fieldLabels.kano_category') || 'Kano Category'; },
+} as unknown as Record<string, string>;
 
 const nodeKindLabels: Record<string, string> = {
-  actor: '角色',
-  feature: '功能特性',
-  scenario: '场景',
-  acceptance_criterion: '验收标准',
-  business_object: '业务对象',
-  business_object_attribute: '对象属性',
-  flow: '业务流程',
-  flow_step: '流程步骤',
-  scope: '范围规划',
-};
+  get actor() { return i18n.t('taskDecision.nodeKindLabels.actor') || 'Actor'; },
+  get feature() { return i18n.t('taskDecision.nodeKindLabels.feature') || 'Feature'; },
+  get scenario() { return i18n.t('taskDecision.nodeKindLabels.scenario') || 'Scenario'; },
+  get acceptance_criterion() { return i18n.t('taskDecision.nodeKindLabels.acceptance_criterion') || 'Acceptance Criterion'; },
+  get business_object() { return i18n.t('taskDecision.nodeKindLabels.business_object') || 'Business Object'; },
+  get business_object_attribute() { return i18n.t('taskDecision.nodeKindLabels.business_object_attribute') || 'Attribute'; },
+  get flow() { return i18n.t('taskDecision.nodeKindLabels.flow') || 'Business Flow'; },
+  get flow_step() { return i18n.t('taskDecision.nodeKindLabels.flow_step') || 'Flow Step'; },
+  get scope() { return i18n.t('taskDecision.nodeKindLabels.scope') || 'Scope Plan'; },
+} as unknown as Record<string, string>;
 
 const formatValue = (val: unknown) => {
-  if (Array.isArray(val) && val.length === 0) return '无';
+  if (Array.isArray(val) && val.length === 0) return i18n.t('taskDecision.none') || 'None';
   if (val && typeof val === 'object') return JSON.stringify(val, null, 2);
-  if (val === null || val === undefined || val === '') return '未填写';
+  if (val === null || val === undefined || val === '') return i18n.t('taskDecision.unfilled') || 'Unfilled';
   return String(val);
 };
 
@@ -92,7 +95,7 @@ const FieldTable = ({ snapshot }: { snapshot: Record<string, unknown> }) => {
         {entries.length === 0 && (
           <tr>
             <td className="px-4 py-3 text-slate-400 text-center italic">
-              没有可展示的内容字段
+              {i18n.t('taskDecision.noFieldsToShow') || 'No fields to display'}
             </td>
           </tr>
         )}
@@ -103,16 +106,16 @@ const FieldTable = ({ snapshot }: { snapshot: Record<string, unknown> }) => {
 
 const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: string; snapshot: Record<string, unknown>; resolveName: ResolveName }) => {
   if (nodeKind === 'actor') {
-    return <div className="p-4 space-y-3"><DetailLine label="角色名称" value={snapshot.name} /><DetailLine label="职责说明" value={snapshot.description} /></div>;
+    return <div className="p-4 space-y-3"><DetailLine label={i18n.t('taskDecision.actorName') || 'Actor Name'} value={snapshot.name} /><DetailLine label={i18n.t('taskDecision.actorDuties') || 'Actor Description'} value={snapshot.description} /></div>;
   }
   if (nodeKind === 'feature') {
     return (
       <div className="p-4 space-y-3">
-        <DetailLine label="功能名称" value={snapshot.name} />
-        <DetailLine label="功能说明" value={snapshot.description} />
+        <DetailLine label={i18n.t('taskDecision.featureName') || 'Feature Name'} value={snapshot.name} />
+        <DetailLine label={i18n.t('taskDecision.featureDesc') || 'Feature Description'} value={snapshot.description} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <DetailLine label="父功能" value={formatRef('feature', snapshot.parent_id, resolveName)} />
-          <RefList label="关联参与者" kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
+          <DetailLine label={i18n.t('taskDecision.parentFeature') || 'Parent Feature'} value={formatRef('feature', snapshot.parent_id, resolveName)} />
+          <RefList label={i18n.t('taskDecision.relatedActors') || 'Related Actors'} kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
         </div>
       </div>
     );
@@ -120,27 +123,27 @@ const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: strin
   if (nodeKind === 'scenario') {
     return (
       <div className="p-4 space-y-3">
-        <DetailLine label="场景名称" value={snapshot.name} />
-        <DetailLine label="场景内容" value={snapshot.content} />
+        <DetailLine label={i18n.t('taskDecision.scenarioName') || 'Scenario Name'} value={snapshot.name} />
+        <DetailLine label={i18n.t('taskDecision.scenarioContent') || 'Scenario Content'} value={snapshot.content} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <DetailLine label="所属功能" value={formatRef('feature', snapshot.feature_id, resolveName)} />
-          <DetailLine label="参与者" value={formatRef('actor', snapshot.actor_id, resolveName)} />
+          <DetailLine label={i18n.t('taskDecision.belongingFeature') || 'Belonging Feature'} value={formatRef('feature', snapshot.feature_id, resolveName)} />
+          <DetailLine label={i18n.t('taskDecision.execActors') || 'Actors'} value={formatRef('actor', snapshot.actor_id, resolveName)} />
         </div>
       </div>
     );
   }
   if (nodeKind === 'acceptance_criterion') {
-    return <div className="p-4 space-y-3"><DetailLine label="验收标准" value={snapshot.content} /><DetailLine label="所属场景" value={formatRef('scenario', snapshot.scenario_id, resolveName)} /></div>;
+    return <div className="p-4 space-y-3"><DetailLine label={i18n.t('taskDecision.acTitle') || 'Acceptance Criterion'} value={snapshot.content} /><DetailLine label={i18n.t('taskDecision.belongingScenario') || 'Belonging Scenario'} value={formatRef('scenario', snapshot.scenario_id, resolveName)} /></div>;
   }
   if (nodeKind === 'business_object') {
     const attrs = Array.isArray(snapshot.attributes) ? snapshot.attributes : [];
     return (
       <div className="p-4 space-y-3">
-        <DetailLine label="业务对象" value={snapshot.name} />
-        <DetailLine label="对象说明" value={snapshot.description} />
+        <DetailLine label={i18n.t('taskDecision.businessObject') || 'Business Object'} value={snapshot.name} />
+        <DetailLine label={i18n.t('taskDecision.businessObjectDesc') || 'Description'} value={snapshot.description} />
         {attrs.length > 0 && (
           <div className="space-y-2">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">字段</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{i18n.t('taskDecision.fieldsLabel') || 'Fields'}</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {attrs.map((attr: any, idx: number) => (
                 <div key={`${attr.name || 'attr'}-${idx}`} className="rounded-lg border border-slate-150 bg-white p-2.5">
@@ -156,19 +159,19 @@ const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: strin
     );
   }
   if (nodeKind === 'business_object_attribute') {
-    return <div className="p-4 space-y-3"><DetailLine label="字段名" value={snapshot.name} /><DetailLine label="字段说明" value={snapshot.description} /><DetailLine label="数据类型" value={snapshot.data_type} /><DetailLine label="示例" value={snapshot.example} /></div>;
+    return <div className="p-4 space-y-3"><DetailLine label={i18n.t('taskDecision.fieldName') || 'Field Name'} value={snapshot.name} /><DetailLine label={i18n.t('taskDecision.fieldDesc') || 'Field Description'} value={snapshot.description} /><DetailLine label={i18n.t('taskDecision.dataType') || 'Data Type'} value={snapshot.data_type} /><DetailLine label={i18n.t('taskDecision.exampleLabel') || 'Example'} value={snapshot.example} /></div>;
   }
   if (nodeKind === 'flow') {
     const steps = Array.isArray(snapshot.steps) ? snapshot.steps : [];
     return (
       <div className="p-4 space-y-3">
-        <DetailLine label="流程名称" value={snapshot.name} />
-        <DetailLine label="流程说明" value={snapshot.description} />
+        <DetailLine label={i18n.t('taskDecision.flowName') || 'Flow Name'} value={snapshot.name} />
+        <DetailLine label={i18n.t('taskDecision.flowDesc') || 'Flow Description'} value={snapshot.description} />
         {steps.length > 0 && (
           <ol className="space-y-2">
             {steps.map((step: any, idx: number) => (
               <li key={`${step.position ?? idx}-${step.name || idx}`} className="rounded-lg border border-slate-150 bg-white p-2.5">
-                <div className="text-[11px] font-bold text-indigo-600">步骤 {formatValue(step.position ?? idx + 1)}</div>
+                <div className="text-[11px] font-bold text-indigo-600">{i18n.t('taskDecision.stepNum', { num: formatValue(step.position ?? idx + 1) })}</div>
                 <div className="text-xs font-bold text-slate-700 mt-1">{formatValue(step.name)}</div>
                 <div className="text-[11px] text-slate-600 mt-1 leading-relaxed">{formatValue(step.description)}</div>
               </li>
@@ -181,14 +184,14 @@ const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: strin
   if (nodeKind === 'flow_step') {
     return (
       <div className="p-4 space-y-3">
-        <DetailLine label="步骤名称" value={snapshot.name} />
-        <DetailLine label="步骤说明" value={snapshot.description} />
+        <DetailLine label={i18n.t('taskDecision.stepName') || 'Step Name'} value={snapshot.name} />
+        <DetailLine label={i18n.t('taskDecision.stepDesc') || 'Step Description'} value={snapshot.description} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <DetailLine label="步骤序号" value={snapshot.position} />
-          <DetailLine label="步骤类型" value={snapshot.step_type} />
-          <RefList label="参与者" kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
-          <RefList label="输入对象" kind="business_object" values={snapshot.input_business_object_ids} resolveName={resolveName} />
-          <RefList label="输出对象" kind="business_object" values={snapshot.output_business_object_ids} resolveName={resolveName} />
+          <DetailLine label={i18n.t('taskDecision.stepPos') || 'Step Position'} value={snapshot.position} />
+          <DetailLine label={i18n.t('taskDecision.stepType') || 'Step Type'} value={snapshot.step_type} />
+          <RefList label={i18n.t('taskDecision.execActors') || 'Actors'} kind="actor" values={snapshot.actor_ids} resolveName={resolveName} />
+          <RefList label={i18n.t('taskDecision.inputObjects') || 'Input Objects'} kind="business_object" values={snapshot.input_business_object_ids} resolveName={resolveName} />
+          <RefList label={i18n.t('taskDecision.outputObjects') || 'Output Objects'} kind="business_object" values={snapshot.output_business_object_ids} resolveName={resolveName} />
         </div>
       </div>
     );
@@ -200,9 +203,9 @@ const SnapshotPreview = ({ nodeKind, snapshot, resolveName }: { nodeKind?: strin
           <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-700">{getScopeStatusText(snapshot.status) || formatValue(snapshot.status)}</span>
           {snapshot.kano_category && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">Kano: {formatValue(snapshot.kano_category)}</span>}
         </div>
-        <DetailLine label="纳入理由" value={snapshot.positive_summary} />
-        <DetailLine label="不纳入影响" value={snapshot.negative_summary} />
-        <DetailLine label="决策原因" value={snapshot.reason} />
+        <DetailLine label={i18n.t('taskDecision.positiveReason') || 'In Scope Rationale'} value={snapshot.positive_summary} />
+        <DetailLine label={i18n.t('taskDecision.negativeImpact') || 'Out of Scope Impact'} value={snapshot.negative_summary} />
+        <DetailLine label={i18n.t('taskDecision.decisionReason') || 'Decision Reason'} value={snapshot.reason} />
       </div>
     );
   }
@@ -285,7 +288,7 @@ const makeNameResolver = (ir: any): ResolveName => {
         const scope = item.scope;
         return scope && (scope.scopeId === numId || scope.id === numId || scope.scope_id === numId);
       });
-      return feature ? `${feature.featureName} - 范围` : undefined;
+      return feature ? `${feature.featureName} - ${i18n.t('taskDecision.scopeSuffix')}` : undefined;
     }
 
     return undefined;
@@ -296,10 +299,10 @@ const getSnapshotTitle = (task: any, target?: any, index?: number) => {
   const snapshot = target?.snapshot || task.contentSnapshot || {};
   const snapshotName = snapshot.name || snapshot.content;
   if (target) {
-    const kindLabel = nodeKindLabels[target.node_kind] || target.node_kind || '对象';
+    const kindLabel = nodeKindLabels[target.node_kind] || target.node_kind || (i18n.t('taskDecision.objectFallback') || 'Object');
     return target.node_name || snapshotName || `${kindLabel} #${target.node_id ?? (index ?? 0) + 1}`;
   }
-  return task.nodeName || snapshotName || task.title || '确认对象';
+  return task.nodeName || snapshotName || getCollaborationTaskTitle(task, i18n.t) || (i18n.t('taskDecision.confirmTargetFallback') || 'Confirm Target');
 };
 
 const getSnapshotGroups = (task: any) => {
@@ -320,6 +323,7 @@ const getSnapshotGroups = (task: any) => {
 };
 
 export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskDecisionModalProps) {
+  const { t } = useTranslation();
   const decideTask = useWorkspaceStore((state) => state.decideTask);
   const ir = useWorkspaceStore((state) => state.ir);
   const [decisionNote, setDecisionNote] = useState('');
@@ -341,13 +345,13 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       if (detail === 'task_content_changed') {
-        setError('操作失败：目标内容已经发生变化，这个确认任务已失效。');
+        setError(t('taskDecision.errorContentChanged'));
       } else if (detail && typeof detail === 'object' && detail.message === 'task_content_changed') {
         const mismatches = detail.mismatches || [];
         const mismatchStr = mismatches.map((m: any) => `${m.node_kind} (ID: ${m.node_id})`).join(', ');
-        setError(`操作失败：以下目标内容已经发生变化，确认任务已失效：${mismatchStr}`);
+        setError(t('taskDecision.errorContentChangedDetail', { mismatches: mismatchStr }));
       } else {
-        setError(detail || err?.message || '操作失败');
+        setError(detail || err?.message || t('taskDecision.errorFallback'));
       }
     } finally {
       setLoading(false);
@@ -360,9 +364,9 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
         <div className="px-6 py-4 border-b border-slate-150 flex items-center justify-between bg-slate-50/50">
           <div>
             <span className="text-[10px] font-bold tracking-wider uppercase bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
-              确认任务审批
+              {t('taskDecision.approvalHeader')}
             </span>
-            <h3 className="text-base font-bold text-slate-800 mt-1">{task.title}</h3>
+            <h3 className="text-base font-bold text-slate-800 mt-1">{getCollaborationTaskTitle(task, t)}</h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-5 h-5" />
@@ -381,21 +385,21 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
             <div className="bg-amber-50 border border-amber-100 text-amber-800 px-4 py-3 rounded-xl text-xs flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <strong className="block font-semibold mb-0.5">内容已经发生变化</strong>
-                <span>该对象在任务发起后被修改过。提交审批时，系统会再次校验并阻止确认过期内容。</span>
+                <strong className="block font-semibold mb-0.5">{t('taskDecision.contentChangedWarningTitle')}</strong>
+                <span>{t('taskDecision.contentChangedWarningDesc')}</span>
               </div>
             </div>
           )}
 
-          {task.description && (
+          {getCollaborationTaskDescription(task, t) && (
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">指派说明</div>
-              <div className="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-wrap">{task.description}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t('taskDecision.assignNote')}</div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-wrap">{getCollaborationTaskDescription(task, t)}</div>
             </div>
           )}
 
           <div className="space-y-2.5">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">发起确认时的内容记录</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t('taskDecision.snapshotRecordTitle')}</div>
             <div className="space-y-3">
               {snapshotGroups.map((group, index) => {
                 return (
@@ -415,12 +419,12 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
               <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-              <span>审批批注 (选填)</span>
+              <span>{t('taskDecision.decisionNoteLabel')}</span>
             </label>
             <textarea
               value={decisionNote}
               onChange={(e) => setDecisionNote(e.target.value)}
-              placeholder="请输入审批意见、驳回原因或修改备注..."
+              placeholder={t('taskDecision.decisionNotePlaceholder')}
               className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[70px] focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
@@ -428,7 +432,7 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
 
         <div className="px-6 py-4 border-t border-slate-150 bg-slate-50/30 flex items-center justify-between gap-3 shrink-0">
           <div className="text-[10px] text-slate-400">
-            处理人 <span className="font-semibold text-slate-500">{task.assigneeEmail}</span>
+            {t('taskDecision.handlerLabel')} <span className="font-semibold text-slate-500">{task.assigneeEmail}</span>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -436,7 +440,7 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
               disabled={loading}
               className="px-4 py-2 rounded-xl text-xs font-semibold border border-rose-200 text-rose-600 bg-white hover:bg-rose-50/50 transition-colors cursor-pointer disabled:opacity-50"
             >
-              驳回
+              {t('taskDecision.rejectBtn')}
             </button>
             <button
               onClick={() => handleDecision('approve')}
@@ -444,7 +448,7 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
               className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>通过</span>
+              <span>{t('taskDecision.approveBtn')}</span>
             </button>
           </div>
         </div>

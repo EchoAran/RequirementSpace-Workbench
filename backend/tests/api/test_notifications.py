@@ -100,6 +100,8 @@ async def test_notification_flow(test_db):
     notifs = res_notif.json()
     assert len(notifs) >= 1
     assert notifs[0]["eventType"] == "task_assigned"
+    assert notifs[0]["title"] == "collaboration.notifications.singleTaskAssigned.title"
+    assert notifs[0]["body"] == "collaboration.notifications.singleTaskAssigned.body"
     assert notifs[0]["recipientUserId"] == assignee_id
     assert notifs[0]["readAt"] is None
     notif_id = notifs[0]["id"]
@@ -121,6 +123,8 @@ async def test_notification_flow(test_db):
     owner_notifs = res_owner_notif.json()
     assert len(owner_notifs) >= 1
     assert owner_notifs[0]["eventType"] == "task_decided"
+    assert owner_notifs[0]["title"] == "collaboration.notifications.singleTaskApproved.title"
+    assert owner_notifs[0]["body"] == "collaboration.notifications.singleTaskApproved.body"
     assert owner_notifs[0]["recipientUserId"] == owner_id
 
     # 5. Mark assignee notification as read
@@ -136,3 +140,15 @@ async def test_notification_flow(test_db):
     res_notif_read = client.get("/api/me/notifications")
     assert res_notif_read.status_code == 200
     assert res_notif_read.json()[0]["readAt"] is not None
+
+    client.cookies.set("auth_session", owner_cookie)
+    res_default_title = client.post(
+        f"/api/projects/{project_public_id}/tasks/confirm-node",
+        json={
+            "assignedToUserId": assignee_id,
+            "nodeKind": "actor",
+            "nodeId": actor_id,
+        },
+    )
+    assert res_default_title.status_code == 200
+    assert res_default_title.json()["title"] == "collaboration.taskTitles.singleConfirmation"

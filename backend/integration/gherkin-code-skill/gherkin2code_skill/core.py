@@ -181,9 +181,7 @@ class Gherkin2CodePipeline:
             self._read_text(self._requirement_path),
             self._read_text(self._acceptance_path),
         )
-        loop = asyncio.get_running_loop()
-        code = await loop.run_in_executor(
-            None,
+        code = await asyncio.to_thread(
             self._generator.generate,
             requirement,
             acceptance,

@@ -3778,6 +3778,12 @@
             "title": "Instruction",
             "type": "string"
           },
+          "is_builtin": {
+            "default": false,
+            "description": "\u662f\u5426\u4e3a\u7cfb\u7edf\u5185\u7f6e\u7b56\u7565\uff1b\u7528\u6237\u7b56\u7565\u59cb\u7ec8\u4e3a false",
+            "title": "Is Builtin",
+            "type": "boolean"
+          },
           "label": {
             "description": "\u7b56\u7565\u5c55\u73b0\u7ed9\u7528\u6237\u7684\u540d\u79f0",
             "maxLength": 20,
@@ -5398,6 +5404,19 @@
         "title": "PerceptionSlotFillingDraftResponse",
         "type": "object"
       },
+      "PreferencesResponse": {
+        "properties": {
+          "preferred_locale": {
+            "title": "Preferred Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferred_locale"
+        ],
+        "title": "PreferencesResponse",
+        "type": "object"
+      },
       "PreviewShadowDraftResponse": {
         "properties": {
           "currentProgress": {
@@ -5517,6 +5536,18 @@
       },
       "ProjectConfigurationResponse": {
         "properties": {
+          "content_locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AI project content language: zh-CN, en-US, or null",
+            "title": "Content Locale"
+          },
           "generation_strategy": {
             "$ref": "#/components/schemas/GenerationStrategyConfigResponse"
           },
@@ -5539,6 +5570,24 @@
           "llm"
         ],
         "title": "ProjectConfigurationResponse",
+        "type": "object"
+      },
+      "ProjectConfigurationUpdate": {
+        "properties": {
+          "content_locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AI project content language: zh-CN, en-US, or null",
+            "title": "Content Locale"
+          }
+        },
+        "title": "ProjectConfigurationUpdate",
         "type": "object"
       },
       "ProjectCreationChoiceAcceptResponse": {
@@ -5863,6 +5912,28 @@
             "title": "Status",
             "type": "string"
           },
+          "strategyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategyid"
+          },
+          "strategyLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategylabel"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -6070,6 +6141,11 @@
             "title": "Flows",
             "type": "array"
           },
+          "issueCount": {
+            "default": 0,
+            "title": "Issuecount",
+            "type": "integer"
+          },
           "kanoStatus": {
             "default": "missing",
             "title": "Kanostatus",
@@ -6115,6 +6191,16 @@
           },
           "projectName": {
             "title": "Projectname",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "statusCode": {
+            "default": "not_started",
+            "title": "Statuscode",
             "type": "string"
           },
           "unlockedStages": {
@@ -6229,9 +6315,15 @@
       "ProjectLLMConfigRequest": {
         "properties": {
           "apiKey": {
-            "minLength": 1,
-            "title": "Apikey",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
           },
           "apiUrl": {
             "minLength": 1,
@@ -6246,7 +6338,6 @@
         },
         "required": [
           "apiUrl",
-          "apiKey",
           "modelName"
         ],
         "title": "ProjectLLMConfigRequest",
@@ -6739,6 +6830,17 @@
           "css": {
             "title": "Css",
             "type": "string"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
           },
           "html": {
             "title": "Html",
@@ -8110,19 +8212,6 @@
         "title": "TaskResponse",
         "type": "object"
       },
-      "UnlockStageRequest": {
-        "properties": {
-          "stage": {
-            "title": "Stage",
-            "type": "string"
-          }
-        },
-        "required": [
-          "stage"
-        ],
-        "title": "UnlockStageRequest",
-        "type": "object"
-      },
       "UnresolvedGateResponse": {
         "properties": {
           "code": {
@@ -8176,6 +8265,20 @@
           "confirmation_status"
         ],
         "title": "UpdateNodeStatusRequest",
+        "type": "object"
+      },
+      "UpdatePreferencesRequest": {
+        "properties": {
+          "preferred_locale": {
+            "description": "User preferred UI language: zh-CN or en-US",
+            "title": "Preferred Locale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferred_locale"
+        ],
+        "title": "UpdatePreferencesRequest",
         "type": "object"
       },
       "UserRequirementsRefineRequest": {
@@ -8242,6 +8345,10 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "preferred_locale": {
+            "title": "Preferred Locale",
+            "type": "string"
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -8251,7 +8358,8 @@
           "id",
           "email",
           "role",
-          "is_active"
+          "is_active",
+          "preferred_locale"
         ],
         "title": "UserResponse",
         "type": "object"
@@ -9048,6 +9156,65 @@
           }
         },
         "summary": "Test Llm Config",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/preferences": {
+      "put": {
+        "operationId": "update_preferences_api_account_preferences_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Preferences",
         "tags": [
           "account"
         ]
@@ -14169,6 +14336,73 @@
         "tags": [
           "project_configuration"
         ]
+      },
+      "put": {
+        "description": "Update project configuration (requires owner/admin role).",
+        "operationId": "update_project_configuration_api_projects__project_id__configuration_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectConfigurationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectConfigurationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Configuration",
+        "tags": [
+          "project_configuration"
+        ]
       }
     },
     "/api/projects/{project_id}/configuration/generation-strategies": {
@@ -17073,6 +17307,74 @@
         ]
       }
     },
+    "/api/projects/{project_id}/next-suggestion/rediagnose/status": {
+      "get": {
+        "operationId": "get_rediagnose_status_api_projects__project_id__next_suggestion_rediagnose_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "pattern": "^(what|how|scope|preview)$",
+              "title": "Stage",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextSuggestionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Rediagnose Status",
+        "tags": [
+          "next_suggestion"
+        ]
+      }
+    },
     "/api/projects/{project_id}/node-status": {
       "patch": {
         "operationId": "update_node_status_api_projects__project_id__node_status_patch",
@@ -19038,72 +19340,6 @@
         "summary": "Decide Task Endpoint",
         "tags": [
           "project_tasks"
-        ]
-      }
-    },
-    "/api/projects/{project_id}/unlock-stage": {
-      "post": {
-        "operationId": "unlock_stage_api_projects__project_id__unlock_stage_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "title": "Project Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "auth_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Auth Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnlockStageRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Unlock Stage",
-        "tags": [
-          "projects"
         ]
       }
     },

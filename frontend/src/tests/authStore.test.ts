@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAuthStore } from '../store/useAuthStore';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { authApi, User } from '../lib/authApi';
+import i18n from '../i18n';
 
 // Mock authApi
 vi.mock('../lib/authApi', () => ({
@@ -24,7 +25,7 @@ describe('useAuthStore - Authentication & Workspace Isolation Matrix', () => {
   });
 
   it('1. 登录 (Login) - Verifies successful login and workspace reload', async () => {
-    const mockUser: User = { id: 1, email: 'test@example.com', role: 'user', is_active: true };
+    const mockUser: User = { id: 1, email: 'test@example.com', role: 'user', is_active: true, preferred_locale: 'en-US' };
     vi.mocked(authApi.login).mockResolvedValueOnce(mockUser);
 
     await useAuthStore.getState().login({ email: 'test@example.com', password: 'password123' });
@@ -32,6 +33,8 @@ describe('useAuthStore - Authentication & Workspace Isolation Matrix', () => {
     expect(authApi.login).toHaveBeenCalledWith({ email: 'test@example.com', password: 'password123' });
     expect(useAuthStore.getState().user).toEqual(mockUser);
     expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(i18n.language).toBe('en-US');
+    expect(localStorage.getItem('ui_locale')).toBe('en-US');
     expect(mockLoadWorkspaces).toHaveBeenCalled();
   });
 
@@ -129,5 +132,6 @@ describe('useAuthStore - Authentication & Workspace Isolation Matrix', () => {
     expect(workspaceState.activeChoiceGroup).toBeNull();
     expect(workspaceState.ir).toBeNull();
     expect(workspaceState.workspaces).toEqual([]);
+    expect(localStorage.getItem('ui_locale')).toBe('zh-CN');
   });
 });

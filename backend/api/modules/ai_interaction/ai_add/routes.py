@@ -18,7 +18,7 @@ from backend.api.modules.ai_interaction.ai_add.schemas import (
 )
 from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 from backend.database.database import get_session
-from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.llm import llm_context_manager
 
 router = APIRouter(
     prefix="/api/ai_add_sessions",
@@ -142,18 +142,23 @@ async def get_ai_add_session_messages(
 @router.post("/{session_id}/messages", response_model=AIAddMessageResponse)
 async def send_ai_add_message(
     request: AIAddMessageRequest,
+    user: UserModel = Depends(get_current_user),
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     """Send a user message in an AI add session and get the assistant's reply."""
     try:
         service = _get_service()
-        return await service.append_user_message(
-            session_id=ai_session.id,
-            content=request.content,
-            db_session=db_session,
-        )
+        async with llm_context_manager(
+            user,
+            db_session,
+            project_id=ai_session.project_id,
+        ):
+            return await service.append_user_message(
+                session_id=ai_session.id,
+                content=request.content,
+                db_session=db_session,
+            )
     except ValueError as error:
         error_str = str(error)
         if error_str == "session_not_found":
@@ -168,16 +173,20 @@ async def generate_ai_add_draft(
     user: UserModel = Depends(get_current_user),
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     """Generate a draft from the interview summary (when session is ready)."""
     try:
         service = _get_service()
-        return await service.generate_draft(
-            session_id=ai_session.id,
-            owner_user_id=user.id,
-            db_session=db_session,
-        )
+        async with llm_context_manager(
+            user,
+            db_session,
+            project_id=ai_session.project_id,
+        ):
+            return await service.generate_draft(
+                session_id=ai_session.id,
+                owner_user_id=user.id,
+                db_session=db_session,
+            )
     except ValueError as error:
         error_str = str(error)
         if error_str.startswith("session_not_found"):

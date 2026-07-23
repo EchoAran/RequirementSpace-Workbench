@@ -45,6 +45,8 @@ async def test_schema_bootstrap_from_metadata(tmp_path):
         await conn.run_sync(verify_tables)
 
     await temp_engine.dispose()
+    import logging
+    print("BOOTSTRAP TEST END ROOT ID:", id(logging.getLogger()), flush=True)
 
 
 @pytest.mark.asyncio

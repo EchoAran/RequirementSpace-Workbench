@@ -41,6 +41,7 @@ from backend.database.model import (
 )
 from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
 from backend.core.llm_context import current_llm_context, is_web_request_ctx, LLMRequestContext
+from backend.core.locale import DEFAULT_LOCALE, ContentLocaleSource, SupportedLocale
 
 
 class PreviewShadowConvergenceService:
@@ -120,6 +121,8 @@ class PreviewShadowConvergenceService:
         api_url: str | None = None,
         api_key: str | None = None,
         model_name: str | None = None,
+        content_locale: SupportedLocale = DEFAULT_LOCALE.value,
+        content_locale_source: ContentLocaleSource = "default",
     ) -> None:
         """
         Background AsyncIO task worker with isolated database session context.
@@ -128,7 +131,13 @@ class PreviewShadowConvergenceService:
         token_ctx = None
         token_web = None
         if api_url and api_key and model_name:
-            ctx = LLMRequestContext(api_url=api_url, api_key=api_key, model_name=model_name)
+            ctx = LLMRequestContext(
+                api_url=api_url,
+                api_key=api_key,
+                model_name=model_name,
+                content_locale=content_locale,
+                content_locale_source=content_locale_source,
+            )
             token_ctx = current_llm_context.set(ctx)
             token_web = is_web_request_ctx.set(True)
 
@@ -159,7 +168,7 @@ class PreviewShadowConvergenceService:
 
             # 2. Run convergence AI helper to build patch OUTSIDE of any database transaction!
             try:
-                await self._update_progress(draft_id, 5, "正在初始化影子收敛，加载项目 baseline 数据...")
+                await self._update_progress(draft_id, 5, "preview.full.loadingShadow")
                 patch = await self._generate_shadow_patch(
                     project_id=project_id,
                     base_snapshot=base_snapshot,
@@ -167,7 +176,7 @@ class PreviewShadowConvergenceService:
                     draft_id=draft_id,
                 )
 
-                await self._update_progress(draft_id, 85, "AI 影子模型推演完成！正在进行沙盒装配与拓扑校验...")
+                await self._update_progress(draft_id, 85, "preview.full.progressAssembly")
                 # 3. Validate patch
                 self.validator.validate_patch(patch, base_snapshot, project_public_id)
 
@@ -179,7 +188,7 @@ class PreviewShadowConvergenceService:
                 shadow_detail = ProjectDetailResponse.model_validate(remapped_snapshot)
 
                 # 6. Generate simulated UI prototype pages using PrototypeGenerationService
-                await self._update_progress(draft_id, 90, "影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...")
+                await self._update_progress(draft_id, 90, "preview.full.progressAssembly")
                 generator_input = prototype_generation_service._build_generator_input(
                     detail=shadow_detail,
                     gherkin_specs=[]
@@ -189,14 +198,10 @@ class PreviewShadowConvergenceService:
                     detail=shadow_detail
                 )
 
-                # Dispatch to the skill-backed generator if available, else fallback
-                if hasattr(prototype_generation_service, '_generate_skill_pages_concurrently'):
-                    pages = await prototype_generation_service._generate_skill_pages_concurrently(targets)
-                else:
-                    pages = await prototype_generation_service._generate_pages_concurrently(targets)
-                first_page = pages[0] if pages else prototype_generation_service._empty_page(project_id)
+                pages = await prototype_generation_service._generate_pages(targets)
+                first_page = pages[0]
 
-                # Build mock PrototypePreviewResponse payload
+                # Build PrototypePreviewResponse payload
                 prototype_preview = {
                     "prototypeId": 0,
                     "projectId": project_public_id,
@@ -749,7 +754,6 @@ class PreviewShadowConvergenceService:
         if "pytest" in sys.modules:
             await prototype_generation_service.generate_preview(
                 project_id=project_id,
-                session=session,
                 force_regenerate=True
             )
         else:
@@ -766,7 +770,6 @@ class PreviewShadowConvergenceService:
             async with AsyncSessionLocal() as session:
                 await prototype_generation_service.generate_preview(
                     project_id=project_id,
-                    session=session,
                     force_regenerate=True
                 )
                 await session.commit()

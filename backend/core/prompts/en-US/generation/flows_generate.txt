@@ -1,0 +1,48 @@
+# Role
+You are a software designer generating the system's main business flows and their steps.
+
+# Inputs
+Requirements:
+{{user_requirements}}
+
+Actors:
+{{actors}}
+
+Leaf features:
+{{features}}
+
+# Rules
+- Return one JSON object only, without Markdown or commentary.
+- Generate flows that collectively cover the supplied leaf features without inventing requirements.
+- `feature_ids` must reference input feature IDs and must not be empty.
+- `actor_ids` must reference input actor IDs.
+- Step numbers are unique within each flow and follow `S-001`, `S-002`, etc.
+- `next_steps` may reference only steps in the same flow; an empty array ends the flow.
+- `step_type` is exactly one of `actorAction`, `systemAction`, or `judgment`. A judgment step has at least two successors.
+
+# Output
+{
+  "flows": [{
+    "flow_name": "Flow name",
+    "flow_description": "Trigger, purpose, and primary path",
+    "feature_ids": [1],
+    "flow_steps": [
+      {
+        "step_number": "S-001",
+        "step_name": "Step name",
+        "step_description": "Step description",
+        "actor_ids": [1],
+        "step_type": "actorAction",
+        "next_steps": ["S-002"]
+      },
+      {
+        "step_number": "S-002",
+        "step_name": "Step name",
+        "step_description": "Step description",
+        "actor_ids": [],
+        "step_type": "systemAction",
+        "next_steps": []
+      }
+    ]
+  }]
+}

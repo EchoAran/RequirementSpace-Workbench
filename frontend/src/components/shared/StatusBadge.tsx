@@ -1,5 +1,7 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NodeStatus, NodeStatusToText } from '@/core/schema';
+import { NodeStatus } from '@/core/schema';
+import { NodeStatusToText } from '@/core/presentationLabels';
 
 interface StatusBadgeProps {
   status: NodeStatus | string;
@@ -7,28 +9,29 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const { t } = useTranslation();
   const statusStyles: Record<string, string> = {
     'confirmed': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
-    '已确认': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
+    'confirmed_zh': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
     'ready': 'bg-emerald-50 text-emerald-700 border-emerald-200 border',
     
     'ai_assumption': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
-    'AI 假设': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
-    'AI 推测': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
+    'ai_assumption_zh': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
+    'ai_presumption_zh': 'bg-indigo-50 text-indigo-700 border-indigo-200 border',
 
     'needs_confirmation': 'bg-amber-50 text-amber-700 border-amber-200 border',
-    '待确认': 'bg-amber-50 text-amber-700 border-amber-200 border',
+    'needs_confirmation_zh': 'bg-amber-50 text-amber-700 border-amber-200 border',
     'warning': 'bg-amber-50 text-amber-700 border-amber-200 border',
 
     'conflict': 'bg-rose-50 text-rose-600 border-rose-200 border',
-    '有冲突': 'bg-rose-50 text-rose-600 border-rose-200 border',
+    'conflict_zh': 'bg-rose-50 text-rose-600 border-rose-200 border',
     'error': 'bg-rose-50 text-rose-600 border-rose-200 border',
 
     'deferred': 'bg-slate-50 text-slate-600 border-slate-200 border',
-    '暂缓': 'bg-slate-50 text-slate-600 border-slate-200 border',
+    'deferred_zh': 'bg-slate-50 text-slate-600 border-slate-200 border',
 
     'excluded': 'bg-zinc-100/50 text-zinc-400 border-zinc-200/50 border line-through',
-    '已排除': 'bg-zinc-100/50 text-zinc-400 border-zinc-200/50 border line-through',
+    'excluded_zh': 'bg-zinc-100/50 text-zinc-400 border-zinc-200/50 border line-through',
     
     // For Issue status
     'open': 'bg-rose-50 text-rose-600 border-rose-200 border',
@@ -43,10 +46,10 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   };
 
   const extraText: Record<string, string> = {
-    candidate: '候选',
-    selected: '已采纳',
-    rejected: '已拒绝',
-    archived: '已归档',
+    candidate: t('status.candidate'),
+    selected: t('status.selected'),
+    rejected: t('status.rejected'),
+    archived: t('status.archived'),
   };
   const displayText = (NodeStatusToText as Record<string, string>)[status] || extraText[status] || status;
 

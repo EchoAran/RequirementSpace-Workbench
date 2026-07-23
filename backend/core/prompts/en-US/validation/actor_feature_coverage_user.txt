@@ -1,0 +1,24 @@
+## Requirements context
+{user_requirements}
+
+## Target leaf feature
+Name: {feature_name}
+Description: {feature_description}
+
+## Existing project actors
+{actors_json}
+
+Recommend one or more suitable actors. Use `requires_user_decision=true` when confidence is below 0.6. If none is suitable, return the fallback.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "bind_existing_actor",
+    "title": "Bind to actor name",
+    "rationale": "Why this actor fits",
+    "confidence": 0.85,
+    "patch": {{"addLinks": [{{"type": "feature_actor_relation", "source_id": {feature_id}, "target_id": 1}}]}},
+    "requires_user_decision": false
+  }}],
+  "fallback": {{"kind": "manual_action", "reason": "No suitable actor was found"}}
+}}

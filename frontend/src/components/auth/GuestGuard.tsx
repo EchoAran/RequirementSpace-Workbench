@@ -1,12 +1,14 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useTranslation } from 'react-i18next';
 
 interface GuestGuardProps {
   children: React.ReactNode;
 }
 
 export function GuestGuard({ children }: GuestGuardProps) {
+  const { t } = useTranslation();
   const { isAuthenticated, isInitializing } = useAuthStore();
 
   if (isInitializing) {
@@ -18,9 +20,9 @@ export function GuestGuard({ children }: GuestGuardProps) {
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-indigo-600 dark:border-t-indigo-400 animate-spin" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 tracking-tight">正在加载安全会话</h3>
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 tracking-tight">{t('auth.guard.loadingSession')}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              系统正在校验您的登录凭证，请稍候...
+              {t('auth.guard.loadingSessionGuestDesc')}
             </p>
           </div>
         </div>

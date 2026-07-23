@@ -12,7 +12,6 @@ import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIA
 import { 
   useWorkspaceStore, 
   selectActors, 
-  selectPageHealth,
 } from '@/store/useWorkspaceStore';
 import { findingTargetIds } from '@/core/findingPresentation';
 import {
@@ -22,6 +21,7 @@ import {
   getRootCapabilities,
 } from '@/core/selectors';
 import type { ActorNode, FeatureNode } from '@/core/schema';
+import { useTranslation } from 'react-i18next';
 
 interface AcInlineEditorProps {
   initialContent: string;
@@ -30,6 +30,7 @@ interface AcInlineEditorProps {
 }
 
 function AcInlineEditor({ initialContent, onSave, onCancel }: AcInlineEditorProps) {
+  const { t } = useTranslation();
   const [content, setContent] = useState(initialContent);
 
   return (
@@ -39,7 +40,7 @@ function AcInlineEditor({ initialContent, onSave, onCancel }: AcInlineEditorProp
           type="button"
           className="grow text-[10px] font-extrabold py-1.5 px-2.5 rounded-lg transition-all flex items-center justify-center bg-white text-indigo-600 shadow-sm border border-slate-200/20"
         >
-          结构化编辑
+          {t('what.structuredEdit')}
         </button>
       </div>
 
@@ -56,7 +57,7 @@ function AcInlineEditor({ initialContent, onSave, onCancel }: AcInlineEditorProp
           onClick={onCancel}
           className="px-3 py-1.5 text-[10px] font-bold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors"
         >
-          取消
+          {t('scope.modal.cancel')}
         </button>
         <button
           type="button"
@@ -65,7 +66,7 @@ function AcInlineEditor({ initialContent, onSave, onCancel }: AcInlineEditorProp
           }}
           className="px-3.5 py-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
         >
-          确认保存
+          {t('what.confirmSave')}
         </button>
       </div>
     </div>
@@ -117,6 +118,7 @@ interface UserStoryRendererProps {
 }
 
 function UserStoryRenderer({ content, performerName }: UserStoryRendererProps) {
+  const { t } = useTranslation();
   const parsed = parseUserStory(content);
 
   if (!parsed.role && !parsed.action) {
@@ -130,19 +132,19 @@ function UserStoryRenderer({ content, performerName }: UserStoryRendererProps) {
   return (
     <div className="space-y-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 transition-all hover:border-slate-300">
       <div className="flex flex-wrap items-center gap-1.5 leading-relaxed text-xs text-slate-600 font-medium select-text">
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">作为</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.as')}</span>
         <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-2 py-0.5 rounded-lg font-extrabold text-[10px] shadow-sm">
           {performerName || parsed.role}
         </span>
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，我想要</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.want')}</span>
         <span className="text-slate-800 font-extrabold border-b border-dashed border-slate-300 pb-0.5">
           {parsed.action}
         </span>
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.comma')}</span>
       </div>
       
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-        <div className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mb-0.5">以便于</div>
+        <div className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mb-0.5">{t('what.userStory.soThat')}</div>
         <p className="text-xs text-slate-700 font-semibold leading-relaxed select-text">
           {parsed.benefit}
         </p>
@@ -158,6 +160,7 @@ interface UserStoryEditorProps {
 }
 
 function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorProps) {
+  const { t } = useTranslation();
   const parsed = parseUserStory(initialContent);
   const [role, setRole] = useState(parsed.role || (actors[0]?.actorName || ''));
   const [action, setAction] = useState(parsed.action || '');
@@ -175,7 +178,7 @@ function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorPr
 
   useEffect(() => {
     if (role && action && benefit) {
-      onChange(`作为 ${role}，我想要 ${action}，以便于 ${benefit}`);
+      onChange(`${t('what.userStory.as')} ${role}${t('what.userStory.want')} ${action}${t('what.userStory.soThat')} ${benefit}`);
     } else {
       onChange(benefit);
     }
@@ -184,7 +187,7 @@ function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorPr
   return (
     <div className="space-y-3 bg-slate-50/40 p-3.5 border border-slate-200/85 rounded-xl shadow-inner select-none">
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-medium">
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">作为</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.as')}</span>
         <select
           value={role}
           onChange={(e) => setRole(e.target.value)}
@@ -192,7 +195,7 @@ function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorPr
           className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2 py-0.5 text-xs font-extrabold text-indigo-700 cursor-pointer focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-all shadow-sm disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
         >
           {actors.length === 0 ? (
-            <option value="">请先绑定参与者</option>
+            <option value="">{t('what.userStory.noActorOption')}</option>
           ) : (
             actors.map((a) => (
               <option key={a.actorId} value={a.actorName}>
@@ -202,24 +205,24 @@ function UserStoryEditor({ initialContent, actors, onChange }: UserStoryEditorPr
           )}
         </select>
 
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，我想要</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.want')}</span>
         <input
           type="text"
           value={action}
           onChange={(e) => setAction(e.target.value)}
-          placeholder="输入场景动作"
+          placeholder="{t('what.userStory.actionPlaceholder')}"
           className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-0.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none w-44 transition-all shadow-sm"
         />
-        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">，</span>
+        <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.userStory.comma')}</span>
       </div>
 
       <div className="space-y-1">
-        <label className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block">以便于</label>
+        <label className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block">{t('what.userStory.soThat')}</label>
         <textarea
           value={benefit}
           onChange={(e) => setBenefit(e.target.value)}
           rows={2}
-          placeholder="输入为用户带来的实际业务价值..."
+          placeholder="{t('what.userStory.benefitPlaceholder')}"
           className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-2.5 text-xs text-slate-700 font-semibold leading-relaxed focus:ring-1 focus:ring-slate-900 focus:outline-none resize-none transition-all shadow-sm"
         />
       </div>
@@ -235,6 +238,7 @@ interface InteractiveStatusBadgeProps {
 }
 
 function InteractiveStatusBadge({ nodeId, nodeKind, status, setNodeStatus }: InteractiveStatusBadgeProps) {
+  const { t } = useTranslation();
   const [val, setVal] = useState(status);
 
   useEffect(() => {
@@ -261,14 +265,15 @@ function InteractiveStatusBadge({ nodeId, nodeKind, status, setNodeStatus }: Int
       onChange={(e) => handleChange(e.target.value as any)}
       className={`border px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-900 transition-all shadow-sm ${currentStyle}`}
     >
-      <option value="confirmed" className="bg-white text-emerald-800 font-extrabold">已确认</option>
-      <option value="needs_confirmation" className="bg-white text-amber-800 font-extrabold">待确认</option>
-      <option value="ai_assumption" className="bg-white text-indigo-800 font-extrabold">AI推论</option>
+      <option value="confirmed" className="bg-white text-emerald-800 font-extrabold">{t('what.status.confirmed')}</option>
+      <option value="needs_confirmation" className="bg-white text-amber-800 font-extrabold">{t('what.status.needs_confirmation')}</option>
+      <option value="ai_assumption" className="bg-white text-indigo-800 font-extrabold">{t('what.status.ai_assumption')}</option>
     </select>
   );
 }
 
 export function WhatToDo() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { 
@@ -279,7 +284,7 @@ export function WhatToDo() {
     generateScenarios, regenerateScenarios, confirmScenarios,
     generateAcceptanceCriteria, regenerateAcceptanceCriteria, confirmAcceptanceCriteria,
     discardDraft, activeDraft, activeDraftType, isGenerating, isLoading, isDiagnosing,
-    addActor, addFeature, lastActionMessage,
+    addActor, addFeature,
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress,
     acceptChoice, discardChoiceGroup, deferOnboardingChoiceGroup,
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
@@ -357,7 +362,6 @@ export function WhatToDo() {
     [ir?.actors, managedFeatObj]
   );
 
-  const pageHealth = selectPageHealth({ ir } as any, '/what');
 
   const executeManualAction = (kind: string, targetId?: number, focusMode?: string) => {
     if (kind === 'missing_actor' || kind === 'what_onboarding') {
@@ -561,15 +565,15 @@ export function WhatToDo() {
                     </span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">AI 推荐的参与者定义已生成</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">AI 根据您的业务规划，推演了潜在的系统交互参与者与职责划分。</p>
+                        <h3 className="text-base font-bold text-slate-900">{t('what.ai.actorTitle')}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{t('what.ai.actorDesc')}</p>
                       </div>
                       <div className="flex gap-2 items-center max-w-md">
                         <input
                           type="text"
                           value={actorFeedback}
                           onChange={(e) => setActorFeedback(e.target.value)}
-                          placeholder="补充参与者调整意见，例如：'增加审核经理参与者' (可选)"
+                          placeholder="{t('what.actors.descPlaceholder')}"
                           className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
                           disabled={isGenerating || isLoading}
                         />
@@ -582,7 +586,7 @@ export function WhatToDo() {
                           className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          重新推演
+                          {t('what.actors.regenerateBtn')}
                         </button>
                       </div>
                     </div>
@@ -594,7 +598,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      采纳并合并推荐
+                      {t('onboarding.kbAdoptButton')}
                     </button>
                     <button
                       onClick={discardDraft}
@@ -602,7 +606,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
-                      放弃
+                      {t('scope.modal.discard')}
                     </button>
                   </div>
                 </div>
@@ -629,15 +633,15 @@ export function WhatToDo() {
                     </span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">AI 推荐的功能分解树已生成</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">AI 根据主应用目标，将核心功能分解为具体的二级模块与三级叶子结点。</p>
+                        <h3 className="text-base font-bold text-slate-900">{t('what.ai.featureTitle')}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{t('what.ai.featureDesc')}</p>
                       </div>
                       <div className="flex gap-2 items-center max-w-md">
                         <input
                           type="text"
                           value={featureFeedback}
                           onChange={(e) => setFeatureFeedback(e.target.value)}
-                          placeholder="补充功能调整意见 (可选)"
+                          placeholder="{t('what.ai.featurePlaceholder')}"
                           className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
                           disabled={isGenerating || isLoading}
                         />
@@ -650,7 +654,7 @@ export function WhatToDo() {
                           className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          重新推演
+                          {t('what.actors.regenerateBtn')}
                         </button>
                       </div>
                     </div>
@@ -662,7 +666,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      采纳并合并推荐
+                      {t('onboarding.kbAdoptButton')}
                     </button>
                     <button
                       onClick={discardDraft}
@@ -670,7 +674,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
-                      放弃
+                      {t('scope.modal.discard')}
                     </button>
                   </div>
                 </div>
@@ -679,7 +683,7 @@ export function WhatToDo() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
                   {activeDraft.features?.map((feat: any, idx: number) => (
                     <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
-          <span className="font-bold text-xs text-slate-800">功能模块: {feat.feature_name}</span>
+          <span className="font-bold text-xs text-slate-800">{t('what.ai.featureModule', { name: feat.feature_name })}</span>
                       <p className="text-xs text-slate-500 mt-1 leading-normal mb-2">{feat.feature_description}</p>
                       {feat.actor_names && feat.actor_names.length > 0 && (
                         <div className="flex flex-wrap gap-1">
@@ -704,15 +708,15 @@ export function WhatToDo() {
                     </span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">AI 推荐的典型成功场景已生成</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">AI 根据具体功能叶子结点推演了最佳的业务流成功场景。</p>
+                        <h3 className="text-base font-bold text-slate-900">{t('what.ai.scenarioTitle')}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{t('what.ai.scenarioDesc')}</p>
                       </div>
                       <div className="flex gap-2 items-center max-w-md">
                         <input
                           type="text"
                           value={scenarioFeedback}
                           onChange={(e) => setScenarioFeedback(e.target.value)}
-                          placeholder="补充场景调整意见 (可选)"
+                          placeholder="{t('what.ai.scenarioPlaceholder')}"
                           className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
                           disabled={isGenerating || isLoading}
                         />
@@ -725,7 +729,7 @@ export function WhatToDo() {
                           className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          重新推演
+                          {t('what.actors.regenerateBtn')}
                         </button>
                       </div>
                     </div>
@@ -737,7 +741,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      采纳并合并推荐 (同步生成 AC)
+                      {t('what.scenarios.confirmAcAdopt')}
                     </button>
                     <button
                       onClick={discardDraft}
@@ -745,7 +749,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
-                      放弃
+                      {t('scope.modal.discard')}
                     </button>
                   </div>
                 </div>
@@ -761,8 +765,8 @@ export function WhatToDo() {
                         </p>
                       </div>
                       <div className="mt-3 flex items-center justify-between text-[10px] text-indigo-600 font-bold uppercase">
-                        <span>功能 ID: {sc.feature_id}</span>
-                        <span>参与者 ID: {sc.actor_id}</span>
+                        <span>{t('what.ai.featureId', { id: sc.feature_id })}</span>
+                        <span>{t('what.ai.actorId', { id: sc.actor_id })}</span>
                       </div>
                     </div>
                   ))}
@@ -780,15 +784,15 @@ export function WhatToDo() {
                     </span>
                     <div className="flex-1 space-y-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">AI 推荐的验收标准 (AC) 已生成</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">AI 根据选定的典型成功场景，全自动推演编写了结构化、可测试的验收标准。</p>
+                        <h3 className="text-base font-bold text-slate-900">{t('what.ai.acTitle')}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{t('what.ai.acDesc')}</p>
                       </div>
                       <div className="flex gap-2 items-center max-w-md">
                         <input
                           type="text"
                           value={acFeedback}
                           onChange={(e) => setAcFeedback(e.target.value)}
-                          placeholder="补充验收标准调整意见 (可选)"
+                          placeholder="{t('what.ai.acPlaceholder')}"
                           className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
                           disabled={isGenerating || isLoading}
                         />
@@ -801,7 +805,7 @@ export function WhatToDo() {
                           className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          重新推演
+                          {t('what.actors.regenerateBtn')}
                         </button>
                       </div>
                     </div>
@@ -813,7 +817,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      采纳并合并推荐
+                      {t('onboarding.kbAdoptButton')}
                     </button>
                     <button
                       onClick={discardDraft}
@@ -821,7 +825,7 @@ export function WhatToDo() {
                       className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
-                      放弃
+                      {t('scope.modal.discard')}
                     </button>
                   </div>
                 </div>
@@ -832,10 +836,10 @@ export function WhatToDo() {
                     <GherkinVisualRenderer
                       key={idx}
                       text={ac.criterion_content || ''}
-                      title={`推荐验收标准 #${idx + 1}`}
-                      badge="AI 推荐预览"
+                      title={`{t('what.ai.acTitlePrefix', { index: idx + 1 })}`}
+                      badge="{t('what.ai.acBadge')}"
                       rightBadges={[
-                        <span key="scen" className="font-mono">关联场景 ID: {ac.scenario_id}</span>
+                        <span key="scen" className="font-mono">{t('what.ai.acScenarioId', { id: ac.scenario_id })}</span>
                       ]}
                     />
                   ))}
@@ -852,18 +856,18 @@ export function WhatToDo() {
               <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    参与者
+                    {t('what.actors.title')}
                     <button
                       onClick={() => setIsAddActorModalOpen(true)}
                       className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                      title="手动创建参与者"
+                      title={t('what.actors.manualBtn')}
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setAiDialogTarget({ targetType: 'actor' })}
                       className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                      title="AI 对话添加参与者"
+                      title={t('what.actors.aiChatBtn')}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                     </button>
@@ -874,12 +878,12 @@ export function WhatToDo() {
                     className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                    {actors.length > 0 ? 'AI 重新生成参与者' : 'AI 智能生成参与者'}
+                    {actors.length > 0 ? t('what.actors.regenerateBtn') : t('what.actors.generateBtn')}
                   </button>
                 </div>
                 {actors.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-slate-100 rounded-xl text-xs text-slate-500 italic">
-                    暂无参与者定义。请点击右上角手动新增或运行 AI 智能生成。
+                    {t('what.actors.emptyText')}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -907,7 +911,7 @@ export function WhatToDo() {
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`确定要删除参与者“${actorTitle}”吗？此操作将清除该参与者及其所有关联，不可恢复！`)) {
+                                if (window.confirm(t('what.actors.deleteConfirm', { title: actorTitle }))) {
                                   await deleteActor(actor.actorId);
                                   if (selectedObject?.actorId === actor.actorId) {
                                     setSelectedObject(null);
@@ -915,7 +919,7 @@ export function WhatToDo() {
                                 }
                               }}
                               className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none shadow-sm"
-                              title="删除该参与者"
+                              title={t('what.actors.deleteBtn')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -923,7 +927,7 @@ export function WhatToDo() {
                           </div>
                         </div>
                         <div className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                          {actor.description || '无具体描述说明'}
+                          {actor.description || t('what.actors.noDesc')}
                         </div>
                       </div>
                     )})}
@@ -936,7 +940,7 @@ export function WhatToDo() {
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                   <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                      系统功能
+                      {t('what.features.title')}
                       <button
                         onClick={() => {
                           setNewFeatureParentId(null);
@@ -944,7 +948,7 @@ export function WhatToDo() {
                           setIsAddFeatureModalOpen(true);
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        title="手动创建功能结点"
+                        title={t('what.features.manualBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -956,16 +960,16 @@ export function WhatToDo() {
                         className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                        {rootCapabilities.length > 0 ? 'AI 重新生成功能' : 'AI 智能生成功能'}
+                        {rootCapabilities.length > 0 ? t('what.features.regenerateBtn') : t('what.features.generateBtn')}
                       </button>
                       <button
                         onClick={() => setIsScenarioModalOpen(true)}
                         disabled={isGenerating || isLoading}
                         className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
-                        title="智能推演系统业务场景"
+                        title={t('what.features.scenarioGenerateBtn')}
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                        {hasScenarios ? 'AI 重新生成场景' : 'AI 智能生成场景'}
+                        {hasScenarios ? t('what.features.scenarioRegenerateBtn') : t('what.features.scenarioGenerateBtn')}
                       </button>
                     </div>
                   </div>
@@ -982,9 +986,9 @@ export function WhatToDo() {
                     <div className="min-w-0">
                       <h4 className="font-extrabold text-base text-slate-900 tracking-wide flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                        {ir?.projectName || '核心系统'}
+                        {ir?.projectName || t('what.features.defaultRootName')}
                       </h4>
-                      <p className="text-xs text-slate-500 mt-1.5 max-w-4xl font-medium">{ir?.projectDescription || '主系统业务空间与架构模型总揽。'}</p>
+                      <p className="text-xs text-slate-500 mt-1.5 max-w-4xl font-medium">{ir?.projectDescription || t('what.features.defaultRootDesc')}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <button
@@ -995,7 +999,7 @@ export function WhatToDo() {
                           setIsAddFeatureModalOpen(true);
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        title="添加一级模块功能结点"
+                        title={t('what.features.addRootBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1005,7 +1009,7 @@ export function WhatToDo() {
                           setAiDialogTarget({ targetType: 'feature_branch', anchor: { parent_feature_id: null } });
                         }}
                         className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                        title="AI 对话添加功能模块"
+                        title={t('what.features.aiChatBtn')}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                       </button>
@@ -1033,14 +1037,14 @@ export function WhatToDo() {
                                 )}
                                 <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
                                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                  功能模块: {cap.title}
+                                  {t('what.features.moduleLabel', { title: cap.title })}
                                 </h4>
                               </div>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (window.confirm(`确定要删除功能结点 “${cap.title}” 吗？此操作将递归删除其所有子级能力和场景，不可恢复！`)) {
+                                    if (window.confirm(t('what.features.deleteConfirm', { title: cap.title }))) {
                                       await deleteFeature(cap.featureId);
                                       if (selectedObject?.id === cap.id || selectedObject?.featureId === cap.featureId) {
                                         setSelectedObject(null);
@@ -1048,7 +1052,7 @@ export function WhatToDo() {
                                     }
                                   }}
                                   className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none shadow-sm"
-                                  title="删除该功能模块"
+                                  title={t('what.features.deleteBtn')}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1060,7 +1064,7 @@ export function WhatToDo() {
                                     setIsAddFeatureModalOpen(true);
                                   }}
                                   className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                  title="为此模块直接添加子功能结点"
+                                  title={t('what.features.addSubBtn')}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -1070,7 +1074,7 @@ export function WhatToDo() {
                                     setAiDialogTarget({ targetType: 'feature_leaf', anchor: { parent_feature_id: cap.featureId } });
                                   }}
                                   className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                                  title="AI 对话为此模块添加功能点"
+                                  title={t('what.features.aiChatSubBtn')}
                                 >
                                   <Sparkles className="w-3.5 h-3.5" />
                                 </button>
@@ -1079,12 +1083,12 @@ export function WhatToDo() {
                             </div>
                             
                             <p className="text-xs text-slate-500 ml-6 leading-relaxed mb-2">
-                              {cap.description || '暂无该模块的功能说明'}
+                              {cap.description || t('what.features.noDesc')}
                             </p>
                             
                             <div className="flex flex-wrap gap-2 text-[10px] font-medium ml-6">
                               <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
-                                包含 {children.length} 个具体子功能点
+                                {t('what.features.childrenCount', { count: children.length })}
                               </span>
                             </div>
                           </div>
@@ -1117,13 +1121,13 @@ export function WhatToDo() {
                                     <div className="flex items-center justify-between mb-2">
                                       <h5 className="text-xs font-bold text-slate-800 group-hover:text-indigo-700 transition-colors flex items-center gap-1.5">
                                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                        具体功能点: {child.title}
+                                        {t('what.features.leafLabel', { title: child.title })}
                                       </h5>
                                       <div className="flex items-center gap-1.5">
                                         <button
                                           onClick={async (e) => {
                                             e.stopPropagation();
-                                            if (window.confirm(`确定要删除功能结点 “${child.title}” 吗？此操作将递归删除其场景和验收标准，不可恢复！`)) {
+                                            if (window.confirm(t('what.features.deleteLeafConfirm', { title: child.title }))) {
                                               await deleteFeature(child.featureId);
                                               if (selectedObject?.id === child.id || selectedObject?.featureId === child.featureId) {
                                                 setSelectedObject(null);
@@ -1131,7 +1135,7 @@ export function WhatToDo() {
                                             }
                                           }}
                                           className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center shadow-sm"
-                                          title="删除该功能点"
+                                          title={t('what.features.deleteLeafBtn')}
                                         >
                                           <Trash2 className="w-3 h-3" />
                                         </button>
@@ -1139,28 +1143,28 @@ export function WhatToDo() {
                                       </div>
                                     </div>
                                     <div className="text-xs text-slate-500 line-clamp-2 ml-4 leading-relaxed">
-                                      {child.description || '暂无功能点描述'}
+                                      {child.description || t('what.features.noLeafDesc')}
                                     </div>
 
                                     {/* Leaf capability rich metadata badges + interactive Modal trigger button */}
                                     <div className="flex flex-wrap items-center justify-between ml-4 mt-3 pt-2.5 border-t border-slate-100/60 gap-3">
                                       <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
                                         <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md shadow-sm">
-                                          {capScenarios.length} 个成功场景
+                                          {t('what.features.scenariosCount', { count: capScenarios.length })}
                                         </span>
                                         <span className="bg-purple-50 border border-purple-100 text-purple-700 px-2 py-0.5 rounded-md shadow-sm">
-                                          {capAcCount} 个验收标准
+                                          {t('what.features.acCount', { count: capAcCount })}
                                         </span>
                                         {capActors.length > 0 ? (
                                           <span 
                                             className="bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded-md shadow-sm transition-all"
-                                            title={`已关联参与者: ${boundActors.map((a: any) => a.actorName).join(', ')}`}
+                                            title={t('what.features.boundActorsLabel', { names: boundActors.map((a: any) => a.actorName).join(', ') })}
                                           >
-          {capActors.length} 个参与者: {boundActors.map((a: any) => a.actorName).join(', ')}
+          {t('what.features.boundActorsCount', { count: capActors.length, names: boundActors.map((a: any) => a.actorName).join(', ') })}
                                           </span>
                                         ) : (
                                           <span className="bg-rose-50 border border-rose-200 text-rose-600 px-2 py-0.5 rounded-md shadow-sm transition-all font-bold">
-          未绑定参与者
+          {t('what.features.unboundActors')}
                                           </span>
                                         )}
                                       </div>
@@ -1174,7 +1178,7 @@ export function WhatToDo() {
                                           }}
                                           className="text-[10px] bg-slate-900 hover:bg-indigo-600 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm flex items-center gap-1 shrink-0"
                                         >
-        场景与验收标准
+        {t('what.scenarios.title')}
                                         </button>
                                       ) : (
                                         <button
@@ -1191,7 +1195,7 @@ export function WhatToDo() {
                                           ) : (
                                             <Sparkles className="w-3 h-3 text-indigo-200" />
                                           )}
-                                          {(child.scenarios || []).length > 0 ? 'AI 重新生成场景与验收标准' : 'AI 智能生成场景与验收标准'}
+                                          {(child.scenarios || []).length > 0 ? t('what.scenarios.regenerateBtn') : t('what.scenarios.generateBtn')}
                                         </button>
                                       )}
                                     </div>
@@ -1222,9 +1226,9 @@ export function WhatToDo() {
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-indigo-500" />
-                  AI 生成场景功能选择
+                  {t('what.scenarios.aiSelectTitle')}
                 </h3>
-                <p className="text-[10px] text-slate-500 mt-1">请选择需要进行业务场景及验收标准 (AC) 推演的功能模块。</p>
+                <p className="text-[10px] text-slate-500 mt-1">{t('what.scenarios.aiSelectDesc')}</p>
               </div>
               <button 
                 onClick={() => { setIsScenarioModalOpen(false); setSelectedFeatureIds([]); }}
@@ -1240,7 +1244,7 @@ export function WhatToDo() {
                 if (leafFeatures.length === 0) {
                   return (
                     <div className="text-center text-xs text-slate-400 italic py-8">
-                      暂无可用于推演的具体三级功能结点，请先使用 AI 功能分解或手动创建功能。
+                      {t('what.scenarios.noLeafNodes')}
                     </div>
                   );
                 }
@@ -1248,21 +1252,21 @@ export function WhatToDo() {
                 return (
                   <>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold bg-slate-50 p-2.5 rounded-xl border border-slate-100/50">
-                      <span>待选叶子功能结点 ({leafFeatures.length} 个)</span>
+                      <span>{t('what.scenarios.leafSelectTitle', { count: leafFeatures.length })}</span>
                       <div className="flex gap-3">
                         <button 
                           type="button" 
                           onClick={() => setSelectedFeatureIds(leafFeatures.map(f => f.featureId))}
                           className="text-indigo-600 hover:text-indigo-700 transition-colors"
                         >
-                          全选
+                          {t('what.scenarios.selectAll')}
                         </button>
                         <button 
                           type="button" 
                           onClick={() => setSelectedFeatureIds([])}
                           className="text-slate-500 hover:text-slate-600 transition-colors"
                         >
-                          清空
+                          {t('what.scenarios.clearAll')}
                         </button>
                       </div>
                     </div>
@@ -1296,15 +1300,15 @@ export function WhatToDo() {
                                 <span className="font-bold text-slate-700 text-xs truncate">{f.featureName}</span>
                                 {hasActor ? (
                                   <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md">
-                                    {actorCount} 个参与者
+                                    {t('what.scenarios.actorsCount', { count: actorCount })}
                                   </span>
                                 ) : (
                                   <span className="bg-rose-50 border border-rose-100 text-rose-600 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md">
-          未关联参与者
+          {t('what.scenarios.unbound')}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[10px] text-slate-400 mt-1 leading-normal truncate">{f.featureDescription || '无描述'}</p>
+                              <p className="text-[10px] text-slate-400 mt-1 leading-normal truncate">{f.featureDescription || t('what.scenarios.noDesc')}</p>
                             </div>
                           </div>
                         );
@@ -1321,7 +1325,7 @@ export function WhatToDo() {
                 onClick={() => { setIsScenarioModalOpen(false); setSelectedFeatureIds([]); }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1335,7 +1339,7 @@ export function WhatToDo() {
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
-                {selectedFeatureIds.some(featureId => (ir?.features || []).some(feature => feature.featureId === featureId && (feature.scenarios || []).length > 0)) ? '开始 AI 重新生成场景' : '开始 AI 智能生成场景'} ({selectedFeatureIds.length})
+                {selectedFeatureIds.some(featureId => (ir?.features || []).some(feature => feature.featureId === featureId && (feature.scenarios || []).length > 0)) ? t('what.scenarios.regenerateBtnAction') : t('what.scenarios.generateBtnAction')} ({selectedFeatureIds.length})
               </button>
             </div>
           </div>
@@ -1347,26 +1351,26 @@ export function WhatToDo() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
-        <h3 className="font-extrabold text-sm text-slate-800">手动创建参与者</h3>
-              <p className="text-[10px] text-slate-500 mt-1">手动在当前工作区添加业务操作参与者，用以绑定功能节点或流程步骤。</p>
+        <h3 className="font-extrabold text-sm text-slate-800">{t('what.actors.manualCreateTitle')}</h3>
+              <p className="text-[10px] text-slate-500 mt-1">{t('what.actors.manualCreateDesc')}</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">参与者名称</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('what.actors.nameLabel')}</label>
                 <input
                   type="text"
                   value={newActorName}
                   onChange={(e) => setNewActorName(e.target.value)}
-                  placeholder="例如：'仓库管理员'、'财务审核经理'"
+                  placeholder={t('what.actors.namePlaceholder')}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">职责职责描述</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('what.actors.descLabel')}</label>
                 <textarea
                   value={newActorDesc}
                   onChange={(e) => setNewActorDesc(e.target.value)}
-                  placeholder="简要说明该参与者的核心业务功能及系统操作权限范围。"
+                  placeholder={t('what.actors.descPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                 />
@@ -1377,7 +1381,7 @@ export function WhatToDo() {
                 onClick={() => { setIsAddActorModalOpen(false); setNewActorName(''); setNewActorDesc(''); }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1390,7 +1394,7 @@ export function WhatToDo() {
                 disabled={!newActorName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                确定创建
+                {t('scope.modal.confirm')}
               </button>
             </div>
           </div>
@@ -1403,34 +1407,34 @@ export function WhatToDo() {
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
               <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
-        手动创建能力功能结点
+        {t('what.scenarios.manualCreateTitle')}
               </h3>
-              <p className="text-[10px] text-slate-500 mt-1">手动在当前工作区的能力树中添加功能模块或具体的叶子功能结点。</p>
+              <p className="text-[10px] text-slate-500 mt-1">{t('what.scenarios.manualCreateDesc')}</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">功能名称</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('what.scenarios.featureNameLabel')}</label>
                 <input
                   type="text"
                   value={newFeatureName}
                   onChange={(e) => setNewFeatureName(e.target.value)}
-                  placeholder="例如：'提交审批订单'、'查询交易记录'"
+                  placeholder={t('what.scenarios.featureNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">功能说明描述</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('what.scenarios.featureDescLabel')}</label>
                 <textarea
                   value={newFeatureDesc}
                   onChange={(e) => setNewFeatureDesc(e.target.value)}
-                  placeholder="简述该功能所要达到的业务效果、前置条件或涉及的数据对象。"
+                  placeholder={t('what.scenarios.featureDescPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                 />
               </div>
               {!isParentFixed && (
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">父功能结点归属</label>
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('what.scenarios.parentLabel')}</label>
                   <select
                     value={newFeatureParentId === null ? 'null' : newFeatureParentId}
                     onChange={(e) => {
@@ -1439,7 +1443,7 @@ export function WhatToDo() {
                     }}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium cursor-pointer"
                   >
-                    <option value="null">作为一级模块结点 (根结点)</option>
+                    <option value="null">{t('what.scenarios.rootOption')}</option>
                     {(() => {
                       const dbRoot = (ir?.features || []).find(f => f.parentId === null);
                       const firstLevelModules = dbRoot 
@@ -1447,7 +1451,7 @@ export function WhatToDo() {
                         : [];
                       return firstLevelModules.map(f => (
                         <option key={f.featureId} value={f.featureId}>
-                          一级模块: {f.featureName}
+                          {t('what.scenarios.rootOptionFormat', { name: f.featureName })}
                         </option>
                       ));
                     })()}
@@ -1460,7 +1464,7 @@ export function WhatToDo() {
                 onClick={() => { setIsAddFeatureModalOpen(false); setNewFeatureName(''); setNewFeatureDesc(''); setNewFeatureParentId(null); setIsParentFixed(false); }}
                 className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1475,7 +1479,7 @@ export function WhatToDo() {
                 disabled={!newFeatureName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                确定创建
+                {t('scope.modal.confirm')}
               </button>
             </div>
           </div>
@@ -1491,10 +1495,10 @@ export function WhatToDo() {
             <div className="p-6 border-b border-slate-200/50 flex justify-between items-center bg-slate-50/50">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
-        场景与验收标准
+        {t('what.scenarios.title')}
                 </h3>
                 <p className="text-[10px] text-indigo-700 mt-1 font-bold">
-                  具体功能特征: <span className="bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded text-indigo-800 font-extrabold">{managedFeatObj.featureName}</span>
+                  {t('what.scenarios.featureTitlePrefix')} <span className="bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded text-indigo-800 font-extrabold">{managedFeatObj.featureName}</span>
                 </p>
               </div>
               <button 
@@ -1510,7 +1514,7 @@ export function WhatToDo() {
               
               {/* Quick Actions Panel */}
               <div className="flex justify-between items-center bg-slate-50/80 p-3 rounded-2xl border border-slate-200/50 shrink-0">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">该功能共有 {managedFeatObj.scenarios?.length || 0} 个成功场景</span>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{t('what.scenarios.scenariosCountPrefix', { count: managedFeatObj.scenarios?.length || 0 })}</span>
                 <div className="relative group">
                   <button
                     type="button"
@@ -1521,12 +1525,12 @@ export function WhatToDo() {
                         setModalNewScenActorId(managedFeatureActors[0]?.actorId || 0);
                     }}
                     className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                    aria-label={showAddScenarioForm ? '收起场景表单' : '手动新增场景'}
+                    aria-label={showAddScenarioForm ? t('what.scenarios.collapseScenarioAria') : t('what.scenarios.addScenarioAria')}
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
                   <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                    {showAddScenarioForm ? '收起场景表单' : '手动新增场景'}
+                    {showAddScenarioForm ? t('what.scenarios.collapseScenarioAria') : t('what.scenarios.addScenarioAria')}
                   </div>
                 </div>
               </div>
@@ -1534,22 +1538,22 @@ export function WhatToDo() {
               {/* Inline Add Scenario Form inside Modal */}
               {showAddScenarioForm && (
                 <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/30 space-y-3 shadow-sm animate-in slide-in-from-top-2 duration-200">
-                  <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">新增交付场景</div>
+                  <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.scenarios.addScenarioHeader')}</div>
                   
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase block">场景简短名称</label>
+                    <label className="text-[10px] text-slate-400 font-bold uppercase block">{t('what.scenarios.scenarioNameLabel')}</label>
                     <input
                       type="text"
                       value={modalNewScenName}
                       onChange={(e) => setModalNewScenName(e.target.value)}
-                      placeholder="例如: 快速创建临时灵感便签"
+                      placeholder={t('what.scenarios.scenarioNamePlaceholder')}
                       className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none transition-all shadow-sm"
                     />
                   </div>
 
                   {/* Interactive first-person user story editor */}
                   <div className="space-y-2 pt-2 border-t border-slate-200/40">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase block">用户故事</label>
+                    <label className="text-[10px] text-slate-400 font-bold uppercase block">{t('what.scenarios.userStoryLabel')}</label>
                     <UserStoryEditor
                       initialContent={modalNewScenContent}
                       actors={managedFeatureActors}
@@ -1569,7 +1573,7 @@ export function WhatToDo() {
                       onClick={() => setShowAddScenarioForm(false)}
                       className="px-3 py-1.5 text-[10px] font-bold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 shadow-sm"
                     >
-                      取消
+                      {t('common.cancel')}
                     </button>
                     <button
                       onClick={async () => {
@@ -1580,7 +1584,7 @@ export function WhatToDo() {
                       disabled={!modalNewScenName.trim() || !modalNewScenActorId}
                       className="px-3.5 py-1.5 text-[10px] font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                     >
-                      确定添加场景
+                      {t('what.scenarios.addScenarioConfirm')}
                     </button>
                   </div>
                 </div>
@@ -1589,13 +1593,13 @@ export function WhatToDo() {
               {/* Scenarios and AC list */}
               {(managedFeatObj.scenarios || []).length === 0 ? (
                 <div className="text-center py-16 border border-dashed border-slate-200 rounded-2xl bg-slate-50/40 text-xs text-slate-500 italic leading-relaxed">
-                  当前功能暂未定义任何交付场景。请在上方手动添加，或使用页面上方的 AI 特征树场景推演。
+                  {t('what.scenarios.emptyText')}
                 </div>
               ) : (
                 <div className="space-y-4">
                   {(managedFeatObj.scenarios || []).map((s: any) => {
                     const performer = (ir?.actors || []).find((a: any) => a.actorId === s.actorId);
-                    const performerName = performer ? performer.actorName : '系统';
+                    const performerName = performer ? performer.actorName : t('what.scenarios.actorPerformerSystem');
                     const isAddingAc = modalAddingAcForScenId === s.scenarioId;
                     const isEditingScenario = editingScenarioId === s.scenarioId;
                     const isScenarioCollapsed = collapsedScenarioIds[s.scenarioId] === true;
@@ -1611,22 +1615,22 @@ export function WhatToDo() {
                         
                         {isEditingScenario ? (
                           <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/30 space-y-3 shadow-sm animate-in slide-in-from-top-2 duration-200">
-                            <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">编辑交付场景</div>
+                            <div className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">{t('what.scenarios.editScenarioHeader')}</div>
                             
                             <div className="space-y-1.5">
-                              <label className="text-[10px] text-slate-400 font-bold uppercase block">场景简短名称</label>
+                              <label className="text-[10px] text-slate-400 font-bold uppercase block">{t('what.scenarios.scenarioNameLabel')}</label>
                               <input
                                 type="text"
                                 value={editingScenarioName}
                                 onChange={(e) => setEditingScenarioName(e.target.value)}
-                                placeholder="例如: 快速创建临时灵感便签"
+                                placeholder={t('what.scenarios.scenarioNamePlaceholder')}
                                 className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:ring-1 focus:ring-slate-900 focus:outline-none transition-all shadow-sm"
                               />
                             </div>
 
                             {/* Interactive first-person user story editor */}
                             <div className="space-y-2 pt-2 border-t border-slate-200/40">
-                              <label className="text-[10px] text-slate-400 font-bold uppercase block">用户故事</label>
+                              <label className="text-[10px] text-slate-400 font-bold uppercase block">{t('what.scenarios.userStoryLabel')}</label>
                               <UserStoryEditor
                                 initialContent={editingScenarioContent}
                                 actors={scenarioActors}
@@ -1646,7 +1650,7 @@ export function WhatToDo() {
                                 onClick={() => setEditingScenarioId(null)}
                                 className="px-3 py-1.5 text-[10px] font-bold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 shadow-sm"
                               >
-                                取消
+                                {t('common.cancel')}
                               </button>
                               <button
                                 onClick={async () => {
@@ -1661,7 +1665,7 @@ export function WhatToDo() {
                                 disabled={!editingScenarioName.trim()}
                                 className="px-3.5 py-1.5 text-[10px] font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
                               >
-                                确认保存
+                                {t('what.confirmSave')}
                               </button>
                             </div>
                           </div>
@@ -1674,7 +1678,7 @@ export function WhatToDo() {
                                 {!isScenarioCollapsed && (
                                   <div className="flex items-center gap-1.5 flex-wrap mt-1">
                                     <span className="inline-block text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded-md">
-                                      参与者: {performerName}
+                                      {t('what.scenarios.actorPerformerFormat', { name: performerName })}
                                     </span>
                                     <InteractiveStatusBadge
                                       nodeId={s.scenarioId}
@@ -1697,19 +1701,19 @@ export function WhatToDo() {
                                         setEditingScenarioActorId(s.actorId);
                                       }}
                                       className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
-                                      title="编辑场景"
+                                      title={t('what.scenarios.editBtn')}
                                     >
                                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                     </button>
                                     <button
                                       type="button"
                                       onClick={async () => {
-                                        if (confirm('确认删除该交付成功场景以及包含的所有验收标准 (AC) 吗？')) {
+                                        if (confirm(t('what.scenarios.deleteConfirm'))) {
                                           await deleteScenario(managedFeatObj.featureId, s.scenarioId);
                                         }
                                       }}
                                       className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                                      title="删除该场景"
+                                      title={t('what.scenarios.deleteBtn')}
                                     >
                                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     </button>
@@ -1721,8 +1725,8 @@ export function WhatToDo() {
                                     setCollapsedScenarioIds((prev) => ({ ...prev, [s.scenarioId]: !prev[s.scenarioId] }));
                                   }}
                                   className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                  title={isScenarioCollapsed ? '展开场景' : '折叠场景'}
-                                  aria-label={isScenarioCollapsed ? '展开场景' : '折叠场景'}
+                                  title={isScenarioCollapsed ? t('what.scenarios.expandScenario') : t('what.scenarios.collapseScenario')}
+                                  aria-label={isScenarioCollapsed ? t('what.scenarios.expandScenario') : t('what.scenarios.collapseScenario')}
                                 >
                                   {isScenarioCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                 </button>
@@ -1743,7 +1747,7 @@ export function WhatToDo() {
                         {!isScenarioCollapsed && (
                           <div className="space-y-2 pt-2 border-t border-slate-200/50">
                             <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              <span>验收标准 ({s.acceptanceCriteria?.length || 0} 项)</span>
+                              <span>{t('what.scenarios.acCountLabel', { count: s.acceptanceCriteria?.length || 0 })}</span>
                               <div className="flex items-center gap-1.5">
                                 <div className="relative group">
                                   <button
@@ -1752,12 +1756,12 @@ export function WhatToDo() {
                                       setCollapsedAcScenarioIds((prev) => ({ ...prev, [s.scenarioId]: !prev[s.scenarioId] }));
                                     }}
                                     className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                    aria-label={isAcCollapsed ? '展开验收标准' : '折叠验收标准'}
+                                    aria-label={isAcCollapsed ? t('what.scenarios.expandAc') : t('what.scenarios.collapseAc')}
                                   >
                                     {isAcCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                   </button>
                                   <div className="pointer-events-none absolute right-0 top-0 z-20 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                                    {isAcCollapsed ? '展开验收标准' : '折叠验收标准'}
+                                    {isAcCollapsed ? t('what.scenarios.expandAc') : t('what.scenarios.collapseAc')}
                                   </div>
                                 </div>
                                 <div className="relative group">
@@ -1768,12 +1772,12 @@ export function WhatToDo() {
                                       setModalAddingAcForScenId(isAddingAc ? null : s.scenarioId);
                                     }}
                                     className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                    aria-label={isAddingAc ? '收起 AC 表单' : '手动新增 AC 项'}
+                                    aria-label={isAddingAc ? t('what.scenarios.collapseAcAria') : t('what.scenarios.addAcAria')}
                                   >
                                     <Plus className="w-3.5 h-3.5" />
                                   </button>
                                   <div className="pointer-events-none absolute right-0 top-0 z-20 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                                    {isAddingAc ? '收起 AC 表单' : '手动新增 AC 项'}
+                                    {isAddingAc ? t('what.scenarios.collapseAcAria') : t('what.scenarios.addAcAria')}
                                   </div>
                                 </div>
                               </div>
@@ -1799,7 +1803,7 @@ export function WhatToDo() {
                                 {/* AC Items list */}
                                 {(s.acceptanceCriteria || []).length === 0 ? (
                                   <div className="text-[10px] text-slate-500 italic bg-white/50 p-2 rounded-xl border border-dashed border-slate-200/50 leading-relaxed">
-                                    暂无交付验收细节。请在上方输入添加，或使用特征树上方的 AI AC 推理生成。
+                                    {t('what.scenarios.acEmptyText')}
                                   </div>
                                 ) : (
                                   <div className="space-y-3">
@@ -1820,7 +1824,7 @@ export function WhatToDo() {
                                         <GherkinVisualRenderer
                                           key={ac.criterionId}
                                           text={ac.criterionContent || ''}
-                                          title={`验收标准${acIdx + 1}`}
+                                          title={t('what.scenarios.acTitlePrefix', { index: acIdx + 1 })}
                                           statusBadge={
                                             <span className="scale-75 origin-left inline-block">
                                               <InteractiveStatusBadge
@@ -1840,8 +1844,8 @@ export function WhatToDo() {
                                                 setEditingAcId(ac.criterionId);
                                               }}
                                               className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                                              title="编辑验收标准"
-                                              aria-label="编辑验收标准"
+                                              title={t('what.scenarios.editAc')}
+                                              aria-label={t('what.scenarios.editAc')}
                                             >
                                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                             </button>,
@@ -1850,13 +1854,13 @@ export function WhatToDo() {
                                               type="button"
                                               onClick={async (e) => {
                                                 e.stopPropagation();
-                                                if (confirm('确认删除此条验收标准 (AC) 吗？')) {
+                                                if (confirm(t('what.scenarios.deleteAcConfirm'))) {
                                                   await deleteAcceptanceCriterion(managedFeatObj.featureId, s.scenarioId, ac.criterionId);
                                                 }
                                               }}
                                               className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md transition-all shadow-sm"
-                                              title="删除验收标准"
-                                              aria-label="删除验收标准"
+                                              title={t('what.scenarios.deleteAc')}
+                                              aria-label={t('what.scenarios.deleteAc')}
                                             >
                                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                             </button>
@@ -1883,7 +1887,7 @@ export function WhatToDo() {
                 onClick={() => setScenarioManagerFeature(null)}
                 className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
               >
-                确定并关闭
+                {t('what.scenarios.confirmClose')}
               </button>
             </div>
           </div>
@@ -1926,7 +1930,7 @@ export function WhatToDo() {
           if (activeDraftType === 'ac') return confirmAcceptanceCriteria();
           return undefined;
         }}
-        confirmLabel={activeDraftType === 'scenario' ? '确认并生成验收标准' : '确认采纳'}
+        confirmLabel={activeDraftType === 'scenario' ? t('what.scenarios.confirmAcAdopt') : t('what.scenarios.confirmAdopt')}
       />
 
       <ChoiceGroupPreviewModal

@@ -133,9 +133,32 @@ class ChoiceAdapterRegistry:
 
 def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
     """Helper to build strategy instruction string to inject into user message."""
-    label = context.strategy_label or context.strategy or "默认"
+    from backend.core.prompt_resolver import get_content_locale
+
+    is_english = get_content_locale() == "en-US"
+    label = context.strategy_label or context.strategy or ("Default" if is_english else "默认")
     desc = context.strategy_description or ""
     instruction = context.strategy_instruction or ""
+
+    if is_english:
+        task_label = {
+            "生成项目草稿": "generate a project draft",
+            "生成参与者列表": "generate the actor list",
+            "生成功能树": "generate the feature tree",
+            "生成流程与业务对象": "generate flows and business objects",
+            "生成验收标准": "generate acceptance criteria",
+            "生成场景集": "generate a scenario set",
+            "生成范围分析": "generate scope analysis",
+        }.get(task_label, task_label)
+        feedback = "Generation strategy for this candidate:\n"
+        feedback += f"- Strategy: {label}\n"
+        if desc:
+            feedback += f"- Description: {desc}\n"
+        if instruction:
+            feedback += f"- Focus: {instruction}\n"
+        feedback += f"\nCurrent task: {task_label}.\n"
+        feedback += "Follow this strategy while preserving the original requirements, project context, and output-format constraints."
+        return feedback
 
     feedback = f"本候选方案的生成策略：\n"
     feedback += f"- 策略名称：{label}\n"
@@ -147,6 +170,5 @@ def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
     feedback += f"\n当前任务：{task_label}。\n"
     feedback += f"请在满足原始需求、项目上下文和输出格式约束的前提下，按上述策略生成本候选。"
     return feedback
-
 
 

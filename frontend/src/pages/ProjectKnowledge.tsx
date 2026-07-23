@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { useTranslation } from 'react-i18next';
+import { DEFAULT_UI_LOCALE } from '@/i18n';
 import { 
   UploadCloud, 
   File, 
@@ -15,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export function ProjectKnowledge() {
+  const { t, i18n } = useTranslation();
   const {
     ir,
     projectDocuments,
@@ -114,7 +117,7 @@ export function ProjectKnowledge() {
   const formatDate = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString('zh-CN', {
+    return d.toLocaleDateString(i18n.language || DEFAULT_UI_LOCALE, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -140,10 +143,10 @@ export function ProjectKnowledge() {
           <div>
             <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
               <Database className="w-5 h-5 text-indigo-500" />
-              项目知识库
+              {t('projectKnowledge.pageTitle')}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              上传 PRD、设计稿、会议纪要等原始文档，自动转换为结构化 Markdown 分词检索，为项目提供量身定制的 AI 生成辅助上下文。
+              {t('projectKnowledge.pageSubtitle')}
             </p>
           </div>
         </div>
@@ -152,17 +155,17 @@ export function ProjectKnowledge() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Card 1: Documents count */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-500 tracking-wide">文档总数</span>
+            <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.docTotalCountLabel')}</span>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-3xl font-black text-slate-800">{projectDocuments.length}</span>
-              <span className="text-xs text-slate-400">个已上传文档</span>
+              <span className="text-xs text-slate-400">{t('projectKnowledge.uploadedCountLabel')}</span>
             </div>
-            <div className="text-[10px] text-slate-400 mt-2">包含未就绪以及转换失败的文档</div>
+            <div className="text-[10px] text-slate-400 mt-2">{t('projectKnowledge.unreadyFailedNotice')}</div>
           </div>
 
           {/* Card 2: Space occupied */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-500 tracking-wide">已用存储空间</span>
+            <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.storageUsed')}</span>
             <div className="mt-2">
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-800">{formatBytes(totalSize)}</span>
@@ -175,19 +178,19 @@ export function ProjectKnowledge() {
                 />
               </div>
             </div>
-            <div className="text-[10px] text-slate-400 mt-2">单文件最大支持 20MB</div>
+            <div className="text-[10px] text-slate-400 mt-2">{t('projectKnowledge.maxFileSizeNotice')}</div>
           </div>
 
           {/* Card 3: AI reference status */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-500 tracking-wide">已启用 AI 检索</span>
+            <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.aiSearchEnabledLabel')}</span>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-3xl font-black text-emerald-600">{activeDocsCount}</span>
-              <span className="text-xs text-slate-400">个就绪文档</span>
+              <span className="text-xs text-slate-400">{t('projectKnowledge.readyDocsLabel')}</span>
             </div>
             <div className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-indigo-500 shrink-0" />
-              <span>可在对话和单对象编辑/新增中被 AI 检索参考</span>
+              <span>{t('projectKnowledge.aiSearchNotice')}</span>
             </div>
           </div>
         </div>
@@ -221,10 +224,10 @@ export function ProjectKnowledge() {
             )}
             <div className="space-y-1">
               <div className="text-sm font-bold text-slate-700">
-                {isUploadingDocument ? '正在上传文档，请稍等...' : '拖拽文件到这里，或点击上传'}
+                {isUploadingDocument ? t('projectKnowledge.uploadingText') : t('projectKnowledge.dragDropNotice')}
               </div>
               <div className="text-xs text-slate-400">
-                支持 .txt, .md, .pdf, .docx, .xlsx 格式文件
+                {t('projectKnowledge.supportedFormats')}
               </div>
             </div>
           </div>
@@ -240,16 +243,16 @@ export function ProjectKnowledge() {
         {/* Documents Table */}
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-700 tracking-wide">上传文档管理列表</span>
-            <span className="text-[10px] text-slate-400">总共 {projectDocuments.length} 个文档</span>
+            <span className="text-xs font-bold text-slate-700 tracking-wide">{t('projectKnowledge.uploadedListTitle')}</span>
+            <span className="text-[10px] text-slate-400">{t('projectKnowledge.totalDocsCount', { count: projectDocuments.length })}</span>
           </div>
 
           {projectDocuments.length === 0 ? (
             <div className="p-12 text-center text-slate-400 space-y-2">
               <File className="w-8 h-8 mx-auto text-slate-300" />
-              <div className="text-xs font-bold">暂无知识库参考文档</div>
+              <div className="text-xs font-bold">{t('projectKnowledge.status.unready')}</div>
               <div className="text-[10px] max-w-xs mx-auto leading-normal">
-                上传业务文档以使后续 AI 生成的建议能更贴合您已有的产品规格。
+                {t('projectKnowledge.pageSubtitle')}
               </div>
             </div>
           ) : (
@@ -257,12 +260,12 @@ export function ProjectKnowledge() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/20">
-                    <th className="py-3 px-6">文件名</th>
-                    <th className="py-3 px-4">状态</th>
-                    <th className="py-3 px-4">大小</th>
-                    <th className="py-3 px-4">上传时间</th>
-                    <th className="py-3 px-4 text-center">参与 AI 检索</th>
-                    <th className="py-3 px-6 text-right">操作</th>
+                    <th className="py-3 px-6">{t('projectKnowledge.tableHeader.file')}</th>
+                    <th className="py-3 px-4">{t('projectKnowledge.tableHeader.status')}</th>
+                    <th className="py-3 px-4">{t('projectKnowledge.tableHeader.size')}</th>
+                    <th className="py-3 px-4">{t('projectKnowledge.tableHeader.uploadedTime')}</th>
+                    <th className="py-3 px-4 text-center">{t('projectKnowledge.tableHeader.joinAI')}</th>
+                    <th className="py-3 px-6 text-right">{t('projectKnowledge.tableHeader.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -288,24 +291,24 @@ export function ProjectKnowledge() {
                           {isReady && (
                             <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 font-bold border border-emerald-100 px-2.5 py-0.5 rounded-lg text-[10px]">
                               <CheckCircle className="w-3 h-3 text-emerald-600" />
-                              可用于 AI
+                              {t('projectKnowledge.status.ready')}
                             </span>
                           )}
 
                           {isProcessing && (
                             <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 font-bold border border-amber-100 px-2.5 py-0.5 rounded-lg text-[10px] animate-pulse">
                               <Clock className="w-3 h-3 text-amber-500 animate-spin" />
-                              解析转换中
+                              {t('projectKnowledge.status.converting')}
                             </span>
                           )}
 
                           {isFailed && (
                             <span 
                               className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 font-bold border border-rose-100 px-2.5 py-0.5 rounded-lg text-[10px] cursor-help"
-                              title={doc.error_message || '转换未知错误，请重试'}
+                              title={doc.error_message || t('projectKnowledge.status.failedTooltip')}
                             >
                               <XCircle className="w-3 h-3 text-rose-500" />
-                              转换失败
+                              {t('projectKnowledge.status.failed')}
                             </span>
                           )}
                         </td>
@@ -337,7 +340,7 @@ export function ProjectKnowledge() {
                               />
                             </button>
                           ) : (
-                            <span className="text-[10px] text-slate-300">尚未就绪</span>
+                            <span className="text-[10px] text-slate-300">{t('projectKnowledge.status.unready')}</span>
                           )}
                         </td>
 
@@ -349,7 +352,7 @@ export function ProjectKnowledge() {
                                 type="button"
                                 onClick={() => void retryProjectDocument(doc.public_id)}
                                 className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
-                                title="重试解析转换"
+                                title={t('projectKnowledge.actionTooltip.retry')}
                               >
                                 <RefreshCw className="w-4 h-4" />
                               </button>
@@ -358,7 +361,7 @@ export function ProjectKnowledge() {
                               type="button"
                               onClick={() => confirmDelete(doc.public_id, doc.original_filename)}
                               className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                              title="删除文档"
+                              title={t('projectKnowledge.actionTooltip.delete')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -384,9 +387,9 @@ export function ProjectKnowledge() {
                 <Trash2 className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-black text-slate-800">确认删除文档？</h3>
+                <h3 className="text-sm font-black text-slate-800">{t('projectKnowledge.deleteModal.title')}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  您确定要删除文档 <span className="font-semibold text-slate-700">“{deleteTargetName}”</span> 吗？删除后此文件及关联的切块索引将彻底清除，AI 无法再参考其内容。此操作不可逆。
+                  {t('projectKnowledge.deleteModal.confirmPrefix')} <span className="font-semibold text-slate-700">"{deleteTargetName}"</span> {t('projectKnowledge.deleteModal.confirmSuffix')}
                 </p>
               </div>
             </div>
@@ -400,14 +403,14 @@ export function ProjectKnowledge() {
                 }}
                 className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
               >
-                取消
+                {t('projectKnowledge.deleteModal.cancelBtn')}
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
                 className="px-4 py-2 bg-rose-650 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-100 transition-colors"
               >
-                彻底删除
+                {t('projectKnowledge.deleteModal.confirmBtn')}
               </button>
             </div>
           </div>

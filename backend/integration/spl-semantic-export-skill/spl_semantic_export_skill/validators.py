@@ -19,6 +19,10 @@ class SplSemanticValidator:
     def validate(self, ir: SplSemanticIR) -> Dict[str, Any]:
         warnings: List[SplExportWarningIR] = []
         semantic_risks: List[str] = []
+        is_english = ir.raw.get("export_options", {}).get("language") == "en-US"
+
+        def text(zh_cn: str, en_us: str) -> str:
+            return en_us if is_english else zh_cn
 
         # 1. Gather all leaf features
         features = ir.raw.get("features", [])
@@ -48,10 +52,16 @@ class SplSemanticValidator:
             feat_name = next((f.get("feature_name", "") for f in features if f.get("feature_id") == fid), "Unknown")
             warnings.append(SplExportWarningIR(
                 code="uncovered_feature",
-                message=f"叶子功能 Feature_{fid} '{feat_name}' 未被任何业务流 Worker 覆盖。",
+                message=text(
+                    f"叶子功能 Feature_{fid} '{feat_name}' 未被任何业务流 Worker 覆盖。",
+                    f"Leaf feature Feature_{fid} '{feat_name}' is not covered by any flow worker.",
+                ),
                 source=WarningSourceIR(kind="feature", id=str(fid))
             ))
-            semantic_risks.append(f"功能 Feature_{fid} '{feat_name}' 未被任何业务流覆盖。")
+            semantic_risks.append(text(
+                f"功能 Feature_{fid} '{feat_name}' 未被任何业务流覆盖。",
+                f"Feature Feature_{fid} '{feat_name}' is not covered by any flow.",
+            ))
 
         # 3. Check type references in workers
         declared_type_names = {t.type_name for t in ir.types.values()}
@@ -68,20 +78,32 @@ class SplSemanticValidator:
                 if inp not in declared_type_names:
                     warnings.append(SplExportWarningIR(
                         code="missing_type_ref",
-                        message=f"Worker '{worker.worker_name}' 引入了未声明的输入类型 '{inp}'。",
+                        message=text(
+                            f"Worker '{worker.worker_name}' 引入了未声明的输入类型 '{inp}'。",
+                            f"Worker '{worker.worker_name}' references undeclared input type '{inp}'.",
+                        ),
                         source=WarningSourceIR(kind="flow", id=str(worker.source_flow_id))
                     ))
-                    semantic_risks.append(f"Worker '{worker.worker_name}' 引用了未定义的类型 '{inp}'。")
+                    semantic_risks.append(text(
+                        f"Worker '{worker.worker_name}' 引用了未定义的类型 '{inp}'。",
+                        f"Worker '{worker.worker_name}' references undefined type '{inp}'.",
+                    ))
             
             # Check outputs
             for out in worker.outputs:
                 if out not in declared_type_names:
                     warnings.append(SplExportWarningIR(
                         code="missing_type_ref",
-                        message=f"Worker '{worker.worker_name}' 引入了未声明的输出类型 '{out}'。",
+                        message=text(
+                            f"Worker '{worker.worker_name}' 引入了未声明的输出类型 '{out}'。",
+                            f"Worker '{worker.worker_name}' references undeclared output type '{out}'.",
+                        ),
                         source=WarningSourceIR(kind="flow", id=str(worker.source_flow_id))
                     ))
-                    semantic_risks.append(f"Worker '{worker.worker_name}' 引用了未定义的类型 '{out}'。")
+                    semantic_risks.append(text(
+                        f"Worker '{worker.worker_name}' 引用了未定义的类型 '{out}'。",
+                        f"Worker '{worker.worker_name}' references undefined type '{out}'.",
+                    ))
 
         # 4. Check if all flows have corresponding workers
         flows = ir.raw.get("flows", [])
@@ -93,10 +115,16 @@ class SplSemanticValidator:
             flow_name = next((f.get("flow_name", "") for f in flows if f.get("flow_id") == fid), "Unknown")
             warnings.append(SplExportWarningIR(
                 code="unmapped_flow",
-                message=f"业务流 Flow_{fid} '{flow_name}' 未能生成对应的 Worker。",
+                message=text(
+                    f"业务流 Flow_{fid} '{flow_name}' 未能生成对应的 Worker。",
+                    f"Flow Flow_{fid} '{flow_name}' has no generated worker.",
+                ),
                 source=WarningSourceIR(kind="flow", id=str(fid))
             ))
-            semantic_risks.append(f"业务流程 Flow_{fid} '{flow_name}' 丢失，未能转换。")
+            semantic_risks.append(text(
+                f"业务流程 Flow_{fid} '{flow_name}' 丢失，未能转换。",
+                f"Flow Flow_{fid} '{flow_name}' was not converted.",
+            ))
 
         # 5. Check semantic identifier uniqueness
         seen_identifiers: Dict[str, str] = {}
@@ -108,7 +136,10 @@ class SplSemanticValidator:
                     message=f"Duplicate semantic identifier '{identifier}' detected for '{source_key}' and '{prev_key}'.",
                     source=WarningSourceIR(kind="project", id=ir.project_id)
                 ))
-                semantic_risks.append(f"重复的语义标识符 '{identifier}' 在 '{source_key}' 和 '{prev_key}' 中被同时使用。")
+                semantic_risks.append(text(
+                    f"重复的语义标识符 '{identifier}' 在 '{source_key}' 和 '{prev_key}' 中被同时使用。",
+                    f"Duplicate semantic identifier '{identifier}' is used by both '{source_key}' and '{prev_key}'.",
+                ))
             else:
                 seen_identifiers[identifier] = source_key
 
@@ -139,7 +170,10 @@ class SplSemanticValidator:
                 message=f"Acceptance Criterion AC_{ac_id} is not covered by any worker scenario.",
                 source=WarningSourceIR(kind="feature", id=str(feat_id))
             ))
-            semantic_risks.append(f"验收条件 AC_{ac_id} 未被任何 Worker 场景覆盖。")
+            semantic_risks.append(text(
+                f"验收条件 AC_{ac_id} 未被任何 Worker 场景覆盖。",
+                f"Acceptance criterion AC_{ac_id} is not covered by any worker scenario.",
+            ))
 
         # 7. Check judgment branching paths recursively
         def check_steps(steps: List[WorkerStepIR], worker_name: str, flow_id: int):
@@ -152,7 +186,10 @@ class SplSemanticValidator:
                             message=f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching paths defined.",
                             source=WarningSourceIR(kind="flow", id=str(flow_id))
                         ))
-                        semantic_risks.append(f"Worker '{worker_name}' 中的判断步骤 '{step.command_text}' 缺少分支控制结构路径。")
+                        semantic_risks.append(text(
+                            f"Worker '{worker_name}' 中的判断步骤 '{step.command_text}' 缺少分支控制结构路径。",
+                            f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching path.",
+                        ))
                 if step.sub_steps:
                     check_steps(step.sub_steps, worker_name, flow_id)
 

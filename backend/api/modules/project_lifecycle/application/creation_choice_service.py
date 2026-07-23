@@ -21,6 +21,7 @@ from backend.api.modules.decision_workflow.public import (
     GenerativeDraftStore,
 )
 from backend.api.modules.project_lifecycle.application.creation_service import ProjectCreationService
+from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 from backend.database.model import ChoiceGroupModel, ChoiceModel
 
 logger = logging.getLogger(__name__)
@@ -272,6 +273,12 @@ class ProjectCreationChoiceGroupService:
             generate_one=self._adapter.generate_candidate,
             base_context=base_ctx,
         )
+
+        if any(
+            error.message == LLMContentLocaleMismatchError.code
+            for error in result.errors
+        ):
+            raise LLMContentLocaleMismatchError()
 
         # Dedup
         deduped = []

@@ -17,8 +17,9 @@ from sqlalchemy import (
     UniqueConstraint,
     LargeBinary,
     Boolean,
+    CheckConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
 
 class Base(DeclarativeBase):
@@ -52,11 +53,23 @@ class UserRole(str, enum.Enum):
 class UserModel(TimestampMixin, Base):
     __tablename__ = "users"
 
+    __table_args__ = (
+        CheckConstraint("preferred_locale IN ('zh-CN', 'en-US')", name="check_user_preferred_locale"),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default=UserRole.USER.value, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    preferred_locale: Mapped[str] = mapped_column(String(16), default="zh-CN", nullable=False)
+
+    @validates("preferred_locale")
+    def validate_preferred_locale(self, key, value):
+        from backend.core.locale import is_valid_locale
+        if not is_valid_locale(value):
+            raise ValueError(f"Invalid preferred_locale: {value}")
+        return value
 
     # Relationships
     projects: Mapped[list["ProjectModel"]] = relationship(
@@ -287,6 +300,10 @@ flow_step_next_table = Table(
 class ProjectModel(TimestampMixin, Base):
     __tablename__ = "projects"
 
+    __table_args__ = (
+        CheckConstraint("content_locale IS NULL OR content_locale IN ('zh-CN', 'en-US')", name="check_project_content_locale"),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
         String(36),
@@ -302,6 +319,14 @@ class ProjectModel(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    content_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    @validates("content_locale")
+    def validate_content_locale(self, key, value):
+        from backend.core.locale import is_valid_locale
+        if value is not None and not is_valid_locale(value):
+            raise ValueError(f"Invalid content_locale: {value}")
+        return value
 
     owner: Mapped[UserModel] = relationship(back_populates="projects")
     members: Mapped[list["ProjectMemberModel"]] = relationship(

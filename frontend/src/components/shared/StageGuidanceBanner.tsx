@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkspaceStore, getFindingCapability } from '@/store/useWorkspaceStore';
@@ -6,16 +8,17 @@ import { Finding } from '@/core/schema';
 import { cn } from '@/lib/utils';
 import { getNextSuggestionPresentation } from '@/core/nextSuggestionPresentation';
 import { findingTargetIds } from '@/core/findingPresentation';
+import { getFindingText } from '@/core/findingText';
 
 interface StageGuidanceBannerProps {
   stage: 'what' | 'how' | 'scope';
 }
 
 const severityLabel: Record<string, string> = {
-  high: '高风险',
-  medium: '需处理',
-  low: '提示',
-};
+  get high() { return i18n.t('stageGuidance.severity.high') || 'High'; },
+  get medium() { return i18n.t('stageGuidance.severity.medium') || 'Medium'; },
+  get low() { return i18n.t('stageGuidance.severity.low') || 'Low'; },
+} as unknown as Record<string, string>;
 
 const severityClass: Record<string, string> = {
   high: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -24,6 +27,7 @@ const severityClass: Record<string, string> = {
 };
 
 export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const ir = useWorkspaceStore((s) => s.ir);
   const findingsByView = useWorkspaceStore((s) => s.findingsByView) || { issues: [], next_action: [], gate: [], health: [] };
@@ -49,9 +53,10 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
   // Filter findings by current stage
   const stageProgressItem = stageProgress?.stages?.find((s: any) => s.stage === stage);
   const stageAlreadyAdvanced = stageProgressItem?.statusCode === 'ready';
-  const nextAction = stageAlreadyAdvanced
+  const stageNextAction = (findingsByView.next_action || []).find((f) => f.stage === stage);
+  const nextAction = stageAlreadyAdvanced && stageNextAction?.metadata?.source_type !== 'perception_slot'
     ? null
-    : (findingsByView.next_action || []).find((f) => f.stage === stage);
+    : stageNextAction;
   const stageIssues = (findingsByView.issues || []).filter((f) => f.stage === stage);
   const stageHealthHints = (findingsByView.health || []).filter((f) => f.stage === stage);
 
@@ -63,7 +68,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold leading-relaxed text-slate-600">
-              当前阶段暂未发现待处理问题，模型结构健康。可以继续完善建模，或重新发起诊断。
+              {t('stageGuidance.noIssues')}
             </p>
           </div>
           <button
@@ -73,7 +78,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:opacity-50"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', isWorking && 'animate-spin')} />
-            重新诊断
+            {t('stageGuidance.reDiagnoseBtn')}
           </button>
         </div>
       </div>
@@ -116,11 +121,11 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
             <div className="min-w-0 space-y-1.5">
               <span className="inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700 border border-indigo-100">
                 <Cpu className="w-3 h-3" />
-                下一步建议
+                {t('stageGuidance.nextActionSuggestion')}
               </span>
-              <h4 className="text-xs font-black text-slate-800">{nextAction.title}</h4>
+              <h4 className="text-xs font-black text-slate-800">{getFindingText(nextAction, t).title}</h4>
               <p className="text-xs font-medium leading-relaxed text-slate-500">
-                {nextAction.description}
+                {getFindingText(nextAction, t).description}
               </p>
             </div>
 
@@ -154,11 +159,11 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
             <div className="min-w-0">
               <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping" />
-                <span>仍有 {stageIssues.length} 个待处理问题</span>
+                <span>{t('stageGuidance.issuesCount', { count: stageIssues.length })}</span>
               </div>
               {!issuesExpanded && (
                 <div className="truncate text-[11px] text-slate-400 font-medium mt-0.5">
-                  {stageIssues[0]?.title}
+                  {stageIssues[0] ? getFindingText(stageIssues[0], t).title : ''}
                 </div>
               )}
             </div>
@@ -181,8 +186,8 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
                         {issue.code}
                       </span>
                     </div>
-                    <div className="text-xs font-black text-slate-800">{issue.title}</div>
-                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{issue.description}</div>
+                    <div className="text-xs font-black text-slate-800">{getFindingText(issue, t).title}</div>
+                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{getFindingText(issue, t).description}</div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2 self-end md:self-start mt-2 md:mt-0">
@@ -192,7 +197,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
                       className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
                     >
                       <LocateFixed className="h-3.5 w-3.5" />
-                      <span>定位</span>
+                      <span>{t('stageGuidance.locateBtn')}</span>
                     </button>
                     {(() => {
                       const cap = getFindingCapability(issue);
@@ -213,7 +218,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
                       onClick={() => void handleIgnoreIssue(issue)}
                       disabled={isWorking}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-600 shadow-sm transition-colors disabled:opacity-50"
-                      title="忽略"
+                      title={t('stageGuidance.ignoreTooltip')}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -236,7 +241,7 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
             <div className="min-w-0">
               <div className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                 <Heart className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>空间健康：{stageHealthHints.length} 条可优化建议</span>
+                <span>{t('stageGuidance.healthTitle', { count: stageHealthHints.length })}</span>
               </div>
             </div>
             {healthExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
@@ -252,14 +257,14 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded border border-emerald-100 bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[9px] font-black">
-                        健康建议
+                        {t('stageGuidance.healthBadge')}
                       </span>
                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                         {hint.code}
                       </span>
                     </div>
-                    <div className="text-xs font-black text-slate-800">{hint.title}</div>
-                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{hint.description}</div>
+                    <div className="text-xs font-black text-slate-800">{getFindingText(hint, t).title}</div>
+                    <div className="line-clamp-2 text-xs leading-relaxed text-slate-500 font-medium">{getFindingText(hint, t).description}</div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2 self-end md:self-start mt-2 md:mt-0">
@@ -269,14 +274,14 @@ export function StageGuidanceBanner({ stage }: StageGuidanceBannerProps) {
                       className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
                     >
                       <LocateFixed className="h-3.5 w-3.5" />
-                      <span>定位</span>
+                      <span>{t('stageGuidance.locateBtn')}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleIgnoreIssue(hint)}
                       disabled={isWorking}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-600 shadow-sm transition-colors disabled:opacity-50"
-                      title="忽略"
+                      title={t('stageGuidance.ignoreTooltip')}
                     >
                       <X className="h-4 w-4" />
                     </button>

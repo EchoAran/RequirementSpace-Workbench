@@ -1,0 +1,20 @@
+# Role
+You are a software designer reviewing business-flow coverage and continuity.
+
+# Inputs
+Requirements:
+{{user_requirements}}
+
+Leaf features:
+{{features}}
+
+Current flows:
+{{flows}}
+
+# Rules
+- Return JSON only, without Markdown.
+- Identify missing flows or steps only when supported by the inputs.
+- Explain what is missing, why, and where it belongs. If complete, use `Not needed`.
+
+# Output
+{"perception_description": "What is missing, why, and how to add it, or Not needed"}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CheckSquare,
   ChevronDown,
@@ -41,6 +42,7 @@ type PrototypePreview = {
   pages?: PrototypePage[];
   source: string;
   status: string;
+  errorMessage?: string | null;
   createdAt?: string;
   updatedAt?: string;
   shadowDraftId?: string;
@@ -62,6 +64,7 @@ type PrototypePage = {
 type PrototypeState = 'idle' | 'loading' | 'ready' | 'error';
 
 export function Preview() {
+  const { t, i18n } = useTranslation();
   const {
     setSelectedObject,
     setHighlightTarget,
@@ -130,8 +133,16 @@ export function Preview() {
           if (!cancelled) {
             if (res && !('detail' in res)) {
               setPrototype(res);
-              setPrototypeState('ready');
-              setPrototypeError(null);
+              if (res.status === 'generating') {
+                setPrototypeState('loading');
+                setPrototypeError(null);
+              } else if (res.status === 'failed') {
+                setPrototypeState('error');
+                setPrototypeError(res.errorMessage || t('preview.full.prototypeFailure'));
+              } else {
+                setPrototypeState('ready');
+                setPrototypeError(null);
+              }
             } else {
               setPrototype(null);
               setPrototypeState('idle');
@@ -172,6 +183,42 @@ export function Preview() {
     };
   }, [ir?.projectId, ir?.actors?.length, ir?.features?.length, ir?.flows?.length, ir?.businessObjects?.length]);
 
+  // Resume a persisted prototype job after the POST returns or the page refreshes.
+  useEffect(() => {
+    if (prototype?.status !== 'generating' || !ir?.projectId) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = () => {
+      workspaceApi.getLatestPrototypePreview(ir.projectId)
+        .then((res) => {
+          if (cancelled || !res || 'detail' in res) return;
+          setPrototype(res);
+          if (res.status === 'ready') {
+            setPrototypeState('ready');
+            setPrototypeError(null);
+            return;
+          }
+          if (res.status === 'failed') {
+            setPrototypeState('error');
+            setPrototypeError(res.errorMessage || t('preview.full.prototypeFailure'));
+            return;
+          }
+          timer = setTimeout(poll, 2000);
+        })
+        .catch(() => {
+          if (!cancelled) timer = setTimeout(poll, 2000);
+        });
+    };
+
+    timer = setTimeout(poll, 1000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [prototype?.prototypeId, prototype?.status, ir?.projectId]);
+
   // Unified Polling Driver for activeShadowDraft when status is generating
   useEffect(() => {
     if (activeShadowDraft?.source !== 'shadow_project' || activeShadowDraft?.status !== 'generating' || !activeShadowDraft?.draftId) {
@@ -207,18 +254,18 @@ export function Preview() {
     const isLoading = prototypeState === 'loading';
     if (!isGenerating && !isLoading) {
       if (activeShadowDraftRef.current?.status === 'failed' && hasRequestedShadowPreview) {
-    setProgressSubtitle('影子原型推演失败！已为您捕获关键日志信息。');
+        setProgressSubtitle(t('preview.full.progressFailed'));
         setIsModalOpen(true); // Keep modal open to show traceback!
         return;
       }
       if (smoothProgress > 0 && smoothProgress < 100) {
         setSmoothProgress(100);
-    setProgressSubtitle('影子原型推演成功！正在加载预览...');
-        const t = setTimeout(() => {
+        setProgressSubtitle(t('preview.full.progressSucceeded'));
+        const closeTimer = setTimeout(() => {
           setIsModalOpen(false);
           setSmoothProgress(0);
         }, 800);
-        return () => clearTimeout(t);
+        return () => clearTimeout(closeTimer);
       }
       setIsModalOpen(false);
       return;
@@ -280,18 +327,18 @@ export function Preview() {
           // Update subtitle according to step labels
           const currentLabel = currentDraft?.currentStepLabel;
           if (currentLabel) {
-            setProgressSubtitle(currentLabel);
+            setProgressSubtitle(t(currentLabel, { defaultValue: currentLabel }));
           } else {
             if (currentUnreadyGates.length === 0) {
-              setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+              setProgressSubtitle(t('preview.full.progressGenerating'));
             } else if (nextVal < 35) {
-    setProgressSubtitle('AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+              setProgressSubtitle(t('preview.full.progressWhat'));
             } else if (nextVal < 70) {
-    setProgressSubtitle('AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+              setProgressSubtitle(t('preview.full.progressHow'));
             } else if (nextVal < 90) {
-    setProgressSubtitle('AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+              setProgressSubtitle(t('preview.full.progressScope'));
             } else if (nextVal < 98) {
-    setProgressSubtitle('影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+              setProgressSubtitle(t('preview.full.progressAssembly'));
             }
           }
 
@@ -311,18 +358,18 @@ export function Preview() {
 
           const currentLabel = currentDraft?.currentStepLabel;
           if (currentLabel) {
-            setProgressSubtitle(currentLabel);
+            setProgressSubtitle(t(currentLabel, { defaultValue: currentLabel }));
           } else {
             if (currentUnreadyGates.length === 0) {
-              setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+              setProgressSubtitle(t('preview.full.progressGenerating'));
             } else if (prev < 35) {
-    setProgressSubtitle('AI 正在推演补充 What 阶段设计 assets（角色树、功能特征树、典型故事场景及 AC）...');
+              setProgressSubtitle(t('preview.full.progressWhat'));
             } else if (prev < 70) {
-    setProgressSubtitle('AI 正在提炼稳定资产并增量推演 How 阶段业务规约（业务流时序图、数据实体对象）...');
+              setProgressSubtitle(t('preview.full.progressHow'));
             } else if (prev < 90) {
-    setProgressSubtitle('AI 正在结合商业愿景对叶子特征进行 Kano 阶段范围价值评估与剪裁...');
+              setProgressSubtitle(t('preview.full.progressScope'));
             } else if (prev < 98) {
-    setProgressSubtitle('影子沙盒装配完成！正在进行模拟高保真 UI 页面组装与原型界面渲染...');
+              setProgressSubtitle(t('preview.full.progressAssembly'));
             }
           }
 
@@ -335,7 +382,7 @@ export function Preview() {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, hasRequestedShadowPreview]);
+  }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, hasRequestedShadowPreview, t]);
 
   // Set prototype state and values based on activeShadowDraft
   useEffect(() => {
@@ -349,8 +396,16 @@ export function Preview() {
 
     if (activeShadowDraft.source === 'real_project') {
       setPrototype(activeShadowDraft.prototypePreview);
-      setPrototypeState('ready');
-      setPrototypeError(null);
+      if (activeShadowDraft.status === 'generating') {
+        setPrototypeState('loading');
+        setPrototypeError(null);
+      } else if (activeShadowDraft.status === 'failed') {
+        setPrototypeState('error');
+        setPrototypeError(activeShadowDraft.prototypePreview?.errorMessage || t('preview.full.prototypeFailure'));
+      } else {
+        setPrototypeState('ready');
+        setPrototypeError(null);
+      }
     } else {
       const status = activeShadowDraft.status;
       if (status === 'generating') {
@@ -364,7 +419,7 @@ export function Preview() {
       } else if (status === 'failed') {
         setPrototype(null);
         setPrototypeState('error');
-        setPrototypeError('影子方案推演失败，可能由于部分关键关系断裂。你可以刷新工作区或点击重新推演。');
+        setPrototypeError(t('preview.full.shadowFailure'));
       } else {
         setPrototype(null);
         setPrototypeState('idle');
@@ -385,10 +440,15 @@ export function Preview() {
       workspaceApi.getLatestPrototypePreview(ir.projectId)
         .then((res) => {
           if (cancelled) return;
-          if (res && !('detail' in res)) {
+          if (res && !('detail' in res) && res.status === 'ready') {
             setPrototype(res);
             setPrototypeState('ready');
             setPrototypeError(null);
+            setIsPostCommitCompiling(false);
+          } else if (res && !('detail' in res) && res.status === 'failed') {
+            setPrototype(res);
+            setPrototypeState('error');
+            setPrototypeError(res.errorMessage || t('preview.full.prototypeFailure'));
             setIsPostCommitCompiling(false);
           } else {
             pollCount++;
@@ -589,7 +649,7 @@ export function Preview() {
           const spl = await workspaceApi.exportSplSyntax(spaceToUse.projectId);
           downloadFile(`${baseName}-spl-syntax.spl`, spl, 'text/plain;charset=utf-8');
         } else if (format === 'spl_semantic') {
-          showToast('正在生成 SPL 语义规格，可能需要几十秒，请勿关闭页面。');
+          showToast(t('preview.full.splSemanticGenerating'));
           const spl = await workspaceApi.exportSplSemantic(spaceToUse.projectId);
           downloadFile(`${baseName}-spl-semantic.spl`, spl, 'text/plain;charset=utf-8');
         }
@@ -599,19 +659,19 @@ export function Preview() {
         setExportState('idle');
         const errMsg = err?.message || '';
         if (errMsg.includes('spl_export_skill_unavailable')) {
-          showToast('当前 SPL 导出能力不可用，可先导出 Markdown 需求规格说明书。');
+          showToast(t('preview.full.splUnavailable'));
         } else if (errMsg.includes('spl_export_semantic_disabled')) {
-          showToast('SPL 语义导出功能已被禁用，请先导出 SPL 语法规格。');
+          showToast(t('preview.full.splSemanticDisabled'));
         } else if (errMsg.includes('spl_export_timeout')) {
-          showToast('SPL 语义导出耗时过长，请稍后重试，或先导出 SPL 语法规格。');
+          showToast(t('preview.full.splSemanticTimeout'));
         } else if (errMsg.includes('spl_export_invalid_skill_output')) {
           if (format === 'spl_semantic') {
-            showToast('SPL 语义导出失败，请稍后重试或先导出 SPL 语法规格。');
+            showToast(t('preview.full.splSemanticFailed'));
           } else {
-            showToast('SPL 语法导出失败，请稍后重试。');
+            showToast(t('preview.full.splSyntaxFailed'));
           }
         } else {
-          showToast(`导出失败：${errMsg || '未知错误'}`);
+          showToast(t('preview.full.exportFailed', { error: errMsg || t('common.unknownError') }));
         }
       }
     });
@@ -623,7 +683,7 @@ export function Preview() {
     try {
       downloadFile(
         `${spaceToUse.projectName || spaceToUse.projectId || 'requirement-space'}-audit.json`,
-        JSON.stringify((auditLogs || []).map(withAuditActionTypeLabel), null, 2),
+        JSON.stringify((auditLogs || []).map(log => withAuditActionTypeLabel(log, i18n.language)), null, 2),
         'application/json;charset=utf-8',
       );
       setExportState('success');
@@ -638,17 +698,24 @@ export function Preview() {
       if (!spaceToUse?.projectId) return;
       setHasRequestedShadowPreview(true);
       setSmoothProgress(90);
-      setProgressSubtitle('AI 正在生成高保真预览原型，请稍候。');
+      setProgressSubtitle(t('preview.full.progressGenerating'));
       setIsModalOpen(true);
       setPrototypeState('loading');
       setPrototypeError(null);
       try {
         const result = await workspaceApi.generatePrototypePreview(spaceToUse.projectId, true);
         setPrototype(result);
-        setPrototypeState('ready');
+        if (result.status === 'failed') {
+          setPrototypeState('error');
+          setPrototypeError(result.errorMessage || t('preview.full.prototypeFailure'));
+        } else if (result.status === 'generating') {
+          setPrototypeState('loading');
+        } else {
+          setPrototypeState('ready');
+        }
       } catch (error) {
         setPrototypeState('error');
-        setPrototypeError(error instanceof Error ? error.message : '界面原型推演失败');
+      setPrototypeError(error instanceof Error ? error.message : t('preview.full.prototypeFailure'));
       }
     });
   };
@@ -667,37 +734,37 @@ export function Preview() {
       setHasRequestedShadowPreview(true);
       await regenerateShadowDraft(activeShadowDraft.draftId, feedbackText);
       setFeedbackText('');
-      showToast('影子草稿已发起重新推演，请耐心等待。');
+      showToast(t('preview.full.shadowRegenerating'));
     } catch (err) {
-      showToast('重新推演失败：' + (err instanceof Error ? err.message : String(err)));
+      showToast(t('preview.full.regenerateFailed', { error: err instanceof Error ? err.message : String(err) }));
     }
   };
 
   const handleDiscard = async () => {
     if (!activeShadowDraft?.draftId) return;
-    if (!window.confirm('您确定要舍弃当前的影子草稿吗？此操作不会对您现有的项目数据造成任何修改。')) return;
+    if (!window.confirm(t('preview.full.discardConfirm'))) return;
     try {
       await discardShadowDraft(activeShadowDraft.draftId);
-      showToast('影子草稿已舍弃。');
+      showToast(t('preview.full.shadowDiscarded'));
       navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/overview'));
     } catch (err) {
-      showToast('舍弃影子草稿失败：' + (err instanceof Error ? err.message : String(err)));
+      showToast(t('preview.full.discardFailed', { error: err instanceof Error ? err.message : String(err) }));
     }
   };
 
   const handleCommit = async () => {
     if (!activeShadowDraft?.draftId) return;
-    if (!window.confirm('采纳后，影子沙盒中的所有 AI 补充对象（包括角色、叶子功能、场景、验收标准、时序步骤、Kano交付范围等）将一次性事务性写入正式项目中，以完全闭环所有设计。确定采纳吗？')) return;
+    if (!window.confirm(t('preview.full.commitConfirm'))) return;
     try {
       setIsPostCommitCompiling(true); // Trigger compiling overlay in prototype pane
       await commitShadowDraft(activeShadowDraft.draftId);
-    showToast('影子沙盒已成功合并！所有规约已闭环并生成正式 prototype。');
+      showToast(t('preview.full.shadowMerged'));
     } catch (err) {
       setIsPostCommitCompiling(false);
       if (err instanceof Error && err.message.includes('shadow_draft_conflict')) {
-    showToast('合并冲突：在影子草稿推演期间，该项目的真实规约已被其他修改更改，请刷新后重新推演。');
+        showToast(t('preview.full.shadowConflict'));
       } else {
-        showToast('采纳影子草稿失败：' + (err instanceof Error ? err.message : String(err)));
+        showToast(t('preview.full.commitFailed', { error: err instanceof Error ? err.message : String(err) }));
       }
     }
   };
@@ -720,7 +787,7 @@ export function Preview() {
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[85vh] w-full">
         <div className="flex flex-col items-center justify-center space-y-4">
           <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-650 animate-spin" />
-          <p className="text-xs font-bold text-slate-500">正在安全加载影子推演沙盒...</p>
+          <p className="text-xs font-bold text-slate-500">{t('preview.full.loadingShadow')}</p>
         </div>
       </div>
     );
@@ -734,9 +801,9 @@ export function Preview() {
             <div className="mx-auto w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm mb-3">
               <Eye className="w-7 h-7 animate-pulse" />
             </div>
-            <h3 className="text-xl font-black text-slate-900 tracking-tight">业务原型与资产大屏未就绪</h3>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">{t('preview.full.notReadyTitle')}</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-              请根据高一致性建模范式，先完善以下三个阶段的规约建模，才能推演并直接预览可运行原型。
+              {t('preview.full.notReadyDescription')}
             </p>
           </div>
 
@@ -744,19 +811,19 @@ export function Preview() {
             <ReadinessCard
               title="What"
               ready={isWhatComplete}
-              description="需要至少定义一个参与者角色与系统功能特征树。"
+              description={t('preview.full.whatRequirement')}
               onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/what'))}
             />
             <ReadinessCard
               title="How"
               ready={isHowComplete}
-              description="需要至少定义一个业务流程步骤及相关的数据实体对象。"
+              description={t('preview.full.howRequirement')}
               onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/flow'))}
             />
             <ReadinessCard
               title="Scope"
               ready={isScopeComplete}
-              description="需要对至少一个三级叶子节点做出本期、暂缓或排除决策。"
+              description={t('preview.full.scopeRequirement')}
               onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/scope'))}
             />
           </div>
@@ -773,13 +840,13 @@ export function Preview() {
                   .catch((err) => {
                     console.error('Failed to prepare shadow preview:', err);
                     setIsDraftInitializing(false);
-                    showToast('智能推演启动失败，请检查网络或后端服务。');
+                    showToast(t('preview.full.startFailure'));
                   });
               }}
               className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 active:bg-slate-950"
             >
               <Sparkles className="h-4 w-4 shrink-0 text-white/85" />
-              <span>智能推演并预览影子原型</span>
+              <span>{t('preview.full.generateShadow')}</span>
             </button>
           </div>
         </div>
@@ -805,10 +872,10 @@ export function Preview() {
             <div className="space-y-1">
               <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 <LayoutDashboard className="w-5 h-5 text-indigo-600 shrink-0" />
-                系统交付原型与模型资产导出
+            {t('preview.full.deliveryTitle')}
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed max-w-2xl font-medium">
-                一键在线审查在需求阶段推演生成的交互式角色原型，或导出标准需求规格书与全套需求工程资产。
+            {t('preview.full.deliveryDescription')}
               </p>
             </div>
             <div className="relative flex items-center">
@@ -819,7 +886,7 @@ export function Preview() {
                 className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
               >
                 <FileDown className="h-3.5 w-3.5 text-indigo-500" />
-                导出资产
+            {t('preview.exportSection')}
                 <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {isExportMenuOpen && (
@@ -834,7 +901,7 @@ export function Preview() {
                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
                   >
                     <FileDown className="h-3.5 w-3.5 text-indigo-500" />
-                    导出 Markdown 需求规格书
+            {t('preview.exportMarkdown')}
                   </button>
                   <button
                     type="button"
@@ -846,7 +913,7 @@ export function Preview() {
                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
                   >
                     <FileDown className="h-3.5 w-3.5 text-indigo-500" />
-                    导出标准 JSON 资产
+            {t('preview.exportJson')}
                   </button>
                   <button
                     type="button"
@@ -859,8 +926,8 @@ export function Preview() {
                   >
                     <FileDown className="h-3.5 w-3.5 text-indigo-500" />
                     <div className="flex flex-col">
-                      <span>导出 SPL 语法规格</span>
-                      <span className="text-[10px] font-normal text-slate-400">稳定保留结构，输出纯语法规格</span>
+              <span>{t('preview.full.exportSplSyntax')}</span>
+              <span className="text-[10px] font-normal text-slate-400">{t('preview.full.exportSplSyntaxTip')}</span>
                     </div>
                   </button>
                   <button
@@ -874,8 +941,8 @@ export function Preview() {
                   >
                     <FileDown className="h-3.5 w-3.5 text-indigo-500" />
                     <div className="flex flex-col">
-                      <span>导出 SPL 语义规格</span>
-                      <span className="text-[10px] font-normal text-slate-400">调用 LLM 编译，输出深度语义规约</span>
+              <span>{t('preview.full.exportSplSemantic')}</span>
+              <span className="text-[10px] font-normal text-slate-400">{t('preview.full.exportSplSemanticTip')}</span>
                     </div>
                   </button>
                   <button
@@ -888,7 +955,7 @@ export function Preview() {
                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
                   >
                     <CheckSquare className="h-3.5 w-3.5 text-sky-500" />
-                    导出操作审计日志
+            {t('preview.full.exportAuditLogs')}
                   </button>
                 </div>
               )}
@@ -902,31 +969,31 @@ export function Preview() {
                 <div className="space-y-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-indigo-700 shadow-sm">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    AI 影子收敛预览
+            {t('preview.full.shadowTitle')}
                   </div>
                   <div className="space-y-1.5">
                     <h3 className="text-sm font-black tracking-tight text-slate-900">
-                      规约尚未完全收敛，当前为您生成了可安全预览的影子方案
+            {t('preview.full.shadowSubtitle')}
                     </h3>
                     <p className="text-xs leading-relaxed text-slate-500">
-                      这是一份 AI 补充后的沙盒草稿，用于提前预览补全后的原型与结构，不会直接覆盖正式项目。
+            {t('preview.full.shadowDescription')}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm">
                       <User className="w-3 h-3 text-indigo-500 shrink-0" />
-                      +{activeShadowDraft.shadowSummary?.actors || 0} 角色
+                      {t('preview.aiShadowActorsCount', { count: activeShadowDraft.shadowSummary?.actors || 0 })}
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm">
                       <Folder className="w-3 h-3 text-indigo-500 shrink-0" />
-                      +{activeShadowDraft.shadowSummary?.features || 0} 功能
+                      {t('preview.aiShadowFeaturesCount', { count: activeShadowDraft.shadowSummary?.features || 0 })}
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm">
                       <Workflow className="w-3 h-3 text-indigo-500 shrink-0" />
-                      +{activeShadowDraft.shadowSummary?.flows || 0} 业务流
+                      {t('preview.aiShadowFlowsCount', { count: activeShadowDraft.shadowSummary?.flows || 0 })}
                     </span>
                     <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700 shadow-sm">
-                      Kano 范围已评估
+            {t('preview.full.kanoEvaluated')}
                     </span>
                   </div>
                 </div>
@@ -935,7 +1002,7 @@ export function Preview() {
                   <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <input
                       type="text"
-                      placeholder="输入调整意见，例如：增加管理员审核..."
+            placeholder={t('preview.full.feedbackPlaceholder')}
                       value={feedbackText}
                       onChange={(e) => setFeedbackText(e.target.value)}
                       className="flex-1 border-0 bg-transparent px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none"
@@ -945,7 +1012,7 @@ export function Preview() {
                       onClick={handleRegenerate}
                       className="border-l border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
                     >
-                      重新推演
+            {t('preview.full.regenerate')}
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2.5">
@@ -954,14 +1021,14 @@ export function Preview() {
                       onClick={handleDiscard}
                       className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
                     >
-                      舍弃影子草稿
+            {t('preview.full.discard')}
                     </button>
                     <button
                       type="button"
                       onClick={handleCommit}
                       className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
                     >
-                      采纳并合入正式项目
+            {t('preview.full.commit')}
                     </button>
                   </div>
                 </div>
@@ -975,7 +1042,7 @@ export function Preview() {
               <div>
                 <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
                   <MonitorPlay className="w-5 h-5 text-teal-600" />
-                  快速原型
+            {t('preview.full.quickPrototype')}
                 </h3>
               </div>
               
@@ -987,7 +1054,7 @@ export function Preview() {
                   className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors bg-white flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  独立窗口打开原型
+            {t('preview.full.openPrototype')}
                 </button>
                 <button
                   type="button"
@@ -996,7 +1063,7 @@ export function Preview() {
                   className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-md"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${prototypeState === 'loading' ? 'animate-spin' : ''}`} />
-                  {prototype ? '重新推演界面' : '智能生成原型'}
+            {prototype ? t('preview.full.regeneratePrototype') : t('preview.full.generatePrototype')}
                 </button>
               </div>
             </div>
@@ -1045,17 +1112,17 @@ export function Preview() {
                         <h4 className="text-xs font-black text-slate-800 tracking-wide select-none">
                           <span className="flex items-center gap-1.5 justify-center">
                             <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" />
-                            {isPostCommitCompiling ? 'AI 正在组装正式高保真原型' : 'AI 正在生成预览原型'}
+              {isPostCommitCompiling ? t('preview.full.compilingCommitted') : t('preview.full.generatingPrototype')}
                           </span>
                         </h4>
                         <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">
                           {isPostCommitCompiling
-                            ? '正在将已采纳的设计资产转换为正式高保真网页原型，完成后会自动加载。'
-                            : '生成完成后，交互式原型会自动显示在此处。'}
+                ? t('preview.full.compilingCommittedDescription')
+                : t('preview.full.generatingPrototypeDescription')}
                         </p>
                       </div>
                     ) : prototypeState === 'error' ? (
-                      <PrototypePlaceholder label={prototypeError || '原型推演拼装失败，请保证特征树与流程完整性。'} tone="error" />
+              <PrototypePlaceholder label={prototypeError || t('preview.full.assemblyFailure')} tone="error" />
                     ) : prototype ? (
                        <iframe
                         key={prototype.shadowDraftId || prototype.prototypeId}
@@ -1064,7 +1131,7 @@ export function Preview() {
                         className="w-full h-full border-0 bg-white"
                       />
                     ) : (
-                      <PrototypePlaceholder label="当前项目还没有原型。请点击右上角【智能生成原型】来生成。" />
+              <PrototypePlaceholder label={t('preview.full.noPrototype')} />
                     )}
                   </div>
                 </div>
@@ -1074,10 +1141,10 @@ export function Preview() {
               <div className="lg:col-span-5 p-6 overflow-y-auto max-h-[788px] space-y-6 flex flex-col">
                 <div className="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                    <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> 角色界面与交互规格说明</span>
+              <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> {t('preview.full.roleSpecs')}</span>
                   </h4>
                   <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded">
-                    共 {pages.length} 个页面定义
+              {t('preview.full.pageCount', { count: pages.length })}
                   </span>
                 </div>
 
@@ -1105,9 +1172,9 @@ export function Preview() {
                       <div className="mx-auto w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
                         <Eye className="w-5 h-5" />
                       </div>
-                      <div className="text-xs font-extrabold text-slate-700">该角色暂无关联页面预览</div>
+                  <div className="text-xs font-extrabold text-slate-700">{t('preview.full.noRolePreview')}</div>
                       <div className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                        请先在 What 阶段为角色勾选关联具体的功能点，或在 How 阶段配置该角色协作的步骤节点。
+                    {t('preview.full.noRolePreviewDescription')}
                       </div>
                     </div>
                   ) : (
@@ -1123,9 +1190,9 @@ export function Preview() {
                         
                         <div className="space-y-4">
                           <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">本期验收场景 (AC)</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.acceptanceScenarios')}</span>
                             {page.scenarios.length === 0 ? (
-                              <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">暂无关联的交付场景。</span>
+                    <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">{t('preview.full.noAcceptanceScenarios')}</span>
                             ) : (
                               <div className="space-y-2.5">
                                 {page.scenarios.map((scenario: any) => (
@@ -1145,16 +1212,16 @@ export function Preview() {
                           </div>
 
                           <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">执行系统步骤</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.executionSteps')}</span>
                             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
                               {page.relatedSteps.length === 0 ? (
-                                <span className="text-xs text-slate-400 italic">暂无步骤关联。</span>
+                    <span className="text-xs text-slate-400 italic">{t('preview.full.noExecutionSteps')}</span>
                               ) : (
                                 page.relatedSteps.map((stepName: string, idx: number) => (
                                   <div key={`${stepName}-${idx}`} className="bg-white rounded-lg p-2.5 border border-slate-200/50 shadow-sm flex items-center justify-between">
                                     <span className="text-[10px] font-bold text-slate-700 truncate">{stepName}</span>
                                     <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold shrink-0">
-                                      角色发起
+                  {t('preview.full.actorInitiated')}
                                     </span>
                                   </div>
                                 ))
@@ -1174,10 +1241,10 @@ export function Preview() {
           {unresolvedIssues.length > 0 && (
             <section className="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm">
               <h3 className="font-bold text-amber-900 mb-1.5 flex items-center gap-1.5 text-xs">
-          <span>发现未闭环的系统设计 Issue ({unresolvedIssues.length} 项)</span>
+                <span>{t('preview.full.unresolvedIssues', { count: unresolvedIssues.length })}</span>
               </h3>
               <p className="text-xs text-amber-800 leading-relaxed font-medium">
-                工作区目前包含未决的业务冲突或流程空白，建议在最终导出产品规格说明前，返回“做什么”和“如何工作”页面修复这些问题。
+                {t('preview.full.unresolvedIssuesDescription')}
               </p>
             </section>
           )}
@@ -1186,7 +1253,7 @@ export function Preview() {
           {flows.length > 0 && (
             <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative w-full">
               <div className="mb-6 border-b border-slate-100 pb-4">
-                <h3 className="text-base font-extrabold text-slate-900">业务流时序图</h3>
+                <h3 className="text-base font-extrabold text-slate-900">{t('preview.stageGuidanceTitle')}</h3>
               </div>
               
               {/* Flow Switcher Tabs */}
@@ -1212,14 +1279,14 @@ export function Preview() {
                 <div className="p-4 bg-white border border-slate-200 rounded-t-2xl flex items-center justify-between shrink-0 mb-6 shadow-sm">
                   <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                    正在审阅业务流时序：{activeFlow?.flowName}
+                  {t('preview.full.reviewingFlow', { name: activeFlow?.flowName })}
                   </h4>
                 </div>
                 
                 <div className="flex-1 w-full max-w-3xl mx-auto">
                   {activeFlowSteps.length === 0 ? (
                     <div className="text-center py-20 text-xs text-slate-400 italic">
-                      当前业务流程暂无任何步骤定义。
+                  {t('preview.stageGuidanceEmpty')}
                     </div>
                   ) : (
                     <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 py-2">
@@ -1227,7 +1294,7 @@ export function Preview() {
                         const stepDetail = buildStepDetail(spaceToUse as any, step.stepId);
                         const performerId = (step.actorIds || [])[0];
                         const performer = (spaceToUse?.actors || []).find((a: any) => a.actorId === performerId);
-                        const actorName = performer ? performer.actorName : '系统自动';
+                        const actorName = performer ? performer.actorName : t('preview.flowRoleSystem');
 
                         const nextSteps = (step.nextStepIds || [])
                           .map((nid: string) => activeFlowSteps.find((s: any) => s.stepId === nid)?.stepName)
@@ -1258,7 +1325,7 @@ export function Preview() {
 
                             <FlowStepCard
                               name={step.stepName}
-                              type={step.stepType === 'actorAction' ? '用户动作' : step.stepType === 'systemAction' ? '系统动作' : '条件分支'}
+                      type={step.stepType === 'actorAction' ? t('flowStepType.actorAction') : step.stepType === 'systemAction' ? t('flowStepType.systemAction') : t('flowStepType.judgment')}
                               actor={actorName}
                               status={step.status || 'confirmed'}
                               inputs={stepDetail.inputs}
@@ -1321,13 +1388,13 @@ export function Preview() {
             {/* Title */}
             <h3 className="text-sm font-black text-slate-800 tracking-wide text-center leading-none mb-2">
               {activeShadowDraft?.status === 'failed' ? (
-                <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> 智能推演异常断裂</span>
+                <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> {t('preview.full.overlayFailed')}</span>
               ) : smoothProgress === 100 ? (
-          <span className="text-emerald-600 font-extrabold">影子原型推演成功</span>
+          <span className="text-emerald-600 font-extrabold">{t('preview.full.overlaySucceeded')}</span>
               ) : isShadowOverlay ? (
-                <span className="text-slate-800">AI 正在补齐规约并生成影子预览</span>
+                <span className="text-slate-800">{t('preview.full.overlayShadowGenerating')}</span>
               ) : (
-                <span className="text-slate-800">AI 正在生成预览原型</span>
+                <span className="text-slate-800">{t('preview.full.generatingPrototype')}</span>
               )}
             </h3>
 
@@ -1356,10 +1423,10 @@ export function Preview() {
             {isShadowOverlay ? (
             <div className="w-full space-y-3 bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6">
               {[
-                { label: '步骤一：What 阶段智能推演（角色与功能补齐）', checkKey: 'what', threshold: 35 },
-                { label: '步骤二：How 阶段智能推演（流程图与数据实体）', checkKey: 'how', threshold: 70 },
-                { label: '步骤三：Scope 阶段智能评估（Kano 商业划分）', checkKey: 'scope', threshold: 90 },
-                { label: '步骤四：影子沙盒装配与高保真界面原型生成', checkKey: 'all', threshold: 100 }
+                { label: t('preview.full.stepWhat'), checkKey: 'what', threshold: 35 },
+                { label: t('preview.full.stepHow'), checkKey: 'how', threshold: 70 },
+                { label: t('preview.full.stepScope'), checkKey: 'scope', threshold: 90 },
+                { label: t('preview.full.stepAssembly'), checkKey: 'all', threshold: 100 }
               ].map((step, idx) => {
                 const isFailed = activeShadowDraft?.status === 'failed';
                 const isStepFinished = 
@@ -1404,8 +1471,8 @@ export function Preview() {
             </div>
             ) : (
             <div className="w-full bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6 text-center">
-              <div className="text-xs font-bold text-slate-700">正在生成交互式预览原型</div>
-              <div className="mt-1 text-[11px] text-slate-500">当前规约已满足预览生成条件，系统不会额外提示阶段缺口。</div>
+              <div className="text-xs font-bold text-slate-700">{t('preview.full.interactiveGenerating')}</div>
+              <div className="mt-1 text-[11px] text-slate-500">{t('preview.full.interactiveGeneratingDescription')}</div>
             </div>
             )}
 
@@ -1414,20 +1481,20 @@ export function Preview() {
               <div className="w-full flex flex-col mb-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md">
                 <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" /> 后端感知推演异常日志 Traceback
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" /> {t('preview.full.tracebackTitle')}
                   </span>
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(activeShadowDraft.errorMessage || '');
-                      showToast('日志已复制到剪切板。');
+                      showToast(t('preview.copyLogsSuccess'));
                     }}
                     className="text-[9px] bg-slate-800 border border-slate-700 text-slate-300 font-bold px-2 py-0.5 rounded hover:bg-slate-700 hover:text-white transition-colors"
                   >
-                    复制日志
+                    {t('preview.copyLogsBtn')}
                   </button>
                 </div>
                 <div className="p-4 max-h-[160px] overflow-y-auto font-mono text-[10px] text-rose-400/90 leading-relaxed scrollbar-thin select-text text-left">
-                  {activeShadowDraft.errorMessage || '未知异常，请检查后端感知层PerceptionJob日志。'}
+                  {activeShadowDraft.errorMessage || t('preview.full.unknownPerceptionError')}
                 </div>
               </div>
             )}
@@ -1448,7 +1515,7 @@ export function Preview() {
                 }}
                 className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black transition-all active:scale-[0.98] shadow-md flex items-center justify-center gap-1.5"
               >
-                关闭并重置影子方案
+                {t('preview.full.closeAndReset')}
               </button>
             )}
 
@@ -1486,18 +1553,19 @@ function ReadinessCard({
   description: string;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={`rounded-2xl border p-5 flex flex-col gap-3.5 transition-colors shadow-sm ${ready ? 'border-emerald-200 bg-emerald-50/20' : 'border-amber-200 bg-amber-50/20'}`}>
       <div className="flex justify-between items-center leading-none">
-        <span className="text-xs font-bold text-slate-800">{title === 'What' ? '要做什么 (What)' : title === 'How' ? '如何工作 (How)' : '划分范围 (Scope)'}</span>
+        <span className="text-xs font-bold text-slate-800">{title === 'What' ? t('preview.stageWhatTitle') : title === 'How' ? t('preview.stageHowTitle') : t('preview.stageScopeTitle')}</span>
         <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border uppercase tracking-wider ${ready ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
-          {ready ? '已就绪' : '待完善'}
+          {ready ? t('preview.stageReadyText') : t('preview.full.needsCompletion')}
         </span>
       </div>
       <p className="text-xs text-slate-500 leading-relaxed font-medium">{description}</p>
       {!ready && (
         <button onClick={onClick} className="mt-auto text-[10px] text-indigo-600 hover:text-indigo-800 font-bold text-left flex items-center gap-0.5 transition-colors">
-          立即前往完善 &rarr;
+          {t('preview.full.completeNow')} &rarr;
         </button>
       )}
     </div>

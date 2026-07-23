@@ -4,9 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from urllib.parse import quote
 
 from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import llm_context_manager
 from backend.api.dependencies.ownership import require_owned_project
 from backend.api.dependencies.project_access import require_project_member, require_project_role
 from backend.database.model import UserModel, ProjectModel
+from backend.core.locale import resolve_effective_locale
 from backend.api.modules.project_lifecycle.schemas.project import (
     ProjectListItemResponse,
     ProjectDetailResponse,
@@ -215,13 +217,15 @@ async def export_project_json(
 async def export_project_markdown(
     project_id: str,
     owned_project: ProjectModel = Depends(require_owned_project),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        return await project_service.export_project_markdown(
-            project_id=owned_project.id,
-            session=session,
-        )
+        async with llm_context_manager(user, session, project_id=owned_project.id):
+            return await project_service.export_project_markdown(
+                project_id=owned_project.id,
+                session=session,
+            )
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(
@@ -237,6 +241,7 @@ async def export_project_markdown(
 async def export_project_spl_syntax(
     project_id: str,
     owned_project: ProjectModel = Depends(require_owned_project),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     import re
@@ -244,6 +249,10 @@ async def export_project_spl_syntax(
         spl_text = await project_service.export_project_spl_syntax(
             project_id=owned_project.id,
             session=session,
+            content_locale=resolve_effective_locale(
+                owned_project.content_locale,
+                user.preferred_locale,
+            )[0],
         )
         safe_name = re.sub(r'[\\/*?:"<>|]', "", owned_project.name or "").strip()
         if not safe_name:
@@ -264,8 +273,6 @@ async def export_project_spl_syntax(
         if err_msg == "spl_export_invalid_skill_output":
             raise HTTPException(status_code=500, detail="spl_export_invalid_skill_output")
         raise
-
-from backend.api.dependencies.llm import llm_context_manager
 
 @router.get(
     "/{project_id}/export/spl/semantic",

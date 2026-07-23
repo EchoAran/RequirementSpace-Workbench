@@ -1,7 +1,9 @@
+import { useTranslation } from 'react-i18next';
 import React from 'react';
 import { Choice } from '@/core/schema';
 import { AlertTriangle, CheckCircle2, Undo2, Zap } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { getChoicePresentation } from '@/core/choicePresentation';
 
 export interface ChoiceCardProps {
   choice: Choice;
@@ -12,12 +14,14 @@ export interface ChoiceCardProps {
 }
 
 export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPreview, onRewrite, onReject }) => {
+  const { t, i18n } = useTranslation();
   const ir = useWorkspaceStore((state) => state.ir);
 
   const nodeCount = choice.patch?.addNodes?.length || 0;
   const linkCount = choice.patch?.addLinks?.length || 0;
   const impact = choice.impactPreview;
   const isPreviewEnabled = typeof onPreview === 'function';
+  const presentation = getChoicePresentation(choice, t, i18n);
 
   const handlePreview = () => {
     if (onPreview) {
@@ -46,27 +50,27 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
       }`}
     >
       <div className="absolute top-0 right-0 px-2 py-1 bg-blue-500 text-white text-[10px] font-bold tracking-wider">
-        Choice
+        {t('choiceCard.badge')}
       </div>
 
       <div>
         <div className="mb-2 pr-12 bg-blue-50">
-          <h4 className="font-bold text-blue-900 text-sm leading-tight">{choice.title}</h4>
+          <h4 className="font-bold text-blue-900 text-sm leading-tight">{presentation.title}</h4>
         </div>
 
         <div className="space-y-3">
           <div className="rounded-lg bg-white/60 p-2.5 text-xs text-blue-800 border border-blue-100 shadow-sm leading-relaxed">
-            <span className="font-bold text-blue-900">依据：</span>
-            {choice.rationale}
+            <span className="font-bold text-blue-900">{t('choiceCard.rationaleLabel')}</span>
+            {presentation.rationale}
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="flex items-start gap-1 p-1.5 rounded bg-white">
               <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <div className="flex flex-col">
-                <span className="text-slate-400 font-bold">Patch 摘要</span>
+                <span className="text-slate-400 font-bold">{t('choiceCard.patchSummary')}</span>
                 <span className="text-slate-700">
-                  新增 {nodeCount} 个节点, {linkCount} 条关系
+                  {t('choiceCard.patchDesc', { nodeCount, linkCount })}
                 </span>
               </div>
             </div>
@@ -75,8 +79,8 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
               <div className="flex items-start gap-1 p-1.5 rounded bg-white">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-slate-400 font-bold">解决 Issue</span>
-                  <span className="text-emerald-700 line-clamp-1">{impact.resolvedIssues.length} 项</span>
+                  <span className="text-slate-400 font-bold">{t('choiceCard.resolvedIssues')}</span>
+                  <span className="text-emerald-700 line-clamp-1">{t('choiceCard.resolvedIssuesDesc', { count: impact.resolvedIssues.length })}</span>
                 </div>
               </div>
             )}
@@ -85,8 +89,8 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
               <div className="flex items-start gap-1 p-1.5 rounded bg-rose-50 border border-rose-100">
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-rose-400 font-bold">新增 Issue</span>
-                  <span className="text-rose-700 font-semibold line-clamp-1">{impact.newIssues.length} 项</span>
+                  <span className="text-rose-400 font-bold">{t('choiceCard.newIssues')}</span>
+                  <span className="text-rose-700 font-semibold line-clamp-1">{t('choiceCard.newIssuesDesc', { count: impact.newIssues.length })}</span>
                 </div>
               </div>
             )}
@@ -94,21 +98,21 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
             <div className="flex items-start gap-1 p-1.5 rounded bg-white">
               <Undo2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <div className="flex flex-col">
-                <span className="text-slate-400 font-bold">可逆性</span>
-                <span className="text-indigo-700 font-semibold">支持随时撤销</span>
+                <span className="text-slate-400 font-bold">{t('choiceCard.reversibility')}</span>
+                <span className="text-indigo-700 font-semibold">{t('choiceCard.reversibilityDesc')}</span>
               </div>
             </div>
           </div>
 
           {impact && (
             <div className="flex flex-wrap gap-1 mt-2">
-              <span className="text-[10px] text-slate-400 mr-1 mt-0.5">影响覆盖:</span>
+              <span className="text-[10px] text-slate-400 mr-1 mt-0.5">{t('choiceCard.impactScope')}</span>
               {impact.affectedObjects.map((objectId) => (
                 <span
                   key={objectId}
                   className="rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-700 font-bold line-clamp-1 max-w-[80px]"
                 >
-                  数据:{ir?.nodes[objectId]?.title || objectId}
+                  {t('choiceCard.dataType', { title: ir?.nodes[objectId]?.title || objectId })}
                 </span>
               ))}
               {impact.affectedFlows.map((flowId) => (
@@ -116,7 +120,7 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
                   key={flowId}
                   className="rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-700 font-bold line-clamp-1 max-w-[80px]"
                 >
-                  流程:{ir?.nodes[flowId]?.title || flowId}
+                  {t('choiceCard.flowType', { title: ir?.nodes[flowId]?.title || flowId })}
                 </span>
               ))}
             </div>
@@ -132,7 +136,7 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
           }}
           className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
         >
-          采纳
+          {t('choiceCard.acceptBtn')}
         </button>
         <button
           onClick={(event) => {
@@ -141,7 +145,7 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
           }}
           className="px-4 py-1.5 bg-white text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-lg border border-blue-200 transition-colors shadow-sm"
         >
-          改写
+          {t('choiceCard.rewriteBtn')}
         </button>
         <button
           onClick={(event) => {
@@ -150,7 +154,7 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
           }}
           className="px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 text-xs font-medium rounded-lg transition-colors"
         >
-          拒绝
+          {t('choiceCard.rejectBtn')}
         </button>
       </div>
     </div>

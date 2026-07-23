@@ -31,6 +31,7 @@ class PrototypePreviewResponse(CamelModel):
     pages: list[PrototypePageResponse] = []
     source: str
     status: str
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
     shadow_draft_id: str | None = None

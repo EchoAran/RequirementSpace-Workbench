@@ -25,6 +25,8 @@ vi.mock('../lib/api', () => ({
     getStageProgress: vi.fn(),
     listFindings: vi.fn(),
     stageTransition: vi.fn(),
+    getProjectConfiguration: vi.fn().mockResolvedValue(null),
+    getLatestPrototypePreview: vi.fn().mockResolvedValue(null),
   }
 }));
 
@@ -140,10 +142,10 @@ describe('Phase 3 StageProgress Unified State Tests', () => {
     fireEvent.click(flowLink);
 
     // LeftNav onClick reads stageProgress, detects that 'how' is locked, and reads What stage failedChecks.
-    expect(useWorkspaceStore.getState().error).toBe('缺少参与者');
+    expect(useWorkspaceStore.getState().error).toBe('项目尚未有参与者。');
   });
 
-  it('should render nextAction from active stage in Overview and trigger startFindingSuggestion when clicked', async () => {
+  it('should render the backend next_action finding in Overview and trigger it when clicked', async () => {
     const mockProgress = {
       projectId: 'project-123',
       stages: [
@@ -174,7 +176,26 @@ describe('Phase 3 StageProgress Unified State Tests', () => {
       ]
     };
 
-    useWorkspaceStore.setState({ stageProgress: mockProgress as any });
+    useWorkspaceStore.setState({
+      stageProgress: mockProgress as any,
+      backendFindingsLoaded: true,
+      findingsByView: {
+        issues: [],
+        gate: [],
+        health: [],
+        next_action: [{
+          findingId: 'what:ENTER_HOW:suggest',
+          type: 'next_suggestion',
+          stage: 'what',
+          code: 'ENTER_HOW',
+          severity: 'info',
+          title: '进入 How 阶段',
+          description: '推进到 How 阶段',
+          blockingScope: 'none',
+          metadata: { action: { kind: 'stage_transition', transition_action: 'enter_how' } },
+        } as any]
+      }
+    });
     vi.mocked(workspaceApi.stageTransition).mockResolvedValue({
       status: 'unlocked',
       unlocked_stage: 'what',
@@ -191,8 +212,8 @@ describe('Phase 3 StageProgress Unified State Tests', () => {
       </MemoryRouter>
     );
 
-    // Verify it renders progress suggestion action button in Overview
-    const suggestBtn = screen.getByText('申请进入下一阶段');
+    // Verify it renders the canonical finding returned by the backend.
+    const suggestBtn = screen.getByText('进入 How 阶段');
     expect(suggestBtn).toBeDefined();
 
     fireEvent.click(suggestBtn);
@@ -200,5 +221,21 @@ describe('Phase 3 StageProgress Unified State Tests', () => {
     await waitFor(() => {
       expect(workspaceApi.stageTransition).toHaveBeenCalledWith('project-123', { action: 'enter_how', force: false });
     });
+  });
+
+  it('keeps the next suggestion area empty when the backend returns no next_action', () => {
+    useWorkspaceStore.setState({
+      backendFindingsLoaded: true,
+      findingsByView: { issues: [], next_action: [], gate: [], health: [] },
+    });
+
+    render(
+      <MemoryRouter>
+        <Overview />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByText(/stageGuidanceSlots\./)).toBeNull();
+    expect(screen.queryByText(/^(暂无建议|No suggestions)$/)).toBeNull();
   });
 });

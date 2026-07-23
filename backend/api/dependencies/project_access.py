@@ -143,3 +143,25 @@ def require_project_role(allowed_roles: list[str] | str):
         return project
 
     return dependency
+
+
+async def require_project_config_write_access(
+    project_id: str,
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    request: Request = None,
+) -> ProjectModel:
+    """Ensures that the current user has permission to write/modify project configurations (Owner/Admin only)."""
+    # Reuses require_project_role("admin") since "admin" allowed roles resolve to {"owner", "admin"}.
+    return await require_project_role("admin")(project_id, user, session, request)
+
+
+async def require_project_config_read_access(
+    project_id: str,
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    request: Request = None,
+) -> ProjectModel:
+    """Ensures that the current user has permission to read project configurations (any active project member)."""
+    # Reuses require_project_member since any active member (viewer, reviewer, editor, admin, owner) can read.
+    return await require_project_member(project_id, user, session, request)

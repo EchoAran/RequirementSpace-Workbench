@@ -41,7 +41,12 @@ async def get_next_suggestion(
     user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        async with llm_context_manager(user, session):
+        async with llm_context_manager(
+            user,
+            session,
+            project_id=owned_project.id,
+            require_config=False,
+        ):
             return await next_suggestion_service.get_next_suggestion(
                 project_id=owned_project.id,
                 stage=stage,
@@ -74,13 +79,48 @@ async def rediagnose_next_suggestion(
     user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_owned_project)):
     try:
-        async with llm_context_manager(user, session):
+        async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.rediagnose_next_suggestion(
                 project_id=owned_project.id,
                 stage=request.stage,
                 session=session,
                 background_tasks=background_tasks,
                 public_project_id=owned_project.public_id,
+            )
+    except ValueError as error:
+        if str(error) == "project_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail="project_not_found",
+            )
+        if str(error) in NEXT_SUGGESTION_ERRORS:
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            )
+        raise
+
+
+@router.get(
+    "/rediagnose/status",
+    response_model=NextSuggestionResponse,
+)
+async def get_rediagnose_status(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    stage: str = Query(pattern="^(what|how|scope|preview)$"),
+    session: AsyncSession = Depends(get_session),
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_owned_project)):
+    try:
+        async with llm_context_manager(user, session, project_id=owned_project.id):
+            return await next_suggestion_service.get_next_suggestion(
+                project_id=owned_project.id,
+                stage=stage,
+                session=session,
+                background_tasks=background_tasks,
+                public_project_id=owned_project.public_id,
+                include_perception=True,
             )
     except ValueError as error:
         if str(error) == "project_not_found":

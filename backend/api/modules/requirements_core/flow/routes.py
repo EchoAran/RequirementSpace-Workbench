@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
-from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.llm import get_llm_context, llm_context_manager
 from backend.database.model import UserModel, GenerativeDraftModel, ProjectModel
 from backend.database.database import get_session
 
@@ -274,22 +274,22 @@ async def create_flow_generation_draft(
     request: FlowGenerationDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await flow_generation_service.create_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in FLOW_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await flow_generation_service.create_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in FLOW_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @generation_router.post(

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 
 interface GenerationConflictDialogProps {
@@ -15,6 +16,7 @@ export function GenerationConflictDialog({
   onClose,
   onConfirm,
 }: GenerationConflictDialogProps) {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -32,9 +34,9 @@ export function GenerationConflictDialog({
               <AlertTriangle className="h-5 w-5" />
             </span>
             <div className="space-y-1">
-              <h3 className="text-base font-black text-slate-900">已有待处理候选方案</h3>
+              <h3 className="text-base font-black text-slate-900">{t('conflictDialog.modalTitle')}</h3>
               <p className="text-xs leading-relaxed text-slate-500">
-                当前项目里已经存在未采纳的{generationLabel}候选方案。
+                {t('conflictDialog.modalDesc', { label: generationLabel })}
               </p>
             </div>
           </div>
@@ -50,10 +52,10 @@ export function GenerationConflictDialog({
 
         <div className="space-y-4 p-6">
           <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-sm leading-relaxed text-amber-800">
-            如果继续生成，系统会先丢弃旧的{generationLabel}候选方案，再创建新一轮候选方案。
+            {t('conflictDialog.warningTip', { label: generationLabel })}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-xs leading-relaxed text-slate-500">
-            建议先查看并处理现有候选方案，避免丢失尚未采纳但仍有参考价值的结果。
+            {t('conflictDialog.suggestTip')}
           </div>
         </div>
 
@@ -64,7 +66,7 @@ export function GenerationConflictDialog({
             disabled={isWorking}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
           >
-            先保留旧方案
+            {t('conflictDialog.keepBtn')}
           </button>
           <button
             type="button"
@@ -73,7 +75,7 @@ export function GenerationConflictDialog({
             className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isWorking ? 'animate-spin' : ''}`} />
-            丢弃旧方案并重新生成
+            {t('conflictDialog.discardBtn')}
           </button>
         </div>
       </div>

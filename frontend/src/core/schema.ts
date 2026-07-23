@@ -223,6 +223,7 @@ export interface PerceptionSlot {
   blocking: boolean;                  // 是否阻塞当前阶段 Gate (如：暖场建议为 false)
   kind: string;                       // 槽位类型标识 (如：'missing_scenario')
   description: string;                // 行动引导话术
+  translationParams?: Record<string, string | number>;
   targetKind?: string;
   targetId?: number;
   actions: {
@@ -269,6 +270,9 @@ export interface RequirementSpace {
   flows: FlowNode[];
   kanoStatus?: 'missing' | 'generating' | 'draft_ready' | 'generated' | 'skipped' | 'failed';
   unlockedStages?: string[];
+  statusCode?: 'not_started' | 'needs_attention' | 'has_issues' | 'scope_pending' | 'in_progress' | 'converged';
+  status?: string;
+  issueCount?: number;
 
   // Legacy properties for compatibility
   id?: string;
@@ -294,44 +298,6 @@ export interface RequirementSpace {
 // -------------------------------------------------------------
 // UI 映射字典与文案定义
 // -------------------------------------------------------------
-
-export const NodeKindToText: Record<NodeKind, string> = {
-  actor: '系统参与者',
-  feature: '功能结点',
-  scenario: '成功场景 (User Story)',
-  acceptance_criterion: '成功标准 (AC)',
-  scope: '范围分析',
-  business_object: '业务对象',
-  business_object_attribute: '对象属性',
-  flow: '业务流',
-  flow_step: '步骤',
-  perception_slot: 'AI 槽感知建议',
-  requirement_space: '需求空间主座',
-  task: '开发任务',
-  state_transition: '状态流转',
-  field: '字段',
-  state_machine: '状态机',
-  screen: '页面/屏幕',
-  goal: '目标',
-  capability: '能力',
-};
-
-export const FlowStepTypeToText: Record<FlowStepType, string> = {
-  actorAction: '用户动作',
-  systemAction: '系统动作',
-  judgment: '条件分支/判断',
-};
-
-export const PerceptionKindToText: Record<PerceptionKindType, string> = {
-  '角色结点': '检测到缺少参与者',
-  '功能模块结点': '检测到缺少功能模块',
-  '功能叶子结点': '检测到缺少功能叶子结点',
-  '场景结点': '检测到缺少典型场景 (User Story)',
-  '成功标准结点': '检测到场景缺少成功标准',
-  '流程主结点': '检测到功能缺少系统流程',
-  '流程步骤结点': '检测到流程步骤不完整',
-};
-
 // -------------------------------------------------------------
 // Compatibility Types for existing codebases
 // -------------------------------------------------------------
@@ -443,13 +409,6 @@ export type RequirementSlot = any;
 export type ProjectionKind = string;
 export type LinkType = string;
 
-export const NodeStatusToText: Record<string, string> = {
-  confirmed: '已确认',
-  needs_confirmation: '待确认',
-  ai_assumption: 'AI 假设',
-  excluded: '已排除',
-};
-
 /**
  * 节点类型 → 目标页面路由映射，用于概览页假设账本点击导航
  */
@@ -462,23 +421,6 @@ export const NodeKindToRoute: Record<string, (projectId: string) => string> = {
   business_object: (id) => `/projects/${id}/flow`,
   flow: (id) => `/projects/${id}/flow`,
 };
-
-export const ScopeStatusToText: Record<string, string> = {
-  current: '本期',
-  postponed: '暂缓',
-  exclude: '排除',
-  in_scope: '本期',
-  deferred: '暂缓',
-  external_dependency: '外部依赖',
-  out_of_scope: '范围外',
-  excluded: '排除',
-};
-
-export function getScopeStatusText(status: unknown): string {
-  const key = String(status ?? '').trim();
-  if (!key) return '';
-  return ScopeStatusToText[key] || ScopeStatusToText[key.toLowerCase()] || key;
-}
 
 export type ImpactPreview = any;
 

@@ -1,7 +1,14 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '@/store/useAuthStore';
 import { workspaceApi } from '@/lib/api';
+import { DEFAULT_UI_LOCALE } from '@/i18n';
+import {
+  getGenerationStrategyPresentation,
+  isBuiltinGenerationStrategy,
+} from '@/core/generationStrategyPresentation';
 import { 
   Database, 
   Cpu, 
@@ -30,6 +37,7 @@ import {
 
 interface StrategyItem {
   id: string;
+  is_builtin?: boolean;
   label: string;
   description: string;
   instruction: string;
@@ -39,6 +47,7 @@ interface StrategyItem {
 }
 
 export function ProjectConfiguration() {
+  const { t, i18n } = useTranslation();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -60,9 +69,15 @@ export function ProjectConfiguration() {
     updateProjectGenerationStrategies,
     deleteProjectGenerationStrategies,
     updateProjectKnowledgeConfig,
+    updateProjectConfiguration,
   } = useWorkspaceStore();
 
-  const projectName = ir?.projectName || '当前项目';
+  const { user } = useAuthStore();
+  const [projectMembers, setProjectMembers] = useState<any[]>([]);
+  const [contentLocale, setContentLocale] = useState<string>('');
+  const [isSavingLocale, setIsSavingLocale] = useState(false);
+
+  const projectName = ir?.projectName || t('common.currentProject');
 
   // ----------------------------------------------------
   // Shared States / Effects
@@ -72,6 +87,37 @@ export function ProjectConfiguration() {
       void loadProjectDocuments();
     }
   }, [projectId, activeTab, loadProjectDocuments]);
+
+  useEffect(() => {
+    if (projectId) {
+      workspaceApi.listProjectMembers(projectId).then(setProjectMembers).catch(console.error);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (projectConfiguration) {
+      setContentLocale(projectConfiguration.contentLocale || projectConfiguration.content_locale || '');
+    }
+  }, [projectConfiguration]);
+
+  const currentUserMember = projectMembers.find(m => m.userId === user?.id);
+  const isProjectAdmin = currentUserMember?.role === 'owner' || currentUserMember?.role === 'admin';
+
+  const handleSaveLocale = async () => {
+    if (!projectId) return;
+    setIsSavingLocale(true);
+    try {
+      await updateProjectConfiguration(projectId, { content_locale: contentLocale || null });
+      setConfigSuccess(t('projectConfig.contentLanguage.saveSuccess'));
+      setTimeout(() => setConfigSuccess(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setConfigError(t('projectConfig.contentLanguage.saveError'));
+      setTimeout(() => setConfigError(null), 3000);
+    } finally {
+      setIsSavingLocale(false);
+    }
+  };
 
   const handleTabChange = (tab: string) => {
     setSearchParams({ tab });
@@ -145,7 +191,7 @@ export function ProjectConfiguration() {
     } catch (err) {
       console.error('Failed to update project knowledge config:', err);
       setKnowledgeEnabled(!newValue);
-      alert('更新知识库总开关失败，请重试');
+      alert(t('projectConfig.strategies.kbSwitchError'));
     }
   };
 
@@ -159,42 +205,43 @@ export function ProjectConfiguration() {
         candidate_count: candidateCount,
         strategies
       });
-      setConfigSuccess('生成策略配置已保存成功！');
+      setConfigSuccess(t('projectConfig.strategies.saveSuccess'));
     } catch (err: any) {
       console.error('Failed to save strategy configs:', err);
-      const detail = err.response?.data?.detail || err.message || '未知错误';
+      const detail = err.response?.data?.detail || err.message || t('common.unknownError');
       const errMsgMap: Record<string, string> = {
-        'insufficient_enabled_strategies': '启用策略数不足以支持当前的候选方案生成数',
-        'too_many_enabled_strategies': '启用的自定义策略数量超过了上限 5 个',
-        'duplicate_strategy_id': '策略 ID 重复，请检查列表项目',
-        'control_characters_detected': '策略提示词包含非法的控制字符，请重新输入',
-        'strategy_prompt_injection_detected': '提示词内容触发了高风险安全策略拦截，禁止覆盖输出格式或忽略历史系统提示'
+        'insufficient_enabled_strategies': t('projectConfig.strategies.errorsMap.insufficient_enabled_strategies'),
+        'too_many_enabled_strategies': t('projectConfig.strategies.errorsMap.too_many_enabled_strategies'),
+        'duplicate_strategy_id': t('projectConfig.strategies.errorsMap.duplicate_strategy_id'),
+        'control_characters_detected': t('projectConfig.strategies.errorsMap.control_characters_detected'),
+        'strategy_prompt_injection_detected': t('projectConfig.strategies.errorsMap.strategy_prompt_injection_detected')
       };
-      setConfigError(`保存策略配置失败：${errMsgMap[detail] || detail}`);
+      setConfigError(`${t('projectConfig.strategies.saveError')}：${errMsgMap[detail] || detail}`);
     }
   };
 
   const handleResetStrategies = async () => {
     if (!projectId) return;
-    if (!confirm('确定要恢复系统默认的策略配置吗？恢复后将丢失您在此项目中的所有自定义策略修改。')) return;
+    if (!confirm(t('projectConfig.strategies.resetConfirm'))) return;
     setConfigError(null);
     setConfigSuccess(null);
     try {
       await deleteProjectGenerationStrategies(projectId);
-      setConfigSuccess('生成策略已成功重置为系统默认配置！');
+      setConfigSuccess(t('projectConfig.strategies.resetSuccess'));
     } catch (err: any) {
       console.error('Failed to reset strategy configs:', err);
-      setConfigError(`重置配置失败：${err.message || '未知错误'}`);
+      setConfigError(`${t('projectConfig.strategies.saveError')}：${err.message || t('common.unknownError')}`);
     }
   };
 
   const startEdit = (strategy: StrategyItem) => {
+    const presentation = getGenerationStrategyPresentation(strategy, t);
     setEditingId(strategy.id);
     setEditFormErrors({});
     setEditForm({
-      label: strategy.label,
-      description: strategy.description,
-      instruction: strategy.instruction,
+      label: presentation.label,
+      description: presentation.description,
+      instruction: presentation.instruction,
     });
   };
 
@@ -204,18 +251,18 @@ export function ProjectConfiguration() {
     const labelLen = editForm.label.trim().length;
     const descLen = editForm.description.trim().length;
     const instrLen = editForm.instruction.trim().length;
-    if (labelLen < 2) errors.label = '策略名称至少 2 个字符';
-    if (labelLen > 20) errors.label = '策略名称不超过 20 个字符';
-    if (descLen > 120) errors.description = '策略描述不超过 120 个字符';
-    if (instrLen < 20) errors.instruction = '生成侧重点至少 20 个字符';
-    if (instrLen > 800) errors.instruction = '生成侧重点不超过 800 个字符';
+    if (labelLen < 2) errors.label = t('projectConfig.strategies.errors.labelMin');
+    if (labelLen > 20) errors.label = t('projectConfig.strategies.errors.labelMax');
+    if (descLen > 120) errors.description = t('projectConfig.strategies.errors.descMax');
+    if (instrLen < 20) errors.instruction = t('projectConfig.strategies.errors.instrMin');
+    if (instrLen > 800) errors.instruction = t('projectConfig.strategies.errors.instrMax');
 
     if (Object.keys(errors).length > 0) {
       setEditFormErrors(errors);
       return;
     }
     setEditFormErrors({});
-    setStrategies(prev => prev.map(s => s.id === id ? { ...s, ...editForm } : s));
+    setStrategies(prev => prev.map(s => s.id === id ? { ...s, ...editForm, is_builtin: false } : s));
     setEditingId(null);
   };
 
@@ -223,9 +270,10 @@ export function ProjectConfiguration() {
     const newId = `custom_${Date.now()}`;
     const newStrategy: StrategyItem = {
       id: newId,
-      label: '自定义生成策略',
-      description: '在此修改描述。',
-      instruction: '在生成本项目的候选方案时，请重点关注以下业务逻辑要求（必须大于 20 字）。',
+      is_builtin: false,
+      label: t('projectConfig.strategies.placeholders.label'),
+      description: t('projectConfig.strategies.placeholders.desc'),
+      instruction: t('projectConfig.strategies.placeholders.instr'),
       generation_types: ['project_creation', 'actor', 'feature', 'scenario', 'flow', 'scope', 'acceptance_criteria'],
       enabled: true,
       order: strategies.length
@@ -319,7 +367,7 @@ export function ProjectConfiguration() {
   const formatDate = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString('zh-CN', {
+    return d.toLocaleDateString(i18n.language || DEFAULT_UI_LOCALE, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -396,12 +444,12 @@ export function ProjectConfiguration() {
       }
 
       if (res.success) {
-        setLlmTestResult({ success: true, message: '连接测试成功！项目的 LLM 通道一切正常。' });
+        setLlmTestResult({ success: true, message: t('projectConfig.llmConfig.connectionSuccessDetail') });
       } else {
-        setLlmTestResult({ success: false, message: res.error_detail || res.message || '连接测试失败，请检查参数设置。' });
+        setLlmTestResult({ success: false, message: res.error_detail || res.message || t('projectConfig.llmConfig.connectionFailedDetail') });
       }
     } catch (err: any) {
-      setLlmTestResult({ success: false, message: err?.message || '网络连接或服务端异常。' });
+      setLlmTestResult({ success: false, message: err?.message || t('projectConfig.llmConfig.connectionException') });
     } finally {
       setIsTestingLLM(false);
     }
@@ -423,16 +471,16 @@ export function ProjectConfiguration() {
       setProjectModelName(updated.modelName || updated.model_name || '');
       setProjectApiKey('');
       setIsEditingLLM(false);
-      setLlmActionSuccess('项目项目 LLM 配置已成功更新！');
+      setLlmActionSuccess(t('projectConfig.llmConfig.saveSuccess'));
       setTimeout(() => setLlmActionSuccess(null), 3000);
     } catch (err: any) {
-      setLlmActionError(err?.response?.data?.detail || err?.message || '保存配置失败，请检查参数格式。');
+      setLlmActionError(err?.response?.data?.detail || err?.message || t('projectConfig.llmConfig.saveError'));
     }
   };
 
   const handleDeleteLLM = async () => {
     if (!projectId) return;
-    const confirm = window.confirm('确定要清除项目的项目 LLM 配置吗？清除后将恢复使用个人配置或系统配置。');
+    const confirm = window.confirm(t('projectConfig.llmConfig.clearConfirm'));
     if (!confirm) return;
 
     setLlmActionError(null);
@@ -444,10 +492,10 @@ export function ProjectConfiguration() {
       setProjectModelName('');
       setProjectApiKey('');
       setIsEditingLLM(true);
-      setLlmActionSuccess('项目 LLM 配置已成功清除。');
+      setLlmActionSuccess(t('projectConfig.llmConfig.clearSuccess'));
       setTimeout(() => setLlmActionSuccess(null), 3000);
     } catch (err: any) {
-      setLlmActionError(err?.message || '清除配置失败。');
+      setLlmActionError(err?.message || t('projectConfig.llmConfig.clearError'));
     }
   };
 
@@ -469,14 +517,14 @@ export function ProjectConfiguration() {
             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 font-bold w-fit cursor-pointer bg-transparent border-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            返回项目概览
+            {t('nav.backToProjectOverview')}
           </button>
           <div>
             <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-              项目配置 — {projectName}
+              {t('projectConfig.title', { projectName })}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              管理当前项目内特定的 AI 生成侧重策略、参考知识库文档以及专属的大语言模型通道参数。
+              {t('projectConfig.subtitle')}
             </p>
           </div>
         </div>
@@ -492,7 +540,7 @@ export function ProjectConfiguration() {
             }`}
           >
             <Sliders className="w-4 h-4" />
-            AI 生成策略
+            {t('projectConfig.aiStrategies')}
           </button>
           <button
             onClick={() => handleTabChange('knowledge')}
@@ -503,7 +551,7 @@ export function ProjectConfiguration() {
             }`}
           >
             <Database className="w-4 h-4" />
-            项目知识库
+            {t('projectConfig.knowledge')}
           </button>
           <button
             onClick={() => handleTabChange('llm')}
@@ -514,7 +562,7 @@ export function ProjectConfiguration() {
             }`}
           >
             <CpuIcon className="w-4 h-4" />
-            项目 LLM 配置
+            {t('projectConfig.llm')}
           </button>
         </div>
 
@@ -525,9 +573,9 @@ export function ProjectConfiguration() {
             <div className="p-4 bg-indigo-50 border border-indigo-100 text-indigo-950 rounded-2xl flex items-start gap-3">
               <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="text-xs font-bold text-indigo-800">生成策略控制面板</div>
+                <div className="text-xs font-bold text-indigo-800">{t('projectConfig.panelTitle')}</div>
                 <div className="text-[11px] leading-relaxed text-slate-600">
-                  可针对当前项目单独开启或关闭某些特定生成方向，并调整并发生成的候选方案总数。自定义策略及排序对 LLM 生成偏好的约束已全面支持。
+                  {t('projectConfig.panelSubtitle')}
                 </div>
               </div>
             </div>
@@ -537,10 +585,10 @@ export function ProjectConfiguration() {
               <div className="space-y-1">
                 <div className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-indigo-500" />
-                  自定义生成策略总开关
+                  {t('projectConfig.switchTitle')}
                 </div>
                 <p className="text-xs text-slate-400 leading-normal">
-                  开启后，项目生成候选将遵守下方配置的候选方案参数和排序后的策略指令。关闭后，将完全回退至系统内置默认策略。
+                  {t('projectConfig.switchSubtitle')}
                 </p>
               </div>
               <button
@@ -558,12 +606,56 @@ export function ProjectConfiguration() {
               </button>
             </div>
 
+            {/* AI Project Content Language Settings Card */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+              <div className="space-y-1">
+                <div className="text-sm font-extrabold text-slate-800">
+                  {t('projectConfig.contentLanguage.title')}
+                </div>
+                <p className="text-xs text-slate-400 leading-normal">
+                  {t('projectConfig.contentLanguage.subtitle')}
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 max-w-lg">
+                <div className="flex-1 space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {t('projectConfig.contentLanguage.label')}
+                  </label>
+                  <select
+                    value={contentLocale || ''}
+                    onChange={(e) => setContentLocale(e.target.value)}
+                    disabled={!isProjectAdmin}
+                    className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors"
+                  >
+                    <option value="">{t('projectConfig.contentLanguage.followUserPreference')}</option>
+                    <option value="zh-CN">{t('projectConfig.contentLanguage.zh')}</option>
+                    <option value="en-US">{t('projectConfig.contentLanguage.en')}</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveLocale}
+                  disabled={!isProjectAdmin || isSavingLocale}
+                  className="sm:self-end px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl active:scale-[0.99] transition-colors disabled:opacity-50 cursor-pointer border-0"
+                >
+                  {isSavingLocale ? t('projectConfig.contentLanguage.saving') : t('projectConfig.contentLanguage.saveBtn')}
+                </button>
+              </div>
+
+              {!isProjectAdmin && (
+                <p className="text-[10px] text-rose-500 font-semibold">
+                  {t('projectConfig.contentLanguage.permissionWarning')}
+                </p>
+              )}
+            </div>
+
             {/* Success/Error Banners */}
             {configSuccess && (
               <div className="p-4 rounded-2xl border bg-emerald-50 border-emerald-100 text-emerald-950 text-xs flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
                 <CheckCircle className="w-4 h-4 text-emerald-650 mt-0.5 shrink-0" />
                 <div className="space-y-1">
-                  <div className="font-bold text-emerald-800">保存成功</div>
+                  <div className="font-bold text-emerald-800">{t('projectConfig.successTitle')}</div>
                   <p className="leading-relaxed font-medium">{configSuccess}</p>
                 </div>
               </div>
@@ -572,7 +664,7 @@ export function ProjectConfiguration() {
               <div className="p-4 rounded-2xl border bg-rose-50 border-rose-100 text-rose-950 text-xs flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
                 <AlertTriangle className="w-4 h-4 text-rose-650 mt-0.5 shrink-0" />
                 <div className="space-y-1">
-                  <div className="font-bold text-rose-800">操作失败</div>
+                  <div className="font-bold text-rose-800">{t('projectConfig.failTitle')}</div>
                   <p className="leading-relaxed font-medium">{configError}</p>
                 </div>
               </div>
@@ -580,21 +672,21 @@ export function ProjectConfiguration() {
 
             <div className={!customStrategyEnabled ? 'opacity-50 pointer-events-none select-none relative' : ''}>
               {!customStrategyEnabled && (
-                <div className="absolute inset-0 bg-slate-100/10 z-10 rounded-2xl cursor-not-allowed" title="请先开启自定义生成策略总开关" />
+                <div className="absolute inset-0 bg-slate-100/10 z-10 rounded-2xl cursor-not-allowed" title={t('projectConfig.strategies.pleaseEnableSwitch')} />
               )}
               {/* Config inputs */}
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
                 <div className="space-y-2">
-                  <h3 className="text-sm font-extrabold text-slate-800">候选方案生成参数</h3>
+                  <h3 className="text-sm font-extrabold text-slate-800">{t('projectConfig.strategies.candidateParamsTitle')}</h3>
                   <p className="text-xs text-slate-400 leading-normal">
-                    多候选方案生成时的候选总数上限与首选项。配置生成 N 个候选时，必须至少有 N 个生成策略处于“启用”状态。
+                    t('projectConfig.strategies.candidateParamsDesc'){t('projectKnowledge.tableHeader.status')}。
                   </p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 pb-6 border-b border-slate-100">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                      候选方案数量 (Candidate Count)
+                      {t('projectConfig.strategies.candidateCountLabel')}
                     </label>
                     <div className="flex items-center gap-2">
                       {[1, 2, 3, 4, 5].map((num) => {
@@ -621,7 +713,7 @@ export function ProjectConfiguration() {
                     </div>
                     {strategies.filter(s => s.enabled).length < 5 && (
                       <span className="text-[10px] text-slate-400 block">
-                        增加候选数量上限需先在下方启用对应的策略项。
+                        {t('projectConfig.strategies.increaseCandidateCountHelp')}
                       </span>
                     )}
                   </div>
@@ -631,7 +723,7 @@ export function ProjectConfiguration() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                      生成策略列表 (已按优先级排序)
+                      {t('projectConfig.strategies.strategiesListTitle')}
                     </h3>
                     <button
                       type="button"
@@ -639,14 +731,15 @@ export function ProjectConfiguration() {
                       className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      新增自定义策略
+                      {t('projectConfig.strategies.addCustomStrategyBtn')}
                     </button>
                   </div>
 
                   <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
                     {strategies.map((strategy, index) => {
                       const isEditing = editingId === strategy.id;
-                      const isBuiltin = strategy.id === 'balanced' || strategy.id === 'comprehensive' || strategy.id === 'minimal' || strategy.id === 'risk_averse' || strategy.id === 'workflow_first';
+                      const isBuiltin = isBuiltinGenerationStrategy(strategy);
+                      const presentation = getGenerationStrategyPresentation(strategy, t);
 
                       return (
                         <div 
@@ -659,7 +752,7 @@ export function ProjectConfiguration() {
                             <div className="space-y-3 p-1">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase">策略名称</label>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('projectConfig.strategies.strategyNameLabel')}</label>
                                   <input 
                                     id="edit-form-label"
                                     type="text" 
@@ -672,7 +765,7 @@ export function ProjectConfiguration() {
                                   )}
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase">策略描述</label>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('projectConfig.strategies.strategyDescLabel')}</label>
                                   <input 
                                     id="edit-form-description"
                                     type="text" 
@@ -686,7 +779,7 @@ export function ProjectConfiguration() {
                                 </div>
                               </div>
                               <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Prompt 指令 / 侧重点 (长度限制 20-800)</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">{t('projectConfig.strategies.strategyPromptLabel')}</label>
                                 <textarea 
                                   id="edit-form-instruction"
                                   className={`w-full h-20 text-xs font-mono text-slate-655 border rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500 resize-none ${editFormErrors.instruction ? 'border-red-400 focus:ring-red-400' : 'border-slate-200'}`}
@@ -703,14 +796,14 @@ export function ProjectConfiguration() {
                                   onClick={() => saveEdit(strategy.id)}
                                   className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-colors cursor-pointer border-0"
                                 >
-                                  确定
+                                  {t('projectConfig.strategies.confirmBtn')}
                                 </button>
                                 <button 
                                   type="button" 
                                   onClick={() => setEditingId(null)}
                                   className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-650 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-colors cursor-pointer"
                                 >
-                                  取消
+                                  {t('projectConfig.llmConfig.cancelBtn')}
                                 </button>
                               </div>
                             </div>
@@ -718,19 +811,19 @@ export function ProjectConfiguration() {
                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                               <div className="space-y-1 overflow-hidden flex-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-extrabold text-slate-800">{strategy.label}</span>
+                                  <span className="text-xs font-extrabold text-slate-800">{presentation.label}</span>
                                   {isBuiltin ? (
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-500 scale-95 origin-left whitespace-nowrap">系统默认</span>
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-500 scale-95 origin-left whitespace-nowrap">{t('projectConfig.strategies.builtinBadge')}</span>
                                   ) : (
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-650 scale-95 origin-left whitespace-nowrap">自定义</span>
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-650 scale-95 origin-left whitespace-nowrap">{t('projectConfig.strategies.customBadge')}</span>
                                   )}
                                 </div>
-                                <p className="text-xs text-slate-500 leading-normal truncate" title={strategy.description}>
-                                  {strategy.description}
+                                <p className="text-xs text-slate-500 leading-normal truncate" title={presentation.description}>
+                                  {presentation.description}
                                 </p>
                                 <div className="text-[10px] text-slate-400 bg-slate-50 p-2 rounded-lg border border-slate-100/60 mt-1 max-w-2xl font-mono leading-relaxed">
-                                  <span className="font-bold text-slate-500 text-[9px] block mb-0.5">Prompt 指令：</span>
-                                  {strategy.instruction}
+                                  <span className="font-bold text-slate-500 text-[9px] block mb-0.5">{t('projectConfig.strategies.promptLabelColon')}</span>
+                                  {presentation.instruction}
                                 </div>
                               </div>
 
@@ -740,7 +833,7 @@ export function ProjectConfiguration() {
                                   <button
                                     type="button"
                                     onClick={() => startEdit(strategy)}
-                                    title="编辑策略"
+                                    title={t('projectConfig.strategies.editStrategyTooltip')}
                                     className="p-1.5 bg-slate-50 text-slate-500 hover:text-indigo-650 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer border-0"
                                   >
                                     <Edit className="w-3.5 h-3.5" />
@@ -749,7 +842,7 @@ export function ProjectConfiguration() {
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteStrategy(strategy.id)}
-                                      title="删除自定义策略"
+                                      title={t('projectConfig.strategies.deleteStrategyTooltip')}
                                       className="p-1.5 bg-slate-50 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer border-0"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -811,7 +904,7 @@ export function ProjectConfiguration() {
                 className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 active:scale-[0.99] transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-650/10 cursor-pointer border-0"
               >
                 <Save className="w-3.5 h-3.5" />
-                保存策略配置
+                {t('projectConfig.strategies.saveStrategies')}
               </button>
               <button
                 type="button"
@@ -819,7 +912,7 @@ export function ProjectConfiguration() {
                 disabled={isSavingGenerationStrategies}
                 className="px-5 py-2.5 border border-slate-200 bg-white text-slate-655 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-colors cursor-pointer shadow-sm"
               >
-                恢复系统默认设置
+                {t('projectConfig.strategies.resetToDefault')}
               </button>
             </div>
           </div>
@@ -833,10 +926,10 @@ export function ProjectConfiguration() {
               <div className="space-y-1">
                 <div className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
                   <Database className="w-4 h-4 text-indigo-500" />
-                  项目知识库总开关
+                  {t('projectConfig.strategies.kbSwitchLabel')}
                 </div>
                 <p className="text-xs text-slate-400 leading-normal">
-                  开启后，AI 在生成候选和回答问题时会结合已就绪的本地文件进行检索（RAG）。关闭后将不注入任何知识库内容。
+                  {t('projectConfig.strategies.kbSwitchDesc')}
                 </p>
               </div>
               <button
@@ -859,17 +952,17 @@ export function ProjectConfiguration() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* Card 1: Documents count */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-                  <span className="text-xs font-bold text-slate-500 tracking-wide">文档总数</span>
+                  <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.docTotalCountLabel')}</span>
                   <div className="flex items-baseline gap-2 mt-2">
                     <span className="text-3xl font-black text-slate-800">{projectDocuments.length}</span>
-                    <span className="text-xs text-slate-400">个已上传文档</span>
+                    <span className="text-xs text-slate-400">{t('projectKnowledge.uploadedCountLabel')}</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-2">包含未就绪以及转换失败的文档</div>
+                  <div className="text-[10px] text-slate-400 mt-2">{t('projectKnowledge.unreadyFailedNotice')}</div>
                 </div>
 
                 {/* Card 2: Space occupied */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-                  <span className="text-xs font-bold text-slate-500 tracking-wide">已用存储空间</span>
+                  <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.storageUsed')}</span>
                   <div className="mt-2">
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black text-slate-800">{formatBytes(totalSize)}</span>
@@ -882,19 +975,19 @@ export function ProjectConfiguration() {
                       />
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-2">单文件最大支持 20MB</div>
+                  <div className="text-[10px] text-slate-400 mt-2">{t('projectKnowledge.maxFileSizeNotice')}</div>
                 </div>
 
                 {/* Card 3: AI reference status */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-                  <span className="text-xs font-bold text-slate-500 tracking-wide">已启用 AI 检索</span>
+                  <span className="text-xs font-bold text-slate-500 tracking-wide">{t('projectKnowledge.aiSearchEnabledLabel')}</span>
                   <div className="flex items-baseline gap-2 mt-2">
                     <span className="text-3xl font-black text-emerald-600">{activeDocsCount}</span>
-                    <span className="text-xs text-slate-400">个就绪文档</span>
+                    <span className="text-xs text-slate-400">{t('projectKnowledge.readyDocsLabel')}</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
                     <Sparkles className="w-3 h-3 text-indigo-500 shrink-0" />
-                    <span>可在对话和单对象编辑/新增中被 AI 检索参考</span>
+                    <span>{t('projectKnowledge.aiSearchNotice')}</span>
                   </div>
                 </div>
               </div>
@@ -928,10 +1021,10 @@ export function ProjectConfiguration() {
                   )}
                   <div className="space-y-1">
                     <div className="text-sm font-bold text-slate-700">
-                      {isUploadingDocument ? '正在上传文档，请稍等...' : '拖拽文件到这里，或点击上传'}
+                      {isUploadingDocument ? t('projectKnowledge.uploadingText') : t('projectKnowledge.dragDropNotice')}
                     </div>
                     <div className="text-xs text-slate-400">
-                      支持 .txt, .md, .pdf, .docx, .xlsx 格式文件
+                      {t('projectKnowledge.supportedFormats')}
                     </div>
                   </div>
                 </div>
@@ -942,16 +1035,16 @@ export function ProjectConfiguration() {
             {/* Documents Table */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-700 tracking-wide">上传文档管理列表</span>
-                <span className="text-[10px] text-slate-400">总共 {projectDocuments.length} 个文档</span>
+                <span className="text-xs font-bold text-slate-700 tracking-wide">{t('projectKnowledge.uploadedListTitle')}</span>
+                <span className="text-[10px] text-slate-400">{t('projectKnowledge.totalDocsCount', { count: projectDocuments.length })}</span>
               </div>
 
               {projectDocuments.length === 0 ? (
                 <div className="p-12 text-center text-slate-400 space-y-2">
                   <File className="w-8 h-8 mx-auto text-slate-300" />
-                  <div className="text-xs font-bold">暂无知识库参考文档</div>
+                  <div className="text-xs font-bold">{t('projectKnowledge.status.unready')}</div>
                   <div className="text-[10px] max-w-xs mx-auto leading-normal">
-                    上传业务文档以使后续 AI 生成的建议能更贴合您已有的产品规格。
+                    {t('projectKnowledge.pageSubtitle')}
                   </div>
                 </div>
               ) : (
@@ -959,12 +1052,12 @@ export function ProjectConfiguration() {
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/20">
-                        <th className="py-3 px-6">文件名</th>
-                        <th className="py-3 px-4">状态</th>
-                        <th className="py-3 px-4">大小</th>
-                        <th className="py-3 px-4">上传时间</th>
-                        <th className="py-3 px-4 text-center">参与 AI 检索</th>
-                        <th className="py-3 px-6 text-right">操作</th>
+                        <th className="py-3 px-6">{t('projectKnowledge.tableHeader.file')}</th>
+                        <th className="py-3 px-4">{t('projectKnowledge.tableHeader.status')}</th>
+                        <th className="py-3 px-4">{t('projectKnowledge.tableHeader.size')}</th>
+                        <th className="py-3 px-4">{t('projectKnowledge.tableHeader.uploadedTime')}</th>
+                        <th className="py-3 px-4 text-center">{t('projectKnowledge.tableHeader.joinAI')}</th>
+                        <th className="py-3 px-6 text-right">{t('projectKnowledge.tableHeader.actions')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -988,24 +1081,24 @@ export function ProjectConfiguration() {
                               {isReady && (
                                 <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 font-bold border border-emerald-100 px-2.5 py-0.5 rounded-lg text-[10px]">
                                   <CheckCircle className="w-3 h-3 text-emerald-600" />
-                                  可用于 AI
+                                  {t('projectKnowledge.status.ready')}
                                 </span>
                               )}
 
                               {isProcessing && (
                                 <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 font-bold border border-amber-100 px-2.5 py-0.5 rounded-lg text-[10px] animate-pulse">
                                   <Clock className="w-3 h-3 text-amber-500 animate-spin" />
-                                  解析转换中
+                                  {t('projectKnowledge.status.converting')}
                                 </span>
                               )}
 
                               {isFailed && (
                                 <span 
                                   className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 font-bold border border-rose-100 px-2.5 py-0.5 rounded-lg text-[10px] cursor-help"
-                                  title={doc.error_message || '转换未知错误，请重试'}
+                                  title={doc.error_message || t('projectKnowledge.status.failedTooltip')}
                                 >
                                   <XCircle className="w-3 h-3 text-rose-500" />
-                                  转换失败
+                                  {t('projectKnowledge.status.failed')}
                                 </span>
                               )}
                             </td>
@@ -1034,7 +1127,7 @@ export function ProjectConfiguration() {
                                   />
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-slate-300">尚未就绪</span>
+                                <span className="text-[10px] text-slate-300">{t('projectKnowledge.status.unready')}</span>
                               )}
                             </td>
 
@@ -1045,7 +1138,7 @@ export function ProjectConfiguration() {
                                     type="button"
                                     onClick={() => void retryProjectDocument(doc.public_id)}
                                     className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors border-0 bg-transparent"
-                                    title="重试解析转换"
+                                    title={t('projectKnowledge.actionTooltip.retry')}
                                   >
                                     <RefreshCw className="w-4 h-4" />
                                   </button>
@@ -1054,7 +1147,7 @@ export function ProjectConfiguration() {
                                   type="button"
                                   onClick={() => confirmDelete(doc.public_id, doc.original_filename)}
                                   className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors border-0 bg-transparent"
-                                  title="删除文档"
+                                  title={t('projectKnowledge.actionTooltip.delete')}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -1096,7 +1189,7 @@ export function ProjectConfiguration() {
               {llmIsLoading ? (
                 <div className="flex flex-col items-center justify-center py-10 space-y-3">
                   <RefreshCw className="h-8 w-8 text-indigo-500 animate-spin" />
-                  <span className="text-xs text-slate-400 font-medium">正在拉取团队模型配置...</span>
+                  <span className="text-xs text-slate-400 font-medium">{t('projectConfig.llmConfig.loading')}</span>
                 </div>
               ) : (
                 <>
@@ -1106,24 +1199,24 @@ export function ProjectConfiguration() {
                       <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-950 rounded-2xl space-y-3">
                         <h3 className="text-sm font-bold flex items-center gap-1.5 text-emerald-800">
                           <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          项目专属项目大模型已成功挂载
+                          {t('projectConfig.llmConfig.successNotice')}
                         </h3>
                         <p className="text-xs leading-relaxed text-slate-655 font-medium">
-                          当前工作区正在使用该项目专属的 LLM 策略。所有 AI 诊断、重推演、候选方案生成都将自动定向使用本模型。项目模型配置优先级高于您的个人模型配置。
+                          {t('projectConfig.llmConfig.description')}
                         </p>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-5 border border-slate-100 rounded-2xl text-xs font-medium">
                         <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">接口地址 (API Base URL)</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{t('projectConfig.llmConfig.apiBaseUrlLabel')}</span>
                           <span className="font-extrabold text-slate-700 truncate block">{projectLLMConfig.apiUrl}</span>
                         </div>
                         <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">大模型名称 (Model Name)</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{t('projectConfig.llmConfig.modelNameLabel')}</span>
                           <span className="font-extrabold text-slate-700 block">{projectLLMConfig.modelName}</span>
                         </div>
                         <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">API Key 密文</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{t('projectConfig.llmConfig.apiKeyLabel')}</span>
                           <span className="font-extrabold text-slate-700">••••••••{projectLLMConfig.apiKeyLast4}</span>
                         </div>
                       </div>
@@ -1140,7 +1233,7 @@ export function ProjectConfiguration() {
                           ) : (
                             <>
                               <Activity className="w-3.5 h-3.5" />
-                              测试连通性
+                              {t('projectConfig.llmConfig.testBtn')}
                             </>
                           )}
                         </button>
@@ -1150,7 +1243,7 @@ export function ProjectConfiguration() {
                           className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                         >
                           <Edit className="w-3.5 h-3.5" />
-                          修改配置
+                          {t('projectConfig.llmConfig.editBtn')}
                         </button>
                         <button
                           type="button"
@@ -1158,7 +1251,7 @@ export function ProjectConfiguration() {
                           className="px-4 py-2 border border-rose-200 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl hover:bg-rose-100 active:scale-[0.99] transition-all flex items-center gap-1.5 ml-auto cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          清除配置
+                          {t('projectConfig.llmConfig.clearConfigBtn')}
                         </button>
                       </div>
                     </div>
@@ -1168,13 +1261,13 @@ export function ProjectConfiguration() {
                   {(isEditingLLM || !projectLLMConfig?.configured) && (
                     <form onSubmit={handleSaveLLM} className="space-y-5">
                       <div className="p-4 bg-indigo-50/50 border border-indigo-100 text-indigo-900 rounded-2xl text-xs leading-relaxed">
-                        项目 LLM 配置可保障您项目模型连接的专有权，协同编辑和草稿生成将优先调用此参数，满足企业审计与合规要求。
+                        {t('projectConfig.llmConfig.configHelpText')}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                            API 根地址 (API Base URL) <span className="text-rose-500">*</span>
+                            {t('projectConfig.llmConfig.apiBaseUrlLabelRequired')} <span className="text-rose-500">*</span>
                           </label>
                           <div className="relative">
                             <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1191,7 +1284,7 @@ export function ProjectConfiguration() {
 
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                            大模型名称 (Model Name) <span className="text-rose-500">*</span>
+                            {t('projectConfig.llmConfig.modelNameLabel')} <span className="text-rose-500">*</span>
                           </label>
                           <div className="relative">
                             <Sliders className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1208,13 +1301,13 @@ export function ProjectConfiguration() {
 
                         <div className="space-y-1.5 sm:col-span-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                            项目共享密钥 (API Key) <span className="text-rose-500">*</span>
+                            {t('projectConfig.llmConfig.apiKeyLabelRequired')} <span className="text-rose-500">*</span>
                           </label>
                           <div className="relative">
                             <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <input
                               type="password"
-                              placeholder={projectLLMConfig?.configured ? '未更改（输入新 Key 替换）' : '请输入密钥 API Key'}
+                              placeholder={projectLLMConfig?.configured ? t('projectConfig.llmConfig.placeholderModifyKey') : t('projectConfig.llmConfig.placeholderEnterKey')}
                               value={projectApiKey}
                               onChange={(e) => setProjectApiKey(e.target.value)}
                               className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold transition-all"
@@ -1230,7 +1323,7 @@ export function ProjectConfiguration() {
                           className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 active:scale-[0.99] transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-650/10 cursor-pointer border-0"
                         >
                           <Save className="w-3.5 h-3.5" />
-                          保存配置
+                          {t('projectConfig.llmConfig.saveBtn')}
                         </button>
                         <button
                           type="button"
@@ -1243,7 +1336,7 @@ export function ProjectConfiguration() {
                           ) : (
                             <>
                               <Activity className="w-3.5 h-3.5" />
-                              测试通道连通性
+                              {t('projectConfig.llmConfig.testBtn')}
                             </>
                           )}
                         </button>
@@ -1259,7 +1352,7 @@ export function ProjectConfiguration() {
                             }}
                             className="px-5 py-2.5 border border-slate-200 bg-white text-slate-655 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-colors ml-auto cursor-pointer shadow-sm"
                           >
-                            取消
+                            {t('projectConfig.llmConfig.cancelBtn')}
                           </button>
                         )}
                       </div>
@@ -1281,7 +1374,7 @@ export function ProjectConfiguration() {
                     {llmTestResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                   </div>
                   <div className="space-y-1">
-                    <div className="font-bold">{llmTestResult.success ? '连接测试通过' : '连接测试失败'}</div>
+                    <div className="font-bold">{llmTestResult.success ? t('projectConfig.llmConfig.connectionSuccess') : t('projectConfig.llmConfig.connectionFailed')}</div>
                     <p className="leading-relaxed font-medium">{llmTestResult.message}</p>
                   </div>
                 </div>
@@ -1301,9 +1394,9 @@ export function ProjectConfiguration() {
                 <Trash2 className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-black text-slate-800">确认删除文档？</h3>
+                <h3 className="text-sm font-black text-slate-800">{t('projectKnowledge.deleteModal.title')}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  您确定要删除文档 <span className="font-semibold text-slate-700">“{deleteTargetName}”</span> 吗？删除后此文件将从项目中清除，AI 无法再参考其内容。此操作不可逆。
+                  {t('projectKnowledge.deleteModal.confirmPrefix')} <span className="font-semibold text-slate-700">"{deleteTargetName}"</span> {t('projectKnowledge.deleteModal.confirmSuffix')}
                 </p>
               </div>
             </div>
@@ -1317,14 +1410,14 @@ export function ProjectConfiguration() {
                 }}
                 className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
-                取消
+                {t('projectConfig.llmConfig.cancelBtn')}
               </button>
               <button
                 type="button"
                 onClick={handleDeleteDoc}
                 className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 shadow-md shadow-rose-100 transition-colors cursor-pointer"
               >
-                彻底删除
+                {t('projectKnowledge.deleteModal.confirmBtn')}
               </button>
             </div>
           </div>

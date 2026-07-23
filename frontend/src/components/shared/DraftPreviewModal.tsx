@@ -1,8 +1,10 @@
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { useState } from 'react';
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 import { ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
-import { getScopeStatusText } from '@/core/schema';
+import { getScopeStatusText } from '@/core/presentationLabels';
 
 type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
 
@@ -17,15 +19,15 @@ interface DraftPreviewModalProps {
 }
 
 const titles: Record<Exclude<DraftType, null>, string> = {
-  project: '项目建模草稿',
-  actor: '角色草稿',
-  feature: '核心能力树草稿',
-  flow: '流程与业务对象草稿',
-  scenario: '业务场景草稿',
-  ac: '验收标准草稿',
-  scope: '交付范围草稿',
-  repair: 'AI 修复草稿',
-};
+  get project() { return i18n.t('draftPreview.titles.project') || 'Project Creation Draft'; },
+  get actor() { return i18n.t('draftPreview.titles.actor') || 'Actors Draft'; },
+  get feature() { return i18n.t('draftPreview.titles.feature') || 'Feature capability tree Draft'; },
+  get flow() { return i18n.t('draftPreview.titles.flow') || 'Flow & Business Objects Draft'; },
+  get scenario() { return i18n.t('draftPreview.titles.scenario') || 'Scenarios Draft'; },
+  get ac() { return i18n.t('draftPreview.titles.ac') || 'AC Draft'; },
+  get scope() { return i18n.t('draftPreview.titles.scope') || 'Scope Draft'; },
+  get repair() { return i18n.t('draftPreview.titles.repair') || 'AI Repair Draft'; },
+} as unknown as Record<Exclude<DraftType, null>, string>;
 
 function asArray(value: any): any[] {
   return Array.isArray(value) ? value : [];
@@ -43,29 +45,29 @@ function getDraftItems(draft: any, draftType: DraftType) {
   // P5: repair draft — title + rationale (truncated) + structured patch summary + risk level
   if (draftType === 'repair') {
     const items: any[] = [];
-    if (draft.title) items.push({ _kind: 'title', _label: '修复建议', name: draft.title });
+    if (draft.title) items.push({ _kind: 'title', _label: i18n.t('draftPreview.repairItems.title'), name: draft.title });
     if (draft.rationale) {
       const text = draft.rationale.length > 200 ? draft.rationale.slice(0, 200) + '…' : draft.rationale;
-      items.push({ _kind: 'rationale', _label: 'AI 分析依据', name: text });
+      items.push({ _kind: 'rationale', _label: i18n.t('draftPreview.repairItems.rationale'), name: text });
     }
     const report = draft.validation_report || draft.proposal || {};
     const preview = report.impact_preview || {};
     if (preview.affected_nodes?.length > 0) {
       preview.affected_nodes.forEach((n: any) => {
-        items.push({ _kind: 'node', _label: n.change || '变更', name: n.name || `${n.kind} (id=${n.id})` });
+        items.push({ _kind: 'node', _label: n.change || i18n.t('draftPreview.repairItems.change'), name: n.name || `${n.kind} (id=${n.id})` });
       });
     }
     if (preview.affected_relations?.length > 0) {
       preview.affected_relations.forEach((r: any) => {
-  items.push({ _kind: 'relation', _label: r.change || '关系变更', name: `${r.source || '?'} 至 ${r.target || '?'}` });
+  items.push({ _kind: 'relation', _label: r.change || i18n.t('draftPreview.repairItems.relationChange'), name: `${r.source || '?'} to ${r.target || '?'}` });
       });
     }
     if (preview.risk_level) {
-  const riskLabel = preview.risk_level === 'high' ? '高风险' : preview.risk_level === 'medium' ? '中等风险' : '低风险';
-      items.push({ _kind: 'risk', _label: '风险等级', name: riskLabel });
+  const riskLabel = preview.risk_level === 'high' ? i18n.t('draftPreview.riskLevels.high') : preview.risk_level === 'medium' ? i18n.t('draftPreview.riskLevels.medium') : i18n.t('draftPreview.riskLevels.low');
+      items.push({ _kind: 'risk', _label: i18n.t('draftPreview.repairItems.riskLevel'), name: riskLabel });
     }
     if (preview.summary && items.length === 0) {
-      items.push({ _kind: 'summary', _label: '影响摘要', name: preview.summary });
+      items.push({ _kind: 'summary', _label: i18n.t('draftPreview.repairItems.impactSummary'), name: preview.summary });
     }
     return items;
   }
@@ -85,7 +87,7 @@ function itemTitle(item: any, index: number) {
     item.featureName ||
     item.actorName ||
     item.project_name ||
-    `草稿项 ${index + 1}`
+    i18n.t('draftPreview.draftItemFallback', { index: index + 1 })
   );
 }
 
@@ -106,6 +108,7 @@ function itemDescription(item: any) {
 }
 
 function ProjectDraftPreview({ draft }: { draft: any }) {
+  const { t } = useTranslation();
   const project = draft.project_preview || draft;
   const actors = asArray(draft.actors);
   const features = asArray(draft.features);
@@ -113,7 +116,7 @@ function ProjectDraftPreview({ draft }: { draft: any }) {
   return (
     <div className="space-y-6">
       <section>
-        <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">项目概览</h4>
+        <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('draftPreview.projectOverview')}</h4>
         <div className="mt-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h5 className="text-sm font-extrabold text-slate-900">{project.project_name}</h5>
           {project.project_description && (
@@ -124,16 +127,16 @@ function ProjectDraftPreview({ draft }: { draft: any }) {
 
       <section>
         <div className="flex items-center justify-between gap-3 mb-2">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">涉众角色定义</h4>
-          <span className="text-xs font-bold text-slate-400">（{actors.length} 个角色）</span>
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('draftPreview.stakeholdersTitle')}</h4>
+          <span className="text-xs font-bold text-slate-400">{t('draftPreview.stakeholdersCount', { count: actors.length })}</span>
         </div>
         <DetailedActorList actors={actors} />
       </section>
 
       <section>
         <div className="flex items-center justify-between gap-3 mb-2">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能模块树</h4>
-          <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('draftPreview.featuresTitle')}</h4>
+          <span className="text-xs font-bold text-slate-400">{t('draftPreview.featuresCount', { count: features.length })}</span>
         </div>
         <ExpandableFeatureTree features={features} />
       </section>
@@ -171,6 +174,7 @@ function pickArray(item: any, snakeKey: string, camelKey: string) {
 }
 
 function FlowDraftPreview({ draft }: { draft: any }) {
+  const { t } = useTranslation();
   const flows = asArray(draft.flows);
   const businessObjects = asArray(draft.business_objects || draft.businessObjects);
   const normalizedFlows = flows.map((flow: any) => ({
@@ -208,15 +212,15 @@ function FlowDraftPreview({ draft }: { draft: any }) {
     <div className="space-y-5">
       <section>
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">流程</h4>
-          <span className="text-[11px] font-bold text-slate-400">{normalizedFlows.length} 个</span>
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('draftPreview.flowsTitle')}</h4>
+          <span className="text-[11px] font-bold text-slate-400">{t('draftPreview.flowsCount', { count: normalizedFlows.length })}</span>
         </div>
         <div className="mt-2 space-y-3">
           {normalizedFlows.map((flow: any, flowIndex: number) => (
             <div key={flow.flow_name || flowIndex} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h5 className="text-sm font-extrabold text-slate-900">{flow.flow_name || `流程 ${flowIndex + 1}`}</h5>
+                  <h5 className="text-sm font-extrabold text-slate-900">{flow.flow_name || t('draftPreview.draftItemFallback', { index: flowIndex + 1 })}</h5>
                   {flow.flow_description && (
                     <p className="mt-2 text-xs leading-relaxed text-slate-600">{flow.flow_description}</p>
                   )}
@@ -230,7 +234,7 @@ function FlowDraftPreview({ draft }: { draft: any }) {
                     <div key={step.step_number || step.step_name || stepIndex} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-black text-slate-500">
-                          {step.step_number || `S-${String(stepIndex + 1).padStart(3, '0')}`}
+                          {step.step_number || t('draftPreview.flowStepNum', { num: String(stepIndex + 1).padStart(3, '0') })}
                         </span>
                         <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
                           {step.step_type || 'step'}
@@ -243,25 +247,25 @@ function FlowDraftPreview({ draft }: { draft: any }) {
                       <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2">
                         {step.actor_names?.length > 0 && (
                           <div>
-                            <div className="mb-1 font-black text-slate-400">角色</div>
+                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepRole')}</div>
                             <DetailChips items={step.actor_names} tone="amber" />
                           </div>
                         )}
                         {step.input_business_object_names?.length > 0 && (
                           <div>
-                            <div className="mb-1 font-black text-slate-400">输入对象</div>
+                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepInput')}</div>
                             <DetailChips items={step.input_business_object_names} />
                           </div>
                         )}
                         {step.output_business_object_names?.length > 0 && (
                           <div>
-                            <div className="mb-1 font-black text-slate-400">输出对象</div>
+                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepOutput')}</div>
                             <DetailChips items={step.output_business_object_names} tone="emerald" />
                           </div>
                         )}
                         {step.next_step_names?.length > 0 && (
                           <div>
-                            <div className="mb-1 font-black text-slate-400">下一步</div>
+                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepNext')}</div>
                             <DetailChips items={step.next_step_names} tone="indigo" />
                           </div>
                         )}
@@ -277,8 +281,8 @@ function FlowDraftPreview({ draft }: { draft: any }) {
 
       <section>
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">业务对象</h4>
-          <span className="text-[11px] font-bold text-slate-400">{normalizedBusinessObjects.length} 个</span>
+          <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('draftPreview.businessObjectsTitle')}</h4>
+          <span className="text-[11px] font-bold text-slate-400">{t('draftPreview.businessObjectsCount', { count: normalizedBusinessObjects.length })}</span>
         </div>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {normalizedBusinessObjects.map((businessObject: any, index: number) => (
@@ -287,7 +291,7 @@ function FlowDraftPreview({ draft }: { draft: any }) {
                 <h5 className="min-w-0 text-sm font-extrabold text-slate-900">{businessObject.business_object_name}</h5>
                 {businessObject.is_existing && (
                   <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                    已存在
+                    {t('draftPreview.businessObjectExisting')}
                   </span>
                 )}
               </div>
@@ -317,20 +321,20 @@ function FlowDraftPreview({ draft }: { draft: any }) {
       </section>
     </div>
   );
-}
-
-export function DraftPreviewModal({
+}export function DraftPreviewModal({
   draft,
   draftType,
   isWorking,
   onConfirm,
   onDiscard,
   onRegenerate,
-  confirmLabel = '确认采纳',
+  confirmLabel,
 }: DraftPreviewModalProps) {
+  const { t } = useTranslation();
   const [feedback, setFeedback] = useState('');
 
   if (!draftType) return null;
+  const actualConfirmLabel = confirmLabel || t('draftPreview.confirmLabel');
   if (!draft) {
     if (isWorking) {
       return (
@@ -341,10 +345,10 @@ export function DraftPreviewModal({
                 <div className="absolute inset-0 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
               </div>
               <h3 className="text-base font-extrabold text-slate-800 mb-2 leading-relaxed">
-                正在生成{titles[draftType]}，请稍候...
+                {t('draftPreview.generatingDraftTitle', { title: titles[draftType] })}
               </h3>
               <p className="text-[10px] text-slate-400 font-medium px-4 mb-6 leading-normal">
-                AI 正在为您智能规划与精炼，以构建最佳结构化系统方案
+                {t('draftPreview.generatingDraftDesc')}
               </p>
             </div>
           </div>
@@ -373,7 +377,7 @@ export function DraftPreviewModal({
             onClick={() => void onDiscard()}
             disabled={isWorking}
             className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white hover:text-slate-700 disabled:opacity-50"
-            title="关闭并舍弃草稿"
+            title={t('draftPreview.closeDiscardTooltip')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -384,12 +388,12 @@ export function DraftPreviewModal({
             <ProjectDraftPreview draft={draft} />
           ) : draftType === 'actor' ? (
             <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">角色定义预览</h4>
+              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">{t('draftPreview.stakeholdersTitle')}</h4>
               <DetailedActorList actors={items} />
             </div>
           ) : draftType === 'feature' ? (
             <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">功能能力树预览</h4>
+              <h4 className="text-xs font-black uppercase tracking-wide text-slate-500 mb-2">{t('draftPreview.featuresTitle')}</h4>
               <ExpandableFeatureTree features={items} />
             </div>
           ) : draftType === 'flow' ? (
@@ -403,14 +407,14 @@ export function DraftPreviewModal({
                     key={item.id || item.criterion_id || index}
                     text={text}
                     title={itemTitle(item, index)}
-                    badge="推荐验收标准"
+                    badge={t('draftPreview.acBadge')}
                   />
                 );
               })}
             </div>
           ) : items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-              当前草稿没有可展示的条目。
+              {t('draftPreview.emptyDraft')}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
@@ -432,13 +436,13 @@ export function DraftPreviewModal({
                     <div className="mt-3 grid gap-2 text-xs leading-relaxed text-slate-600 sm:grid-cols-2">
                       {item.positive_summary && (
                         <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
-                          <div className="mb-1 font-bold text-emerald-700">有该功能时的用户感受</div>
+                          <div className="mb-1 font-bold text-emerald-700">{t('draftPreview.positiveSummaryLabel')}</div>
                           {item.positive_summary}
                         </div>
                       )}
                       {item.negative_summary && (
                         <div className="rounded-lg border border-rose-100 bg-rose-50/60 p-2">
-                          <div className="mb-1 font-bold text-rose-700">缺少该功能时的用户感受</div>
+                          <div className="mb-1 font-bold text-rose-700">{t('draftPreview.negativeSummaryLabel')}</div>
                           {item.negative_summary}
                         </div>
                       )}
@@ -450,11 +454,11 @@ export function DraftPreviewModal({
                     <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3">
                       {(item.positive_picture_base64 || item.positivePictureBase64) && (
                         <div className="space-y-1">
-                          <span className="text-[10px] text-indigo-600 font-bold block text-center">有该功能时的体验影响图</span>
+                          <span className="text-[10px] text-indigo-600 font-bold block text-center">{t('draftPreview.positiveChartLabel')}</span>
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
                             <img
                               src={`data:image/png;base64,${item.positive_picture_base64 || item.positivePictureBase64}`}
-                              alt="有该功能时的体验影响图"
+                              alt={t('draftPreview.positiveChartLabel')}
                               className="max-h-full max-w-full object-contain"
                             />
                           </div>
@@ -462,11 +466,11 @@ export function DraftPreviewModal({
                       )}
                       {(item.negative_picture_base64 || item.negativePictureBase64) && (
                         <div className="space-y-1">
-                          <span className="text-[10px] text-slate-500 font-bold block text-center">缺少该功能时的体验影响图</span>
+                          <span className="text-[10px] text-slate-500 font-bold block text-center">{t('draftPreview.negativeChartLabel')}</span>
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[100px] flex items-center justify-center p-1 shadow-sm">
                             <img
                               src={`data:image/png;base64,${item.negative_picture_base64 || item.negativePictureBase64}`}
-                              alt="缺少该功能时的体验影响图"
+                              alt={t('draftPreview.negativeChartLabel')}
                               className="max-h-full max-w-full object-contain"
                             />
                           </div>
@@ -487,7 +491,7 @@ export function DraftPreviewModal({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 disabled={isWorking}
-                placeholder="补充调整意见后可重新生成"
+                placeholder={t('draftPreview.feedbackPlaceholder')}
                 className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
               />
               <button
@@ -500,7 +504,7 @@ export function DraftPreviewModal({
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
               >
                 <RefreshCw className={`h-3.5 w-3.5 text-indigo-500 ${isWorking ? 'animate-spin' : ''}`} />
-                重新生成
+                {t('draftPreview.regenerateBtn')}
               </button>
             </div>
           )}
@@ -512,7 +516,7 @@ export function DraftPreviewModal({
               disabled={isWorking}
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
             >
-              舍弃草稿
+              {t('draftPreview.discardDraftBtn')}
             </button>
             <button
               type="button"
@@ -521,7 +525,7 @@ export function DraftPreviewModal({
               className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
             >
               <Check className="h-3.5 w-3.5" />
-              {confirmLabel}
+              {actualConfirmLabel}
             </button>
           </div>
         </div>

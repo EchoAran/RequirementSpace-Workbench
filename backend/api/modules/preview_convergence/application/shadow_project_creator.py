@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+from datetime import datetime
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from backend.database.model import (
     flow_step_input_business_object_table,
     flow_step_output_business_object_table,
     flow_step_next_table,
+    beijing_now,
 )
 
 
@@ -36,6 +38,11 @@ def calculate_stable_snapshot_hash(snapshot: dict) -> str:
 
 def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
     s = copy.deepcopy(snapshot)
+    shadow_updated_at = beijing_now()
+
+    def get_updated_at(node: dict):
+        updated_at = node.get("updated_at") or node.get("updatedAt") or shadow_updated_at
+        return updated_at.isoformat() if isinstance(updated_at, datetime) else updated_at
     
     # Remap project fields
     s["project_id"] = s.get("project_id", s.get("id"))
@@ -49,6 +56,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
             "actor_id": a.get("actor_id") if "actor_id" in a else a.get("id"),
             "actor_name": a.get("actor_name") if "actor_name" in a else a.get("name"),
             "actor_description": a.get("actor_description") if "actor_description" in a else a.get("description"),
+            "updated_at": get_updated_at(a),
             "kind": "actor"
         })
     s["actors"] = new_actors
@@ -63,6 +71,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 ac_remapped.append({
                     "criterion_id": ac.get("criterion_id") if "criterion_id" in ac else ac.get("id"),
                     "criterion_content": ac.get("criterion_content") if "criterion_content" in ac else ac.get("content"),
+                    "updated_at": get_updated_at(ac),
                     "kind": "acceptance_criterion"
                 })
             scenarios_remapped.append({
@@ -72,6 +81,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 "feature_id": sc.get("feature_id"),
                 "actor_id": sc.get("actor_id"),
                 "acceptance_criteria": ac_remapped,
+                "updated_at": get_updated_at(sc),
                 "kind": "scenario"
             })
             
@@ -88,6 +98,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 "negative_picture_base64": scope_obj.get("negative_picture_base64") or scope_obj.get("negativePictureBase64"),
                 "kano_category": scope_obj.get("kano_category"),
                 "kano_category_name": scope_obj.get("kano_category_name"),
+                "updated_at": get_updated_at(scope_obj),
                 "kind": "scope"
             }
             
@@ -100,6 +111,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
             "children_ids": f.get("children_ids", []),
             "scenarios": scenarios_remapped,
             "scope": scope_remapped,
+            "updated_at": get_updated_at(f),
             "kind": "feature"
         })
     s["features"] = new_features
@@ -121,6 +133,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 "business_object_attribute_description": attr_desc or "",
                 "business_object_attribute_type": attr_type or "string",
                 "business_object_attribute_example": attr_example or "",
+                "updated_at": get_updated_at(attr),
                 "kind": "business_object_attribute"
             })
         
@@ -133,6 +146,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
             "business_object_name": bo_name or "",
             "business_object_description": bo_desc or "",
             "business_object_attributes": attrs_remapped,
+            "updated_at": get_updated_at(bo),
             "kind": "business_object"
         })
     s["business_objects"] = new_bos
@@ -152,6 +166,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
                 "input_business_object_ids": step.get("input_business_object_ids", []),
                 "output_business_object_ids": step.get("output_business_object_ids", []),
                 "next_step_ids": step.get("next_step_ids", []),
+                "updated_at": get_updated_at(step),
                 "kind": "flow_step"
             })
         new_flows.append({
@@ -160,6 +175,7 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
             "flow_description": fl.get("flow_description") if "flow_description" in fl else fl.get("description"),
             "feature_ids": fl.get("feature_ids", []),
             "flow_steps": steps_remapped,
+            "updated_at": get_updated_at(fl),
             "kind": "flow"
         })
     s["flows"] = new_flows

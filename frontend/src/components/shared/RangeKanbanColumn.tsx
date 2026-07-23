@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
-import { NodeKindToText } from '@/core/schema';
+import { NodeKindToText } from '@/core/presentationLabels';
 import { StatusBadge } from './StatusBadge';
 
 interface DragItem {
@@ -34,6 +35,7 @@ interface ColumnProps {
 }
 
 export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
+  const { t } = useTranslation();
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeKanoItem, setActiveKanoItem] = useState<DragItem | null>(null);
 
@@ -41,12 +43,12 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
   const getOriginalAiRecommendation = (item: DragItem) => {
     if (!item.scope) return null;
     const { positiveSummary, negativeSummary } = item.scope;
-    if (positiveSummary && !negativeSummary) return '本期';
-    if (negativeSummary && !positiveSummary) return '暂缓';
+    if (positiveSummary && !negativeSummary) return 'current';
+    if (negativeSummary && !positiveSummary) return 'postponed';
     return null;
   };
 
-  const currentColumnLabel = columnKey === 'current' ? '本期' : columnKey === 'postponed' ? '暂缓' : '排除';
+  const currentColumnLabel = columnKey === 'current' ? 'current' : columnKey === 'postponed' ? 'postponed' : 'exclude';
 
   return (
     <div 
@@ -100,7 +102,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
               <div className="mb-2 flex flex-wrap gap-1">
                 {item.parentModuleName && (
                   <span className="inline-block text-[10px] bg-indigo-50/60 text-indigo-600 font-extrabold px-2 py-0.5 rounded shadow-sm border border-indigo-100/20">
-                    模块: {item.parentModuleName}
+                    {t('rangeKanban.parentModuleHeader', { name: item.parentModuleName })}
                   </span>
                 )}
               </div>
@@ -122,7 +124,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 <div className="mt-2.5 flex flex-col gap-2">
                   {isOverridden && (
                     <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
-          已手动覆盖 AI 原推荐 ({originalAiRec})
+          {t('rangeKanban.overrideAiRecommendation', { rec: originalAiRec === 'current' ? t('rangeKanban.columns.current') : t('rangeKanban.columns.postponed') })}
                     </span>
                   )}
                   <button
@@ -133,7 +135,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                     }}
                     className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold transition-colors border border-indigo-100/50 flex items-center justify-center gap-1 shadow-sm select-none"
                   >
-          查看 Kano 分析评估
+          {t('rangeKanban.viewKanoBtn')}
                   </button>
                 </div>
               )}
@@ -163,10 +165,10 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50 shrink-0 flex justify-between items-start">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-        Kano 智能决策分析报告：{activeKanoItem.title}
+        {t('rangeKanban.kanoReportTitle', { title: activeKanoItem.title })}
                 </h3>
                 {activeKanoItem.parentModuleName && (
-                  <p className="text-[10px] text-indigo-600 font-bold mt-1">所属模块：{activeKanoItem.parentModuleName}</p>
+                  <p className="text-[10px] text-indigo-600 font-bold mt-1">{t('rangeKanban.parentModule', { name: activeKanoItem.parentModuleName })}</p>
                 )}
               </div>
               <button 
@@ -174,7 +176,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 onClick={() => setActiveKanoItem(null)}
                 className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
               >
-          关闭
+          {t('rangeKanban.closeBtn')}
               </button>
             </div>
 
@@ -185,7 +187,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 {activeKanoItem.scope.positiveSummary && (
                   <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-        有该功能时的用户感受
+        {t('rangeKanban.positiveSummaryLabel')}
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-emerald-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.positiveSummary}"
@@ -196,7 +198,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 {activeKanoItem.scope.negativeSummary && (
                   <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-rose-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-        缺少该功能时的用户感受
+        {t('rangeKanban.negativeSummaryLabel')}
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-rose-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.negativeSummary}"
@@ -211,7 +213,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   {activeKanoItem.scope.positivePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-indigo-700 flex items-center gap-1 text-xs">
-        有该功能时的体验影响图
+        {t('rangeKanban.positiveChartLabel')}
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -226,7 +228,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                   {activeKanoItem.scope.negativePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-slate-700 flex items-center gap-1 text-xs">
-        缺少该功能时的体验影响图
+        {t('rangeKanban.negativeChartLabel')}
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -243,7 +245,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
               {/* Decision Reason Details */}
               {activeKanoItem.scope.reason && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1.5">
-                  <span className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider block">决策依据与论证</span>
+                  <span className="font-extrabold text-slate-700 text-[10px] uppercase tracking-wider block">{t('rangeKanban.decisionBasisLabel')}</span>
                   <p className="text-slate-600 font-medium leading-relaxed">{activeKanoItem.scope.reason}</p>
                 </div>
               )}
@@ -256,7 +258,7 @@ export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highli
                 onClick={() => setActiveKanoItem(null)}
                 className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm font-semibold"
               >
-                关闭报告
+                {t('rangeKanban.closeReportBtn')}
               </button>
             </div>
           </div>

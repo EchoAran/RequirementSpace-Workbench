@@ -6,6 +6,8 @@ from sqlalchemy import event
 if "LLM_CONFIG_ENCRYPTION_KEY" not in os.environ:
     os.environ["LLM_CONFIG_ENCRYPTION_KEY"] = "rK9PjN_wO2v5gVjHqX8zL1_pT5yW3xM8mU7bC4tN2zI="
 
+os.environ["LLM_LOCALE_VALIDATION_MODE"] = "enforce"
+
 # Sanitize NO_PROXY for httpx compatibility (httpx has a bug parsing unbracketed ipv6 in NO_PROXY)
 if "NO_PROXY" in os.environ:
     no_proxy_parts = [p.strip() for p in os.environ["NO_PROXY"].split(",") if p.strip()]
@@ -182,3 +184,35 @@ set_generation_draft_creator(ConcreteGenerationDraftCreator())
 def register_ports_before_each_test():
     from backend.api.bootstrap import bootstrap_services
     bootstrap_services()
+
+
+@pytest.fixture(autouse=True)
+def reset_context_vars_before_each_test():
+    from backend.core.llm_context import current_llm_context, is_web_request_ctx
+    current_llm_context.set(None)
+    is_web_request_ctx.set(False)
+
+
+# Let's not define a descriptor but just wrap the root logger's handlers list object.
+import logging
+root = logging.getLogger()
+class TrackedList(list):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    def append(self, item):
+        import sys, traceback
+        print(f"TRACK_LIST: append({item})", file=sys.stderr)
+        traceback.print_stack(file=sys.stderr)
+        super().append(item)
+    def remove(self, item):
+        import sys, traceback
+        print(f"TRACK_LIST: remove({item})", file=sys.stderr)
+        traceback.print_stack(file=sys.stderr)
+        super().remove(item)
+    def clear(self):
+        import sys, traceback
+        print("TRACK_LIST: clear()", file=sys.stderr)
+        traceback.print_stack(file=sys.stderr)
+        super().clear()
+
+root.handlers = TrackedList(root.handlers)

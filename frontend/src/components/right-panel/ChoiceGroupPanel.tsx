@@ -1,14 +1,19 @@
+import { useTranslation } from 'react-i18next';
 import { ChoiceGroup, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoicePreviewRenderer } from '@/components/shared/ChoicePreviewRenderer';
 import { Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ActionButton, ActionRow, Badge, PanelShell, Section } from './shared';
+import { getChoicePresentation, getChoiceTypeLabel } from '@/core/choicePresentation';
 
 export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup; ir: RequirementSpaceIR }) {
+  const { t, i18n } = useTranslation();
   const { addChoiceToGroup, setSelectedObject, discardChoiceGroup, regenerateChoiceGroup, acceptChoice } = useWorkspaceStore();
   const slot = choiceGroup.slotId ? ir.slots?.[choiceGroup.slotId] : undefined;
   const isStale = (choiceGroup as any).status === 'stale';
   const generationType = (choiceGroup as any).generationType || choiceGroup.sourceType;
+  const generationTypeLabel = getChoiceTypeLabel({ generationType }, t) || generationType;
+  const groupStatus = t(`panel.choiceGroupStatus.${choiceGroup.status}`, { defaultValue: choiceGroup.status });
 
   const handleDiscard = async () => {
     const id = typeof choiceGroup.id === 'string' ? parseInt(choiceGroup.id, 10) : choiceGroup.id;
@@ -26,46 +31,49 @@ export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup
   };
 
   return (
-    <PanelShell title={slot?.name || `ChoiceGroup #${choiceGroup.id}`} subtitle={generationType || 'ChoiceGroup'}>
+    <PanelShell
+      title={slot?.name || t('panel.choiceGroupTitle', { id: choiceGroup.id })}
+      subtitle={generationTypeLabel || t('panel.choiceGroup')}
+    >
       {/* Status badges */}
-      <Section title="状态">
+      <Section title={t('panel.status')}>
         <div className="flex flex-wrap gap-2">
-          <Badge>{choiceGroup.status}</Badge>
+          <Badge>{groupStatus}</Badge>
           {isStale && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200">
               <AlertTriangle className="w-3 h-3" />
-              上下文已过期
+              {t('panel.stale')}
             </span>
           )}
-          {generationType && <Badge>{generationType}</Badge>}
-          <Badge>{choiceGroup.choices?.length || 0} 个 Choice</Badge>
+          {generationTypeLabel && <Badge>{generationTypeLabel}</Badge>}
+          <Badge>{t('panel.choicesCount', { count: choiceGroup.choices?.length || 0 })}</Badge>
         </div>
       </Section>
 
       {/* Slot (if applicable) */}
       {slot && (
-        <Section title="所属 Slot">
+        <Section title={t('panel.slot')}>
           <button
             type="button"
             onClick={() => setSelectedObject(slot as any)}
             className="w-full text-left rounded-xl border border-slate-200 px-3 py-3 hover:border-indigo-300 transition-colors"
           >
             <div className="text-sm font-semibold text-slate-900">{slot.name}</div>
-            <div className="text-xs text-slate-500 mt-1">{slot.description || '暂无说明'}</div>
+            <div className="text-xs text-slate-500 mt-1">{slot.description || t('panel.noDescription')}</div>
           </button>
         </Section>
       )}
 
       {/* Generation type info for non-slot groups */}
       {!slot && generationType && (
-        <Section title="生成类型">
-          <div className="text-sm text-slate-700">{generationType}</div>
+        <Section title={t('panel.generationType')}>
+            <div className="text-sm text-slate-700">{generationTypeLabel}</div>
         </Section>
       )}
 
       {/* Target info */}
       {(choiceGroup as any).target && (
-        <Section title="目标">
+        <Section title={t('panel.targetNode')}>
           <pre className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg overflow-x-auto">
             {JSON.stringify((choiceGroup as any).target, null, 2)}
           </pre>
@@ -73,14 +81,15 @@ export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup
       )}
 
       {/* Choices list with preview */}
-      <Section title="Choices">
+      <Section title={t('panel.choices')}>
         {(!choiceGroup.choices || choiceGroup.choices.length === 0) && (
-          <div className="text-xs text-slate-400 italic">暂无 Choice</div>
+          <div className="text-xs text-slate-400 italic">{t('panel.noChoices')}</div>
         )}
         {choiceGroup.choices?.map((choice: any) => {
           const isFailed = choice.status === 'failed' || choice.status === 'discarded';
           const isDraftPayload = choice.applyMode === 'draft_payload';
           const draftType = choice.draftType || generationType;
+          const presentation = getChoicePresentation({ ...choice, draftType }, t, i18n);
           return (
             <div
               key={choice.id}
@@ -92,12 +101,12 @@ export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup
             >
               <div className="flex items-start justify-between mb-1">
                 <div>
-                  <span className="text-sm font-semibold text-slate-900">{choice.title}</span>
-                  {isFailed && <span className="ml-2 text-[10px] text-red-500 font-medium">已失败</span>}
-                  {isStale && !isFailed && <span className="ml-2 text-[10px] text-amber-600 font-medium">可能过期</span>}
+                  <span className="text-sm font-semibold text-slate-900">{presentation.title}</span>
+                  {isFailed && <span className="ml-2 text-[10px] text-red-500 font-medium">{t('panel.failed')}</span>}
+                  {isStale && !isFailed && <span className="ml-2 text-[10px] text-amber-600 font-medium">{t('panel.stale')}</span>}
                 </div>
               </div>
-              <div className="text-xs text-slate-500 mt-1 line-clamp-2">{choice.rationale || ''}</div>
+              <div className="text-xs text-slate-500 mt-1 line-clamp-2">{presentation.rationale}</div>
               {/* Type-appropriate preview */}
               {isDraftPayload && draftType && choice.preview && (
                 <div className="mt-2 p-2 bg-white rounded-lg border border-slate-100">
@@ -116,7 +125,7 @@ export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup
                       onClick={() => handleAcceptChoice(choice.id)}
                       className="text-xs px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-medium hover:bg-indigo-100 transition-colors"
                     >
-                      采纳
+                      {t('panel.adoptBtn')}
                     </button>
                   )}
                 </div>
@@ -128,16 +137,16 @@ export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup
 
       {/* Group-level actions */}
       {choiceGroup.status !== 'resolved' && choiceGroup.status !== 'discarded' && (
-        <Section title="动作">
+        <Section title={t('panel.actionTitle')}>
           <ActionRow>
             <ActionButton onClick={handleDiscard} variant="danger">
               <Trash2 className="w-4 h-4" />
-              丢弃整组
+              {t('panel.discardGroup')}
             </ActionButton>
             {isStale && (
               <ActionButton onClick={handleRegenerate}>
                 <RefreshCw className="w-4 h-4" />
-                重新生成
+                {t('panel.regenerateGroup')}
               </ActionButton>
             )}
           </ActionRow>

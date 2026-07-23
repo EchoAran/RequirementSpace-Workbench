@@ -90,6 +90,9 @@ def test_project_crud_contract_flow(crud_test_db):
     assert detail["projectDescription"] == "Test Description"
     assert detail["userRequirements"] == "Test PRD requirements"
     assert detail["kanoStatus"] == "missing"
+    assert detail["statusCode"] == p["statusCode"]
+    assert detail["status"] == p["status"]
+    assert detail["issueCount"] == p["issueCount"]
     assert "unlockedStages" in detail
 
     # 4. Update project

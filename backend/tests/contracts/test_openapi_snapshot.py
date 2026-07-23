@@ -30,7 +30,7 @@ def test_openapi_matches_snapshot():
         return
         
     with open(SNAPSHOT_PATH, "r", encoding="utf-8") as f:
-        snapshot_str = f.read()
+        snapshot_str = f.read().rstrip("\n")
         
     if current_str != snapshot_str:
         # Save the new version as .new.json to help developers inspect/diff

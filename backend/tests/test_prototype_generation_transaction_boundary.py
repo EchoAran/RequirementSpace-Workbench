@@ -76,15 +76,19 @@ async def test_transaction_boundary_split(test_session_factory, seeded_project):
         
     service._generate_pages = mock_generate_pages
     
-    # Mock generator to avoid real LLM calls
-    mock_code = {"HTML": "<html></html>", "CSS": "", "Javascript": ""}
-    with patch.object(service._generator, "generate_page", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_code
-        
-        await service.generate_preview(
-            project_id=project_id,
-            force_regenerate=True,
-        )
+    page = {
+        "page_id": "page-1", "role_id": 1, "role_name": "User",
+        "feature_id": 1, "feature_name": "Feature", "html": "<html></html>",
+        "css": "", "javascript": "", "source": "test", "status": "ready",
+    }
+    service._page_generator = MagicMock()
+    service._page_generator.generate_pages = AsyncMock(return_value=[page])
+    service._page_generator.preview_source.return_value = "test"
+
+    await service.generate_preview(
+        project_id=project_id,
+        force_regenerate=True,
+    )
         
     # Extract only event names
     event_names = [event for event, _ in call_sequence]
@@ -119,18 +123,22 @@ async def test_write_error_rolls_back_and_closes_session(test_session_factory, s
         
     service.session_factory = wrapped_factory
 
-    # Mock generator to avoid real LLM calls
-    mock_code = {"HTML": "<html></html>", "CSS": "", "Javascript": ""}
-    with patch.object(service._generator, "generate_page", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_code
-        
-        # We will mock the commit of the second session (the write session) to raise an Exception
-        with patch("sqlalchemy.ext.asyncio.AsyncSession.commit", side_effect=ValueError("db_commit_failed")):
-            with pytest.raises(ValueError, match="db_commit_failed"):
-                await service.generate_preview(
-                    project_id=project_id,
-                    force_regenerate=True,
-                )
+    page = {
+        "page_id": "page-1", "role_id": 1, "role_name": "User",
+        "feature_id": 1, "feature_name": "Feature", "html": "<html></html>",
+        "css": "", "javascript": "", "source": "test", "status": "ready",
+    }
+    service._page_generator = MagicMock()
+    service._page_generator.generate_pages = AsyncMock(return_value=[page])
+    service._page_generator.preview_source.return_value = "test"
+
+    # We will mock the commit of the second session (the write session) to raise an Exception
+    with patch("sqlalchemy.ext.asyncio.AsyncSession.commit", side_effect=ValueError("db_commit_failed")):
+        with pytest.raises(ValueError, match="db_commit_failed"):
+            await service.generate_preview(
+                project_id=project_id,
+                force_regenerate=True,
+            )
 
     # Verify that the write session was indeed rolled back
     # The last session in mock_sessions is the write session.

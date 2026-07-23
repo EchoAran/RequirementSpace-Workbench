@@ -11,6 +11,7 @@ from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
     load_issue_project_context,
 )
+from backend.core.llm_context import LLMRequestContext, current_llm_context, is_web_request_ctx
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
     PERCEPTION_JOB_COMPLETED,
@@ -62,9 +63,11 @@ class PerceptionJobExecutor:
         job_id: int,
     ) -> None:
         await session.commit()
+        llm_context = current_llm_context.get()
         background_tasks.add_task(
             self.run_perception_job,
             job_id,
+            llm_context,
         )
 
     @staticmethod
@@ -92,7 +95,22 @@ class PerceptionJobExecutor:
 
         return result.scalars().first()
 
-    async def run_perception_job(self, job_id: int) -> None:
+    async def run_perception_job(
+        self,
+        job_id: int,
+        llm_context: LLMRequestContext | None = None,
+    ) -> None:
+        context_token = current_llm_context.set(llm_context) if llm_context else None
+        web_token = is_web_request_ctx.set(True) if llm_context else None
+        try:
+            await self._run_perception_job(job_id)
+        finally:
+            if web_token is not None:
+                is_web_request_ctx.reset(web_token)
+            if context_token is not None:
+                current_llm_context.reset(context_token)
+
+    async def _run_perception_job(self, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
             job = await self._load_job_with_retry(
                 job_id=job_id,

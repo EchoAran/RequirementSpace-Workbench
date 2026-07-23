@@ -16,7 +16,7 @@ from backend.api.modules.ai_interaction.ai_explain.schemas import (
 )
 from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
 from backend.database.database import get_session
-from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.llm import llm_context_manager
 
 router = APIRouter(
     prefix="/api/ai",
@@ -45,31 +45,31 @@ async def explain(
     request: ExplainRequest,
     user: UserModel = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     """Answer a question about the project within the given scope."""
     from backend.api.dependencies.project_access import require_project_member
     owned_project = await require_project_member(request.project_id, user, db_session)
-    try:
-        service = _get_service()
-        return await service.explain(
-            project_id=owned_project.id,
-            scope=request.scope.model_dump(),
-            question=request.question,
-            db_session=db_session,
-        )
-    except ValueError as error:
-        error_str = str(error)
-        if error_str == "project_not_found":
-            raise HTTPException(status_code=404, detail=error_str)
-        if error_str == "target_not_found":
-            raise HTTPException(status_code=404, detail=error_str)
-        if error_str in EXPLAIN_ERRORS or error_str.startswith("unsupported_target_type"):
-            raise HTTPException(status_code=400, detail=error_str)
-        logger.exception("Unexpected ValueError in explain: %s", error_str)
-        raise HTTPException(status_code=500, detail="internal_error")
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Unexpected error in explain")
-        raise HTTPException(status_code=500, detail="internal_error")
+    async with llm_context_manager(user, db_session, project_id=owned_project.id):
+        try:
+            service = _get_service()
+            return await service.explain(
+                project_id=owned_project.id,
+                scope=request.scope.model_dump(),
+                question=request.question,
+                db_session=db_session,
+            )
+        except ValueError as error:
+            error_str = str(error)
+            if error_str == "project_not_found":
+                raise HTTPException(status_code=404, detail=error_str)
+            if error_str == "target_not_found":
+                raise HTTPException(status_code=404, detail=error_str)
+            if error_str in EXPLAIN_ERRORS or error_str.startswith("unsupported_target_type"):
+                raise HTTPException(status_code=400, detail=error_str)
+            logger.exception("Unexpected ValueError in explain: %s", error_str)
+            raise HTTPException(status_code=500, detail="internal_error")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Unexpected error in explain")
+            raise HTTPException(status_code=500, detail="internal_error")

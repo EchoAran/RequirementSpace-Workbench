@@ -21,6 +21,9 @@ from backend.api.modules.ai_interaction.ai_explain.application.context import (
 )
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
+from backend.core.llm_protected_inputs import collect_protected_texts
+from backend.core.localized_messages import localized_message
+from .context_locale import localize_ai_explain_context
 
 logger = get_logger(__name__)
 
@@ -51,6 +54,9 @@ class AIExplainService:
         scope_label = ""
         objects_loaded: list[str] = []
 
+        from backend.core.prompt_resolver import resolve_prompt, get_content_locale
+        locale = get_content_locale()
+
         if scope_kind == "node":
             target_type = scope.get("target_type", "")
             target_id = scope.get("target_id")
@@ -65,36 +71,41 @@ class AIExplainService:
         elif scope_kind == "projection":
             stage = scope.get("stage", "what")
             context_text, objects_loaded = await _load_projection_context(project_id, stage, db_session)
-            scope_label = f"阶段: {stage}"
+            scope_label = localized_message("ai_explain_stage", stage=stage)
 
         elif scope_kind == "workspace":
             context_text, objects_loaded = await _load_workspace_context(project_id, db_session)
-            scope_label = "整个系统空间"
+            scope_label = localized_message("ai_explain_workspace")
 
         else:
             raise ValueError(f"unsupported_scope_kind: {scope_kind}")
 
+        context_text = localize_ai_explain_context(context_text, locale)
+
         # Build system prompt
-        system_prompt = (
-            f"# 角色\n"
-            f"你是项目「{project.name}」的需求分析专家，负责回答用户关于项目的疑问。\n\n"
-            f"# 回答规则\n"
-            f"1. 只基于以下提供的项目信息回答，不要假设不存在的信息。\n"
-            f"2. 如果信息不足，直接说项目中没有相关信息。\n"
-            f"3. 回答时引用具体的对象名称和 ID，让用户知道信息来源。\n"
-            f"4. 回答简洁，直接回答问题后可补充相关上下文。\n\n"
-            f"# 项目需求概述\n"
-            f"{project.user_requirements or '（无需求描述）'}\n\n"
-            f"# 当前上下文范围：{scope_label}\n"
-            f"{context_text}"
+        raw_prompt = resolve_prompt("explain", locale)
+        default_reqs = localized_message("ai_explain_no_requirements")
+        system_prompt = raw_prompt.format(
+            project_name=project.name,
+            user_requirements=project.user_requirements or default_reqs,
+            scope_label=scope_label,
+            context_text=context_text
         )
 
         llm = self._get_llm_handler()
         try:
-            answer = await llm.call_chat([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ])
+            answer = await llm.call_chat(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question},
+                ],
+                protected_inputs=collect_protected_texts(
+                    project.name,
+                    project.user_requirements,
+                    context_text,
+                    question,
+                ),
+            )
         except Exception as exc:
             log_event(
                 logger,
@@ -154,7 +165,10 @@ class AIExplainService:
 
         obj = await db_session.get(model_cls, target_id)
         if obj is None:
-            return f"{target_type}:{target_id}（已删除）"
+            return localized_message(
+                "ai_explain_deleted_node",
+                label=f"{target_type}:{target_id}",
+            )
         return f"{obj.name} ({target_type}:{target_id})"
 
     @staticmethod

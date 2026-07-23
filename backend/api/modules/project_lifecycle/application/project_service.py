@@ -22,6 +22,9 @@ from backend.core.detectors import (
     ScopeIssueDetector,
     WhatIssueDetector,
 )
+from backend.core.localized_messages import localized_message
+from backend.core.locale import SupportedLocale
+from backend.core.prompt_resolver import get_content_locale
 from backend.services.binary_conversion_service import BinaryConversionService
 
 class ProjectService:
@@ -195,6 +198,7 @@ class ProjectService:
             .options(
                 selectinload(ProjectModel.perception_slot),
                 selectinload(ProjectModel.actors),
+                selectinload(ProjectModel.scenarios),
                 selectinload(ProjectModel.features).selectinload(FeatureModel.child_relations),
                 defaultload(ProjectModel.features).selectinload(FeatureModel.parent_relation),
                 defaultload(ProjectModel.features).selectinload(FeatureModel.actors),
@@ -374,6 +378,15 @@ class ProjectService:
 
         unlocked_list = [s.strip() for s in p.unlocked_stages.split(",") if s.strip()] if p.unlocked_stages else []
 
+        issue_count = await self._count_visible_open_issues(
+            project=p,
+            session=session,
+        )
+        status_code, status = self._derive_project_status(
+            project=p,
+            issue_count=issue_count,
+        )
+
         # Get unresolved gates for export action
         from backend.api.modules.diagnosis_quality.public import FindingService
         from backend.api.modules.project_lifecycle.schemas.project import UnresolvedGateResponse
@@ -409,6 +422,9 @@ class ProjectService:
             kano_status=p.kano_status,
             unlocked_stages=unlocked_list,
             unresolved_gates=unresolved_gates_list,
+            status_code=status_code,
+            status=status,
+            issue_count=issue_count,
         )
 
     async def delete_project(self, project_id: int, session: AsyncSession) -> dict:
@@ -484,29 +500,31 @@ class ProjectService:
     async def export_project_markdown(self, project_id: int, session: AsyncSession) -> str:
         """获取项目完整建模详情并序列化输出高格式的 Markdown 需求文档报告"""
         detail = await self.get_project_detail(project_id, session)
+        tr = localized_message
+        locale = get_content_locale()
 
         # 1. Core Info
         md = []
-        md.append(f"# 需求空间建模 PRD 成果报告 - {detail.project_name}")
+        md.append(f"# {tr('markdown_title')} - {detail.project_name}")
         md.append("")
-        md.append("## 1. 项目基础信息")
-        md.append(f"- **项目名称**: {detail.project_name}")
-        md.append(f"- **项目描述**: {detail.project_description}")
+        md.append(f"## 1. {tr('markdown_project_info')}")
+        md.append(f"- **{tr('markdown_project_name')}**: {detail.project_name}")
+        md.append(f"- **{tr('markdown_project_description')}**: {detail.project_description}")
         md.append("")
         md.append("---")
         md.append("")
 
         # 2. Raw User Requirements
-        md.append("## 2. 原始用户需求说明")
-        md.append(detail.user_requirements or "暂无需求说明。")
+        md.append(f"## 2. {tr('markdown_requirements')}")
+        md.append(detail.user_requirements or tr("markdown_no_requirements"))
         md.append("")
         md.append("---")
         md.append("")
 
         # 3. Actors
-        md.append("## 3. 核心角色与参与者 (Who)")
+        md.append(f"## 3. {tr('markdown_actors')}")
         if not detail.actors:
-            md.append("暂无角色数据。")
+            md.append(tr("markdown_no_actors"))
         else:
             for a in detail.actors:
                 md.append(f"- **{a.actor_name}**: {a.actor_description}")
@@ -515,12 +533,12 @@ class ProjectService:
         md.append("")
 
         # 4. Features (Tree and details)
-        md.append("## 4. 功能架构能力树 (What)")
+        md.append(f"## 4. {tr('markdown_features')}")
         if not detail.features:
-            md.append("暂无功能数据。")
+            md.append(tr("markdown_no_features"))
         else:
             # 4.1 Feature Tree structure
-            md.append("### 4.1 功能模块树")
+            md.append(f"### 4.1 {tr('markdown_feature_tree')}")
             lines = []
             def build_tree(feat_list, parent_id=None, level=0):
                 for f in feat_list:
@@ -529,13 +547,13 @@ class ProjectService:
                         scope_text = ""
                         if f.scope:
                             status_map = {
-                                "current": "本期",
-                                "postponed": "暂缓",
-                                "exclude": "不纳入"
+                                "current": tr("markdown_scope_current"),
+                                "postponed": tr("markdown_scope_postponed"),
+                                "exclude": tr("markdown_scope_exclude"),
                             }
                             raw_status = f.scope.scope_status or ""
                             status_zh = status_map.get(raw_status.lower(), raw_status)
-                            scope_text = f" [范围: {status_zh}]"
+                            scope_text = f" [{tr('markdown_scope')}: {status_zh}]"
                         lines.append(f"{indent}- **{f.feature_name}**: {f.feature_description}{scope_text}")
                         build_tree(feat_list, f.feature_id, level + 1)
             build_tree(detail.features)
@@ -543,63 +561,63 @@ class ProjectService:
             md.append("")
 
             # 4.2 Scenarios & ACs
-            md.append("### 4.2 典型场景与验收标准 (AC)")
+            md.append(f"### 4.2 {tr('markdown_scenarios')}")
             has_scenarios = False
             for f in detail.features:
                 if f.scenarios:
                     has_scenarios = True
-                    md.append(f"#### 模块：{f.feature_name}")
+                    md.append(f"#### {tr('markdown_module')}: {f.feature_name}")
                     for sc in f.scenarios:
-                        md.append(f"- **场景：{sc.scenario_name}**")
-                        md.append(f"  - *用户场景描述*: {sc.scenario_content}")
+                        md.append(f"- **{tr('markdown_scenario')}: {sc.scenario_name}**")
+                        md.append(f"  - *{tr('markdown_user_story')}*: {sc.scenario_content}")
                         if sc.acceptance_criteria:
-                            md.append("  - *验收成功标准 (AC)*:")
+                            md.append(f"  - *{tr('markdown_acceptance_criteria')}*:")
                             for ac in sc.acceptance_criteria:
                                 md.append(f"    - [ ] {ac.criterion_content}")
                     md.append("")
             if not has_scenarios:
-                md.append("暂无典型场景。")
+                md.append(tr("markdown_no_scenarios"))
         md.append("")
         md.append("---")
         md.append("")
 
         # 5. Business Objects & Flows
-        md.append("## 5. 运作泳道流与业务对象建模 (How)")
+        md.append(f"## 5. {tr('markdown_how')}")
         md.append("")
 
         # 5.1 Business Objects
-        md.append("### 5.1 业务数据对象与属性表")
+        md.append(f"### 5.1 {tr('markdown_business_objects')}")
         if not detail.business_objects:
-            md.append("暂无数据对象。")
+            md.append(tr("markdown_no_business_objects"))
         else:
             for bo in detail.business_objects:
-                md.append(f"#### 数据实体: {bo.business_object_name}")
-                md.append(f"- *对象描述*: {bo.business_object_description}")
+                md.append(f"#### {tr('markdown_entity')}: {bo.business_object_name}")
+                md.append(f"- *{tr('markdown_object_description')}*: {bo.business_object_description}")
                 if bo.business_object_attributes:
                     md.append("")
-                    md.append("| 属性名称 | 属性描述 | 数据类型 | 示例值 |")
+                    md.append(tr("markdown_attribute_header"))
                     md.append("| --- | --- | --- | --- |")
                     for attr in bo.business_object_attributes:
                         md.append(f"| {attr.business_object_attribute_name} | {attr.business_object_attribute_description} | {attr.business_object_attribute_type} | {attr.business_object_attribute_example} |")
                 else:
-                    md.append("- *暂无细粒度属性。*")
+                    md.append(f"- *{tr('markdown_no_attributes')}*")
                 md.append("")
         md.append("")
 
         # 5.2 Flows
-        md.append("### 5.2 流程建模与步骤流水线")
+        md.append(f"### 5.2 {tr('markdown_flows')}")
         if not detail.flows:
-            md.append("暂无业务泳道流建模。")
+            md.append(tr("markdown_no_flows"))
         else:
             for fl in detail.flows:
-                md.append(f"#### 业务流程: {fl.flow_name}")
-                md.append(f"- *流程描述*: {fl.flow_description}")
+                md.append(f"#### {tr('markdown_flow')}: {fl.flow_name}")
+                md.append(f"- *{tr('markdown_flow_description')}*: {fl.flow_description}")
                 if fl.flow_steps:
                     md.append("")
-                    md.append("##### 泳道步骤详情:")
+                    md.append(f"##### {tr('markdown_steps')}:")
                     for st in fl.flow_steps:
-                        md.append(f"- **步骤: {st.step_name}** ({st.step_type})")
-                        md.append(f"  - *描述*: {st.step_description}")
+                        md.append(f"- **{tr('markdown_step')}: {st.step_name}** ({st.step_type})")
+                        md.append(f"  - *{tr('markdown_description')}*: {st.step_description}")
                         
                         actor_names = []
                         for a_id in st.actor_ids:
@@ -607,7 +625,7 @@ class ProjectService:
                             if actor:
                                 actor_names.append(actor)
                         if actor_names:
-                            md.append(f"  - *参与角色*: {', '.join(actor_names)}")
+                            md.append(f"  - *{tr('markdown_participants')}*: {', '.join(actor_names)}")
 
                         input_bo_names = []
                         for bo_id in st.input_business_object_ids:
@@ -615,7 +633,7 @@ class ProjectService:
                             if bo:
                                 input_bo_names.append(bo)
                         if input_bo_names:
-                            md.append(f"  - *输入数据*: {', '.join(input_bo_names)}")
+                            md.append(f"  - *{tr('markdown_input_data')}*: {', '.join(input_bo_names)}")
 
                         output_bo_names = []
                         for bo_id in st.output_business_object_ids:
@@ -623,7 +641,7 @@ class ProjectService:
                             if bo:
                                 output_bo_names.append(bo)
                         if output_bo_names:
-                            md.append(f"  - *输出数据*: {', '.join(output_bo_names)}")
+                            md.append(f"  - *{tr('markdown_output_data')}*: {', '.join(output_bo_names)}")
                 md.append("")
         # Fetch gate findings for export action
         from backend.api.modules.diagnosis_quality.public import FindingService
@@ -636,19 +654,29 @@ class ProjectService:
             session=session,
         )
         if gate_findings:
-            md.append("## 附录：未处理阶段检查项 (Gates)")
-            md.append("⚠️ 以下项在导出时仍未通过阶段检查约束：")
+            md.append(f"## {tr('markdown_gates')}")
+            md.append(tr("markdown_gates_warning"))
             for gf in gate_findings:
-                md.append(f"- **[{gf.title}]**: {gf.description}")
+                if locale == "en-US":
+                    md.append(
+                        f"- **[{gf.code}]**: {tr('markdown_unresolved_gate')}"
+                    )
+                else:
+                    md.append(f"- **[{gf.title}]**: {gf.description}")
             md.append("")
 
         return "\n".join(md)
 
-    async def export_project_spl_syntax(self, project_id: int, session: AsyncSession) -> str:
+    async def export_project_spl_syntax(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        content_locale: SupportedLocale,
+    ) -> str:
         from backend.integration.skill_backed_services.spl_syntax_export_service import SplSyntaxExportService
         detail = await self.get_project_detail(project_id, session)
         service = SplSyntaxExportService()
-        return await service.export(detail)
+        return await service.export(detail, content_locale=content_locale)
 
     async def export_project_spl_semantic(self, project_id: int, session: AsyncSession, llm_ctx) -> str:
         from backend.integration.skill_backed_services.spl_semantic_export_service import SplSemanticExportService
@@ -719,10 +747,21 @@ class ProjectService:
         )
 
         return {
-            "affected_scenarios": affected_scenarios,
-            "affected_flows": affected_flows,
-            "affected_business_objects": affected_business_objects,
-            "summary": summary,
+            "affected_scenarios": [
+                scenario.scenario_name
+                for feature in detail.features
+                if feature.feature_id in affected_feature_ids
+                for scenario in feature.scenarios
+            ],
+            "affected_flows": [
+                flow.flow_name for flow in detail.flows if flow.flow_id in affected_flow_ids
+            ],
+            "affected_business_objects": [
+                item.business_object_name
+                for item in detail.business_objects
+                if item.business_object_id in affected_bo_ids
+            ],
+            "summary": "scope_impact_summary",
         }
 
     async def get_stage_progress(

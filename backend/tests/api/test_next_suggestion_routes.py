@@ -1,5 +1,6 @@
 import os
 import pytest
+from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -11,6 +12,7 @@ if "LLM_CONFIG_ENCRYPTION_KEY" not in os.environ:
     os.environ["LLM_CONFIG_ENCRYPTION_KEY"] = "rK9PjN_wO2v5gVjHqX8zL1_pT5yW3xM8mU7bC4tN2zI="
 
 from backend.main import app
+from backend.api.modules.diagnosis_quality.next_suggestion import routes as next_suggestion_routes
 from backend.database.database import get_session, Base
 from backend.database.model import ProjectModel, ActorModel, FeatureModel, feature_actor_table
 
@@ -145,6 +147,38 @@ def test_rediagnose_next_suggestion_contract(client_with_auth):
     assert res_data["projectId"] == project_id
     assert res_data["projectId"] != str(db_project_id)
     assert res_data["stage"] == "what"
+
+
+def test_rediagnose_status_continues_perception_chain(client_with_auth, monkeypatch):
+    client, project_id, db_project_id = client_with_auth
+    status_mock = AsyncMock(return_value={
+        "project_id": project_id,
+        "stage": "what",
+        "suggestion": {
+            "source_type": "perception_slot",
+            "code": "FEATURE_PERCEPTION_RUNNING",
+            "title": "Analyzing features",
+            "description": "Perception is running",
+            "status": "running",
+            "target": None,
+            "action": {"kind": "wait"},
+        },
+    })
+    monkeypatch.setattr(
+        next_suggestion_routes.next_suggestion_service,
+        "get_next_suggestion",
+        status_mock,
+    )
+
+    resp = client.get(
+        f"/api/projects/{project_id}/next-suggestion/rediagnose/status?stage=what"
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["projectId"] == project_id
+    assert resp.json()["projectId"] != str(db_project_id)
+    assert resp.json()["suggestion"]["code"] == "FEATURE_PERCEPTION_RUNNING"
+    assert status_mock.await_args.kwargs["include_perception"] is True
 
 
 def test_start_next_suggestion_endpoint_removed(client_with_auth):

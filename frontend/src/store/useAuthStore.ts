@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User, RegisterRequest, LoginRequest, authApi } from '../lib/authApi';
 import { onUnauthorized } from '../lib/http';
 import { useWorkspaceStore } from './useWorkspaceStore';
+import { applyUiLocale, resetUiLocale } from '../i18n';
 
 export interface AuthState {
   user: User | null;
@@ -32,12 +33,13 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ error: null });
       try {
         const user = await authApi.register(data);
+        await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
         set({ user, isAuthenticated: true });
         
         // Load workspaces for the newly registered user
         await useWorkspaceStore.getState().loadWorkspaces();
       } catch (err: any) {
-        set({ error: err.message || '注册失败，请检查邀请码或重试。' });
+        set({ error: err.message || 'register_failed' });
         throw err;
       }
     },
@@ -46,12 +48,13 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ error: null });
       try {
         const user = await authApi.login(data);
+        await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
         set({ user, isAuthenticated: true });
         
         // Load workspaces for the logged in user
         await useWorkspaceStore.getState().loadWorkspaces();
       } catch (err: any) {
-        set({ error: err.message || '登录失败，请检查邮箱或密码。' });
+        set({ error: err.message || 'login_failed' });
         throw err;
       }
     },
@@ -70,12 +73,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ isInitializing: true, error: null });
       try {
         const user = await authApi.getMe();
+        await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
         set({ user, isAuthenticated: true });
         
         // Load workspaces for the authenticated user
         await useWorkspaceStore.getState().loadWorkspaces();
       } catch (err) {
         // Safe to ignore on initial load if user is not logged in
+        await resetUiLocale();
         set({ user: null, isAuthenticated: false });
       } finally {
         set({ isInitializing: false });
@@ -83,6 +88,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     },
 
     clearAuth: () => {
+      void resetUiLocale();
       set({
         user: null,
         isAuthenticated: false,

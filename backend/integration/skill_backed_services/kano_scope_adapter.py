@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from backend.core.prompt_resolver import get_content_locale
 from backend.integration.skill_backed_services.chart_renderer import KanoChartRenderer
 from backend.schemas import FeatureNode
 
@@ -39,6 +40,7 @@ class KanoScopeAdapter:
         if not isinstance(results, list) or not results:
             raise ValueError("empty_scopes")
         participant_count = self._participant_count(kano_result)
+        locale = get_content_locale()
 
         feature_by_name = {
             _canon(feature.featureName): feature
@@ -59,13 +61,13 @@ class KanoScopeAdapter:
             better_worse = item.get("better_worse", {}) if isinstance(item.get("better_worse"), dict) else {}
             scope_status = self._scope_status(category, better_worse)
             reason_summary = item.get("reason_summary", {}) if isinstance(item.get("reason_summary"), dict) else {}
-            explanation = str(item.get("explanation", "")).strip()
             reason = self._reason(
                 category=category,
                 category_name=str(item.get("kano_category_name", category)),
                 scope_status=scope_status,
                 better_worse=better_worse,
-                explanation=explanation,
+                reason_summary=reason_summary,
+                locale=locale,
             )
             satisfaction_distribution = (
                 item.get("satisfaction_distribution", {})
@@ -117,16 +119,46 @@ class KanoScopeAdapter:
         category_name: str,
         scope_status: str,
         better_worse: dict[str, Any],
-        explanation: str,
+        reason_summary: dict[str, str],
+        locale: str,
     ) -> str:
         better = better_worse.get("Better", 0.0)
         worse = better_worse.get("Worse", 0.0)
+        functional_viewpoint = str(reason_summary.get("functional_viewpoint", "")).strip()
+        dysfunctional_viewpoint = str(reason_summary.get("dysfunctional_viewpoint", "")).strip()
+
+        if locale == "zh-CN":
+            localized_category = {
+                "A": "魅力型",
+                "O": "期望型",
+                "M": "必备型",
+                "I": "无差异型",
+                "R": "反向型",
+                "Q": "可疑结果",
+            }.get(category, category_name)
+            localized_scope = {
+                "CURRENT": "当前范围",
+                "POSTPONED": "延期范围",
+                "EXCLUDE": "排除范围",
+            }.get(scope_status, scope_status)
+            prefix = (
+                f"Kano 类别 {localized_category}({category}) 对应{localized_scope}。"
+                f"满意系数={better}，不满意系数={worse}。"
+            )
+            if functional_viewpoint:
+                prefix += f" 用户重视该功能，因为{functional_viewpoint}"
+            if dysfunctional_viewpoint:
+                prefix += f" 缺少该功能时，用户认为{dysfunctional_viewpoint}"
+            return prefix
+
         prefix = (
             f"Kano category {category_name}({category}) maps to {scope_status}. "
             f"Better={better}, Worse={worse}."
         )
-        if explanation:
-            return f"{prefix} {explanation}"
+        if functional_viewpoint:
+            prefix += f" Users valued its presence because {functional_viewpoint}"
+        if dysfunctional_viewpoint:
+            prefix += f" When absent, users felt {dysfunctional_viewpoint}"
         return prefix
 
     @staticmethod

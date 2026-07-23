@@ -4,6 +4,9 @@ import { useAuthStore } from '../store/useAuthStore';
 import { accountApi, LLMConfigResponse } from '../lib/accountApi';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { workspaceApi } from '../lib/api';
+import { authApi } from '../lib/authApi';
+import { useTranslation } from 'react-i18next';
+import { applyUiLocale, normalizeUiLocale, type UiLocale } from '../i18n';
 import {
   ArrowLeft,
   User,
@@ -17,11 +20,13 @@ import {
   Save,
   Globe,
   Key,
+  Languages
 } from 'lucide-react';
 
 export function AccountSettings() {
   const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [config, setConfig] = useState<LLMConfigResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +62,48 @@ export function AccountSettings() {
   const [isTestingProject, setIsTestingProject] = useState(false);
   const [projectTestResult, setProjectTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Preferred locale state
+  const [selectedLocale, setSelectedLocale] = useState<UiLocale>(
+    normalizeUiLocale(user?.preferredLocale ?? user?.preferred_locale),
+  );
+  const [isSavingLocale, setIsSavingLocale] = useState(false);
+
+  useEffect(() => {
+    if (user?.preferredLocale || user?.preferred_locale) {
+      setSelectedLocale(normalizeUiLocale(user.preferredLocale ?? user.preferred_locale));
+    }
+  }, [user]);
+
+  const handleLocaleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newLocale = normalizeUiLocale(e.target.value);
+    const oldLocale = selectedLocale;
+    setSelectedLocale(newLocale);
+    setIsSavingLocale(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await authApi.updatePreferences({ preferred_locale: newLocale });
+      // Update store user state
+      if (user) {
+        useAuthStore.setState({
+          user: {
+            ...user,
+            preferred_locale: newLocale,
+            preferredLocale: newLocale
+          }
+        });
+      }
+      await applyUiLocale(newLocale);
+      setActionSuccess(t('settings.interfaceLanguage.saveSuccess'));
+    } catch (err: any) {
+      console.error(err);
+      setSelectedLocale(oldLocale);
+      setActionError(t('settings.interfaceLanguage.saveError'));
+    } finally {
+      setIsSavingLocale(false);
+    }
+  };
+
   const fetchConfig = async () => {
     setIsLoading(true);
     setActionError(null);
@@ -72,7 +119,7 @@ export function AccountSettings() {
       }
       setApiKey(''); // Never fill password fields
     } catch (err: any) {
-      setActionError(err.message || '获取配置信息失败');
+      setActionError(err.message || t('settings.account.fetchFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +203,7 @@ export function AccountSettings() {
     const cleanModel = projectModelName.trim();
 
     if (!cleanUrl || !cleanKey || !cleanModel) {
-      setActionError('配置字段不能为空');
+      setActionError(t('settings.account.fieldsRequired'));
       return;
     }
 
@@ -175,16 +222,16 @@ export function AccountSettings() {
       setIsEditingProject(false);
       setProjectApiKey('');
       setProjectTestResult(null);
-      setActionSuccess('项目连接配置已成功保存');
+      setActionSuccess(t('settings.account.projectSaved'));
       setTimeout(() => setActionSuccess(null), 3000);
     } catch (err: any) {
-      setActionError(err?.response?.data?.detail || err.message || '保存项目连接配置失败');
+      setActionError(err?.response?.data?.detail || err.message || t('settings.account.projectSaveFailed'));
     }
   };
 
   const handleDeleteProject = async () => {
     if (!projectId) return;
-    const confirm = window.confirm('确定要清除项目 LLM 配置吗？清除后将恢复使用个人配置或系统配置。');
+    const confirm = window.confirm(t('settings.account.clearProjectConfirm'));
     if (!confirm) return;
 
     setActionError(null);
@@ -201,10 +248,10 @@ export function AccountSettings() {
       setProjectModelName('');
       setProjectApiKey('');
       setProjectTestResult(null);
-      setActionSuccess('项目连接配置已成功清除');
+      setActionSuccess(t('settings.account.projectCleared'));
       setTimeout(() => setActionSuccess(null), 3000);
     } catch (err: any) {
-      setActionError(err?.response?.data?.detail || err.message || '清除项目连接配置失败');
+      setActionError(err?.response?.data?.detail || err.message || t('settings.account.projectClearFailed'));
     }
   };
 
@@ -217,7 +264,7 @@ export function AccountSettings() {
       let res;
       if (isEditingProject || !projectConfig?.configured) {
         if (!projectApiUrl.trim() || !projectApiKey.trim() || !projectModelName.trim()) {
-          setProjectTestResult({ success: false, message: '请完整填写连接配置后再测试' });
+      setProjectTestResult({ success: false, message: t('settings.account.completeConfigurationFirst') });
           setIsTestingProject(false);
           return;
         }
@@ -235,17 +282,17 @@ export function AccountSettings() {
       }
 
       if (res.success) {
-        setProjectTestResult({ success: true, message: '连接成功！项目的 LLM 连接一切正常。' });
+      setProjectTestResult({ success: true, message: t('settings.account.projectConnectionSucceeded') });
       } else {
         setProjectTestResult({
           success: false,
-          message: `连接失败: ${res.error_detail || '无法成功调用上游模型，请检查服务配置。'}`
+        message: t('settings.account.connectionFailed', { error: res.error_detail || t('settings.account.upstreamUnavailable') })
         });
       }
     } catch (err: any) {
       setProjectTestResult({
         success: false,
-        message: `网络错误: ${err.message || '连接失败，请检查 URL 可访问性。'}`
+        message: t('settings.account.networkError', { error: err.message || t('settings.account.urlUnavailable') })
       });
     } finally {
       setIsTestingProject(false);
@@ -262,7 +309,7 @@ export function AccountSettings() {
       if (isPersonal && (isEditing || !config?.configured)) {
         // Test with form fields
         if (!apiUrl.trim() || !apiKey.trim() || !modelName.trim()) {
-          setTestResult({ success: false, message: '请完整填写连接配置（API 根地址、API Key 和模型名称）后再测试' });
+      setTestResult({ success: false, message: t('settings.account.completePersonalConfigurationFirst') });
           return;
         }
         res = await accountApi.testLLMConfig({
@@ -276,17 +323,17 @@ export function AccountSettings() {
       }
 
       if (res.success) {
-        setTestResult({ success: true, message: '连接成功！您的 LLM 连接一切正常。' });
+      setTestResult({ success: true, message: t('settings.account.personalConnectionSucceeded') });
       } else {
         setTestResult({
           success: false,
-          message: `连接失败: ${res.error_detail || '无法成功调用上游模型，请检查服务配置。'}`
+        message: t('settings.account.connectionFailed', { error: res.error_detail || t('settings.account.upstreamUnavailable') })
         });
       }
     } catch (err: any) {
       setTestResult({
         success: false,
-        message: `网络错误: ${err.message || '连接失败，请检查 URL 可访问性。'}`
+        message: t('settings.account.networkError', { error: err.message || t('settings.account.urlUnavailable') })
       });
     } finally {
       setIsTesting(false);
@@ -303,7 +350,7 @@ export function AccountSettings() {
     const cleanModel = modelName.trim();
 
     if (!cleanUrl || !cleanKey || !cleanModel) {
-      setActionError('配置字段不能为空');
+      setActionError(t('settings.account.fieldsRequired'));
       return;
     }
 
@@ -317,16 +364,16 @@ export function AccountSettings() {
       setIsEditing(false);
       setApiKey('');
       setTestResult(null);
-      setActionSuccess('连接配置已成功保存');
+      setActionSuccess(t('settings.account.personalSaved'));
       const timer = setTimeout(() => setActionSuccess(null), 3000);
       return () => clearTimeout(timer);
     } catch (err: any) {
-      setActionError(err.message || '保存连接配置失败');
+      setActionError(err.message || t('settings.account.personalSaveFailed'));
     }
   };
 
   const handleDelete = async () => {
-    const confirm = window.confirm('确定要清除您的个人 LLM 配置吗？清除后您将无法进行 AI 场景生成，必须重新配置。');
+    const confirm = window.confirm(t('settings.account.clearPersonalConfirm'));
     if (!confirm) return;
 
     setActionError(null);
@@ -344,9 +391,9 @@ export function AccountSettings() {
       setApiKey('');
       setModelName('');
       setTestResult(null);
-      setActionSuccess('配置已成功清除');
+      setActionSuccess(t('settings.account.personalCleared'));
     } catch (err: any) {
-      setActionError(err.message || '清除配置失败');
+      setActionError(err.message || t('settings.account.personalClearFailed'));
     }
   };
 
@@ -365,24 +412,24 @@ export function AccountSettings() {
           className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors text-xs font-bold cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          返回首页
+          {t('settings.account.backHome')}
         </button>
         <div className="h-4 w-[1px] bg-slate-200 mx-4" />
-        <span className="font-extrabold text-sm text-slate-800 tracking-tight">账户设置与 LLM 配置</span>
+          <span className="font-extrabold text-sm text-slate-800 tracking-tight">{t('settings.account.navigationTitle')}</span>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 relative z-10 space-y-6">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">账户与服务配置</h1>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{t('settings.account.pageTitle')}</h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            配置您的用户属性及大语言模型 API 连接以解锁智能推演。
+            {t('settings.account.pageDescription')}
           </p>
         </div>
 
         {actionError && (
           <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-3 shadow-inner">
-            {actionError === 'admin_cannot_configure_personal_llm' ? '管理员不可配置个人配置' : actionError}
+            {actionError === 'admin_cannot_configure_personal_llm' ? t('settings.account.adminCannotConfigure') : actionError}
           </div>
         )}
 
@@ -399,32 +446,50 @@ export function AccountSettings() {
               <User className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold text-slate-800">个人基本信息</h2>
-              <p className="text-[10px] text-slate-400 font-medium">当前登录账户的身份信息</p>
+          <h2 className="text-sm font-extrabold text-slate-800">{t('settings.account.personalInfo')}</h2>
+          <p className="text-[10px] text-slate-400 font-medium">{t('settings.account.personalInfoDescription')}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-sm">
             <div className="space-y-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">邮箱地址</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('settings.account.email')}</span>
               <span className="font-extrabold text-slate-800">{user?.email}</span>
             </div>
             <div className="space-y-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col justify-between">
               <div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">账户角色</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('settings.account.role')}</span>
                 <span className="font-extrabold text-slate-800 flex items-center gap-1.5 mt-0.5">
                   {user?.role === 'admin' ? (
                     <>
                       <Shield className="w-4 h-4 text-indigo-600" />
-                      管理员用户
+                {t('settings.account.adminUser')}
                     </>
                   ) : (
                     <>
                       <User className="w-4 h-4 text-slate-500" />
-                      普通用户
+                {t('settings.account.standardUser')}
                     </>
                   )}
                 </span>
+              </div>
+            </div>
+            <div className="space-y-1 bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                  {t('settings.interfaceLanguage.title')}
+                </span>
+                <div className="relative mt-1">
+                  <select
+                    value={selectedLocale}
+                    onChange={handleLocaleChange}
+                    disabled={isSavingLocale}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <option value="zh-CN">{t('settings.interfaceLanguage.zh')}</option>
+                    <option value="en-US">{t('settings.interfaceLanguage.en')}</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -437,8 +502,8 @@ export function AccountSettings() {
               <Cpu className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold text-slate-800">大语言模型配置 (LLM Connection)</h2>
-              <p className="text-[10px] text-slate-400 font-medium">AI 功能的数据通道与认证参数</p>
+              <h2 className="text-sm font-extrabold text-slate-800">{t('settings.title')}</h2>
+              <p className="text-[10px] text-slate-400 font-medium">{t('settings.subtitle')}</p>
             </div>
           </div>
 
@@ -456,7 +521,7 @@ export function AccountSettings() {
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
-                个人 LLM 配置
+                {t('settings.personalTab')}
               </button>
               <button
                 onClick={() => {
@@ -470,7 +535,7 @@ export function AccountSettings() {
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
-                项目配置索引
+                {t('settings.projectTab')}
               </button>
             </div>
           )}
@@ -478,7 +543,7 @@ export function AccountSettings() {
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-10 space-y-3">
               <div className="h-8 w-8 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
-              <span className="text-xs text-slate-400 font-medium">正在拉取配置详情...</span>
+            <span className="text-xs text-slate-400 font-medium">{t('settings.account.loadingConfiguration')}</span>
             </div>
           ) : activeTab === 'personal' ? (
             /* PERSONAL TAB */
@@ -488,10 +553,10 @@ export function AccountSettings() {
                 <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-indigo-950 space-y-3">
                   <h3 className="text-sm font-bold flex items-center gap-1.5">
                     <Shield className="w-4 h-4 text-indigo-600" />
-                    已挂载服务端共享 LLM 配置
+              {t('settings.account.serverConfigurationTitle')}
                   </h3>
                   <p className="text-xs leading-relaxed text-slate-600">
-                    由于您是以<strong>管理员</strong>身份登录 of，系统将直接默认读取服务器环境配置文件（`.env`）中配置的共享大语言模型 API 资源，您无需手动在此配置个人 API 信息。
+              {t('settings.account.serverConfigurationDescription')}
                   </p>
                 </div>
 
@@ -499,7 +564,7 @@ export function AccountSettings() {
                   <div className="flex items-center gap-2">
                     <div className={`h-2.5 w-2.5 rounded-full ${config?.configured ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                     <span className="text-xs font-bold text-slate-700">
-                      服务端连接状态：{config?.configured ? '已就绪' : '未就绪 (请检查服务端 env)'}
+              {t('settings.account.serverConnectionStatus', { status: config?.configured ? t('settings.account.ready') : t('settings.account.notReady') })}
                     </span>
                   </div>
                   {config?.configured && (
@@ -513,7 +578,7 @@ export function AccountSettings() {
                       ) : (
                         <>
                           <Activity className="w-3.5 h-3.5" />
-                          测试通道连通性
+                {t('settings.account.testConnection')}
                         </>
                       )}
                     </button>
@@ -528,15 +593,15 @@ export function AccountSettings() {
                   <div className="space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-medium">
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">API 根地址</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">{t('settings.account.apiBaseUrl')}</span>
                         <span className="font-extrabold text-slate-800 break-all">{config.api_url}</span>
                       </div>
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">模型名称</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">{t('settings.account.modelName')}</span>
                         <span className="font-extrabold text-slate-800 break-all">{config.model_name}</span>
                       </div>
                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">API Key 密文</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">{t('settings.account.apiKeyCiphertext')}</span>
                         <span className="font-extrabold text-slate-800">••••••••{config.api_key_last4}</span>
                       </div>
                     </div>
@@ -552,7 +617,7 @@ export function AccountSettings() {
                         ) : (
                           <>
                             <Activity className="w-3.5 h-3.5" />
-                            测试连通性
+                {t('settings.account.testConnection')}
                           </>
                         )}
                       </button>
@@ -561,14 +626,14 @@ export function AccountSettings() {
                         className="px-4 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                       >
                         <Edit className="w-3.5 h-3.5" />
-                        修改配置
+                {t('settings.account.editConfiguration')}
                       </button>
                       <button
                         onClick={() => handleDelete()}
                         className="px-4 py-2 border border-rose-200 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl hover:bg-rose-100 active:scale-[0.99] transition-all flex items-center gap-1.5 ml-auto cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        清除配置
+                {t('settings.account.clearConfiguration')}
                       </button>
                     </div>
                   </div>
@@ -578,13 +643,13 @@ export function AccountSettings() {
                   /* Config editing/creation form */
                   <form onSubmit={handleSave} className="space-y-5">
                     <div className="p-4 bg-amber-50/50 border border-amber-100 text-amber-900 rounded-2xl text-xs leading-relaxed">
-                      普通用户账号必须自主提供 OpenAI-compatible 协议的 AI 连接地址及 API Key 才可执行智能推演。个人 API 凭证将使用您的独立密钥加密存储在数据库中，不会共享。
+                      {t('settings.account.personalConfigurationDescription')}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                          API 根地址 (API Base URL) <span className="text-rose-500">*</span>
+                          {t('settings.account.apiBaseUrl')} <span className="text-rose-500">*</span>
                         </label>
                         <div className="relative">
                           <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -601,7 +666,7 @@ export function AccountSettings() {
 
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                          大模型名称 (Model Name) <span className="text-rose-500">*</span>
+                          {t('settings.account.modelName')} <span className="text-rose-500">*</span>
                         </label>
                         <div className="relative">
                           <Cpu className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -618,13 +683,13 @@ export function AccountSettings() {
 
                       <div className="space-y-1.5 sm:col-span-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                          认证密钥 (API Key) <span className="text-rose-500">*</span>
+                          {t('settings.account.apiKey')} <span className="text-rose-500">*</span>
                         </label>
                         <div className="relative">
                           <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                           <input
                             type="password"
-                            placeholder={config?.configured ? '未更改（请输入新 Key 替换）' : '请输入 API Key'}
+                            placeholder={config?.configured ? t('settings.account.apiKeyUnchanged') : t('settings.account.apiKeyPlaceholder')}
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
                             className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 font-bold transition-all"
@@ -640,7 +705,7 @@ export function AccountSettings() {
                         className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 active:scale-[0.99] transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-600/10 cursor-pointer"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        保存配置
+                        {t('settings.account.saveConfiguration')}
                       </button>
                       <button
                         type="button"
@@ -653,7 +718,7 @@ export function AccountSettings() {
                         ) : (
                           <>
                             <Activity className="w-3.5 h-3.5" />
-                            测试连通性
+                            {t('settings.account.testConnection')}
                           </>
                         )}
                       </button>
@@ -669,7 +734,7 @@ export function AccountSettings() {
                           }}
                           className="px-5 py-2.5 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-colors ml-auto cursor-pointer shadow-sm"
                         >
-                          取消
+                          {t('common.cancel')}
                         </button>
                       )}
                     </div>
@@ -681,17 +746,17 @@ export function AccountSettings() {
             /* PROJECT TAB */
             <div className="space-y-6">
               <div className="p-4 bg-indigo-50/50 border border-indigo-100 text-indigo-900 rounded-2xl text-xs leading-relaxed">
-                项目级配置按具体项目维护。这里提供可管理项目的配置总览；当前项目会置顶展示，编辑策略、知识库和项目 LLM 请进入对应项目配置页完成。
+                {t('settings.account.projectIndexDescription')}
               </div>
 
               {isLoadingProjectIndex ? (
                 <div className="flex flex-col items-center justify-center py-10 space-y-3">
                   <div className="h-8 w-8 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
-                  <span className="text-xs text-slate-400 font-medium">正在拉取项目配置总览...</span>
+                  <span className="text-xs text-slate-400 font-medium">{t('settings.account.loadingProjectIndex')}</span>
                 </div>
               ) : sortedProjectConfigItems.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-xs font-medium text-slate-400">
-                  暂无可管理项目。
+                  {t('settings.account.noManageableProjects')}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -716,12 +781,12 @@ export function AccountSettings() {
                               <h3 className="text-sm font-black text-slate-800">{project.name}</h3>
                               {isCurrent && (
                                 <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-black text-indigo-700">
-                                  当前项目
+                                   {t('settings.account.currentProject')}
                                 </span>
                               )}
                             </div>
                             <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-500">
-                              {project.description || project.idea || '暂无项目说明'}
+                               {project.description || project.idea || t('settings.account.noProjectDescription')}
                             </p>
                           </div>
                           <button
@@ -729,69 +794,69 @@ export function AccountSettings() {
                             onClick={() => navigate(`/projects/${project.id}/configuration`)}
                             className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700"
                           >
-                            打开配置
+                             {t('settings.account.openConfiguration')}
                           </button>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
                           <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-black text-slate-400">AI 生成策略</span>
-                              <span className="font-bold text-slate-600">{strategy?.source === 'project' ? '项目自定义' : '系统默认'}</span>
+                              <span className="font-black text-slate-400">{t('settings.account.generationStrategy')}</span>
+                              <span className="font-bold text-slate-600">{strategy?.source === 'project' ? t('settings.account.projectCustom') : t('settings.account.systemDefault')}</span>
                             </div>
                             <div className="mt-2 font-extrabold text-slate-800">
-                              {strategy?.candidate_count ?? 2} 个候选 · {enabledStrategies || 2} 个启用策略
+                              {t('settings.account.strategySummary', { candidates: strategy?.candidate_count ?? 2, enabled: enabledStrategies || 2 })}
                             </div>
                             <button
                               type="button"
                               onClick={() => navigate(`/projects/${project.id}/configuration?tab=ai-strategies`)}
                               className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
                             >
-                              查看策略
+                              {t('settings.account.viewStrategy')}
                             </button>
                           </div>
 
                           <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-black text-slate-400">项目知识库</span>
+                              <span className="font-black text-slate-400">{t('settings.account.projectKnowledge')}</span>
                               <span className={`font-bold ${knowledge?.enabled === false ? 'text-slate-400' : 'text-slate-600'}`}>
-                                {knowledge?.enabled === false ? '已关闭' : '已开启'}
+                                {knowledge?.enabled === false ? t('settings.account.disabled') : t('settings.account.enabled')}
                               </span>
                             </div>
                             <div className="mt-2 font-extrabold text-slate-800">
-                              {knowledge?.document_count ?? 0} 个文档 · {knowledge?.ai_enabled_count ?? 0} 个可用于 AI
+                              {t('settings.account.knowledgeSummary', { documents: knowledge?.document_count ?? 0, aiEnabled: knowledge?.ai_enabled_count ?? 0 })}
                             </div>
                             <div className="mt-1 text-[11px] font-medium text-slate-400">
-                              {knowledge?.processing_count ?? 0} 处理中 · {knowledge?.failed_count ?? 0} 失败
+                              {t('settings.account.knowledgeProcessingSummary', { processing: knowledge?.processing_count ?? 0, failed: knowledge?.failed_count ?? 0 })}
                             </div>
                             <button
                               type="button"
                               onClick={() => navigate(`/projects/${project.id}/configuration?tab=knowledge`)}
                               className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
                             >
-                              查看知识库
+                              {t('settings.account.viewKnowledge')}
                             </button>
                           </div>
 
                           <div className="rounded-xl border border-slate-100 bg-white p-3 text-xs">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-black text-slate-400">项目 LLM</span>
+                              <span className="font-black text-slate-400">{t('settings.account.projectLlm')}</span>
                               <span className={`font-bold ${llm?.configured ? 'text-emerald-700' : 'text-slate-500'}`}>
-                                {llm?.configured ? '项目已配置' : '项目未配置'}
+                                {llm?.configured ? t('settings.account.projectConfigured') : t('settings.account.projectNotConfigured')}
                               </span>
                             </div>
                             <div className="mt-2 font-extrabold text-slate-800">
-                              {llm?.configured ? (llm?.model_name || '项目模型') : `回退到${llm?.source === 'personal' ? '个人配置' : '系统配置'}`}
+                               {llm?.configured ? (llm?.model_name || t('settings.account.projectModel')) : t('settings.account.fallbackTo', { source: llm?.source === 'personal' ? t('settings.account.personalConfiguration') : t('settings.account.systemConfiguration') })}
                             </div>
                             <div className="mt-1 text-[11px] font-medium text-slate-400">
-                              生效模型：{llm?.model_name || '-'}
+                               {t('settings.account.effectiveModel', { model: llm?.model_name || '-' })}
                             </div>
                             <button
                               type="button"
                               onClick={() => navigate(`/projects/${project.id}/configuration?tab=llm`)}
                               className="mt-3 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
                             >
-                              查看项目 LLM
+                              {t('settings.account.viewProjectLlm')}
                             </button>
                           </div>
                         </div>
@@ -818,7 +883,7 @@ export function AccountSettings() {
                 <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               )}
               <div className="space-y-1">
-                <span className="font-bold">{(activeTab === 'personal' ? testResult!.success : projectTestResult!.success) ? '测试通过' : '测试失败'}</span>
+                <span className="font-bold">{(activeTab === 'personal' ? testResult!.success : projectTestResult!.success) ? t('settings.account.testPassed') : t('settings.account.testFailed')}</span>
                 <p className="leading-relaxed text-slate-600">{(activeTab === 'personal' ? testResult!.message : projectTestResult!.message)}</p>
               </div>
             </div>

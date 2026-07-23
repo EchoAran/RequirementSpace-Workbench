@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
-import { buildPageHealth, buildStageGate } from '../core/selectors';
 import { LeftNav } from '../components/layout/LeftNav';
 import { Overview } from '../pages/Overview';
 
@@ -29,6 +28,9 @@ vi.mock('../lib/api', () => ({
     getById: vi.fn().mockResolvedValue({}),
     listChoiceGroups: vi.fn().mockResolvedValue([]),
     listAuditLogs: vi.fn().mockResolvedValue([]),
+    getStageProgress: vi.fn().mockResolvedValue({ stages: [] }),
+    getProjectConfiguration: vi.fn().mockResolvedValue(null),
+    getLatestPrototypePreview: vi.fn().mockResolvedValue(null),
   }
 }));
 
@@ -63,42 +65,9 @@ describe('Stage Transition Phase 1 Tests', () => {
       error: null,
       activeGateCheck: null,
       stageTransitionInFlight: false,
-      stageProgress: null
+      stageProgress: null,
+      backendFindingsLoaded: true,
     });
-  });
-
-  it('should evaluate whatGate as passed:true even when transition confirm slot exists', () => {
-    const ir = useWorkspaceStore.getState().ir;
-    
-    // Add scenario & AC to satisfy static mandatory checks for what stage
-    ir!.features = [
-      { featureId: 10, featureName: 'Parent', parentId: null },
-      { 
-        featureId: 11, 
-        featureName: 'Leaf', 
-        parentId: 10, 
-        actorIds: [1],
-        scenarios: [
-          { 
-            scenarioId: 1, 
-            title: 'Scenario', 
-            acceptanceCriteria: [{ id: 1, title: 'AC' }] 
-          }
-        ]
-      } as any
-    ];
-
-    // Under this setup, evaluateMandatoryChecks('what') is true.
-    // unlockedStages does not contain 'what', so it will generate a transition confirm slot.
-    const whatGate = buildStageGate(ir, 'what');
-    expect(whatGate.mandatoryChecksPassed).toBe(true);
-    expect(whatGate.passed).toBe(true); // Excluded from blocking slot!
-    expect(whatGate.blockingSlot).toBeUndefined();
-    expect(whatGate.activeSlot?.kind).toBe('stage_gate_transition_confirm');
-
-    const whatHealth = buildPageHealth(ir, '/what');
-    expect(whatHealth.statusCode).toBe('ready_to_advance');
-    expect(whatHealth.statusLabel).toBe('可进入下一阶段');
   });
 
   it('should call stageTransition with force:false on requestStageTransition (enter_how)', async () => {
@@ -228,6 +197,16 @@ describe('Stage Transition Phase 1 Tests', () => {
       } as any
     ];
 
+    useWorkspaceStore.setState({
+      stageProgress: {
+        stages: [
+          { stage: 'what', unlocked: true, statusCode: 'ready_to_advance', failedChecks: [], blockingFindings: [] },
+          { stage: 'how', unlocked: false, statusCode: 'locked', failedChecks: [], blockingFindings: [] },
+          { stage: 'scope', unlocked: false, statusCode: 'locked', failedChecks: [], blockingFindings: [] },
+        ]
+      }
+    });
+
     // Mock API
     vi.mocked(workspaceApi.stageTransition).mockResolvedValue({
       status: 'unlocked',
@@ -255,7 +234,16 @@ describe('Stage Transition Phase 1 Tests', () => {
   });
 
   it('should show error toast and prevent navigation when clicking locked Flow link in LeftNav if pre-requisite is NOT ready', async () => {
-    // What stage is NOT ready (no scenarios or AC)
+    useWorkspaceStore.setState({
+      stageProgress: {
+        stages: [
+          { stage: 'what', unlocked: true, statusCode: 'blocked', failedChecks: [{ code: 'MISSING_SCENARIO' }], blockingFindings: [] },
+          { stage: 'how', unlocked: false, statusCode: 'locked', failedChecks: [], blockingFindings: [] },
+          { stage: 'scope', unlocked: false, statusCode: 'locked', failedChecks: [], blockingFindings: [] },
+        ]
+      }
+    });
+
     // Mock API
     vi.mocked(workspaceApi.stageTransition).mockResolvedValue({
       status: 'unlocked',
@@ -343,6 +331,22 @@ describe('Stage Transition Phase 1 Tests', () => {
           { stage: 'how', statusCode: 'locked', nextAction: { kind: 'none', label: '' }, failedChecks: [], blockingFindings: [] },
           { stage: 'scope', statusCode: 'locked', nextAction: { kind: 'none', label: '' }, failedChecks: [], blockingFindings: [] }
         ]
+      },
+      findingsByView: {
+        issues: [],
+        gate: [],
+        health: [],
+        next_action: [{
+          findingId: 'what:ENTER_HOW:suggest',
+          type: 'next_suggestion',
+          stage: 'what',
+          code: 'ENTER_HOW',
+          severity: 'info',
+          title: '申请进入下一阶段',
+          description: '推进到 How 阶段',
+          blockingScope: 'none',
+          metadata: { action: { kind: 'stage_transition', transition_action: 'enter_how' } },
+        } as any]
       }
     });
 
@@ -352,7 +356,7 @@ describe('Stage Transition Phase 1 Tests', () => {
       </MemoryRouter>
     );
 
-    const suggestBtn = screen.getByText('申请进入下一阶段');
+    const suggestBtn = screen.getByText('进入 How 阶段');
     fireEvent.click(suggestBtn);
 
     // Verify it triggers requestStageTransition

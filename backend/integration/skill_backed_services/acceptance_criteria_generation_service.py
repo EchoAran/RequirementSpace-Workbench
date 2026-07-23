@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from backend.api.modules.requirements_core.public import (
     AcceptanceCriteriaGenerationService,
 )
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.integration.skill_backed_services.gherkin_adapter import GherkinAdapter
 from backend.integration.skill_backed_services.llm_json_client import (
     SkillBackedLLMJsonClient,
@@ -407,4 +408,11 @@ class SkillBackedAcceptanceCriteriaGenerationService(
                 "{Selected Feature Replacement Flag}": feature_name,
             },
         )
-        return await self._llm_json_client.ask_json(prompt)
+        return await self._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_feedback,
+                gherkin_content,
+                feature_name,
+            ),
+        )

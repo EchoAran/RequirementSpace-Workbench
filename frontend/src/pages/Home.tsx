@@ -5,8 +5,10 @@ import { useNavigate } from 'react-router-dom';
 import { buildProjectRoute } from '@/core/selectors';
 import { workspaceApi } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useTranslation } from 'react-i18next';
 
 export function Home() {
+  const { t } = useTranslation();
   const {
     loadWorkspaces,
     workspaces,
@@ -48,9 +50,9 @@ export function Home() {
     if (!ts) return '';
     const diffMs = Date.now() - ts * 1000;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return '刚刚生成';
-    if (mins < 60) return `${mins} 分钟前`;
-    return `${Math.floor(mins / 60)} 小时前`;
+    if (mins < 1) return t('home.time.justGenerated');
+    if (mins < 60) return t('home.time.minutesAgo', { count: mins });
+    return t('home.time.hoursAgo', { count: Math.floor(mins / 60) });
   };
 
   const sorted = useMemo(() => {
@@ -58,19 +60,21 @@ export function Home() {
   }, [workspaces]);
 
   const formatRelativeTime = (iso: string) => {
-    const t = Date.parse(iso);
-    if (Number.isNaN(t)) return '未知时间';
-    const diffMs = Date.now() - t;
+    const tVal = Date.parse(iso);
+    if (Number.isNaN(tVal)) return t('home.time.unknownTime');
+    const diffMs = Date.now() - tVal;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return '刚刚修改';
-    if (mins < 60) return `${mins} 分钟前修改`;
+    if (mins < 1) return t('home.time.justModified');
+    if (mins < 60) return t('home.time.minutesAgoModified', { count: mins });
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} 小时前修改`;
-    return `${Math.floor(hours / 24)} 天前修改`;
+    if (hours < 24) return t('home.time.hoursAgoModified', { count: hours });
+    return t('home.time.daysAgoModified', { count: Math.floor(hours / 24) });
   };
 
   const renderStatus = (p: any) => {
-    const status = p.status || '项目';
+    const statusKey = `home.projectStatus.${p.statusCode}`;
+    const translatedStatus = t(statusKey);
+    const status = translatedStatus === statusKey ? p.status || t('home.projectStatus.unknown') : translatedStatus;
     const statusCode = p.statusCode;
     const tone =
       statusCode === 'needs_attention'
@@ -99,7 +103,7 @@ export function Home() {
   };
 
   const handleDelete = async (project: any) => {
-    const ok = window.confirm(`确定删除项目“${project.name}”吗？此操作将永久清除该工作区所有建模数据。`);
+    const ok = window.confirm(t('home.deleteConfirm', { name: project.name }));
     if (!ok) return;
     await deleteProject(project.id);
     await loadWorkspaces();
@@ -114,7 +118,7 @@ export function Home() {
       <header className="h-16 border-b border-slate-200/50 bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
           <img src={`${import.meta.env.BASE_URL}plume-gradient.svg`} alt="Plume" className="w-7 h-7 shrink-0" />
-          <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent">需求空间工作台</span>
+          <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent">{t('home.title')}</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -130,7 +134,7 @@ export function Home() {
           <button
             onClick={() => navigate('/settings')}
             className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all cursor-pointer"
-            title="账户与 LLM 设置"
+            title={t('home.settingsTitle')}
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -141,7 +145,7 @@ export function Home() {
               navigate('/login');
             }}
             className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-rose-600 hover:border-rose-200 shadow-sm transition-all cursor-pointer"
-            title="退出登录"
+            title={t('home.logoutTitle')}
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -152,10 +156,10 @@ export function Home() {
         {/* Hero Banner Section */}
         <div className="mb-8 shrink-0 animate-in fade-in slide-in-from-top-4 duration-700">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight mb-3">
-            将业务构想转化为可执行的产品定义
+            {t('home.heroTitle')}
           </h1>
           <p className="text-slate-500 text-sm sm:text-base leading-relaxed max-w-4xl font-medium">
-            通过自然语言智能解析、全自动泳道流程生成、高准度系统一致性诊断，全闭环交付直观、可交互的产品高保真原型。
+            {t('home.heroDesc')}
           </p>
         </div>
 
@@ -170,7 +174,7 @@ export function Home() {
                   <Sparkles className="w-5 h-5 text-indigo-600 shrink-0" />
                   <div>
                     <p className="text-sm font-bold text-indigo-900">
-                      您有 1 个未选择的项目草稿
+                      {t('home.draftRecoverTitle', { count: 1 })}
                     </p>
                     <p className="text-xs text-indigo-600 mt-0.5">
                       {g.userRequirements?.slice(0, 60)} — {formatGroupTime(g.createdAt)}
@@ -182,13 +186,13 @@ export function Home() {
                     onClick={() => handleRecoverGroup(g.id)}
                     className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
                   >
-                    继续处理
+                    {t('home.draftRecoverBtn')}
                   </button>
                   <button
                     onClick={() => handleDiscardGroup(g.id)}
                     className="h-9 px-4 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-bold hover:bg-indigo-100 transition-colors"
                   >
-                    丢弃
+                    {t('home.draftDiscardBtn')}
                   </button>
                 </div>
               </div>
@@ -214,7 +218,7 @@ export function Home() {
             
             <div className="mt-auto relative z-10">
               <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2 group-hover:text-indigo-200 transition-colors">
-                新建项目
+                {t('home.createNewProject')}
                 <ArrowRight className="w-5 h-5 opacity-0 -translate-x-3 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-indigo-400" />
               </h2>
             </div>
@@ -224,10 +228,10 @@ export function Home() {
           <section className="lg:col-span-8 flex min-h-0 flex-col pb-4">
             <div className="flex items-center justify-between mb-4 px-1 shrink-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-extrabold text-slate-800 tracking-wider uppercase">正在进行的项目</h2>
+                <h2 className="text-sm font-extrabold text-slate-800 tracking-wider uppercase">{t('home.activeProjects')}</h2>
                 <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-md text-[10px] font-extrabold">{sorted.length}</span>
               </div>
-              <span className="text-xs text-slate-400 font-medium">最近更新时间排序</span>
+              <span className="text-xs text-slate-400 font-medium">{t('home.updatedAtSort')}</span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto rounded-3xl border border-slate-200/60 bg-white/80 backdrop-blur-md shadow-lg p-5 space-y-4">
@@ -256,7 +260,7 @@ export function Home() {
                       {renderStatus(p)}
                     </div>
                     <p className="mt-1.5 line-clamp-2 text-xs sm:text-sm leading-relaxed text-slate-500 font-medium">
-                      {p.description || p.idea || '暂无项目描述，请点击卡片进入工作台丰富建模详情。'}
+                      {p.description || p.idea || t('home.noDescription')}
                     </p>
                     <div className="mt-4 flex items-center gap-4 text-[10px] font-bold text-slate-400">
                       <div className="flex items-center gap-1.5">
@@ -275,7 +279,7 @@ export function Home() {
                         startEditing(p);
                       }}
                       className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition-all hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50"
-                      title="编辑项目"
+                      title={t('home.editProject')}
                     >
                       <Edit className="h-4 w-4" />
                     </button>
@@ -286,7 +290,7 @@ export function Home() {
                         void handleDelete(p);
                       }}
                       className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition-all hover:border-rose-300 hover:text-rose-600 hover:bg-rose-50"
-                      title="删除项目"
+                      title={t('home.deleteProject')}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -299,15 +303,15 @@ export function Home() {
                   <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 mb-4 shadow-sm">
                     <AppWindow className="h-8 w-8" />
                   </div>
-                  <div className="text-sm font-extrabold text-slate-800">暂无正在进行的项目</div>
-                  <div className="mt-1.5 text-xs text-slate-500 max-w-xs leading-normal">从左侧点击“新建项目”卡片，开启您的首个 AI 需求建模空间。</div>
+                  <div className="text-sm font-extrabold text-slate-800">{t('home.noProjectsTitle')}</div>
+                  <div className="mt-1.5 text-xs text-slate-500 max-w-xs leading-normal">{t('home.noProjectsDesc')}</div>
                 </div>
               )}
 
               {isLoading && sorted.length === 0 && (
                 <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-10 text-center">
                   <div className="h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin mb-4" />
-                  <div className="text-xs text-slate-500 font-bold">正在加载项目列表...</div>
+                  <div className="text-xs text-slate-500 font-bold">{t('home.loadingProjects')}</div>
                 </div>
               )}
             </div>
@@ -321,13 +325,13 @@ export function Home() {
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-350">
           <div className="bg-white rounded-3xl p-7 max-w-lg w-full border border-slate-100 shadow-2xl space-y-6 mx-4 animate-in zoom-in-95 duration-250">
             <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">编辑项目信息</h3>
-              <p className="text-xs text-slate-400 mt-1">更新工作空间名称和核心业务创想描述。</p>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">{t('home.editModal.title')}</h3>
+              <p className="text-xs text-slate-400 mt-1">{t('home.editModal.subtitle')}</p>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">项目名称</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('home.editModal.nameLabel')}</label>
                 <input
                   type="text"
                   value={editName}
@@ -336,7 +340,7 @@ export function Home() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">业务描述</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{t('home.editModal.descLabel')}</label>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
@@ -352,13 +356,13 @@ export function Home() {
                 onClick={() => setEditingProject(null)}
                 className="px-5 py-2.5 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               >
-                取消
+                {t('home.editModal.cancel')}
               </button>
               <button
                 type="button"
                 onClick={async () => {
                   if (!editName.trim()) {
-                    window.alert('项目名称不能为空');
+                    window.alert(t('home.editModal.nameRequired'));
                     return;
                   }
                   await updateProject(editingProject.id, editName.trim(), editDescription.trim());
@@ -367,7 +371,7 @@ export function Home() {
                 }}
                 className="px-5 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/10"
               >
-                确认保存
+                {t('home.editModal.save')}
               </button>
             </div>
           </div>

@@ -9,6 +9,7 @@ from backend.api.modules.requirements_core.public import (
     ScenarioGenerationService,
     get_notifier,
 )
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.integration.skill_backed_services.gherkin_adapter import GherkinAdapter
 from backend.integration.skill_backed_services.llm_json_client import (
     SkillBackedLLMJsonClient,
@@ -39,6 +40,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             "SCENARIO_SKILL_STEP_MAX_CONCURRENCY",
             self._max_concurrency,
         )
+        self._llm_call_semaphore = asyncio.Semaphore(self._step_max_concurrency)
 
     async def regenerate_draft(
         self,
@@ -317,7 +319,11 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         replacements: dict[str, str],
     ) -> dict:
         prompt = render_prompt(self._skill_generator._prompts[prompt_name], replacements)
-        return await self._llm_json_client.ask_json(prompt)
+        async with self._llm_call_semaphore:
+            return await self._llm_json_client.ask_json(
+                prompt,
+                protected_inputs=collect_protected_texts(replacements),
+            )
 
     async def _revise_gherkin(
         self,
@@ -337,7 +343,14 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
                 "{Selected Feature Replacement Flag}": feature_name,
             },
         )
-        return await self._llm_json_client.ask_json(prompt)
+        return await self._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_feedback,
+                gherkin_content,
+                feature_name,
+            ),
+        )
 
     @staticmethod
     async def _persist_scenario_generation_draft(

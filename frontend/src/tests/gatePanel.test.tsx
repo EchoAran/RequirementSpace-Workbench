@@ -72,8 +72,8 @@ describe('GateCheckModal - UI and Integration Tests', () => {
     render(<GateCheckModal />);
 
     expect(screen.queryByText('模型就绪度检查未通过')).not.toBeNull();
-    expect(screen.queryByText('缺少典型场景')).not.toBeNull();
-    expect(screen.queryByText('角色和功能未关联典型场景')).not.toBeNull();
+    expect(screen.queryByText('功能与参与者组合缺少场景')).not.toBeNull();
+    expect(screen.queryByText('该功能与参与者组合尚无对应场景。')).not.toBeNull();
     expect(screen.queryAllByText('AI 修复').length).toBe(2);
   });
 

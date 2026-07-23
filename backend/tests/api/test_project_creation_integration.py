@@ -99,7 +99,12 @@ async def _register_users(client, db_session_creator):
 
 
 async def mock_call_llm_factory(prompt_tracker=None):
-    async def mock_call_llm(prompt, query=None, print_log=False):
+    async def mock_call_llm(
+        prompt,
+        query=None,
+        print_log=False,
+        protected_inputs=(),
+    ):
         if prompt_tracker is not None:
             prompt_tracker.append(prompt)
 

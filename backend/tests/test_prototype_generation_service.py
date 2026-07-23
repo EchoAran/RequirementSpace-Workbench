@@ -46,16 +46,24 @@ async def seeded_project(test_session_factory) -> tuple[int, str]:
 
 
 @pytest.mark.asyncio
-async def test_legacy_prototype_generation(test_session_factory, seeded_project):
-    """Test legacy prototype generation logic and response structure."""
+async def test_prototype_generation_with_page_generator(test_session_factory, seeded_project):
     service = PrototypeGenerationService(session_factory=test_session_factory)
     project_id, public_id = seeded_project
 
-    # Mock generator to avoid real LLM calls
-    mock_code = {"HTML": "<html></html>", "CSS": "body {}", "Javascript": "console.log(1)"}
-    with patch.object(service._generator, "generate_page", new_callable=AsyncMock) as mock_gen:
-        mock_gen.return_value = mock_code
-
+    pages = [{
+        "page_id": "page-1",
+        "role_id": 1,
+        "role_name": "User",
+        "feature_id": 1,
+        "feature_name": "Feature",
+        "html": "<html></html>",
+        "css": "body {}",
+        "javascript": "console.log(1)",
+        "source": "test_generator",
+        "status": "ready",
+    }]
+    with patch.object(service, "_generate_pages", new=AsyncMock(return_value=pages)), \
+         patch.object(service, "_preview_source", return_value="test_generator"):
         response = await service.generate_preview(
             project_id=project_id,
             force_regenerate=True,
@@ -63,7 +71,7 @@ async def test_legacy_prototype_generation(test_session_factory, seeded_project)
 
         assert response.project_id == public_id
         assert response.status == "ready"
-        assert response.source == "placeholder"
+        assert response.source == "test_generator"
         assert response.html == "<html></html>"
         assert response.css == "body {}"
         assert response.javascript == "console.log(1)"
@@ -97,6 +105,10 @@ async def test_skill_backed_prototype_generation(test_session_factory, seeded_pr
         assert response.html == "<h1>Skill</h1>"
         assert response.css == "h1 {color: red;}"
         assert response.javascript == "alert(1);"
+        assert all(
+            call.kwargs["timeout_seconds"] == 300.0
+            for call in mock_ask.await_args_list
+        )
 
 
 @pytest.mark.asyncio
@@ -132,8 +144,7 @@ async def test_prototype_generation_force_regenerate_false(test_session_factory,
 
 
 @pytest.mark.asyncio
-async def test_prototype_generation_empty_page_fallback(test_session_factory):
-    """Test fallback to empty page when no actors or features exist in project."""
+async def test_prototype_generation_fails_when_no_targets_exist(test_session_factory):
     async with test_session_factory() as session:
         project = ProjectModel(
             name="空项目",
@@ -144,14 +155,10 @@ async def test_prototype_generation_empty_page_fallback(test_session_factory):
         session.add(project)
         await session.commit()
         pid = project.id
-        public_id = project.public_id
 
     service = PrototypeGenerationService(session_factory=test_session_factory)
-    response = await service.generate_preview(
-        project_id=pid,
-        force_regenerate=True,
-    )
-
-    assert response.project_id == public_id
-    assert "暂无可生成的角色功能原型" in response.html
-    assert response.source == "placeholder"
+    with pytest.raises(ValueError, match="prototype_targets_empty"):
+        await service.generate_preview(
+            project_id=pid,
+            force_regenerate=True,
+        )

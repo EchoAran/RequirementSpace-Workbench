@@ -13,9 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from backend.core.generators.prompts.project_interview_prompt import (
-    PROJECT_INTERVIEW_SYSTEM_PROMPT,
-)
+from backend.core.generators.prompts import PROJECT_INTERVIEW_SYSTEM_PROMPT
+from backend.core.llm_protected_inputs import collect_protected_texts
+from backend.core.localized_messages import localized_message
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import (
     PROJECT_INTERVIEW_COMPLETE_FAILED,
@@ -39,7 +39,7 @@ class ProjectInterviewService:
         start_time = time.perf_counter()
         if not messages or not any(m.get("role") == "user" for m in messages):
             return {
-                "reply": "你好！请告诉我你想构建一个什么样的项目？它的核心目标是什么？",
+                "reply": localized_message("project_interview_welcome"),
                 "is_ready": False,
                 "summary": "",
             }
@@ -52,6 +52,7 @@ class ProjectInterviewService:
         response = await llm.call_chat(
             messages=full_messages,
             response_format={"type": "json_object"},
+            protected_inputs=collect_protected_texts(messages),
         )
 
         if not response:
@@ -66,7 +67,7 @@ class ProjectInterviewService:
                 message_count=len(messages),
             )
             return {
-                "reply": "抱歉，我现在有点忙，请稍后再试。",
+                "reply": localized_message("project_interview_busy"),
                 "is_ready": False,
                 "summary": "",
             }
@@ -86,7 +87,7 @@ class ProjectInterviewService:
                 message_count=len(messages),
             )
             return {
-                "reply": response or "请继续描述你的项目需求。",
+                "reply": response or localized_message("project_interview_continue"),
                 "is_ready": False,
                 "summary": "",
             }

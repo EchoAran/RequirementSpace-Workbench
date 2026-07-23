@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
-from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.llm import get_llm_context, llm_context_manager
 from backend.database.database import get_session
 from backend.database.model import UserModel, ProjectModel, GenerativeDraftModel
 from backend.api.modules.project_lifecycle.public import DraftRegenerateRequest
@@ -257,22 +257,22 @@ async def create_full_scenario_generation_draft(
     request: ScenarioGenerationFullDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await scenario_generation_service.create_full_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in SCENARIO_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await scenario_generation_service.create_full_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in SCENARIO_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @scenario_generation_router.post(
@@ -283,23 +283,23 @@ async def create_single_scenario_generation_draft(
     request: ScenarioGenerationSingleDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await scenario_generation_service.create_single_draft(
-            project_id=owned_project.id,
-            feature_id=request.feature_id,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in SCENARIO_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await scenario_generation_service.create_single_draft(
+                project_id=owned_project.id,
+                feature_id=request.feature_id,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in SCENARIO_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @scenario_generation_router.post(
@@ -416,22 +416,22 @@ async def create_full_acceptance_criteria_generation_draft(
     request: AcceptanceCriteriaGenerationFullDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await acceptance_criteria_generation_service.create_full_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await acceptance_criteria_generation_service.create_full_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @ac_generation_router.post(
@@ -442,23 +442,23 @@ async def create_single_acceptance_criteria_generation_draft(
     request: AcceptanceCriteriaGenerationSingleDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await acceptance_criteria_generation_service.create_single_draft(
-            project_id=owned_project.id,
-            scenario_id=request.scenario_id,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await acceptance_criteria_generation_service.create_single_draft(
+                project_id=owned_project.id,
+                scenario_id=request.scenario_id,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @ac_generation_router.post(
@@ -469,23 +469,23 @@ async def create_batch_acceptance_criteria_generation_draft(
     request: AcceptanceCriteriaGenerationBatchDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await acceptance_criteria_generation_service.create_batch_draft(
-            project_id=owned_project.id,
-            scenario_ids=request.scenario_ids,
-            owner_user_id=user.id,
-            session=session,
-        )
-    except ValueError as error:
-        if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
-            raise HTTPException(
-                status_code=400,
-                detail=str(error),
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await acceptance_criteria_generation_service.create_batch_draft(
+                project_id=owned_project.id,
+                scenario_ids=request.scenario_ids,
+                owner_user_id=user.id,
+                session=session,
             )
-        raise
+        except ValueError as error:
+            if str(error) in ACCEPTANCE_CRITERIA_GENERATION_ERRORS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(error),
+                )
+            raise
 
 
 @ac_generation_router.post(

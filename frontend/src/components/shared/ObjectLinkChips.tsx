@@ -1,7 +1,7 @@
 import { FileText, Database, User, Activity, Layout } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ObjectType = '目标' | '角色' | '流程' | '数据' | '页面' | '任务';
+export type ObjectType = 'goal' | 'actor' | 'flow' | 'data' | 'page' | 'task';
 
 interface ObjectLinkChipsProps {
   objects: { id: string; name: string; type: ObjectType }[];
@@ -10,12 +10,12 @@ interface ObjectLinkChipsProps {
 }
 
 const IconMap: Record<ObjectType, any> = {
-  '目标': Activity,
-  '角色': User,
-  '流程': Layout,
-  '数据': Database,
-  '页面': Layout,
-  '任务': FileText,
+  'goal': Activity,
+  'actor': User,
+  'flow': Layout,
+  'data': Database,
+  'page': Layout,
+  'task': FileText,
 };
 
 export function ObjectLinkChips({ objects, onClick, className }: ObjectLinkChipsProps) {

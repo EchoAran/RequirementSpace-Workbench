@@ -1,25 +1,30 @@
+import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import { Choice, RequirementSpaceIR } from '@/core/schema';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ActionButton, ActionRow, ImpactSummary, PanelShell, PatchSummary, Section, TextField } from './shared';
 import { ChoicePreviewRenderer } from '@/components/shared/ChoicePreviewRenderer';
+import { getChoicePresentation, getChoiceTypeLabel } from '@/core/choicePresentation';
 
 export function ChoicePanel({ choice, ir }: { choice: Choice; ir: RequirementSpaceIR }) {
+  const { t, i18n } = useTranslation();
   const { acceptChoice, rejectChoice, rewrite } = useWorkspaceStore();
   const [instruction, setInstruction] = useState('');
   const isDraftPayload = (choice as any).applyMode === 'draft_payload';
   const draftType = (choice as any).draftType;
+  const presentation = getChoicePresentation(choice, t, i18n);
+  const draftTypeLabel = getChoiceTypeLabel(choice, t) || draftType;
 
   return (
-    <PanelShell title={choice.title} subtitle="Choice">
-      <Section title="依据">
+    <PanelShell title={presentation.title} subtitle={t('panel.choice')}>
+      <Section title={t('panel.rationale')}>
         <div className="rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700">
-          {choice.rationale || '暂无说明'}
+          {presentation.rationale}
         </div>
       </Section>
 
       {isDraftPayload && draftType ? (
-        <Section title={`预览 (${draftType})`}>
+        <Section title={t('panel.previewTitle', { type: draftTypeLabel })}>
           <div className="rounded-xl border border-slate-200 p-3">
             <ChoicePreviewRenderer
               draftType={draftType}
@@ -30,27 +35,27 @@ export function ChoicePanel({ choice, ir }: { choice: Choice; ir: RequirementSpa
         </Section>
       ) : (
         <>
-          <Section title="Patch 摘要">
+          <Section title={t('panel.patchSummary')}>
             <PatchSummary patch={choice.patch} />
           </Section>
-          <Section title="Impact Preview">
+          <Section title={t('panel.impact')}>
             <ImpactSummary ir={ir} impact={choice.impactPreview} />
           </Section>
         </>
       )}
 
-      <Section title="改写">
-        <TextField label="改写指令" value={instruction} onChange={setInstruction} multiline />
+      <Section title={t('panel.instruction')}>
+        <TextField label={t('panel.instruction')} value={instruction} onChange={setInstruction} multiline />
         <ActionButton variant="secondary" onClick={() => void rewrite({ kind: 'choice', choiceId: choice.id }, instruction)}>
-          生成改写提案
+          {t('panel.regenerateBtn')}
         </ActionButton>
       </Section>
 
-      <Section title="动作">
+      <Section title={t('panel.actionTitle')}>
         <ActionRow>
-          <ActionButton onClick={() => void acceptChoice(choice.id)}>采纳 Choice</ActionButton>
+          <ActionButton onClick={() => void acceptChoice(choice.id)}>{t('panel.acceptChoice')}</ActionButton>
           <ActionButton variant="danger" onClick={() => void rejectChoice(choice.id)}>
-            拒绝 Choice
+            {t('panel.rejectChoice')}
           </ActionButton>
         </ActionRow>
       </Section>

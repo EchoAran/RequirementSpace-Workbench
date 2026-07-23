@@ -1,45 +1,4 @@
-"""Prompt templates for BUSINESS_OBJECT_WITHOUT_ATTRIBUTES AI repair."""
+from backend.core.prompt_resolver import LocalizedPromptProxy
 
-SYSTEM_PROMPT = """你是一个业务对象属性生成助手。
-
-根据业务对象名称、描述和需求上下文，生成 1-3 个合理的业务属性。
-只输出 JSON，不要任何额外文本。
-"""
-
-USER_PROMPT_TEMPLATE = """## 需求上下文
-{user_requirements}
-
-## 目标业务对象
-名称: {bo_name}
-描述: {bo_description}
-
-## 要求
-1. 根据业务对象名称和需求上下文，推荐 1-3 个属性。
-2. 每个属性包含 name、type、description。
-3. 允许的类型: string, integer, float, boolean, date, datetime, text。
-4. 输出固定为 1 个 candidate，其 patch.addNodes 内包含属性列表。
-5. 不要输出多个 candidate。
-
-输出 JSON 格式:
-{{
-  "candidates": [
-    {{
-      "repair_type": "add_attributes",
-      "title": "补充业务对象属性",
-      "rationale": "解释为什么推荐这些属性",
-      "confidence": 0.9,
-      "patch": {{
-        "addNodes": [
-          {{
-            "kind": "business_object_attribute",
-            "business_object_id": {bo_id},
-            "name": "属性名",
-            "type": "string",
-            "description": "属性说明"
-          }}
-        ]
-      }}
-    }}
-  ]
-}}
-"""
+SYSTEM_PROMPT = LocalizedPromptProxy("business_object_attribute_system")
+USER_PROMPT_TEMPLATE = LocalizedPromptProxy("business_object_attribute_user")

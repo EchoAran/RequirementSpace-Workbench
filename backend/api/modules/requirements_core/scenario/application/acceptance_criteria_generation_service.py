@@ -19,6 +19,9 @@ class AcceptanceCriteriaGenerationService:
     def __init__(self):
         self._acceptance_criteria_generator = AcceptanceCriteriaGenerator()
         self._max_concurrency = 5
+        self._generation_semaphores = {
+            self._max_concurrency: asyncio.Semaphore(self._max_concurrency),
+        }
 
     async def create_full_draft(
         self,
@@ -420,8 +423,15 @@ class AcceptanceCriteriaGenerationService:
         feature_node_map: dict[int, FeatureNode],
         scenario_nodes: list[ScenarioNode],
         user_feedback: str | None = None,
+        max_concurrency: int | None = None,
+        semaphore: asyncio.Semaphore | None = None,
     ) -> list[dict]:
-        semaphore = asyncio.Semaphore(self._max_concurrency)
+        concurrency = max_concurrency or self._max_concurrency
+        if semaphore is None:
+            semaphore = self._generation_semaphores.setdefault(
+                concurrency,
+                asyncio.Semaphore(concurrency),
+            )
 
         scenarios_by_pair: dict[tuple[int, int], list[ScenarioNode]] = {}
 

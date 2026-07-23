@@ -1,0 +1,978 @@
+# 角色
+你是一个善于设计业务数据流转的软件设计师。
+
+# 任务
+1. 分析业务对象与系统流程。
+2. 基于系统流程步骤的数据流转，对齐业务对象。
+3. 按照下方规定输出格式输出系统的主要流程以及每个流程的具体步骤。
+
+# 用户需求
+{{user_requirements}}
+
+# 系统流程
+{{flows}}
+
+# 业务对象
+{{business_objects}}
+
+# 输出格式
+{
+    "business_object_in_flows": [ 
+        { 
+            "flow_name": "<流程名称（例如‘请假审批流程’）>", 
+            "flow_steps":[ 
+                { 
+                    "step_number": "<步骤编号：例如S-001>", 
+                    "input_business_object_numbers": ["<输入的业务对象1的编号>", "<输入的业务对象2的编号>", ...(可空)], 
+                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)], 
+                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)] 
+                }, 
+                { 
+                    "step_number": "<步骤编号：例如S-001>",
+                    "input_business_object_numbers": ["<输入的业务对象1的编号>", "<输入的业务对象2的编号>", ...(可空)],
+                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)], 
+                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)] 
+                },
+                ... 
+            ] 
+        }, 
+        ... 
+    ]
+}
+
+# 规则
+1. 只输出一个 JSON 对象。
+2. 不要输出任何解释、分析过程、Markdown、代码块标记或额外前后缀文字。
+3. 输出 JSON 风格的标准格式化内容，而不是被压缩的一行内容。
+
+# 示例
+## 示例输入
+### 用户需求
+轻量化桌面悬浮便签 + 待办整合软件，可新建多个独立便签贴在桌面任意位置，支持文字编辑、颜色分类、字体调整；自带待办清单功能，可设置任务截止时间、已完成标记、置顶重要事项，支持开机常驻、透明化背景、一键隐藏所有便签，适合学生、上班族记录临时灵感、日程、琐事。
+### 系统流程
+{
+  "flows": [
+    {
+      "flow_name": "本地音乐扫描与导入流程",
+      "flow_description": "本地音乐听众选择本地音乐目录或文件，系统扫描并导入支持的音频文件，建立可播放的本地音乐库。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "选择导入来源",
+          "step_description": "本地音乐听众选择需要扫描的本地文件夹或指定的音乐文件作为导入来源。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "扫描本地音频文件",
+          "step_description": "系统读取所选路径中的文件，并识别其中可用的本地音频资源。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "判断文件格式是否支持",
+          "step_description": "系统判断扫描到的文件是否属于 Flac、WAV、MP3 等受支持的音频格式。",
+          "next_steps": [
+            "S-004",
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "导入支持格式文件",
+          "step_description": "系统将符合要求的音频文件加入本地音乐库，并提取基础元数据用于展示和播放。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "跳过不支持文件",
+          "step_description": "系统忽略不支持的文件格式，不将其加入本地音乐库。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "生成导入结果",
+          "step_description": "系统完成导入并更新本地音乐列表，供后续浏览、播放和歌单管理使用。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "本地音乐播放控制流程",
+      "flow_description": "本地音乐听众或快捷键控制者对已导入的本地音乐执行播放、暂停、切换歌曲和调整播放进度等操作。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "选择播放目标",
+          "step_description": "本地音乐听众从本地音乐库或当前歌单中选择要播放的歌曲。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "加载音频资源",
+          "step_description": "系统读取所选歌曲的本地音频文件并初始化播放状态。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "开始播放歌曲",
+          "step_description": "系统开始输出音频，并更新当前播放信息与进度。",
+          "next_steps": [
+            "S-004"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "选择播放控制操作",
+          "step_description": "本地音乐听众或快捷键控制者选择播放暂停、上一首、下一首或拖动进度条等控制操作。",
+          "next_steps": [
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "判断控制类型",
+          "step_description": "系统判断当前控制操作属于暂停或继续播放、切换上一首、切换下一首，还是调整播放进度。",
+          "next_steps": [
+            "S-006",
+            "S-007",
+            "S-008",
+            "S-009"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "更新播放暂停状态",
+          "step_description": "系统根据操作暂停当前歌曲或恢复播放，并同步更新播放状态显示。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "切换到上一首",
+          "step_description": "系统定位到播放队列中的上一首歌曲并开始播放。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-008",
+          "step_name": "切换到下一首",
+          "step_description": "系统定位到播放队列中的下一首歌曲并开始播放。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-009",
+          "step_name": "调整播放进度",
+          "step_description": "系统将当前播放位置移动到用户指定进度，并从新位置继续播放。", 
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "歌单创建与维护流程",
+      "flow_description": "歌单管理者或本地音乐听众创建歌单，并将本地歌曲添加、移除、排序和删除歌单内容。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "选择歌单管理操作",
+          "step_description": "歌单管理者进入歌单管理界面，选择新建歌单或维护已有歌单内容。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "判断是否已有目标歌单",
+          "step_description": "系统判断当前操作是创建新歌单，还是编辑已有歌单。",
+          "next_steps": [
+            "S-003",
+            "S-004"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "新建歌单",
+          "step_description": "歌单管理者输入歌单名称并提交创建请求。",
+          "next_steps": [
+            "S-004"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "选择歌单编辑动作",
+          "step_description": "歌单管理者或本地音乐听众选择向歌单添加歌曲、从歌单移除歌曲、调整顺序或删除歌单。",
+          "next_steps": [
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "判断编辑动作类型",
+          "step_description": "系统判断当前歌单编辑动作属于添加歌曲、移除歌曲、排序歌曲还是删除歌单。",
+          "next_steps": [
+            "S-006",
+            "S-007",
+            "S-008",
+            "S-009"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "添加歌曲到歌单",
+          "step_description": "系统将选中的本地歌曲加入目标歌单，并更新歌单内容。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "从歌单移除歌曲",
+          "step_description": "系统将指定歌曲从目标歌单中移除，并更新歌单内容。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-008",
+          "step_name": "调整歌单顺序",
+          "step_description": "系统保存歌单内歌曲的新顺序和自定义内容布局。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-009",
+          "step_name": "删除歌单",
+          "step_description": "系统删除目标歌单及其关联的歌单结构，但不删除本地音乐文件本身。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "本地歌词匹配与显示流程",
+      "flow_description": "歌词匹配者或本地音乐听众为当前歌曲匹配本地歌词，显示歌词内容，并在需要时调整同步与维护关联关系。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "播放目标歌曲",
+          "step_description": "本地音乐听众播放一首本地歌曲，触发对应歌词的查找与展示需求。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "自动匹配本地歌词",
+          "step_description": "系统根据歌曲名称、艺术家或同名文件规则，在本地目录中查找可用歌词文件或歌词内容。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "判断是否匹配成功",
+          "step_description": "系统判断当前歌曲是否找到可关联的本地歌词资源。",
+          "next_steps": [
+            "S-004",
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "显示歌词内容",
+          "step_description": "系统在播放界面展示已匹配歌词，并随播放进度进行同步滚动或定位。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "提示无可用歌词",
+          "step_description": "系统提示当前歌曲未找到可匹配的本地歌词，并保留后续手动维护关联的入口。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "选择歌词维护操作",
+          "step_description": "歌词匹配者可选择调整歌词同步偏移，或重新管理歌词与歌曲的关联结果。",
+          "next_steps": [
+            "S-007"
+          ]
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "判断维护类型",
+          "step_description": "系统判断当前维护操作属于歌词同步调整还是歌词关联管理。",
+          "next_steps": [
+            "S-008",
+            "S-009"
+          ]
+        },
+        {
+          "step_number": "S-008",
+          "step_name": "保存歌词同步设置",
+          "step_description": "系统记录歌词时间偏移或同步参数，并立即刷新歌词显示效果。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-009",
+          "step_name": "更新歌词关联关系",
+          "step_description": "系统保存歌词文件与歌曲之间的关联结果，用于后续自动显示与匹配优化。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "音效与均衡器配置流程",
+      "flow_description": "音效调节者进入音效设置界面，选择预设方案或手动调节均衡器与相关参数，并保存个人偏好。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "进入音效设置",
+          "step_description": "音效调节者打开播放器音效设置界面，准备调整当前播放的听感效果。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "选择音效调整方式",
+          "step_description": "音效调节者选择使用系统预设音效方案，或手动配置均衡器和其他音效参数。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "判断调整方式",
+          "step_description": "系统判断当前使用的是预设音效切换，还是手动参数调节。",
+          "next_steps": [
+            "S-004",
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "切换预设音效",
+          "step_description": "系统应用所选预设音效方案到当前播放输出。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "手动调节均衡器参数",
+          "step_description": "音效调节者调整各频段均衡器和相关音效参数，以满足个人听感偏好。",
+          "next_steps": [
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "保存音效偏好",
+          "step_description": "系统保存当前音效参数配置或预设选择结果，供后续播放继续使用。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "睡眠定时关闭流程",
+      "flow_description": "睡眠定时设置者设置播放器定时关闭时间，查看剩余倒计时，并可取消定时或指定到时后的播放处理方式。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "进入睡眠定时设置",
+          "step_description": "睡眠定时设置者打开睡眠定时功能入口，准备配置自动结束播放行为。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "设置关闭时间与结束行为",
+          "step_description": "睡眠定时设置者设置定时关闭时长，并选择到时后停止播放或关闭程序等处理方式。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "启动定时任务",
+          "step_description": "系统记录定时关闭配置并开始倒计时。",
+          "next_steps": [
+            "S-004"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "查看或管理定时状态",
+          "step_description": "睡眠定时设置者查看剩余倒计时，并决定继续等待还是取消当前定时任务。",
+          "next_steps": [
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "判断是否取消定时",
+          "step_description": "系统判断用户是否发起取消定时操作，或继续等待倒计时结束。",
+          "next_steps": [
+            "S-006",
+            "S-007"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "取消定时任务",
+          "step_description": "系统停止当前倒计时并清除已设置的定时关闭任务。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "执行到时结束行为",
+          "step_description": "系统在倒计时结束后，按配置执行停止播放或关闭程序等处理方式。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "全局快捷键配置与控制流程",
+      "flow_description": "快捷键控制者设置全局快捷键，并在播放器前后台场景下通过快捷键快速控制播放状态与切歌操作。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "进入快捷键设置",
+          "step_description": "快捷键控制者打开播放器的快捷键设置界面。",
+          "actor_ids": [
+            6
+          ],
+          "step_type": "actorAction",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "配置全局快捷键",
+          "step_description": "快捷键控制者为播放暂停、上一首、下一首等操作设置全局快捷键组合。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "保存快捷键映射",
+          "step_description": "系统保存快捷键配置并注册全局快捷键监听能力。",
+          "next_steps": [
+            "S-004"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "触发全局快捷键",
+          "step_description": "快捷键控制者在任意界面下按下已配置的全局快捷键以控制播放器。",
+          "next_steps": [
+            "S-005"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "判断快捷键对应动作",
+          "step_description": "系统识别当前快捷键对应的是播放暂停、上一首、下一首或其他快速播放状态调节操作。",
+          "next_steps": [
+            "S-006",
+            "S-007",
+            "S-008",
+            "S-009"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "执行播放暂停控制",
+          "step_description": "系统根据快捷键指令切换播放或暂停状态。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "执行上一首切换",
+          "step_description": "系统根据快捷键指令切换到上一首歌曲。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-008",
+          "step_name": "执行下一首切换",
+          "step_description": "系统根据快捷键指令切换到下一首歌曲。",
+          "next_steps": []
+        },
+        {
+          "step_number": "S-009",
+          "step_name": "执行快速播放状态调节",
+          "step_description": "系统根据快捷键指令执行其他已配置的播放状态快速调节操作。",
+          "next_steps": []
+        }
+      ]
+    },
+    {
+      "flow_name": "界面偏好与轻量化布局设置流程",
+      "flow_description": "界面偏好设置者调整播放器显示样式、切换轻量化布局并管理视觉风格偏好，以保持清爽低干扰的使用体验。",
+      "flow_steps": [
+        {
+          "step_number": "S-001",
+          "step_name": "进入界面设置",
+          "step_description": "界面偏好设置者打开播放器界面与外观设置入口。",
+          "next_steps": [
+            "S-002"
+          ]
+        },
+        {
+          "step_number": "S-002",
+          "step_name": "选择界面调整项目",
+          "step_description": "界面偏好设置者选择调整显示样式、切换轻量化布局或修改视觉风格与外观偏好。",
+          "next_steps": [
+            "S-003"
+          ]
+        },
+        {
+          "step_number": "S-003",
+          "step_name": "判断调整类型",
+          "step_description": "系统判断当前修改属于界面显示样式调整、轻量化布局切换还是视觉风格偏好管理。",
+          "next_steps": [
+            "S-004",
+            "S-005",
+            "S-006"
+          ]
+        },
+        {
+          "step_number": "S-004",
+          "step_name": "应用显示样式调整",
+          "step_description": "系统应用新的界面显示样式设置，使界面元素更清爽直观。",
+          "next_steps": [
+            "S-007"
+          ]
+        },
+        {
+          "step_number": "S-005",
+          "step_name": "应用轻量化布局",
+          "step_description": "系统切换为更精简的布局方案，减少非必要视觉元素和操作干扰。",
+          "next_steps": [
+            "S-007"
+          ]
+        },
+        {
+          "step_number": "S-006",
+          "step_name": "应用视觉风格偏好",
+          "step_description": "系统应用用户设置的视觉风格和外观偏好，使播放器符合长期使用习惯。",
+          "next_steps": [
+            "S-007"
+          ]
+        },
+        {
+          "step_number": "S-007",
+          "step_name": "保存界面配置",
+          "step_description": "系统保存界面相关设置，并在后续启动和使用过程中持续生效。",
+          "next_steps": []
+        }
+      ]
+    }
+  ]
+}
+
+## 示例输出
+{
+    [
+        {
+            "flow_name": "桌面便签新建与编辑流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [],
+                    "output_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "next_steps": [
+                        "S-003"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "next_steps": [
+                        "S-004"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-002"
+                    ],
+                    "next_steps": [
+                        "S-005"
+                    ]
+                },
+                {
+                    "step_number": "S-005",
+                    "input_business_object_numbers": [
+                        "B-001",
+                        "B-002"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-001",
+                        "B-002"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "便签桌面定位与显示状态维护流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [
+                        "B-001",
+                        "B-003"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "next_steps": [
+                        "S-003"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "next_steps": [
+                        "S-004",
+                        "S-005"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "next_steps": []
+                },
+                {
+                    "step_number": "S-005",
+                    "input_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "待办事项创建与截止时间设置流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-005"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [],
+                    "output_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "next_steps": [
+                        "S-003"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "next_steps": [
+                        "S-004"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-004",
+                        "B-005"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-005"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "待办完成与重要事项置顶流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-005"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-003"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-004",
+                        "S-005"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-004",
+                        "B-005"
+                    ],
+                    "next_steps": []
+                },
+                {
+                    "step_number": "S-005",
+                    "input_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-004",
+                        "B-005"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "便签与待办整合流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-003",
+                        "S-004"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-001"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-004"
+                    ],
+                    "next_steps": [
+                        "S-005"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-001",
+                        "B-004"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-007"
+                    ],
+                    "next_steps": [
+                        "S-005"
+                    ]
+                },
+                {
+                    "step_number": "S-005",
+                    "input_business_object_numbers": [
+                        "B-004",
+                        "B-005",
+                        "B-007"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-005",
+                        "B-007"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "全局隐藏与恢复便签流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-003",
+                        "S-004"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-003",
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003",
+                        "B-006"
+                    ],
+                    "next_steps": []
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-003",
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-003",
+                        "B-006"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        },
+        {
+            "flow_name": "开机常驻与运行配置流程",
+            "flow_steps": [
+                {
+                    "step_number": "S-001",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [],
+                    "next_steps": [
+                        "S-002"
+                    ]
+                },
+                {
+                    "step_number": "S-002",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "next_steps": [
+                        "S-003"
+                    ]
+                },
+                {
+                    "step_number": "S-003",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "next_steps": [
+                        "S-004"
+                    ]
+                },
+                {
+                    "step_number": "S-004",
+                    "input_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "output_business_object_numbers": [
+                        "B-006"
+                    ],
+                    "next_steps": []
+                }
+            ]
+        }
+    ]
+}

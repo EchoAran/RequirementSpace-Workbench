@@ -87,7 +87,7 @@ async def _map_task(session, task: CollaborationTaskModel) -> TaskResponse:
             if node_names:
                 node_name = ", ".join(node_names)
                 if len(task.targets) > 3:
-                    node_name += " 等"
+                    node_name += f" +{len(task.targets) - 3}"
         except Exception:
             pass
 

@@ -1,0 +1,20 @@
+## Target business object
+Name: {bo_name}
+Description: {bo_description}
+Attributes: {bo_attributes_json}
+
+## Existing flows and steps
+{flows_and_steps_json}
+
+## Requirements context
+{user_requirements}
+
+Recommend suitable steps and whether the object should be an input or output. This is guidance only and must not write data automatically.
+
+Return this JSON shape:
+{{
+  "fallback": {{
+    "kind": "manual_action",
+    "reason": "Business object '{bo_name}' should be used in: flow and step name, as input/output, because ..."
+  }}
+}}

@@ -1,32 +1,15 @@
+import { useTranslation } from 'react-i18next';
 import React from 'react';
 import {
   GraphPatch,
   ImpactPreview,
   LinkType,
-  NodeKindToText,
   RequirementLink,
   RequirementSpaceIR,
-  ScopeStatusToText,
 } from '@/core/schema';
+import { NodeKindToText, ScopeStatusToText } from '@/core/presentationLabels';
 
-export const LINK_LABELS: Record<LinkType, string> = {
-  realizes: '实现',
-  supports: '支撑',
-  performed_by: '由...执行',
-  owns: '拥有',
-  precedes: '前置于',
-  branches_to: '分支至',
-  guards: '守卫',
-  reads: '读取',
-  writes: '写入',
-  changes_state: '改变状态',
-  depends_on: '依赖',
-  diagnoses: '诊断',
-  contains: '包含',
-  accessible_by: '可被访问',
-  binds_field: '绑定字段',
-  invokes_step: '触发步骤',
-};
+
 
 export function PanelShell({
   title,
@@ -37,10 +20,11 @@ export function PanelShell({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="w-full h-full bg-white overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-5 py-4">
-        <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || '建模对象'}</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || t('panel.node')}</div>
         <h2 className="text-lg font-bold text-slate-900 mt-1">{title}</h2>
       </div>
       <div className="p-5 space-y-5">{children}</div>
@@ -182,6 +166,7 @@ export function LinkList({
   ir: RequirementSpaceIR;
   nodeId: string;
 }) {
+  const { t } = useTranslation();
   const nodeMap = ir.nodes || {};
   const allLinks = (Array.isArray(ir.links) ? ir.links : Object.values(ir.links || {})) as RequirementLink[];
   const dedupeLinks = (links: RequirementLink[]) =>
@@ -193,7 +178,7 @@ export function LinkList({
   const renderLinks = (links: RequirementLink[], directionLabel: string) => (
     <div className="space-y-2">
       <div className="text-xs font-medium text-slate-500">{directionLabel}</div>
-      {links.length === 0 && <div className="text-xs text-slate-400 italic">暂无</div>}
+      {links.length === 0 && <div className="text-xs text-slate-400 italic">{t('panel.noLinks')}</div>}
       {links.map((link) => {
         const relatedId = link.sourceId === nodeId ? link.targetId : link.sourceId;
         const relatedNode = nodeMap[relatedId];
@@ -202,7 +187,7 @@ export function LinkList({
           : '';
         return (
           <div key={link.id} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-            <div className="font-medium">{LINK_LABELS[link.type]}</div>
+            <div className="font-medium">{t('panel.relationships.' + link.type) as any}</div>
             <div className="text-xs text-slate-500 mt-1">
               {relatedNode?.title || relatedId}
               {relatedNode ? ` / ${relatedKindText}` : ''}
@@ -215,26 +200,27 @@ export function LinkList({
 
   return (
     <div className="space-y-3">
-      {renderLinks(outgoing, '从当前对象发出')}
-      {renderLinks(incoming, '流向当前对象')}
+      {renderLinks(outgoing, t('panel.outgoingLinks'))}
+      {renderLinks(incoming, t('panel.incomingLinks'))}
     </div>
   );
 }
 
 export function PatchSummary({ patch }: { patch?: GraphPatch }) {
+  const { t } = useTranslation();
   const safePatch = patch || {};
   const summary = [
-    { label: '新增节点', count: safePatch.addNodes?.length || 0 },
-    { label: '更新节点', count: safePatch.updateNodes?.length || 0 },
-    { label: '新增关系', count: safePatch.addLinks?.length || 0 },
-    { label: '移除关系', count: safePatch.removeLinkIds?.length || 0 },
-    { label: '新增槽位', count: safePatch.addSlots?.length || 0 },
-    { label: '新增问题', count: safePatch.addIssues?.length || 0 },
+    { label: t('panel.patchCounts.addNodes'), count: safePatch.addNodes?.length || 0 },
+    { label: t('panel.patchCounts.updateNodes'), count: safePatch.updateNodes?.length || 0 },
+    { label: t('panel.patchCounts.addLinks'), count: safePatch.addLinks?.length || 0 },
+    { label: t('panel.patchCounts.removeLinkIds'), count: safePatch.removeLinkIds?.length || 0 },
+    { label: t('panel.patchCounts.addSlots'), count: safePatch.addSlots?.length || 0 },
+    { label: t('panel.patchCounts.addIssues'), count: safePatch.addIssues?.length || 0 },
   ].filter((item) => item.count > 0);
 
   return (
     <div className="space-y-2">
-      {summary.length === 0 && <div className="text-xs text-slate-400 italic">暂无变更内容</div>}
+      {summary.length === 0 && <div className="text-xs text-slate-400 italic">{t('panel.noImpact')}</div>}
       {summary.map(({ label, count }) => (
         <div key={label} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm">
           <span className="text-slate-600">{label}</span>
@@ -246,16 +232,17 @@ export function PatchSummary({ patch }: { patch?: GraphPatch }) {
 }
 
 export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: ImpactPreview }) {
+  const { t } = useTranslation();
   const nodeMap = ir.nodes || {};
   const safeImpact = impact || {};
   const groups = [
-    ['目标', safeImpact.affectedGoals || []],
-    ['角色', safeImpact.affectedActors || []],
-    ['流程', safeImpact.affectedFlows || []],
-    ['对象', safeImpact.affectedObjects || []],
-    ['界面', safeImpact.affectedScreens || []],
-    ['新增问题', safeImpact.newIssues || []],
-    ['已解决问题', safeImpact.resolvedIssues || []],
+    ['goals', safeImpact.affectedGoals || []],
+    ['actors', safeImpact.affectedActors || []],
+    ['flows', safeImpact.affectedFlows || []],
+    ['objects', safeImpact.affectedObjects || []],
+    ['screens', safeImpact.affectedScreens || []],
+    ['newIssues', safeImpact.newIssues || []],
+    ['resolvedIssues', safeImpact.resolvedIssues || []],
   ] as const;
 
   return (
@@ -263,7 +250,7 @@ export function ImpactSummary({ ir, impact }: { ir: RequirementSpaceIR; impact: 
       {groups.map(([label, ids]) =>
         ids.length > 0 ? (
           <div key={label} className="rounded-xl border border-slate-200 px-3 py-2">
-            <div className="text-xs font-medium text-slate-500">{label}</div>
+            <div className="text-xs font-medium text-slate-500">{t('panel.impactMetrics.' + label) as any}</div>
             <div className="text-sm text-slate-700 mt-1">
               {ids.map((id: string | number) => nodeMap[id]?.title || id).join(', ')}
             </div>

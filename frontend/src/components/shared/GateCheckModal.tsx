@@ -1,27 +1,31 @@
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { useState } from 'react';
 import { useWorkspaceStore, getFindingCapability } from '@/store/useWorkspaceStore';
 import { AlertTriangle, Cpu, Loader2, X, ArrowRight } from 'lucide-react';
 import { Finding } from '@/core/schema';
+import { getFindingText } from '@/core/findingText';
 
 /**
- * 根据 capability kind 返回区分化错误提示文案。
+ * Returns distinct error messages based on the capability kind.
  */
 function getErrorMessageByCapability(kind: string, fallbackMsg: string): string {
   switch (kind) {
     case 'ai_repair':
-      return 'AI 修复失败，请稍后重试或手动处理。';
+      return i18n.t('gateCheck.errorMsg.ai_repair');
     case 'generation_draft':
-      return '草稿生成失败，请稍后重试。';
+      return i18n.t('gateCheck.errorMsg.generation_draft');
     case 'open_panel':
-      return '无法定位处理位置，请手动查找对应步骤。';
+      return i18n.t('gateCheck.errorMsg.open_panel');
     case 'manual_action':
-      return '无法打开处理建议，请手动处理。';
+      return i18n.t('gateCheck.errorMsg.manual_action');
     default:
       return fallbackMsg;
   }
 }
 
 export default function GateCheckModal() {
+  const { t } = useTranslation();
   const activeGateCheck = useWorkspaceStore((s) => s.activeGateCheck);
   const executeGateFindingAction = useWorkspaceStore((s) => s.executeGateFindingAction);
   const snoozeGateFinding = useWorkspaceStore((s) => s.snoozeGateFinding);
@@ -36,17 +40,17 @@ export default function GateCheckModal() {
   const getActionLabel = (act: string) => {
     switch (act) {
       case 'enter_how':
-        return '进入”怎么运作 (How)”阶段';
+        return i18n.t('gateCheck.actionLabel.enter_how');
       case 'enter_scope':
-        return '进入”范围与交付 (Scope)”阶段';
+        return i18n.t('gateCheck.actionLabel.enter_scope');
       case 'generate_preview':
-        return '生成方案预览';
+        return i18n.t('gateCheck.actionLabel.generate_preview');
       case 'export':
-        return '文档导出';
+        return i18n.t('gateCheck.actionLabel.export');
       case 'save_checkpoint':
-        return '保存版本检查点';
+        return i18n.t('gateCheck.actionLabel.save_checkpoint');
       default:
-        return '执行该操作';
+        return i18n.t('gateCheck.actionLabel.fallback');
     }
   };
 
@@ -67,8 +71,8 @@ export default function GateCheckModal() {
     } catch (err: any) {
       console.error('Gate finding resolution failed:', finding.code, err);
       const cap = getFindingCapability(finding);
-      // 优先使用 capability 区分的产品文案，err.message 作为技术附注
-      const capMsg = getErrorMessageByCapability(cap.kind, err.message || '自动处理失败，请稍后重试。');
+      // Prefer using capability-specific messages, with err.message as fallback/details
+      const capMsg = getErrorMessageByCapability(cap.kind, err.message || i18n.t('gateCheck.errorMsg.fallback'));
       setErrorMessage(capMsg);
     } finally {
       setRunningFindingId(null);
@@ -104,9 +108,9 @@ export default function GateCheckModal() {
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-800 tracking-tight">模型就绪度检查未通过</h2>
+              <h2 className="text-sm font-black text-slate-800 tracking-tight">{t('gateCheck.modalTitle')}</h2>
               <p className="text-[10.5px] text-slate-400 font-medium mt-0.5">
-                在{getActionLabel(action)}前，需要补齐或确认以下关键模型依赖
+                {t('gateCheck.modalDesc', { action: getActionLabel(action) })}
               </p>
             </div>
           </div>
@@ -129,14 +133,14 @@ export default function GateCheckModal() {
         {(activeChoiceGroup || activeDraft) && (
           <div className="mx-6 mt-4 p-3 bg-indigo-50 text-indigo-700 text-xs rounded-xl border border-indigo-200 flex items-center gap-2">
             <Cpu className="w-4 h-4 shrink-0 animate-pulse" />
-            <span>AI 已生成草稿或候选方案。请先采纳候选方案或确认草稿，再重新进入阶段。</span>
+            <span>{t('gateCheck.aiDraftTip')}</span>
           </div>
         )}
 
         {pendingGenerationConflict && (
           <div className="mx-6 mt-4 p-3 bg-amber-50 text-amber-700 text-xs rounded-xl border border-amber-200 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
-            <span>检测到生成冲突，请处理冲突后再试。</span>
+            <span>{t('gateCheck.conflictTip')}</span>
           </div>
         )}
 
@@ -158,11 +162,11 @@ export default function GateCheckModal() {
                       {finding.code}
                     </span>
                     <span className="text-[10px] px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded font-bold border border-rose-100">
-                      阻塞
+                      {t('gateCheck.blockingBadge')}
                     </span>
                   </div>
-                  <h3 className="text-xs font-black text-slate-800">{finding.title}</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed font-medium">{finding.description}</p>
+                    <h3 className="text-xs font-black text-slate-800">{getFindingText(finding, t).title}</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed font-medium">{getFindingText(finding, t).description}</p>
                 </div>
 
                 <div className="shrink-0 flex items-center">
@@ -181,7 +185,7 @@ export default function GateCheckModal() {
                     </button>
                   ) : (
                     <span className="text-[10px] text-slate-400 font-semibold italic bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                      请返回对应步骤手动修补
+                      {t('gateCheck.manualFixTip')}
                     </span>
                   )}
                 </div>
@@ -196,14 +200,14 @@ export default function GateCheckModal() {
             onClick={handleCancel}
             className="w-full sm:w-auto text-xs px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold transition-colors shadow-sm"
           >
-            暂不处理 (Cancel)
+            {t('gateCheck.cancelBtn')} (Cancel)
           </button>
           
           <button
             onClick={handleContinue}
             className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-colors shadow-md active:scale-95"
           >
-            <span>继续进入 (Continue anyway)</span>
+            <span>{t('gateCheck.continueBtn')} (Continue anyway)</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

@@ -5,6 +5,8 @@ from html import escape
 from typing import Any
 
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
+from backend.core.localized_messages import localized_message
+from backend.core.prompt_resolver import get_content_locale
 from backend.schemas import (
     ActorNode,
     BusinessObjectNode,
@@ -48,14 +50,14 @@ class PrototypeGenerator(BaseGenerator[PrototypeGeneratorInput]):
     async def generate(self, input_data: PrototypeGeneratorInput) -> dict[str, str]:
         actor = input_data.actors[0] if input_data.actors else ActorNode(
             actorId=0,
-            actorName="Primary user",
-            actorDescription="Default prototype user",
+            actorName=localized_message("prototype_primary_user"),
+            actorDescription=localized_message("prototype_default_user_description"),
         )
         feature = next(
             (item for item in input_data.features if not item.childrenIds),
             input_data.features[0] if input_data.features else FeatureNode(
                 featureId=0,
-                featureName=input_data.project_name or "Prototype",
+                featureName=input_data.project_name or localized_message("prototype_feature"),
                 featureDescription=input_data.project_description,
                 actorIds=[actor.actorId],
                 parentId=None,
@@ -84,7 +86,7 @@ class PrototypeGenerator(BaseGenerator[PrototypeGeneratorInput]):
         flow_items = self._flow_items(input_data.flows)
 
         html = f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{get_content_locale()}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -94,39 +96,39 @@ class PrototypeGenerator(BaseGenerator[PrototypeGeneratorInput]):
     <main class="prototype-shell">
       <aside class="sidebar">
         <div class="brand">{escape(project_name)}</div>
-        <div class="role-label">当前角色</div>
+        <div class="role-label">{localized_message('prototype_current_role')}</div>
         <h1>{escape(input_data.actor.actorName)}</h1>
         <p>{escape(input_data.actor.actorDescription)}</p>
       </aside>
       <section class="workspace">
         <header class="hero">
-          <p class="eyebrow">角色功能原型</p>
+          <p class="eyebrow">{localized_message('prototype_role_feature')}</p>
           <h2>{escape(input_data.feature.featureName)}</h2>
           <p>{escape(input_data.feature.featureDescription or input_data.project_description or input_data.user_requirements)}</p>
         </header>
         <section class="surface">
           <div class="toolbar">
-            <span>{escape(input_data.actor.actorName)} 工作台</span>
-            <button type="button">提交</button>
+            <span>{localized_message('prototype_workspace', name=escape(input_data.actor.actorName))}</span>
+            <button type="button">{localized_message('prototype_submit')}</button>
           </div>
           <div class="form-grid">
-            <label>业务输入<input placeholder="请输入或选择业务信息" /></label>
-            <label>处理状态<select><option>待处理</option><option>已完成</option></select></label>
-            <label class="wide">说明<textarea placeholder="记录本次操作说明"></textarea></label>
+            <label>{localized_message('prototype_business_input')}<input placeholder="{localized_message('prototype_business_input_placeholder')}" /></label>
+            <label>{localized_message('prototype_status')}<select><option>{localized_message('prototype_pending')}</option><option>{localized_message('prototype_completed')}</option></select></label>
+            <label class="wide">{localized_message('prototype_notes')}<textarea placeholder="{localized_message('prototype_notes_placeholder')}"></textarea></label>
           </div>
         </section>
         <section class="split">
           <div class="panel">
-            <h3>关联场景</h3>
+            <h3>{localized_message('prototype_scenarios')}</h3>
             <ul>{scenario_items}</ul>
           </div>
           <div class="panel">
-            <h3>业务数据</h3>
+            <h3>{localized_message('prototype_business_data')}</h3>
             <ul>{data_items}</ul>
           </div>
         </section>
         <section class="panel">
-          <h3>流程触点</h3>
+          <h3>{localized_message('prototype_flow_touchpoints')}</h3>
           <ul>{flow_items}</ul>
         </section>
       </section>
@@ -243,13 +245,13 @@ textarea { min-height: 84px; resize: vertical; }
 }
 """
 
-        javascript = """
-document.querySelectorAll('button').forEach((button) => {
-  button.addEventListener('click', () => {
-    button.textContent = '已提交';
-    window.setTimeout(() => { button.textContent = '提交'; }, 1200);
-  });
-});
+        javascript = f"""
+document.querySelectorAll('button').forEach((button) => {{
+  button.addEventListener('click', () => {{
+    button.textContent = '{localized_message('prototype_submitted')}';
+    window.setTimeout(() => {{ button.textContent = '{localized_message('prototype_submit')}'; }}, 1200);
+  }});
+}});
 """
         return {
             "HTML": html,
@@ -260,7 +262,7 @@ document.querySelectorAll('button').forEach((button) => {
     @staticmethod
     def _scenario_items(scenarios: list[ScenarioNode]) -> str:
         if not scenarios:
-            return "<li>暂无与该角色直接关联的场景。</li>"
+            return f"<li>{localized_message('prototype_no_scenarios')}</li>"
         return "\n".join(
             f"<li><strong>{escape(scenario.scenarioName)}</strong>: {escape(scenario.scenarioContent)}</li>"
             for scenario in scenarios[:8]
@@ -270,7 +272,7 @@ document.querySelectorAll('button').forEach((button) => {
     def _flow_items(flows: list[FlowNode]) -> str:
         related_flows = [flow for flow in flows if flow.flowSteps]
         if not related_flows:
-            return "<li>暂无流程触点。</li>"
+            return f"<li>{localized_message('prototype_no_flows')}</li>"
         return "\n".join(
             f"<li>{escape(flow.flowName)} ({len(flow.flowSteps)} steps)</li>"
             for flow in related_flows[:6]
@@ -279,7 +281,7 @@ document.querySelectorAll('button').forEach((button) => {
     @staticmethod
     def _business_object_items(business_objects: list[BusinessObjectNode]) -> str:
         if not business_objects:
-            return "<li>暂无业务数据对象。</li>"
+            return f"<li>{localized_message('prototype_no_business_objects')}</li>"
         return "\n".join(
             f"<li>{escape(item.businessObjectName)} ({len(item.businessObjectAttributes)} fields)</li>"
             for item in business_objects[:6]

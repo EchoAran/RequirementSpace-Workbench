@@ -45,6 +45,34 @@ async def test_spl_syntax_export_service_success():
 
 
 @pytest.mark.asyncio
+async def test_spl_syntax_export_uses_effective_content_locale():
+    service = SplSyntaxExportService()
+    captured = {}
+
+    def export(payload):
+        captured.update(payload)
+        return {
+            "spl_text": "SPL-en-US",
+            "quality": "syntax_shell",
+            "warnings": [],
+            "trace_links": [],
+        }
+
+    service._skill.export = export
+    detail = ProjectDetailResponse(
+        project_id="english-project",
+        project_name="English Project",
+        project_description="Description",
+        user_requirements="Requirements",
+    )
+
+    result = await service.export(detail, content_locale="en-US")
+
+    assert result == "SPL-en-US"
+    assert captured["export_options"]["language"] == "en-US"
+
+
+@pytest.mark.asyncio
 async def test_spl_syntax_export_skill_unavailable():
     service = SplSyntaxExportService()
     service._available = False
@@ -352,12 +380,18 @@ async def test_spl_syntax_export_route_handles_chinese_filename():
     from fastapi.testclient import TestClient
     from backend.main import app
     from backend.api.dependencies.ownership import require_owned_project
-    from backend.database.model import ProjectModel
+    from backend.api.dependencies.auth import get_current_user
+    from backend.database.model import ProjectModel, UserModel
 
     app.dependency_overrides[require_owned_project] = lambda: ProjectModel(
         id=1,
         public_id="proj-1",
         name="轻量本地音乐播放器",
+    )
+    app.dependency_overrides[get_current_user] = lambda: UserModel(
+        id=1,
+        email="test@example.com",
+        preferred_locale="en-US",
     )
 
     client = TestClient(app)
@@ -365,14 +399,16 @@ async def test_spl_syntax_export_route_handles_chinese_filename():
     with patch(
         "backend.api.modules.project_lifecycle.routes.project.project_service.export_project_spl_syntax",
         return_value="[DEFINE_AGENT: Agent_test]\n[END_AGENT]\n",
-    ):
+    ) as export_mock:
         res_syntax = client.get("/api/projects/proj-1/export/spl/syntax")
         assert res_syntax.status_code == 200
+        assert export_mock.await_args.kwargs["content_locale"] == "en-US"
         content_disposition = res_syntax.headers["content-disposition"]
         assert "filename*=" in content_disposition
         assert "%E8%BD%BB%E9%87%8F" in content_disposition
 
     app.dependency_overrides.pop(require_owned_project, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.mark.asyncio

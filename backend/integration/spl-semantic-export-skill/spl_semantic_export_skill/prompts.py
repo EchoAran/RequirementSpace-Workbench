@@ -3,8 +3,8 @@ from __future__ import annotations
 """
 Prompts templates for the SPL semantic conversion stages.
 Outputs must strictly match the JSON schemas requested.
-All natural language text, descriptions, reasons, and scenario details must be in Chinese.
-All syntax identifiers, types, and field names must be in English.
+Natural-language values must use the requested output language.
+Syntax identifiers, types, and field names must remain in English.
 """
 
 TYPE_NORMALIZATION_PROMPT = """
@@ -16,12 +16,15 @@ Description: {bo_description}
 Attributes:
 {bo_attributes}
 
+[Output Language]
+{output_language}
+
 [Instructions]
 1. Generate a PascalCase English identifier name for the business object type as `type_name` (e.g., 'MaintenanceTask', 'DeviceArchive').
 2. For each attribute, normalize its name to a camelCase English identifier as `normalized_name` (e.g., 'deviceCode', 'statusFlag').
 3. Map the attribute's type to a valid SPL type (`text`, `number`, `boolean`, `List [text]`, `List [number]`, or another custom `Type` identifier like `TaskStatus`).
 4. If an attribute represents a status, priority, or categorical field with discrete values (e.g. '处理中', '已完结'), flag it as `is_enum: true` and list the normalized English enum values in `enum_candidates` (e.g. ['pending', 'in_progress', 'completed']). If not, set `is_enum: false` and `enum_candidates: []`.
-5. Keep the description and examples in Chinese.
+5. Keep descriptions and examples in the requested output language.
 
 [Output Format]
 Your response must be a valid JSON object matching this schema:
@@ -34,8 +37,8 @@ Your response must be a valid JSON object matching this schema:
       "spl_type": "text | number | boolean | List [text] | List [number] | EnumTypeName",
       "is_enum": true,
       "enum_candidates": ["enum_value_1", "enum_value_2"],
-      "description": "中文属性描述",
-      "example": "属性值示例"
+      "description": "Localized attribute description",
+      "example": "Localized example value"
     }}
   ]
 }}
@@ -56,6 +59,9 @@ The business objects and actors are normalized to the following SPL Type and Aud
 Types Mapping: {types_mapping}
 Actors Mapping: {actors_mapping}
 
+[Output Language]
+{output_language}
+
 [Instructions]
 1. Generate a PascalCase English name for the worker as `worker_name` (e.g., 'MaintainDeviceArchiveFlow').
 2. Translate each flow step in order (sorted by position) into a structured step list.
@@ -65,13 +71,13 @@ Actors Mapping: {actors_mapping}
    - `judgment`: A decision point. Map to `judgment`.
 4. If step type is `judgment`, analyze the positive and negative paths in the flow description. Represent them as nested `sub_steps` with `branch_kind: "if"` and `branch_kind: "else"`. For sequential steps, `branch_kind` should be `sequential`.
 5. Identify which normalized Type names are used as input variables (`inputs`) and output variables (`outputs`) of this worker.
-6. Write all `command_text` and `decision_condition` values entirely in Chinese. Keep all keys and type references in English.
+6. Write all natural-language values in the requested output language. Keep all keys and type references in English.
 
 [Output Format]
 Your response must be a valid JSON object matching this schema:
 {{
   "worker_name": "PascalCaseWorkerName",
-  "description": "中文业务流摘要",
+  "description": "Localized business-flow summary",
   "actors": ["Actor_1", "Actor_2"],
   "inputs": ["NormalizedTypeName1"],
   "outputs": ["NormalizedTypeName2"],
@@ -79,10 +85,10 @@ Your response must be a valid JSON object matching this schema:
     {{
       "source_step_id": 50,
       "step_type": "systemAction | actorAction | judgment",
-      "command_text": "中文命令动作描述",
+      "command_text": "Localized command description",
       "input_refs": ["NormalizedTypeName1"],
       "output_refs": ["NormalizedTypeName2"],
-      "decision_condition": "中文判定条件(仅在judgment或分支中使用，否则为null)",
+      "decision_condition": "Localized decision condition or null",
       "branch_kind": "sequential | if | else | elseif",
       "sub_steps": []
     }}
@@ -100,13 +106,16 @@ Description: {feature_description}
 Scenarios:
 {scenarios}
 
+[Output Language]
+{output_language}
+
 [Instructions]
 1. Parse each scenario and its Given/When/Then acceptance criteria.
 2. Group each acceptance criterion into a clean scenario block.
 3. Map the scenario to a `flow_type` of either `"normal"` (happy path), `"alternative"` (alternative flow), or `"exception"` (error case/validation error).
 4. Parse the natural language criteria into structured list arrays: `given`, `when`, `then`.
 5. Identify which original acceptance criteria IDs (e.g. 200, 201) are mapped to this scenario, and populate them in `source_acceptance_criterion_ids`.
-6. Keep all scenario descriptions, Gherkin step texts, and validation notes entirely in Chinese. Keep keys in English.
+6. Keep all scenario descriptions, Gherkin step texts, and validation notes in the requested output language. Keep keys in English.
 
 [Output Format]
 Your response must be a valid JSON object matching this schema:
@@ -115,11 +124,11 @@ Your response must be a valid JSON object matching this schema:
     {{
       "source_scenario_id": 100,
       "source_acceptance_criterion_ids": [200, 201],
-      "scenario_name": "中文场景名称",
+      "scenario_name": "Localized scenario name",
       "flow_type": "normal | alternative | exception",
-      "given": ["Given 前置条件描述 1", "Given 前置条件描述 2"],
-      "when": ["When 触发动作描述"],
-      "then": ["Then 系统响应与校验结果 1", "Then 系统响应与校验结果 2"]
+      "given": ["Given localized precondition 1", "Given localized precondition 2"],
+      "when": ["When localized action"],
+      "then": ["Then localized expected result 1", "Then localized expected result 2"]
     }}
   ]
 }}
@@ -137,6 +146,9 @@ Business Objects: {original_business_objects}
 Types: {generated_types}
 Workers: {generated_workers}
 
+[Output Language]
+{output_language}
+
 [Instructions]
 1. Verify if all current-scope features are referenced or covered by the generated workers or scenarios.
 2. Verify if all flows have corresponding workers.
@@ -144,7 +156,7 @@ Workers: {generated_workers}
    - Are there judgment steps in flows that were translated as flat sequential commands instead of branching IF/ELSE statements?
    - Are there input/output parameters that reference missing or undeclared Type names?
    - Are there exclude/postponed features that were incorrectly included as active logic?
-4. Generate the coverage report. Keep all comments, missing reasons, and semantic risks entirely in Chinese. Keep keys in English.
+4. Generate the coverage report. Keep all comments, missing reasons, and semantic risks in the requested output language. Keep keys in English.
 
 [Output Format]
 Your response must be a valid JSON object matching this schema:
@@ -154,6 +166,6 @@ Your response must be a valid JSON object matching this schema:
   "missing_current_feature_ids": [],
   "unmapped_flow_ids": [],
   "unmapped_acceptance_criterion_ids": [],
-  "semantic_risks": ["中文描述的语义风险与冲突检查，如：流程X中包含的判断步骤Y未能正确翻译为控制分支，退化为了常规COMMAND"]
+  "semantic_risks": ["Localized description of a semantic risk"]
 }}
 """

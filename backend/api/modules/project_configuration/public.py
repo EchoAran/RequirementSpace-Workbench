@@ -7,7 +7,10 @@ from typing import List, Optional
 from backend.database.model import ProjectGenerationStrategyConfigModel
 from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
     DEFAULT_STRATEGIES,
+    localize_generation_strategy,
+    normalize_generation_strategy,
 )
+from backend.core.prompt_resolver import get_content_locale
 
 @dataclass
 class ResolvedGenerationStrategy:
@@ -23,13 +26,14 @@ def _default_strategies_for(generation_type: str) -> List[ResolvedGenerationStra
         if s.get("enabled", True):
             gen_types = s.get("generation_types") or []
             if not gen_types or generation_type in gen_types:
+                localized = localize_generation_strategy(s, get_content_locale())
                 strategies.append(
                     ResolvedGenerationStrategy(
-                        id=s["id"],
-                        label=s["label"],
-                        description=s.get("description"),
-                        instruction=s.get("instruction"),
-                        order=s.get("order", 0)
+                        id=localized["id"],
+                        label=localized["label"],
+                        description=localized.get("description"),
+                        instruction=localized.get("instruction"),
+                        order=localized.get("order", 0)
                     )
                 )
     return strategies
@@ -73,13 +77,17 @@ async def resolve_generation_strategies(
                     # Filter by generation_type
                     gen_types = s.get("generation_types") or []
                     if not gen_types or generation_type in gen_types:
+                        localized = localize_generation_strategy(
+                            normalize_generation_strategy(s),
+                            get_content_locale(),
+                        )
                         resolved_strategies.append(
                             ResolvedGenerationStrategy(
-                                id=s["id"],
-                                label=s["label"],
-                                description=s.get("description"),
-                                instruction=s.get("instruction"),
-                                order=s.get("order", 0)
+                                id=localized["id"],
+                                label=localized["label"],
+                                description=localized.get("description"),
+                                instruction=localized.get("instruction"),
+                                order=localized.get("order", 0)
                             )
                         )
 

@@ -1,0 +1,25 @@
+## Feature context
+Name: {feature_name}
+Description: {feature_description}
+
+## Duplicate scenario
+Name: {scenario_name}
+Content: {scenario_content}
+
+## Other scenario names under this feature
+{other_scenario_names_json}
+
+Suggest one or more non-conflicting names that preserve the scenario meaning.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "rename_scenario",
+    "title": "Rename scenario",
+    "rationale": "Why this name is clearer",
+    "confidence": 0.9,
+    "patch": {{"updateNodes": [{{"kind": "scenario", "id": {scenario_id}, "name": "New scenario name"}}]}},
+    "requires_user_decision": false
+  }}],
+  "fallback": {{"kind": "manual_action", "reason": "No reliable unique name could be generated"}}
+}}

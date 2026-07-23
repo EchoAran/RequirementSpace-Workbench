@@ -7,17 +7,21 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationWorkspace } from '@/components/collaboration/ConfirmationWorkspace';
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { buildOverviewModel, buildPageHealth, buildProjectRoute, projectionPath } from '@/core/selectors';
+import { buildOverviewModel, buildProjectRoute, projectionPath } from '@/core/selectors';
 import {
   useWorkspaceStore,
   selectChoices
 } from '@/store/useWorkspaceStore';
 import { Cpu, Database, RefreshCw, Sliders } from 'lucide-react';
-import { NodeKindToRoute, NodeKindToText, Finding } from '@/core/schema';
+import { NodeKindToRoute } from '@/core/schema';
 import { findingProjection } from '@/core/findingPresentation';
-import { getAuditActionTypeLabel } from '@/core/auditActionLabels';
+import { getAuditActionTypeLabel, getAuditSummary } from '@/core/auditActionLabels';
+import { useTranslation } from 'react-i18next';
+import { getFindingText } from '@/core/findingText';
+import { workspaceApi } from '@/lib/api';
 
 export function Overview() {
+  const { t, i18n } = useTranslation();
   const {
     setSelectedObject,
     acceptChoice,
@@ -25,8 +29,6 @@ export function Overview() {
     executeFindingIssueResolution,
     expandSlot,
     updateIssueAttributes,
-    refreshWorkspace,
-    requestStageTransition,
     startFindingSuggestion,
     activeChoiceGroup,
     isGeneratingChoices,
@@ -43,26 +45,51 @@ export function Overview() {
   const choices = useWorkspaceStore(selectChoices);
   const ir = useWorkspaceStore(state => state.ir);
   const auditLogs = useWorkspaceStore(state => state.auditLogs);
+  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
+  const backendFindingsLoaded = useWorkspaceStore((s) => s.backendFindingsLoaded);
+  const [hasGeneratedPrototype, setHasGeneratedPrototype] = useState(false);
 
-  const overview = buildOverviewModel(ir, auditLogs);
+  useEffect(() => {
+    let cancelled = false;
+    if (!ir?.projectId) {
+      setHasGeneratedPrototype(false);
+      return;
+    }
+
+    void workspaceApi.getLatestPrototypePreview(ir.projectId)
+      .then((preview) => {
+        if (!cancelled) setHasGeneratedPrototype(Boolean(preview?.prototypeId));
+      })
+      .catch(() => {
+        if (!cancelled) setHasGeneratedPrototype(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ir?.projectId]);
+
+  const baseOverview = buildOverviewModel(ir, auditLogs, stageProgress);
+  const readinessDimensions = baseOverview.readiness.dimensions.map((dimension) => (
+    dimension.kind === 'ui'
+      ? { ...dimension, score: hasGeneratedPrototype ? 100 : 0, checked: hasGeneratedPrototype }
+      : dimension
+  ));
+  const overview = {
+    ...baseOverview,
+    readiness: {
+      ...baseOverview.readiness,
+      dimensions: readinessDimensions,
+      overallScore: Math.floor(readinessDimensions.reduce((sum, dimension) => sum + dimension.score, 0) / readinessDimensions.length),
+    },
+  };
   const openIssues = overview.openIssues;
   const highRiskIssues = overview.highRiskIssues;
   const decisionQueue = overview.decisionQueue;
   const recentChoices = overview.recentChoices.length ? overview.recentChoices : choices.filter((c: any) => c.status === 'candidate').slice(0, 3);
-  const stageHealths = [
-    { stage: 'what', label: 'What', route: '/what' as const, health: buildPageHealth(ir, '/what') },
-    { stage: 'how', label: 'How', route: '/flow' as const, health: buildPageHealth(ir, '/flow') },
-    { stage: 'scope', label: 'Scope', route: '/scope' as const, health: buildPageHealth(ir, '/scope') },
-  ];
-  const activeStageHealth = stageHealths.find((item) => !item.health.disabled);
-  const activeSuggestionEntry = stageHealths.find((item) => item.health.nextSlot);
-  const nextSlot = activeSuggestionEntry?.health.nextSlot;
-
-  // Use backend findings next_action as primary suggestion source
   const findingsByView = useWorkspaceStore((s) => s.findingsByView);
   const isLoading = useWorkspaceStore((s) => s.isLoading);
   const backendNextAction = (findingsByView?.next_action || []).find((f) => !!f);
-  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
   const projectConfiguration = useWorkspaceStore((s) => s.projectConfiguration);
   const fetchProjectConfiguration = useWorkspaceStore((s) => s.fetchProjectConfiguration);
 
@@ -71,40 +98,6 @@ export function Overview() {
       void fetchProjectConfiguration(ir.projectId);
     }
   }, [ir?.projectId, fetchProjectConfiguration]);
-
-  const activeProgressStage = stageProgress?.stages?.find((s: any) => s.statusCode !== 'ready');
-  const progressNextAction = activeProgressStage?.nextAction || activeProgressStage?.next_action;
-
-  const handleProgressAction = useCallback(() => {
-    if (!activeProgressStage || !progressNextAction) return;
-    const kind = progressNextAction.kind;
-    const stage = activeProgressStage.stage;
-
-    const actionMap: Record<string, string> = {
-      'what': 'enter_how',
-      'how': 'enter_scope',
-      'scope': 'enter_preview'
-    };
-
-    const dummyFinding: Finding = {
-      findingId: `overview:${kind}:${stage}`,
-      type: 'next_suggestion',
-      stage: stage as any,
-      code: stage === 'what' ? 'ENTER_HOW' : stage === 'how' ? 'ENTER_SCOPE' : 'ENTER_PREVIEW',
-      severity: 'info',
-      title: progressNextAction.label || '继续处理',
-      description: activeProgressStage.statusLabel || '',
-      blockingScope: 'none',
-      metadata: {
-        action: {
-          kind,
-          transition_action: progressNextAction.transitionAction || progressNextAction.transition_action || actionMap[stage],
-          route: progressNextAction.route
-        }
-      }
-    };
-    void startFindingSuggestion(dummyFinding, { navigate });
-  }, [activeProgressStage, progressNextAction, startFindingSuggestion, navigate, ir?.projectId]);
 
   const [previewChoiceId, setPreviewChoiceId] = useState<string | number | null>(null);
   const [selectedAuditActionTypes, setSelectedAuditActionTypes] = useState<string[]>([]);
@@ -168,87 +161,51 @@ export function Overview() {
   };
 
   const projectionLabel: Record<string, string> = {
-    goal: '目标',
-    role: '角色',
-    system: '流程',
-    data: '数据',
-    ui: '界面',
+    goal: t('overview.projections.goal'),
+    role: t('overview.projections.role'),
+    system: t('overview.projections.system'),
+    data: t('overview.projections.data'),
+    ui: t('overview.projections.ui'),
   };
 
   const queueKindLabel: Record<string, string> = {
-    choiceGroup: '方案选择',
+    choiceGroup: t('overview.queueKind.choiceGroup'),
   };
 
-  let headlineTone = {
-    title: '当前模型已基本收敛',
-    badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  };
-
-  if (stageProgress && stageProgress.stages) {
-    if (activeProgressStage) {
-      if (activeProgressStage.statusCode === 'not_started' || activeProgressStage.statusCode === 'unlocked_not_started') {
-        headlineTone = {
-          title: '当前模型尚未开始构建',
-          badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
-        };
-      } else if (activeProgressStage.statusCode === 'ready_to_advance') {
-        headlineTone = {
-          title: '前置阶段建模就绪，可推进',
-          badgeClass: 'border-amber-200 bg-amber-50 text-amber-700',
-        };
-      } else if (activeProgressStage.statusCode === 'blocked') {
-        headlineTone = {
-          title: '当前存在阻塞卡点',
-          badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
-        };
-      } else {
-        headlineTone = {
-          title: '当前模型仍在持续完善',
-          badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
-        };
+  const projectStatusCode = ir?.statusCode || 'in_progress';
+  const headlineTone = projectStatusCode === 'converged'
+    ? {
+        title: t('overview.headlines.converged'),
+        badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
       }
-    }
-  } else {
-    headlineTone =
-      overview.openSlotsCount > 0
+    : projectStatusCode === 'not_started'
+      ? {
+          title: t('overview.headlines.notStarted'),
+          badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
+        }
+      : projectStatusCode === 'needs_attention' || projectStatusCode === 'has_issues'
         ? {
-            title: '当前存在阻塞卡点',
+            title: t('overview.headlines.hasIssues'),
             badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
           }
-        : openIssues.length > 0
-          ? {
-              title: '当前仍有待处理问题',
-              badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
-            }
-          : activeStageHealth?.health.statusCode === 'not_started'
-            ? {
-                title: '当前模型尚未开始构建',
-                badgeClass: 'border-slate-200 bg-slate-50 text-slate-700',
-              }
-            : activeStageHealth && activeStageHealth.health.statusCode !== 'ready'
-              ? {
-                  title: '当前模型仍在持续完善',
-                  badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
-                }
-              : {
-                  title: '当前模型已基本收敛',
-                  badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                };
-  }
+        : {
+            title: t('overview.headlines.inProgress'),
+            badgeClass: 'border-sky-200 bg-sky-50 text-sky-700',
+          };
 
   const headlineStats = [
     {
-      label: '建模覆盖率',
+      label: t('overview.stats.coverage'),
       value: `${overview.readiness.overallScore}%`,
       tone: 'text-indigo-700',
     },
     {
-      label: '待处理问题',
+      label: t('overview.stats.pendingIssues'),
       value: String(openIssues.length).padStart(2, '0'),
       tone: 'text-rose-600',
     },
     {
-      label: '待决策方案组',
+      label: t('overview.stats.pendingChoices'),
       value: String(overview.openChoiceGroupsCount).padStart(2, '0'),
       tone: 'text-sky-700',
     },
@@ -259,24 +216,24 @@ export function Overview() {
   const configCards = [
     {
       key: 'ai-strategies',
-      title: 'AI 生成策略',
+      title: t('overview.config.aiStrategies'),
       icon: Sliders,
-      summary: generationStrategy?.source === 'project' ? '项目自定义策略' : '系统默认策略',
-      meta: `${generationStrategy?.candidate_count ?? 2} 个候选 · ${(generationStrategy?.strategies || []).filter((s: any) => s.enabled).length || 2} 个启用策略`,
+      summary: generationStrategy?.source === 'project' ? t('overview.config.projectCustomStrategy') : t('overview.config.systemDefaultStrategy'),
+      meta: t('overview.config.strategiesMeta', { count: generationStrategy?.candidate_count ?? 2, strategyCount: (generationStrategy?.strategies || []).filter((s: any) => s.enabled).length || 2 }),
     },
     {
       key: 'knowledge',
-      title: '项目知识库',
+      title: t('overview.config.knowledgeBase'),
       icon: Database,
-      summary: `${knowledgeSummary?.document_count ?? 0} 个文档`,
-      meta: `${knowledgeSummary?.ai_enabled_count ?? 0} 个可用于 AI · ${knowledgeSummary?.processing_count ?? 0} 个处理中 · ${knowledgeSummary?.failed_count ?? 0} 个失败`,
+      summary: t('overview.config.documentCount', { count: knowledgeSummary?.document_count ?? 0 }),
+      meta: t('overview.config.knowledgeMeta', { ready: knowledgeSummary?.ai_enabled_count ?? 0, processing: knowledgeSummary?.processing_count ?? 0, failed: knowledgeSummary?.failed_count ?? 0 }),
     },
     {
       key: 'llm',
-      title: '项目 LLM',
+      title: t('overview.config.projectLLM'),
       icon: Cpu,
-      summary: llmSummary?.configured ? '已配置项目 LLM' : `项目未配置，回退到${llmSummary?.source === 'personal' ? '个人配置' : '系统配置'}`,
-      meta: llmSummary?.configured ? (llmSummary?.model_name || '项目模型') : (llmSummary?.model_name || `当前来源：${llmSummary?.source || 'system'}`),
+      summary: llmSummary?.configured ? t('overview.config.llmConfigured') : t('overview.config.llmFallback', { source: llmSummary?.source === 'personal' ? t('overview.config.personalConfig') : t('overview.config.systemConfig') }),
+      meta: llmSummary?.configured ? (llmSummary?.model_name || 'Project Model') : (llmSummary?.model_name || t('overview.config.currentSource', { source: llmSummary?.source || 'system' })),
     },
   ];
 
@@ -322,15 +279,15 @@ export function Overview() {
           <section className="rounded-[28px] border border-slate-200 bg-white px-6 py-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-black text-slate-900">项目配置</h2>
-                <p className="mt-1 text-xs font-medium text-slate-500">管理当前项目的 AI 策略、参考资料和团队模型连接。</p>
+                <h2 className="text-lg font-black text-slate-900">{t('overview.sections.configTitle')}</h2>
+                <p className="mt-1 text-xs font-medium text-slate-500">{t('overview.sections.configSubtitle')}</p>
               </div>
               <button
                 type="button"
                 onClick={() => ir?.projectId && navigate(`/projects/${ir.projectId}/configuration`)}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
               >
-                打开配置
+                {t('overview.sections.configBtn')}
               </button>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -353,16 +310,16 @@ export function Overview() {
                 );
               })}
             </div>
-          </section>
+        </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             <div className="xl:col-span-8 flex flex-col">
               <section className="h-[760px] shrink-0 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-slate-100 shrink-0">
-                  <h2 className="text-lg font-black text-slate-900">待处理问题</h2>
+                  <h2 className="text-lg font-black text-slate-900">{t('overview.sections.issuesTitle')}</h2>
                   {highRiskIssues.length > 0 && (
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-700">
-                      高风险 {highRiskIssues.length}
+                      {t('overview.sections.highRisk', { count: highRiskIssues.length })}
                     </span>
                   )}
                 </div>
@@ -379,7 +336,7 @@ export function Overview() {
                     ))}
                     {openIssues.length === 0 && (
                       <div className="col-span-full flex min-h-[220px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50/70">
-                        <p className="text-sm text-slate-400">暂无待处理问题</p>
+                        <p className="text-sm text-slate-400">{t('overview.sections.noIssues')}</p>
                       </div>
                     )}
                   </div>
@@ -391,40 +348,20 @@ export function Overview() {
               <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden h-[600px]">
                 <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-lg font-black text-slate-900">当前推进状态</div>
+                    <div className="text-lg font-black text-slate-900">{t('overview.sections.statusTitle')}</div>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
-                      {decisionQueue.length + overview.openSlotsCount} 项
+                      {t('overview.sections.itemsCount', { count: decisionQueue.length + overview.openSlotsCount })}
                     </span>
                   </div>
                 </div>
 
                 <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/30 shrink-0">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-bold text-slate-900">下一步建议</div>
+                    <div className="text-sm font-bold text-slate-900">{t('overview.sections.nextSuggestionTitle')}</div>
                   </div>
 
                   <div className="mt-4">
-                    {stageProgress && stageProgress.stages ? (
-                      progressNextAction && progressNextAction.kind !== 'none' ? (
-                        <button
-                          type="button"
-                          disabled={isLoading}
-                          onClick={handleProgressAction}
-                          className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
-                        >
-                          <div className="mt-2 text-sm font-bold text-slate-900">
-                            {progressNextAction.label || '继续处理当前建议'}
-                          </div>
-                          <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
-                            {activeProgressStage.statusLabel}：{activeProgressStage.failedChecks?.[0]?.message || '请前往对应页面进行处理'}
-                          </div>
-                        </button>
-                      ) : (
-                        <div className="rounded-2xl bg-white border border-slate-200 px-4 py-5 text-sm text-slate-400">
-                          当前所有开发阶段均已完成！
-                        </div>
-                      )
-                    ) : backendNextAction ? (
+                    {backendFindingsLoaded && backendNextAction ? (
                       <button
                         type="button"
                         disabled={isLoading}
@@ -432,85 +369,28 @@ export function Overview() {
                         className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
                       >
                         <div className="mt-2 text-sm font-bold text-slate-900">
-                          {backendNextAction.title || '继续处理当前建议'}
+              {getFindingText(backendNextAction, t).title || t('overview.sections.continueSuggestion')}
                         </div>
                         <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
-                          {backendNextAction.description}
+              {getFindingText(backendNextAction, t).description}
                         </div>
                       </button>
-                    ) : nextSlot ? (
-                      <button
-                        type="button"
-                        disabled={isLoading}
-                        onClick={() => {
-                          if (nextSlot?.kind === 'stage_gate_transition_confirm') {
-                            const stage = nextSlot.stage;
-                            const dummyFinding: Finding = {
-                              findingId: `overview:stage_transition:${stage}`,
-                              type: 'next_suggestion',
-                              stage: stage as any,
-                              code: stage === 'what' ? 'ENTER_HOW' : 'ENTER_SCOPE',
-                              severity: 'info',
-                              title: stage === 'what' ? '进入 How 阶段' : '进入 Scope 阶段',
-                              description: nextSlot.description || '',
-                              blockingScope: 'none',
-                              metadata: {
-                                action: {
-                                  kind: 'stage_transition',
-                                  transition_action: stage === 'what' ? 'enter_how' : 'enter_scope'
-                                }
-                              }
-                            };
-                            void startFindingSuggestion(dummyFinding, { navigate });
-                          } else if (activeSuggestionEntry) {
-                            const dummyFinding: Finding = {
-                              findingId: `overview:navigate:${activeSuggestionEntry.stage}`,
-                              type: 'next_suggestion',
-                              stage: activeSuggestionEntry.stage as any,
-                              code: 'NAVIGATE_TO_STAGE',
-                              severity: 'info',
-                              title: '前往对应阶段',
-                              description: nextSlot.description || '',
-                              blockingScope: 'none',
-                              metadata: {
-                                action: {
-                                  kind: 'navigate',
-                                  route: buildProjectRoute(ir?.projectId, activeSuggestionEntry.route)
-                                }
-                              }
-                            };
-                            void startFindingSuggestion(dummyFinding, { navigate });
-                          }
-                        }}
-                        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <div className="mt-2 text-sm font-bold text-slate-900">
-                          {nextSlot.actions.manual?.label || nextSlot.actions.ai?.label || '继续处理当前建议'}
-                        </div>
-                        <div className="mt-2 max-h-[12vh] overflow-y-auto pr-1 text-xs leading-relaxed text-slate-500">
-                          {nextSlot.description}
-                        </div>
-                      </button>
-                    ) : (
-                      <div className="rounded-2xl bg-white border border-slate-200 px-4 py-5 text-sm text-slate-400">
-                        当前没有建议。
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col px-6 py-5 overflow-hidden">
                   <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className="text-sm font-bold text-slate-900">待决策方案</div>
+                    <div className="text-sm font-bold text-slate-900">{t('overview.sections.pendingChoicesTitle')}</div>
                     <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700">
-                      {decisionQueue.length} 组
+                      {t('overview.sections.groupsCount', { count: decisionQueue.length })}
                     </span>
                   </div>
 
                   <div className="flex-1 overflow-y-auto pr-1 space-y-3">
                     {decisionQueue.length === 0 && (
                       <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-400">
-                        当前没有待决策方案。
+                        {t('overview.sections.noPendingChoices')}
                       </div>
                     )}
                     {decisionQueue.map(item => (
@@ -524,31 +404,41 @@ export function Overview() {
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                            {queueKindLabel[(item as any).kind] || '待办'}
+                            {queueKindLabel[(item as any).kind] || t('overview.queueKind.unknown')}
                           </span>
                           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            待决策
+                            {t('overview.sections.pendingChoiceBadge')}
                           </span>
                         </div>
-                        <div className="mt-2 text-sm font-bold text-slate-900">{item.title}</div>
-                        <div className="mt-1 text-xs leading-relaxed text-slate-500 line-clamp-2">{item.description}</div>
+                        <div className="mt-2 text-sm font-bold text-slate-900">
+                          {t(item.titleKey, {
+                            ...item.titleParams,
+                            type: item.titleParams?.typeKey ? t(String(item.titleParams.typeKey)) : undefined,
+                          })}
+                        </div>
+                        <div className="mt-1 text-xs leading-relaxed text-slate-500 line-clamp-2">
+                          {t(item.descriptionKey || 'overview.decisionQueue.description', {
+                            ...item.descriptionParams,
+                            type: item.descriptionParams?.typeKey ? t(String(item.descriptionParams.typeKey)) : undefined,
+                          })}
+                        </div>
                       </button>
                     ))}
                   </div>
                 </div>
               </section>
             </div>
-          </div>
+        </div>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
              <ConfirmationWorkspace />
-          </section>
+        </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             <div className="xl:col-span-6 flex flex-col">
               <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
                 <div className="px-6 py-5 border-b border-slate-100 shrink-0">
-                  <h2 className="text-lg font-black text-slate-900">最近生成方案</h2>
+                  <h2 className="text-lg font-black text-slate-900">{t('overview.sections.recentChoicesTitle')}</h2>
                 </div>
                 <div className="flex-1 p-6 overflow-y-auto">
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -564,7 +454,7 @@ export function Overview() {
                     ))}
                     {recentChoices.length === 0 && (
                       <div className="col-span-full flex min-h-[220px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50/70">
-                        <p className="text-sm text-slate-400">等待新的 AI 分析结果...</p>
+                        <p className="text-sm text-slate-400">{t('overview.sections.waitingAI')}</p>
                       </div>
                     )}
                   </div>
@@ -576,9 +466,9 @@ export function Overview() {
               <section className="flex-1 rounded-[28px] border border-slate-200 bg-white shadow-sm flex flex-col overflow-hidden">
                 <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-lg font-black text-slate-900">最近变更记录</h2>
+                    <h2 className="text-lg font-black text-slate-900">{t('overview.sections.recentAuditsTitle')}</h2>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
-                      {filteredAuditOperations.length}/{auditLogs.length} 条
+                      {t('overview.sections.auditsCount', { count: filteredAuditOperations.length, total: auditLogs.length })}
                     </span>
                   </div>
                   {auditActionTypes.length > 1 && (
@@ -592,11 +482,11 @@ export function Overview() {
                             : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
                         }`}
                       >
-                        全部
+                        {t('overview.sections.allAudits')}
                       </button>
                       {auditActionTypes.map((actionType) => {
                         const checked = selectedAuditActionTypes.includes(actionType);
-                        const actionLabel = getAuditActionTypeLabel(actionType);
+                        const actionLabel = getAuditActionTypeLabel(actionType, i18n.language);
                         return (
                           <label
                             key={actionType}
@@ -622,23 +512,26 @@ export function Overview() {
                 <div className="h-[540px] overflow-y-auto p-6 space-y-3">
                   {filteredAuditOperations.length === 0 && (
                     <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-400">
-                      尚无变更记录。
+                      {t('overview.sections.noAudits')}
                     </div>
                   )}
                   {filteredAuditOperations.map((operation) => (
                     <div key={operation.id} className="min-h-[72px] rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-black text-slate-500" title={operation.actionType}>
-                          {getAuditActionTypeLabel(operation.actionType)}
+                          {getAuditActionTypeLabel(operation.actionType, i18n.language)}
                         </span>
-                        <span className="text-[11px] text-slate-400">{new Date(operation.timestamp).toLocaleString()}</span>
+                          <span className="text-[11px] text-slate-400">{new Date(operation.timestamp).toLocaleString(i18n.language)}</span>
                       </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-900">{operation.summary || '应用变更'}</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">{getAuditSummary(operation, i18n.language)}</div>
                       <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-                        <span>影响 {operation.targetIds?.length || 0} 个对象</span>
+                        <span>{t('overview.sections.auditsAffected', { count: operation.targetIds?.length || 0 })}</span>
                         {operation.actorType && (
                           <span className="text-slate-400">
-                            操作者: <span className="font-semibold text-slate-600">{operation.actorEmail || (operation.actorType === 'system' ? '系统' : '未知')}</span>
+                            {t('overview.sections.auditsActorLabel')}
+                            <span className="font-semibold text-slate-600">
+                              {operation.actorEmail || (operation.actorType === 'system' ? t('overview.sections.system') : t('overview.sections.unknown'))}
+                            </span>
                             {operation.actorType === 'ai' && (
                               <span className="ml-1 inline-flex items-center rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-600 ring-1 ring-inset ring-indigo-500/10">
                                 AI
@@ -654,11 +547,11 @@ export function Overview() {
             </div>
           </div>
         </div>
-      </div>
+    </div>
 
-      <RightObjectPanel />
+    <RightObjectPanel />
 
-      <ChoiceGroupPreviewModal
+    <ChoiceGroupPreviewModal
         group={activeChoiceGroup}
         isWorking={isGeneratingChoices}
         isGeneratingChoices={isGeneratingChoices}
@@ -676,9 +569,9 @@ export function Overview() {
           setPreviewChoiceId(null);
         }}
         onDefer={handleDeferChoiceGroupPreview}
-      />
+    />
 
-      <StaleChoiceDialog
+    <StaleChoiceDialog
         isOpen={!!activeStaleChoice}
         staleReason={activeStaleChoice?.staleReason || ''}
         onForceAccept={async () => {

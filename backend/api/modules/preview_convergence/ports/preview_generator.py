@@ -19,6 +19,16 @@ class PrototypePageGeneratorPort(ABC):
 
 
 class PrototypeGenerationServicePort(Protocol):
+    async def start_generation(
+        self,
+        project_id: int,
+        force_regenerate: bool = False,
+    ) -> PrototypePreviewResponse:
+        ...
+
+    def ensure_generation_running(self, preview_id: int, project_id: int) -> None:
+        ...
+
     async def generate_preview(
         self,
         project_id: int,

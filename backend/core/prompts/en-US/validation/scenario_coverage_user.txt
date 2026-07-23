@@ -1,0 +1,24 @@
+## Requirements context
+{user_requirements}
+
+## Target combination
+Feature: {feature_name} ({feature_description})
+Actor: {actor_name} ({actor_description})
+
+## Existing scenarios
+{scenarios_json}
+
+Only reassign a scenario when its content clearly matches the target feature and its current feature assignment is wrong. Change only `feature_id`, never `actor_id`. If no scenario can be reused, return the generation fallback.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "reassign_scenario_feature",
+    "title": "Reassign {scenario_name} to target feature",
+    "rationale": "Why the content matches",
+    "confidence": 0.85,
+    "patch": {{"updateNodes": [{{"kind": "scenario", "id": {scenario_id}, "feature_id": {feature_id}}]}},
+    "requires_user_decision": false
+  }}],
+  "fallback": {{"kind": "generation_draft", "reason": "No existing scenario can be reused"}}
+}}

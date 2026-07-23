@@ -1,12 +1,14 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useTranslation } from 'react-i18next';
 
 interface AuthGuardProps {
   children: React.ReactNode;
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
+  const { t } = useTranslation();
   const { isAuthenticated, isInitializing } = useAuthStore();
   const location = useLocation();
 
@@ -19,9 +21,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-indigo-600 dark:border-t-indigo-400 animate-spin" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 tracking-tight">正在加载安全会话</h3>
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 tracking-tight">{t('auth.guard.loadingSession')}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              系统正在校验您的登录凭证，为您保障工作区安全...
+              {t('auth.guard.loadingSessionDesc')}
             </p>
           </div>
         </div>

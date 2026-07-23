@@ -1,0 +1,26 @@
+## Requirements context
+{user_requirements}
+
+## Target entity
+Type: {target_type}
+Name: {target_name}
+Description: {target_description}
+{feature_context}
+
+## Available {target_match_label}
+{matches_json}
+
+Recommend one or more suitable matches. Use `requires_user_decision=true` when confidence is below 0.6. If none is suitable, return the fallback.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "bind_flow_feature",
+    "title": "Bind to {match_name}",
+    "rationale": "Why the match is appropriate",
+    "confidence": 0.85,
+    "patch": {{"addLinks": [{{"type": "flow_feature_relation", "source_id": {match_id}, "target_id": {target_id}}}]}},
+    "requires_user_decision": false
+  }}],
+  "fallback": {{"kind": "manual_action", "reason": "No suitable match was found"}}
+}}

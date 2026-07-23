@@ -1,4 +1,5 @@
 import { Finding } from './schema';
+import i18n from '@/i18n';
 
 export type SuggestionPresentation = {
   label: string;
@@ -13,20 +14,23 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
   const kind = action.kind || '';
   const draftType = action.draft_type || action.draftType || '';
 
+  const getDraftName = (type: string) => {
+    if (type.includes('actor')) return i18n.t('suggestion.actorDraft');
+    if (type.includes('feature')) return i18n.t('suggestion.featureDraft');
+    if (type.includes('scenario')) return i18n.t('suggestion.scenarioDraft');
+    if (type.includes('acceptance_criteria') || type.includes('ac')) return i18n.t('suggestion.acDraft');
+    if (type.includes('flow')) return i18n.t('suggestion.flowDraft');
+    if (type.includes('scope')) return i18n.t('suggestion.scopeDraft');
+    return i18n.t('suggestion.draft');
+  };
+
   // --- 1. Prioritize action.kind (Action-driven) ---
   if (kind) {
     if (kind === 'create_draft') {
-      let name = '草稿';
-      if (draftType.includes('actor')) name = '参与者草稿';
-      else if (draftType.includes('feature')) name = '功能草稿';
-      else if (draftType.includes('scenario')) name = '场景草稿';
-      else if (draftType.includes('acceptance_criteria') || draftType.includes('ac')) name = '成功标准草稿';
-      else if (draftType.includes('flow')) name = '流程与业务对象草稿';
-      else if (draftType.includes('scope')) name = '范围草稿';
-
+      const name = getDraftName(draftType);
       return {
-        label: `生成${name}`,
-        loadingLabel: `正在生成${name}...`,
+        label: i18n.t('suggestion.generate', { name }),
+        loadingLabel: i18n.t('suggestion.generating', { name }),
         icon: 'generate',
       };
     }
@@ -35,42 +39,42 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
       const route = action.route || '';
       if (route.includes('/how') || route.includes('/flow')) {
         return {
-          label: '进入 How 阶段',
-          loadingLabel: '正在跳转至 How 阶段...',
+          label: i18n.t('suggestion.enterHow'),
+          loadingLabel: i18n.t('suggestion.enteringHow'),
           icon: 'navigate',
         };
       }
       if (route.includes('/scope')) {
         return {
-          label: '进入 Scope 阶段',
-          loadingLabel: '正在跳转至 Scope 阶段...',
+          label: i18n.t('suggestion.enterScope'),
+          loadingLabel: i18n.t('suggestion.enteringScope'),
           icon: 'navigate',
         };
       }
       if (route.includes('/preview')) {
         if (code === 'PREVIEW_READY') {
           return {
-            label: '查看预览',
-            loadingLabel: '正在打开预览...',
+            label: i18n.t('suggestion.viewPreview'),
+            loadingLabel: i18n.t('suggestion.viewingPreview'),
             icon: 'navigate',
           };
         }
         return {
-          label: '进入预览阶段',
-          loadingLabel: '正在跳转至预览阶段...',
+          label: i18n.t('suggestion.enterPreview'),
+          loadingLabel: i18n.t('suggestion.enteringPreview'),
           icon: 'navigate',
         };
       }
       if (code === 'STAGE_LOCKED') {
         return {
-          label: '进入前一阶段',
-          loadingLabel: '正在返回前一阶段...',
+          label: i18n.t('suggestion.enterPrevStage'),
+          loadingLabel: i18n.t('suggestion.enteringPrevStage'),
           icon: 'navigate',
         };
       }
       return {
-        label: '进入 对应阶段',
-        loadingLabel: '正在跳转...',
+        label: i18n.t('suggestion.enterStage'),
+        loadingLabel: i18n.t('suggestion.enteringStage'),
         icon: 'navigate',
       };
     }
@@ -79,44 +83,44 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
       const panel = action.panel || '';
       if (panel === 'feature' || code === 'BIND_ACTORS_TO_FEATURE') {
         return {
-          label: '打开关联面板',
-          loadingLabel: '正在打开参与者绑定面板...',
+          label: i18n.t('suggestion.openRelationPanel'),
+          loadingLabel: i18n.t('suggestion.openingRelationPanel'),
           icon: 'open',
         };
       }
       if (code === 'COMPLETE_FLOW_STEPS') {
         return {
-          label: '完善流程步骤',
-          loadingLabel: '正在定位至流程编辑器...',
+          label: i18n.t('suggestion.completeFlowSteps'),
+          loadingLabel: i18n.t('suggestion.completingFlowSteps'),
           icon: 'open',
         };
       }
       if (panel === 'perception_slot' || code.endsWith('_SLOT')) {
         return {
-          label: '查看建议',
-          loadingLabel: '正在定位至缺失项建议...',
+          label: i18n.t('suggestion.viewSuggestion'),
+          loadingLabel: i18n.t('suggestion.viewingSuggestion'),
           icon: 'open',
         };
       }
       return {
-        label: '打开面板',
-        loadingLabel: '正在打开编辑面板...',
+        label: i18n.t('suggestion.openPanel'),
+        loadingLabel: i18n.t('suggestion.openingPanel'),
         icon: 'open',
       };
     }
 
     if (kind === 'wait') {
       return {
-        label: '查看分析状态',
-        loadingLabel: '正在查询分析状态...',
+        label: i18n.t('suggestion.checkAnalysisStatus'),
+        loadingLabel: i18n.t('suggestion.checkingAnalysisStatus'),
         icon: 'wait',
       };
     }
 
     if (kind === 'retry') {
       return {
-        label: '重新诊断',
-        loadingLabel: '正在重新发起感知诊断...',
+        label: i18n.t('suggestion.retryDiagnosis'),
+        loadingLabel: i18n.t('suggestion.retryingDiagnosis'),
         icon: 'retry',
       };
     }
@@ -124,17 +128,10 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
 
   // --- 2. Check draftType second (if kind is not matched or missing) ---
   if (draftType) {
-    let name = '草稿';
-    if (draftType.includes('actor')) name = '参与者草稿';
-    else if (draftType.includes('feature')) name = '功能草稿';
-    else if (draftType.includes('scenario')) name = '场景草稿';
-    else if (draftType.includes('acceptance_criteria') || draftType.includes('ac')) name = '成功标准草稿';
-    else if (draftType.includes('flow')) name = '流程与业务对象草稿';
-    else if (draftType.includes('scope')) name = '范围草稿';
-
+    const name = getDraftName(draftType);
     return {
-      label: `生成${name}`,
-      loadingLabel: `正在生成${name}...`,
+      label: i18n.t('suggestion.generate', { name }),
+      loadingLabel: i18n.t('suggestion.generating', { name }),
       icon: 'generate',
     };
   }
@@ -143,112 +140,112 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
   switch (code) {
     case 'GENERATE_ACTORS':
       return {
-        label: '生成参与者草稿',
-        loadingLabel: '正在生成参与者草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.actorDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.actorDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_FEATURES':
       return {
-        label: '生成功能草稿',
-        loadingLabel: '正在生成功能草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.featureDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.featureDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_SCENARIOS':
       return {
-        label: '生成场景草稿',
-        loadingLabel: '正在生成场景草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.scenarioDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.scenarioDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_ACCEPTANCE_CRITERIA':
       return {
-        label: '生成成功标准草稿',
-        loadingLabel: '正在生成成功标准草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.acDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.acDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_FLOWS_AND_BUSINESS_OBJECTS':
       return {
-        label: '生成流程与业务对象草稿',
-        loadingLabel: '正在生成流程与业务对象草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.flowDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.flowDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_SCOPE':
       return {
-        label: '生成范围草稿',
-        loadingLabel: '正在生成范围草稿...',
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.scopeDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.scopeDraft') }),
         icon: 'generate',
       };
     case 'ENTER_HOW':
       return {
-        label: '进入 How 阶段',
-        loadingLabel: '正在跳转至 How 阶段...',
+        label: i18n.t('suggestion.enterHow'),
+        loadingLabel: i18n.t('suggestion.enteringHow'),
         icon: 'navigate',
       };
     case 'ENTER_SCOPE':
       return {
-        label: '进入 Scope 阶段',
-        loadingLabel: '正在跳转至 Scope 阶段...',
+        label: i18n.t('suggestion.enterScope'),
+        loadingLabel: i18n.t('suggestion.enteringScope'),
         icon: 'navigate',
       };
     case 'ENTER_PREVIEW':
       return {
-        label: '进入预览阶段',
-        loadingLabel: '正在跳转至预览阶段...',
+        label: i18n.t('suggestion.enterPreview'),
+        loadingLabel: i18n.t('suggestion.enteringPreview'),
         icon: 'navigate',
       };
     case 'PREVIEW_READY':
       return {
-        label: '查看预览',
-        loadingLabel: '正在打开预览...',
+        label: i18n.t('suggestion.viewPreview'),
+        loadingLabel: i18n.t('suggestion.viewingPreview'),
         icon: 'navigate',
       };
     case 'STAGE_LOCKED':
       return {
-        label: '进入前一阶段',
-        loadingLabel: '正在返回前一阶段...',
+        label: i18n.t('suggestion.enterPrevStage'),
+        loadingLabel: i18n.t('suggestion.enteringPrevStage'),
         icon: 'navigate',
       };
     case 'BIND_ACTORS_TO_FEATURE':
       return {
-        label: '打开关联面板',
-        loadingLabel: '正在打开参与者绑定面板...',
+        label: i18n.t('suggestion.openRelationPanel'),
+        loadingLabel: i18n.t('suggestion.openingRelationPanel'),
         icon: 'open',
       };
     case 'COMPLETE_FLOW_STEPS':
       return {
-        label: '完善流程步骤',
-        loadingLabel: '正在定位至流程编辑器...',
+        label: i18n.t('suggestion.completeFlowSteps'),
+        loadingLabel: i18n.t('suggestion.completingFlowSteps'),
         icon: 'open',
       };
   }
 
   if (code.endsWith('_PERCEPTION_RUNNING')) {
     return {
-      label: '查看分析状态',
-      loadingLabel: '正在查询分析状态...',
+      label: i18n.t('suggestion.checkAnalysisStatus'),
+      loadingLabel: i18n.t('suggestion.checkingAnalysisStatus'),
       icon: 'wait',
     };
   }
 
   if (code.endsWith('_PERCEPTION_FAILED')) {
     return {
-      label: '重新诊断',
-      loadingLabel: '正在重新发起感知诊断...',
+      label: i18n.t('suggestion.retryDiagnosis'),
+      loadingLabel: i18n.t('suggestion.retryingDiagnosis'),
       icon: 'retry',
     };
   }
 
   if (code.endsWith('_SLOT')) {
     return {
-      label: '查看建议',
-      loadingLabel: '正在定位至缺失项建议...',
+      label: i18n.t('suggestion.viewSuggestion'),
+      loadingLabel: i18n.t('suggestion.viewingSuggestion'),
       icon: 'open',
     };
   }
 
   // --- 4. Final Fallback ---
   return {
-    label: '执行建议',
-    loadingLabel: '正在处理...',
+    label: i18n.t('suggestion.executeSuggestion'),
+    loadingLabel: i18n.t('suggestion.executing'),
     icon: 'open',
   };
 }

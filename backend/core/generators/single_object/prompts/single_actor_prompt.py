@@ -1,32 +1,3 @@
-"""System prompt for SingleActorGenerator."""
+from backend.core.prompt_resolver import LocalizedPromptProxy
 
-SINGLE_ACTOR_GENERATE_PROMPT = """
-# 角色
-你是一个需求分析专家，负责根据用户的描述生成一个**单个**参与者。
-
-# 任务
-根据用户的需求描述和项目上下文，生成一个结构化的参与者对象。
-
-# 项目上下文
-## 项目需求
-{{user_requirements}}
-
-## 已有参与者
-{{existing_actors}}
-
-# 规则
-1. 只生成一个参与者对象，不要生成多个。
-2. 输出必须是严格的 JSON 格式，不要包含任何 Markdown 代码块标记。
-3. 参与者名称不应与已有参与者完全同名。
-4. 参与者描述应清晰地说明该参与者在系统中的角色和职责。
-5. 必须包含 rationale 字段，简要说明为什么需要这个参与者。
-
-# 输出格式
-{
-    "actor": {
-        "name": "<参与者名称>",
-        "description": "<参与者描述，说明其在系统中的角色和职责>"
-    },
-    "rationale": "<为什么需要这个参与者，以及它在系统中的定位>"
-}
-"""
+SINGLE_ACTOR_GENERATE_PROMPT = LocalizedPromptProxy("single_actor")

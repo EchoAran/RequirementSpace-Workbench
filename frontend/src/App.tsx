@@ -5,11 +5,14 @@ import { GenerationConflictDialog } from './components/shared/GenerationConflict
 import GateCheckModal from './components/shared/GateCheckModal';
 import { useWorkspaceStore, WorkspacePage, getFriendlyErrorMessage } from './store/useWorkspaceStore';
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { buildProjectRoute, extractWorkspacePage, getGuardRedirect } from './core/selectors';
+import { buildProjectRoute, extractWorkspacePage } from './core/selectors';
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { GuestGuard } from './components/auth/GuestGuard';
 import { Lock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { resolveLocalizedMessage, taskStatusTitleKey } from './core/localizedMessage';
+import { getStageCheckMessage } from './core/stageProgressText';
 
 const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })));
 const WhatToDo = lazy(() => import('./pages/WhatToDo').then((module) => ({ default: module.WhatToDo })));
@@ -70,6 +73,7 @@ function RouterStateSync() {
 }
 
 function ProjectRouteBootstrap() {
+  const { t } = useTranslation();
   const { projectId } = useParams();
   const location = useLocation();
   const openWorkspace = useWorkspaceStore((s) => s.openWorkspace);
@@ -101,9 +105,9 @@ function ProjectRouteBootstrap() {
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5">
           <div className="mx-auto h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800 tracking-tight">正在载入项目工作区</h3>
+            <h3 className="text-sm font-black text-slate-800 tracking-tight">{t('shell.loading')}</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              {isLoading ? '正在根据地址恢复项目上下文，请稍候...' : (error || '正在准备项目数据...')}
+              {isLoading ? t('shell.loadingProgress') : (error || t('shell.loadingBackup'))}
             </p>
           </div>
         </div>
@@ -150,7 +154,9 @@ function LegacyProjectKnowledgeRedirect() {
 }
 
 export function GlobalToast() {
-  const message = useWorkspaceStore((s) => s.lastActionMessage);
+  const { t } = useTranslation();
+  const message = useWorkspaceStore((s) => s.lastActionMessageToken);
+  const messageInterpolation = useWorkspaceStore((s) => s.lastActionMessageTokenInterpolation);
   const error = useWorkspaceStore((s) => s.error);
   const setError = useWorkspaceStore((s) => s.setError);
   const navigate = useNavigate();
@@ -160,23 +166,23 @@ export function GlobalToast() {
 
   useEffect(() => {
     if (!message) return;
-    setVisibleMessage(message);
-    const t = window.setTimeout(() => setVisibleMessage(null), 2200);
-    return () => window.clearTimeout(t);
-  }, [message]);
+    setVisibleMessage(resolveLocalizedMessage(t, message, messageInterpolation));
+    const timer = window.setTimeout(() => setVisibleMessage(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [message, messageInterpolation, t]);
 
   useEffect(() => {
     if (!error) return;
     setRawError(error);
     const friendly = getFriendlyErrorMessage(error);
-    setVisibleError(friendly);
-    const t = window.setTimeout(() => {
+    setVisibleError(t(friendly));
+    const timer = window.setTimeout(() => {
       setVisibleError(null);
       setRawError(null);
       setError(null);
     }, 6000); // Give users slightly more time to read and click if it is an error
-    return () => window.clearTimeout(t);
-  }, [error, setError]);
+    return () => window.clearTimeout(timer);
+  }, [error, setError, t]);
 
   if (!visibleMessage && !visibleError) return null;
 
@@ -204,7 +210,7 @@ export function GlobalToast() {
           <span>{visibleError}</span>
           {isLlmRequired && (
             <span className="bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm transition-all shrink-0">
-              前往设置
+              {t('app.goToSettings')}
             </span>
           )}
         </div>
@@ -219,24 +225,18 @@ export function GlobalToast() {
 }
 
 function GlobalTaskStatus() {
+  const { t } = useTranslation();
   const isGenerating = useWorkspaceStore((s) => s.isGenerating);
   const isGeneratingChoices = useWorkspaceStore((s) => s.isGeneratingChoices);
-  const lastActionMessage = useWorkspaceStore((s) => s.lastActionMessage);
+  const lastActionMessageToken = useWorkspaceStore((s) => s.lastActionMessageToken);
+  const messageInterpolation = useWorkspaceStore((s) => s.lastActionMessageTokenInterpolation);
 
   if (!isGenerating || isGeneratingChoices) return null;
 
-  const message = lastActionMessage || '正在执行操作，请稍候...';
-
-  let title = '任务执行中';
-  if (message.includes('生成') && message.includes('草稿')) {
-    title = '正在生成草稿';
-  } else if (message.includes('诊断') || message.includes('分析') || message.includes('重新诊断')) {
-    title = '正在重新诊断';
-  } else if (message.includes('修复') || message.includes('AI 正在生成修复')) {
-    title = 'AI 正在生成修复方案';
-  } else if (message.includes('AI') || message.includes('智能') || message.includes('推演')) {
-    title = 'AI 任务执行中';
-  }
+  const message = lastActionMessageToken
+    ? resolveLocalizedMessage(t, lastActionMessageToken, messageInterpolation)
+    : t('app.operationPending');
+  const title = t(taskStatusTitleKey(lastActionMessageToken));
 
   return (
     <div className="fixed inset-0 z-[80] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-6">
@@ -248,7 +248,7 @@ function GlobalTaskStatus() {
           <div className="text-xs font-black tracking-[0.2em] text-indigo-600">{title}</div>
           <div className="text-sm font-bold text-slate-900 leading-relaxed">{message}</div>
           <div className="text-xs text-slate-500 leading-relaxed">
-            页面会在任务完成后自动刷新当前结果，您无需重复点击按钮。
+            {t('app.autoRefreshNotice')}
           </div>
         </div>
       </div>
@@ -257,6 +257,7 @@ function GlobalTaskStatus() {
 }
 
 function GlobalGenerationConflictDialog() {
+  const { t } = useTranslation();
   const pendingGenerationConflict = useWorkspaceStore((s) => s.pendingGenerationConflict);
   const dismissPendingGenerationConflict = useWorkspaceStore((s) => s.dismissPendingGenerationConflict);
   const confirmPendingGenerationConflict = useWorkspaceStore((s) => s.confirmPendingGenerationConflict);
@@ -265,7 +266,7 @@ function GlobalGenerationConflictDialog() {
   return (
     <GenerationConflictDialog
       isOpen={!!pendingGenerationConflict}
-      generationLabel={pendingGenerationConflict?.existingGroupLabel || '候选'}
+      generationLabel={pendingGenerationConflict?.existingGroupLabel ? t(pendingGenerationConflict.existingGroupLabel) : t('choiceGroupPreview.candidateFallback')}
       isWorking={isGeneratingChoices}
       onClose={dismissPendingGenerationConflict}
       onConfirm={() => void confirmPendingGenerationConflict()}
@@ -274,6 +275,7 @@ function GlobalGenerationConflictDialog() {
 }
 
 function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage: 'flow' | 'scope' }) {
+  const { t } = useTranslation();
   const ir = useWorkspaceStore((s) => s.ir);
   const setError = useWorkspaceStore((s) => s.setError);
   const gateFindings = useWorkspaceStore((s) => s.findingsByView.gate || []);
@@ -328,7 +330,7 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[80vh] w-full animate-in fade-in duration-300">
         <div className="max-w-md w-full bg-white rounded-[28px] p-8 border border-slate-200 shadow-xl text-center space-y-4">
           <div className="mx-auto h-8 w-8 rounded-full border-4 border-slate-200 border-t-indigo-500 animate-spin" />
-          <p className="text-xs text-slate-500 font-medium">正在加载阶段状态，请稍候...</p>
+          <p className="text-xs text-slate-500 font-medium">{t('app.loadingStageProgress')}</p>
         </div>
       </div>
     );
@@ -351,14 +353,14 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
     prevStageKey = 'what';
     prevStageRoute = '/what';
     targetAction = 'enter_how';
-    stageNameLabel = '怎么运作 (How)';
+    stageNameLabel = t('nav.flow');
   } else if (stage === 'scope') {
     isUnlocked = scopeStage ? scopeStage.unlocked : false;
     prevStage = howStage;
     prevStageKey = 'how';
     prevStageRoute = '/flow';
     targetAction = 'enter_scope';
-    stageNameLabel = '范围与交付 (Scope)';
+    stageNameLabel = t('nav.scope');
   }
 
   if (isUnlocked) {
@@ -366,10 +368,10 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
   }
 
   const prevReady = prevStage?.statusCode === 'ready_to_advance';
-  const blockReason = prevStage?.failedChecks?.[0]?.message || (
-    prevStageKey === 'what' 
-      ? '需先补齐 What 阶段的所有核心建模规则' 
-      : '需先补齐 How 阶段的核心规则'
+  const blockReason = getStageCheckMessage(prevStage?.failedChecks?.[0], t) || (
+    prevStageKey === 'what'
+      ? t('app.blockReasonWhat')
+      : t('app.blockReasonHow')
   );
 
   const handleTransition = () => {
@@ -387,12 +389,14 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
                 <Lock className="h-4 w-4" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-base font-black text-slate-800 tracking-tight">{stageNameLabel} 阶段尚未解锁</h3>
+          <h3 className="text-base font-black text-slate-800 tracking-tight">
+            {t('app.stageNotUnlocked', { stage: stageNameLabel })}
+          </h3>
           <p className="text-xs text-slate-500 leading-relaxed">
-            您访问的阶段由于前置建模依赖未完成，目前仍处于锁定状态。
+            {t('app.stageLockedDesc')}
           </p>
           <div className="text-left bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">阻碍进入原因：</span>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('app.blockReasonLabel')}</span>
             <p className="text-xs text-slate-700 leading-relaxed font-medium">
               {blockReason}
             </p>
@@ -406,14 +410,14 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
               disabled={isLoading}
               className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? '正在提交解锁...' : '申请解锁并进入该阶段'}
+              {isLoading ? t('app.submittingUnlock') : t('app.applyUnlock')}
             </button>
           )}
           <button
             onClick={handleGoBack}
             className="w-full py-3 px-4 border border-slate-200 hover:border-slate-300 text-slate-600 rounded-2xl text-xs font-bold transition-all bg-white hover:bg-slate-50"
           >
-            返回上一就绪阶段
+            {t('app.goBackToReadyStage')}
           </button>
         </div>
       </div>

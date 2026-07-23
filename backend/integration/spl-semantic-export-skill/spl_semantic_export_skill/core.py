@@ -4,6 +4,7 @@ import os
 import logging
 import re
 import asyncio
+from contextvars import copy_context
 from typing import Any, Callable, Dict, List, Optional
 from .schema import SplExportInputDict, SplExportOutputDict
 from .ir import SplSemanticIR, TypeIR, TypeFieldIR, WorkerIR, WorkerStepIR, ScenarioIR, SplExportWarningIR, WarningSourceIR, TraceLinkIR
@@ -12,6 +13,14 @@ from .validators import SplSemanticValidator
 from .prompts import TYPE_NORMALIZATION_PROMPT, FLOW_TO_WORKER_PROMPT, AC_TO_SCENARIO_PROMPT, COVERAGE_REVIEW_PROMPT
 
 logger = logging.getLogger(__name__)
+
+
+def _output_language(payload: SplExportInputDict) -> str:
+    return payload.get("export_options", {}).get("language") or "zh-CN"
+
+
+def _localized(payload: SplExportInputDict, zh_cn: str, en_us: str) -> str:
+    return en_us if _output_language(payload) == "en-US" else zh_cn
 
 
 def run_async(coro):
@@ -37,7 +46,8 @@ def run_async(coro):
             finally:
                 new_loop.close()
                 
-        t = threading.Thread(target=run_in_thread)
+        context = copy_context()
+        t = threading.Thread(target=lambda: context.run(run_in_thread))
         t.start()
         return fut.result()
     else:
@@ -132,9 +142,8 @@ class SplSemanticExportSkill:
         
         async def ask_with_sem_and_timeout(prompt: str) -> dict:
             async with sem:
-                loop = asyncio.get_running_loop()
                 return await asyncio.wait_for(
-                    loop.run_in_executor(None, self._ask_json, prompt),
+                    asyncio.to_thread(self._ask_json, prompt),
                     timeout=25.0  # 25 seconds timeout per LLM request
                 )
 
@@ -173,7 +182,8 @@ class SplSemanticExportSkill:
         prompt = TYPE_NORMALIZATION_PROMPT.format(
             bo_name=bo_name,
             bo_description=bo_desc,
-            bo_attributes="\n".join(attrs_str)
+            bo_attributes="\n".join(attrs_str),
+            output_language=_output_language(ir.raw),
         )
 
         try:
@@ -226,7 +236,11 @@ class SplSemanticExportSkill:
             ir.trace_links.append(TraceLinkIR(spl_ref=safe_type_name, source_kind="business_object", source_id=str(bo_id)))
             ir.warnings.append(SplExportWarningIR(
                 code="type_normalization_fallback",
-                message=f"业务对象 BO_{bo_id} '{bo_name}' 语义类型转换失败，降级为普通属性映射。",
+                message=_localized(
+                    ir.raw,
+                    f"业务对象 BO_{bo_id} '{bo_name}' 语义类型转换失败，降级为普通属性映射。",
+                    f"Business object BO_{bo_id} '{bo_name}' could not be normalized and was mapped as plain attributes.",
+                ),
                 source=WarningSourceIR(kind="business_object", id=str(bo_id))
             ))
 
@@ -288,7 +302,8 @@ class SplSemanticExportSkill:
             flow_description=flow_desc,
             flow_steps="\n".join(steps_str),
             types_mapping=ir.bo_id_to_type_name,
-            actors_mapping=actors_mapping
+            actors_mapping=actors_mapping,
+            output_language=_output_language(ir.raw),
         )
 
         try:
@@ -357,7 +372,11 @@ class SplSemanticExportSkill:
             ir.trace_links.append(TraceLinkIR(spl_ref=safe_worker_name, source_kind="flow", source_id=str(flow_id)))
             ir.warnings.append(SplExportWarningIR(
                 code="flow_worker_fallback",
-                message=f"业务流 Flow_{flow_id} '{flow_name}' 语义 Worker 转换失败，降级为普通顺序结构。",
+                message=_localized(
+                    ir.raw,
+                    f"业务流 Flow_{flow_id} '{flow_name}' 语义 Worker 转换失败，降级为普通顺序结构。",
+                    f"Flow Flow_{flow_id} '{flow_name}' could not be converted to a semantic worker and was reduced to a sequential structure.",
+                ),
                 source=WarningSourceIR(kind="flow", id=str(flow_id))
             ))
 
@@ -366,7 +385,11 @@ class SplSemanticExportSkill:
         
         # Parallel scenarios extraction for all features
         results = await asyncio.gather(*(
-            self._extract_single_feature_scenarios(feat, ask_fn)
+            self._extract_single_feature_scenarios(
+                feat,
+                ask_fn,
+                _output_language(payload),
+            )
             for feat in features
         ))
         
@@ -402,7 +425,12 @@ class SplSemanticExportSkill:
                             source_id=str(ac_id)
                         ))
 
-    async def _extract_single_feature_scenarios(self, feat: dict, ask_fn: Callable[[str], Any]) -> List[ScenarioIR]:
+    async def _extract_single_feature_scenarios(
+        self,
+        feat: dict,
+        ask_fn: Callable[[str], Any],
+        output_language: str,
+    ) -> List[ScenarioIR]:
         feat_id = feat.get("feature_id")
         scenarios = feat.get("scenarios", [])
         if not scenarios:
@@ -423,7 +451,8 @@ class SplSemanticExportSkill:
         prompt = AC_TO_SCENARIO_PROMPT.format(
             feature_name=feat.get("feature_name"),
             feature_description=feat.get("feature_description"),
-            scenarios="\n\n".join(scenarios_str)
+            scenarios="\n\n".join(scenarios_str),
+            output_language=output_language,
         )
 
         try:
@@ -453,7 +482,7 @@ class SplSemanticExportSkill:
                     source_acceptance_criterion_ids=ac_ids,
                     scenario_name=s.get("scenario_name", ""),
                     given=given,
-                    when=["执行相关操作"],
+                    when=["Perform the related action" if output_language == "en-US" else "执行相关操作"],
                     then=then_steps
                 ))
             return fallback_scens
@@ -478,22 +507,30 @@ class SplSemanticExportSkill:
             original_flows=orig_flows,
             original_business_objects=orig_bos,
             generated_types=gen_types,
-            generated_workers=gen_workers
+            generated_workers=gen_workers,
+            output_language=_output_language(payload),
         )
 
         try:
-            loop = asyncio.get_running_loop()
             res = await asyncio.wait_for(
-                loop.run_in_executor(None, self._ask_json, prompt),
+                asyncio.to_thread(self._ask_json, prompt),
                 timeout=20.0
             )
             for risk in res.get("semantic_risks", []):
                 ir.warnings.append(SplExportWarningIR(
                     code="llm_coverage_warning",
-                    message=f"大模型审查指出设计风险: {risk}",
+                    message=_localized(
+                        payload,
+                        f"大模型审查指出设计风险: {risk}",
+                        f"The LLM review identified a design risk: {risk}",
+                    ),
                     source=WarningSourceIR(kind="project", id=ir.project_id)
                 ))
-                val_report["semantic_risks"].append(f"大模型审查: {risk}")
+                val_report["semantic_risks"].append(_localized(
+                    payload,
+                    f"大模型审查: {risk}",
+                    f"LLM review: {risk}",
+                ))
             if not res.get("coverage_passed", True):
                 val_report["coverage_passed"] = False
         except Exception as e:
@@ -515,6 +552,10 @@ class SplSemanticExportSkill:
                 "missing_current_feature_ids": [],
                 "unmapped_flow_ids": [],
                 "unmapped_acceptance_criterion_ids": [],
-                "semantic_risks": ["因为编译异常降级为语法壳导出"]
+                "semantic_risks": [_localized(
+                    payload,
+                    "因为编译异常降级为语法壳导出",
+                    "The export fell back to a syntax shell because semantic compilation failed.",
+                )]
             }
         }

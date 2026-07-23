@@ -64,3 +64,12 @@ except ValueError:
 
 # Feature Flag
 KNOWLEDGE_BASE_ENABLED = os.getenv("KNOWLEDGE_BASE_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
+LLM_LOCALE_VALIDATION_MODE = os.getenv(
+    "LLM_LOCALE_VALIDATION_MODE",
+    "observe",
+).strip().lower()
+if LLM_LOCALE_VALIDATION_MODE not in {"observe", "enforce"}:
+    raise ValueError(
+        "LLM_LOCALE_VALIDATION_MODE must be 'observe' or 'enforce'"
+    )

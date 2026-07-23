@@ -162,6 +162,20 @@ flowchart LR
 
 普通用户的 API Key 会加密后保存到数据库。接口和页面只返回 Key 的末四位，不返回明文。
 
+### 界面语言与项目内容语言
+
+首期支持 `zh-CN` 和 `en-US`。账户设置中的界面语言只影响当前用户看到的 UI、日期格式和本地提示；项目配置中的内容语言决定该项目后续 AI 新生成内容的语言。有效内容语言按以下顺序决议：
+
+```text
+project.content_locale > user.preferred_locale > zh-CN
+```
+
+- 项目语言为空时，AI 新内容跟随本次操作发起人的界面语言偏好。
+- 项目设置语言后，无论成员使用中文还是英文界面，AI 新内容都遵守项目语言。
+- 切换任何语言都不会翻译或改写已有项目内容、用户输入和历史审计记录。
+- 只有项目 owner/admin 可以修改项目内容语言，其他成员只能读取。
+- `observe` 模式只记录语言检测结果，原响应可能继续进入后续流程；`enforce` 模式下，模型连续两次未遵守项目内容语言时，服务端返回 `llm_content_locale_mismatch` 且不写入草稿或候选，界面会提示重试或检查当前模型的语言能力。
+
 项目在数据库内部仍使用整数主键维护关系，但浏览器 URL、前端状态和外部 API 使用不可枚举的公开 UUID：
 
 ```text
@@ -304,9 +318,23 @@ npm run dev
 | `LLM_API_KEY` | 管理员 AI 必需 | 管理员使用的服务器 API Key |
 | `LLM_MODEL_NAME` | 管理员 AI 必需 | 管理员使用的模型名 |
 | `LLM_TEMPERATURE` | 否 | LLM 采样温度 |
+| `LLM_LOCALE_VALIDATION_MODE` | 否 | `observe` 仅检测并记录；`enforce` 纠正一次并拒绝持续不匹配。缺省为 `observe` |
 | `REQUIREMENTSPACE_GENERATION_BACKEND` | 否 | `legacy` 或 `skill` |
 
 普通用户不读取服务器的 `LLM_API_*`。如果普通用户尚未在账户设置中保存完整配置，AI 接口会返回 `409 llm_config_required`。
+
+### 内容语言校验渐进发布与回退
+
+staging 首次部署建议在 `.env` 设置 `LLM_LOCALE_VALIDATION_MODE=observe`，执行 `alembic upgrade head` 后核对历史用户 `preferred_locale=zh-CN`、历史项目 `content_locale=NULL`，再验证账户语言保存、项目语言权限和真实 LLM 请求。观察 `llm_locale_validation_completed` 的不匹配率可接受后，将模式切换为 `enforce`。
+
+以下日志事件只包含 locale、来源、调用类型、结果、耗时和模型等元数据，不记录完整 Prompt、用户原文或模型回复：
+
+- `llm_locale_validation_completed`：检测结果和 `observe/enforce` 模式。
+- `llm_locale_correction_requested`：新增一次纠正调用。
+- `llm_locale_correction_completed`：纠正成功率、额外耗时和调用计数。
+- `llm_locale_validation_rejected`：最终拒绝率。
+
+如果误判影响项目工作，将模式回退为 `observe` 并重启后端即可停止纠正和拒绝，同时保留语言决议与 Prompt 协议。不要删除语言字段、清空项目 `content_locale` 或批量改写历史数据。
 
 ## 数据库
 
@@ -399,7 +427,9 @@ npm run clean
 - `/api/auth/me`：当前用户
 - `/api/account/llm-config`：普通用户 LLM 配置查询、保存和删除
 - `/api/account/llm-config/test`：测试当前或待保存的 LLM 配置
+- `/api/account/preferences`：保存当前用户界面语言偏好
 - `/api/projects`：当前用户的项目列表与项目操作
+- `/api/projects/{project_id}/configuration`：读取或修改项目内容语言等配置
 - `/api/projects/{project_id}/...`：使用公开 UUID 的项目资源接口
 - `/api/*_generation_drafts`：AI 生成草稿
 - `/api/projects/{project_id}/issues`：问题检测与修复

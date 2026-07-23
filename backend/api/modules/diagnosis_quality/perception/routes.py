@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
-from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.llm import get_llm_context, llm_context_manager
 from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.base_schema import DraftRegenerateRequest
 
@@ -70,18 +70,18 @@ async def create_actor_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await perception_slot_filling_service.create_actor_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            perception_job_id=request.perception_job_id,
-            session=session,
-        )
-    except ValueError as error:
-        raise _to_http_exception(error)
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await perception_slot_filling_service.create_actor_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                perception_job_id=request.perception_job_id,
+                session=session,
+            )
+        except ValueError as error:
+            raise _to_http_exception(error)
 
 
 @router.post(
@@ -92,18 +92,18 @@ async def create_feature_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await perception_slot_filling_service.create_feature_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            perception_job_id=request.perception_job_id,
-            session=session,
-        )
-    except ValueError as error:
-        raise _to_http_exception(error)
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await perception_slot_filling_service.create_feature_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                perception_job_id=request.perception_job_id,
+                session=session,
+            )
+        except ValueError as error:
+            raise _to_http_exception(error)
 
 
 @router.post(
@@ -114,18 +114,18 @@ async def create_scenario_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await perception_slot_filling_service.create_scenario_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            perception_job_id=request.perception_job_id,
-            session=session,
-        )
-    except ValueError as error:
-        raise _to_http_exception(error)
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await perception_slot_filling_service.create_scenario_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                perception_job_id=request.perception_job_id,
+                session=session,
+            )
+        except ValueError as error:
+            raise _to_http_exception(error)
 
 
 @router.post(
@@ -136,20 +136,20 @@ async def create_acceptance_criteria_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await (
-            perception_slot_filling_service
-        ).create_acceptance_criteria_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            perception_job_id=request.perception_job_id,
-            session=session,
-        )
-    except ValueError as error:
-        raise _to_http_exception(error)
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await (
+                perception_slot_filling_service
+            ).create_acceptance_criteria_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                perception_job_id=request.perception_job_id,
+                session=session,
+            )
+        except ValueError as error:
+            raise _to_http_exception(error)
 
 
 @router.post(
@@ -160,18 +160,18 @@ async def create_flow_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    llm_ctx=Depends(get_llm_context),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
-    try:
-        return await perception_slot_filling_service.create_flow_draft(
-            project_id=owned_project.id,
-            owner_user_id=user.id,
-            perception_job_id=request.perception_job_id,
-            session=session,
-        )
-    except ValueError as error:
-        raise _to_http_exception(error)
+    async with llm_context_manager(user, session, project_id=owned_project.id):
+        try:
+            return await perception_slot_filling_service.create_flow_draft(
+                project_id=owned_project.id,
+                owner_user_id=user.id,
+                perception_job_id=request.perception_job_id,
+                session=session,
+            )
+        except ValueError as error:
+            raise _to_http_exception(error)
 
 
 @router.post(

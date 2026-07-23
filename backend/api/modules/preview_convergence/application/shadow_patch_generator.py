@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.database.database import AsyncSessionLocal
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
 from backend.core.generators.flows_generator import FlowsGeneratorInput
@@ -73,7 +74,7 @@ class PreviewShadowPatchGenerator:
             user_requirements = base_snapshot.get("user_requirements", "")
             
             # Generate Actors
-            await service._update_progress(draft_id, 15, "AI 正在智能推演补充 What 阶段设计资产：生成参与者角色...")
+            await service._update_progress(draft_id, 15, "preview.full.progressWhat")
             from backend.core.generators.actors_generator import ActorsGenerator, ActorsGeneratorInput
             actors_generator = ActorsGenerator()
             raw_actors = await actors_generator.generate(
@@ -136,14 +137,21 @@ class PreviewShadowPatchGenerator:
                 return f"tmp_actor_1" if actor_nodes else ""
 
             # Generate Features tree (Skill-Backed or Legacy)
-            await service._update_progress(draft_id, 25, "AI 正在智能推演补充 What 阶段设计资产：生成系统功能特征树...")
+            await service._update_progress(draft_id, 25, "preview.full.progressWhat")
             if hasattr(feature_generation_service, "_skill_generator"):
                 requirement_text = user_requirements
                 if feedback:
                     requirement_text = f"{user_requirements}\n\nUser feedback for regeneration:\n{feedback}"
                 actor_names = [actor.actorName for actor in actor_nodes]
                 prompt = feature_generation_service._skill_generator._build_prompt(requirement_text, actor_names)
-                raw_feature_tree = await feature_generation_service._llm_json_client.ask_json(prompt)
+                raw_feature_tree = await feature_generation_service._llm_json_client.ask_json(
+                    prompt,
+                    protected_inputs=collect_protected_texts(
+                        user_requirements,
+                        feedback,
+                        actor_names,
+                    ),
+                )
                 features = feature_generation_service._adapter.to_current_features(
                     raw_feature_tree=raw_feature_tree,
                     actors=actor_nodes,
@@ -245,7 +253,7 @@ class PreviewShadowPatchGenerator:
                         parent_node.childrenIds.append(node.featureId)
 
             # Generate Scenarios and ACs for ALL leaf features
-            await service._update_progress(draft_id, 35, "AI 正在智能推演补充 What 阶段设计资产：生成典型故事场景及 AC...")
+            await service._update_progress(draft_id, 35, "preview.full.progressWhat")
             from backend.core.generators.scenarios_generator import ScenariosGenerator, ScenariosGeneratorInput
             from backend.core.generators.acceptance_criteria_generator import AcceptanceCriteriaGenerator, AcceptanceCriteriaGeneratorInput
             scenarios_generator = ScenariosGenerator()
@@ -363,7 +371,7 @@ class PreviewShadowPatchGenerator:
                         })
 
             if not how_passed:
-                await service._update_progress(draft_id, 50, "AI 正在增量推演 How 阶段业务规约：分析核心业务流及数据实体...")
+                await service._update_progress(draft_id, 50, "preview.full.progressHow")
                 from backend.core.generators.flows_generator import FlowsGenerator
                 flows_generator = FlowsGenerator()
                 raw_flows = await flows_generator.generate(
@@ -556,7 +564,7 @@ class PreviewShadowPatchGenerator:
 
             # CALL THE REAL KANO DECISION GENERATOR OR KANO SKILL!
             if not scope_passed:
-                await service._update_progress(draft_id, 75, "AI 正在评估交付范围：生成 Kano 价值评估与剪裁建议...")
+                await service._update_progress(draft_id, 75, "preview.full.progressScope")
                 leaf_feature_nodes = [node for node in feature_nodes if not node.childrenIds]
                 scopes = await service._generate_scopes_for_features(
                     scope_service=scope_generation_service,
@@ -620,7 +628,7 @@ class PreviewShadowPatchGenerator:
 
         # 3. What core assets already exist: preserve them and fill missing scenario/AC/link gaps.
         else:
-            await service._update_progress(draft_id, 25, "AI 正在检测并补充 What 阶段缺失的典型故事场景与验收标准（AC）...")
+            await service._update_progress(draft_id, 25, "preview.full.progressWhat")
             features = base_snapshot.get("features", [])
             actors = base_snapshot.get("actors", [])
             
@@ -688,27 +696,14 @@ class PreviewShadowPatchGenerator:
                                 })
 
             if not how_passed:
-                await service._update_progress(draft_id, 50, "AI 正在增量推演 How 阶段业务规约：分析核心业务流及数据实体...")
+                await service._update_progress(draft_id, 50, "preview.full.progressHow")
                 async with get_session_ctx() as ctx_session:
-                    (
-                        user_requirements,
-                        actor_nodes,
-                        feature_nodes,
-                        leaf_feature_count,
-                    ) = await flow_generation_service._load_project_context(
+                    raw_flows, *_ = await flow_generation_service.generate_raw(
                         project_id=project_id,
+                        user_feedback=feedback,
                         session=ctx_session,
+                        validate_result=False,
                     )
-                
-                raw_flows = await flow_generation_service._flows_generator.generate(
-                    FlowsGeneratorInput(
-                        user_requirements=user_requirements,
-                        actors=actor_nodes,
-                        features=feature_nodes,
-                        user_feedback=feedback
-                    ),
-                    use_old_prompt=(leaf_feature_count < flow_generation_service._three_step_leaf_feature_threshold)
-                )
                 
                 # Business Objects
                 for bo_idx, bo in enumerate(raw_flows.get("business_objects", [])):
@@ -822,7 +817,7 @@ class PreviewShadowPatchGenerator:
                         })
 
             if not scope_passed:
-                await service._update_progress(draft_id, 75, "AI 正在评估交付范围：生成 Kano 价值评估与剪裁建议...")
+                await service._update_progress(draft_id, 75, "preview.full.progressScope")
                 async with get_session_ctx() as ctx_session:
                     (
                         user_requirements,

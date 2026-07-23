@@ -698,6 +698,31 @@ async def test_next_suggestion_background_task_keeps_scoped_context(llm_test_db)
 
 
 @pytest.mark.anyio
+async def test_next_suggestion_read_does_not_require_llm_config(llm_test_db):
+    client = TestClient(app)
+    uid, cookie = _register_user(client, "user_next_read@example.com", "pass1234")
+    _proj_id, proj_public_id = await _create_project_db(llm_test_db, uid)
+
+    with patch(
+        "backend.api.modules.diagnosis_quality.next_suggestion.routes.next_suggestion_service.get_next_suggestion",
+        return_value={
+            "project_id": proj_public_id,
+            "stage": "what",
+            "suggestion": None,
+        },
+    ):
+        client.cookies.clear()
+        client.cookies.set("auth_session", cookie)
+        res = client.get(
+            f"/api/projects/{proj_public_id}/next-suggestion",
+            params={"stage": "what"},
+        )
+
+    assert res.status_code == 200
+    assert current_llm_context.get() is None
+
+
+@pytest.mark.anyio
 async def test_defer_project_choice_requires_llm_config(llm_test_db):
     client = TestClient(app)
     uid, cookie = _register_user(client, "user_defer_noconfig@example.com", "pass1234")

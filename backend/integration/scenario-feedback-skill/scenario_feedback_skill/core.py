@@ -211,9 +211,7 @@ class ScenarioFeedbackPipeline:
             self._read_text(self._feedback_path),
             self._read_text(self._gherkin_path),
         )
-        loop = asyncio.get_running_loop()
-        revised = await loop.run_in_executor(
-            None,
+        revised = await asyncio.to_thread(
             self._generator.revise,
             feedback,
             gherkin,

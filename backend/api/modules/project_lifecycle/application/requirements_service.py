@@ -7,6 +7,7 @@ from backend.api.modules.project_lifecycle.schemas.audit import (
 )
 from backend.services.llm_handler_service import LLMHandler
 from backend.core.actor_context import ActorContext
+from backend.core.prompt_resolver import get_content_locale, resolve_prompt
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
@@ -139,29 +140,23 @@ class ProjectRequirementsService:
             audit_summary_lines.append(
                 f"- [{log.action_type}] {log.summary} (target: {log.target_type}#{log.target_id})"
             )
-        audit_summary = "\n".join(audit_summary_lines) if audit_summary_lines else "暂无变更记录"
-
-        # 4. 构建LLM提示词
-        prompt = (
-            "你是一位专业的产品需求分析师。请根据以下信息，对产品需求文档（PRD）进行精炼和优化。\n\n"
-            "## 当前需求文档\n"
-            f"{current_requirements}\n\n"
-            "## 最近的变更记录（审计日志）\n"
-            f"{audit_summary}\n\n"
-            "## 要求\n"
-            "1. 综合考虑当前需求文档和变更记录，生成更新后的需求文档\n"
-            "2. 确保变更记录中反映的修改都被纳入需求文档\n"
-            "3. 保持需求文档的结构化和可读性\n"
-            "4. 使用中文输出\n"
-            "5. 直接输出优化后的需求文档内容，不要加额外的说明或包裹标记\n"
+        locale = get_content_locale()
+        audit_summary = "\n".join(audit_summary_lines) if audit_summary_lines else (
+            "(none)" if locale == "en-US" else "（无）"
         )
 
-        query = user_feedback or "请根据以上信息优化需求文档。"
+        # 4. 构建LLM提示词
+        prompt = resolve_prompt("requirements_refinement", locale).replace(
+            "{{current_requirements}}", current_requirements
+        ).replace("{{audit_summary}}", audit_summary)
+
+        query = user_feedback or ""
 
         # 5. 调用LLM
         llm_result = await self._llm_handler.call_llm(
             prompt=prompt,
             query=query,
+            protected_inputs=(current_requirements, user_feedback or ""),
         )
 
         if llm_result is None:

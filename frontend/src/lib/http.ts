@@ -1,3 +1,5 @@
+import i18n from '../i18n';
+
 const rawApiUrl = (import.meta.env.VITE_API_URL as string) || '';
 export const API_BASE_URL = rawApiUrl 
   ? (rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.replace(/\/$/, '')}/api`)
@@ -133,15 +135,15 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     if (error instanceof Error && error.name === 'AbortError') {
       throw new HttpError(
         504,
-        'Gateway Timeout',
-        '请求超时，后台任务执行时间过长，请稍后重试。'
+        i18n.t('http.timeoutStatus'),
+        i18n.t('http.timeoutMessage'),
       );
     }
     // Network or other unexpected errors
     throw new HttpError(
       0,
-      'Network Error',
-      error instanceof Error ? error.message : '网络连接失败，请检查服务是否正常启动。',
+      i18n.t('http.networkStatus'),
+      error instanceof Error ? error.message : i18n.t('http.networkMessage'),
       error
     );
   } finally {

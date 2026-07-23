@@ -1,11 +1,12 @@
 /**
- * ProjectInterviewDialog — chat dialog for the "先简单聊聊" project creation flow.
+ * ProjectInterviewDialog — chat dialog for the "{t('interviewDialog.headerTitle')}" project creation flow.
  *
  * An AI interview agent asks questions to gather project requirements.
  * When ready, the user can complete the interview, which creates the project
  * with the gathered requirements and navigates to the workspace.
  */
 
+import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Send, Loader2, Bot, User, Check, X } from 'lucide-react';
@@ -24,6 +25,7 @@ interface ProjectInterviewDialogProps {
 }
 
 export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDialogProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -59,7 +61,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
         setStep('ready');
       }
     } catch {
-      setMessages([{ role: 'assistant', content: '你好！请告诉我你想构建一个什么样的项目？' }]);
+      setMessages([{ role: 'assistant', content: t('interviewDialog.welcomeMessage') }]);
     } finally {
       setIsSending(false);
     }
@@ -83,7 +85,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
         setStep('ready');
       }
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，通信异常，请稍后重试。' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: t('interviewDialog.networkError') }]);
     } finally {
       setIsSending(false);
     }
@@ -95,8 +97,8 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
     setStep('completing');
 
     try {
-      const finalName = projectName.trim() || '未命名项目';
-      const finalDesc = projectDesc.trim() || '通过AI访谈创建的项目';
+      const finalName = projectName.trim() || t('interviewDialog.defaultProjectName');
+      const finalDesc = projectDesc.trim() || t('interviewDialog.defaultProjectDesc');
       const result = await workspaceApi.completeInterview(finalName, finalDesc, summary);
 
       // Set the draft in the store so DraftPreviewModal in ProjectOnboarding shows it
@@ -156,8 +158,8 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
                 <Sparkles className="w-4 h-4 text-indigo-600" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800">先简单聊聊</h3>
-                <p className="text-[10px] text-slate-500 mt-0.5">AI 将通过对话了解你的项目需求</p>
+                <h3 className="font-extrabold text-sm text-slate-800">{t('interviewDialog.headerTitle')}</h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">{t('interviewDialog.headerDesc')}</p>
               </div>
             </div>
             <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
@@ -172,24 +174,24 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
             <div className="text-center">
               <Bot className="w-12 h-12 text-indigo-200 mx-auto mb-3" />
               <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                在开始对话前，请先给你的项目起个名字。
+                {t('interviewDialog.nameInputTip')}
               </p>
             </div>
             <input
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              placeholder="例如：极简本地音乐播放器"
+              placeholder={t('interviewDialog.projectNamePlaceholder')}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800"
               onKeyDown={(e) => { if (e.key === 'Enter') handleStartInterview(); }}
             />
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">项目简述（可选）</label>
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{t('interviewDialog.projectDescLabel')}</label>
               <input
                 type="text"
                 value={projectDesc}
                 onChange={(e) => setProjectDesc(e.target.value)}
-                placeholder="一句话描述项目目标"
+                placeholder={t('interviewDialog.projectDescPlaceholder')}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800"
               />
             </div>
@@ -198,7 +200,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
               disabled={!projectName.trim()}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-colors shadow-sm disabled:opacity-50"
             >
-              开始访谈
+              {t('interviewDialog.startBtn')}
             </button>
           </div>
         )}
@@ -228,7 +230,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="回答AI的问题..."
+                    placeholder={t('interviewDialog.answerPlaceholder')}
                     rows={2}
                     className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
                   />
@@ -250,13 +252,13 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50"
                   >
                     {isCompleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    完成访谈，创建项目
+                    {t('interviewDialog.completeBtn')}
                   </button>
                   <button
                     onClick={() => setStep('chat')}
                     className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
                   >
-                    继续对话
+                    {t('interviewDialog.continueBtn')}
                   </button>
                 </div>
               )}
@@ -264,7 +266,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
               {step === 'completing' && (
                 <div className="flex items-center justify-center gap-2 py-2.5 text-xs text-slate-500">
                   <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                  正在创建项目...
+                  {t('interviewDialog.creatingProject')}
                 </div>
               )}
             </div>
@@ -276,7 +278,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
           <div className="p-6 text-center">
             <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-bold px-4 py-4 rounded-2xl flex items-center justify-center gap-2">
               <Check className="w-5 h-5" />
-              项目已创建，正在跳转...
+              {t('interviewDialog.projectCreated')}
             </div>
           </div>
         )}

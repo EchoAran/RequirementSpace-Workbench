@@ -1,5 +1,8 @@
-from backend.core.perceptrons.slot_fillers.prompts.acceptance_criteria_fill_agent import acceptance_criteria_fill_prompt
-from backend.core.perceptrons.slot_fillers.prompts.actors_fill_agent import actors_fill_prompt
-from backend.core.perceptrons.slot_fillers.prompts.features_fill_agent import features_fill_prompt
-from backend.core.perceptrons.slot_fillers.prompts.flows_fill_agent import business_objects_actors_label_prompt, flows_fill_prompt
-from backend.core.perceptrons.slot_fillers.prompts.scenarios_fill_agent import scenarios_fill_prompt
+from backend.core.prompt_resolver import LocalizedPromptProxy
+
+acceptance_criteria_fill_prompt = LocalizedPromptProxy("acceptance_criteria_fill")
+actors_fill_prompt = LocalizedPromptProxy("actors_fill")
+features_fill_prompt = LocalizedPromptProxy("features_fill")
+business_objects_actors_label_prompt = LocalizedPromptProxy("business_objects_actors_label")
+flows_fill_prompt = LocalizedPromptProxy("flows_fill")
+scenarios_fill_prompt = LocalizedPromptProxy("scenarios_fill")

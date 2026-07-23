@@ -36,6 +36,7 @@ class SplSyntaxRenderer:
         project_id = project.get("project_id", "00000000")
         project_desc = project.get("project_description", "")
         user_reqs = project.get("user_requirements", "")
+        is_english = payload.get("export_options", {}).get("language") == "en-US"
 
         safe_project_id = re.sub(r'[^a-zA-Z0-9]', '', project_id)[:8]
         if not safe_project_id:
@@ -105,9 +106,9 @@ class SplSyntaxRenderer:
             
             # Map scope_status to localized or standard string
             status_map = {
-                "current": "current (本期)",
-                "postponed": "postponed (暂缓)",
-                "exclude": "exclude (不纳入)"
+                "current": "current" if is_english else "current (本期)",
+                "postponed": "postponed" if is_english else "postponed (暂缓)",
+                "exclude": "excluded" if is_english else "exclude (不纳入)",
             }
             status_str = status_map.get(scope_status, scope_status)
             reason_str = f" Reason: {escape_string(scope_reason)}" if scope_reason else ""
@@ -117,7 +118,8 @@ class SplSyntaxRenderer:
         for gate in unresolved_gates:
             gate_code = gate.get("code") or gate.get("finding_id", "gate")
             gate_desc = gate.get("description", "")
-            lines.append(f"ExportGate: \"Unresolved gate {escape_string(gate_code)}: {escape_string(gate_desc)}\"")
+            gate_detail = "" if is_english else f": {escape_string(gate_desc)}"
+            lines.append(f"ExportGate: \"Unresolved gate {escape_string(gate_code)}{gate_detail}\"")
             warnings.append({
                 "code": "unresolved_gate",
                 "message": f"Export includes unresolved gate: {gate_code}.",

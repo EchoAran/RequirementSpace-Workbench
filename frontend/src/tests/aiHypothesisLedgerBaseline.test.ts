@@ -73,4 +73,31 @@ describe('aiHypothesisLedgerBaseline - AI Hypothesis Ledger Scanner', () => {
     expect(actorItem.source).toBe('AI assumption');
     expect(actorItem.status).toBe('ai_assumption');
   });
+
+  it('returns locale keys and parameters for open decision queue entries', () => {
+    const mockSpace = {
+      actors: [],
+      features: [],
+      businessObjects: [],
+      flows: [],
+      choiceGroups: {
+        'choice-group-1': {
+          id: 'choice-group-1',
+          status: 'open',
+          generationType: 'actor',
+          statusDetail: { comparisonSummary: '均衡版：2 个参与者候选方案' },
+          choices: [{ status: 'candidate' }, { status: 'candidate' }],
+        },
+      },
+    } as unknown as RequirementSpace;
+
+    const entry = buildOverviewModel(mockSpace).decisionQueue[0];
+    expect(entry).toEqual(expect.objectContaining({
+      titleKey: 'overview.decisionQueue.titleWithType',
+      titleParams: { typeKey: 'overview.decisionQueue.types.actor' },
+      descriptionKey: 'overview.decisionQueue.descriptionWithType',
+      descriptionParams: { count: 2, typeKey: 'overview.decisionQueue.types.actor' },
+    }));
+    expect(entry).not.toHaveProperty('description');
+  });
 });

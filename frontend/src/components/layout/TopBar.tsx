@@ -8,36 +8,28 @@ import ProjectMembersModal from '../project/ProjectMembersModal';
 import { TaskDecisionModal } from '../shared/TaskDecisionModal';
 import { workspaceApi } from '@/lib/api';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getCollaborationTaskTitle, getNotificationPresentation } from '@/core/collaborationPresentation';
 
-const getSubtitle = (path: string) => {
-  switch (extractWorkspacePage(path)) {
-    case '/overview': return '概览';
-    case '/what': return '目标、能力、任务、角色收敛';
-    case '/flow': return '流程、规则、异常、状态变化';
-    case '/scope': return '范围边界与生成条件';
-    case '/preview': return '验证与生成前检查';
-    default: return '概览';
-  }
-};
 
-const NodeKindText: Record<string, string> = {
-  actor: '角色',
-  feature: '功能特性',
-  scenario: '场景',
-  acceptance_criterion: '验收标准',
-  business_object: '业务对象',
-  business_object_attribute: '属性',
-  flow: '业务流程',
-  flow_step: '流程步骤',
-  scope: '范围规划',
-  batch: '批量任务'
-};
 
 export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { exitWorkspace, ir } = useWorkspaceStore();
   const { user, logout } = useAuthStore();
+  const { t, i18n } = useTranslation();
+
+  const getSubtitleKey = (path: string) => {
+    switch (extractWorkspacePage(path)) {
+      case '/overview': return 'topbar.subtitle.overview';
+      case '/what': return 'topbar.subtitle.what';
+      case '/flow': return 'topbar.subtitle.flow';
+      case '/scope': return 'topbar.subtitle.scope';
+      case '/preview': return 'topbar.subtitle.preview';
+      default: return 'topbar.subtitle.overview';
+    }
+  };
   
   // Store tasks state
   const userTasks = useWorkspaceStore((state) => state.userTasks);
@@ -62,11 +54,12 @@ export function TopBar() {
   }, []);
 
   useEffect(() => {
-    if (typeof loadMyTasks === 'function') {
-      loadMyTasks({ status: 'open', limit: 5, role: 'assignee' });
-    }
-    loadNotifications();
-    const interval = setInterval(loadNotifications, 10000);
+    const refreshCollaboration = () => {
+      void loadMyTasks?.({ status: 'open', limit: 5, role: 'assignee' });
+      void loadNotifications();
+    };
+    refreshCollaboration();
+    const interval = setInterval(refreshCollaboration, 10000);
     return () => clearInterval(interval);
   }, [loadMyTasks, loadNotifications]);
 
@@ -112,11 +105,11 @@ export function TopBar() {
             navigate('/home');
           }}
           className="text-xs text-slate-500 hover:text-slate-800 transition-colors mr-2 flex items-center gap-1 font-medium cursor-pointer"
-        ><ArrowLeft className="h-3.5 w-3.5" /> 返回</button>
+        ><ArrowLeft className="h-3.5 w-3.5" /> {t('nav.back')}</button>
         <div className="h-4 w-[1px] bg-slate-300"></div>
-        <h1 className="text-lg font-bold text-slate-800">{ir?.projectName || (ir as any)?.name || '需求探索项目'}</h1>
+        <h1 className="text-lg font-bold text-slate-800">{ir?.projectName || (ir as any)?.name || t('home.unnamedProject')}</h1>
         <div className="h-4 w-[1px] bg-slate-300"></div>
-        <span className="text-sm text-slate-500 italic">{getSubtitle(location.pathname)}</span>
+        <span className="text-sm text-slate-500 italic">{t(getSubtitleKey(location.pathname))}</span>
       </div>
 
       <div className="flex items-center gap-4 relative">
@@ -134,6 +127,7 @@ export function TopBar() {
         <div className="relative">
           <button
             onClick={() => {
+              void loadMyTasks?.({ status: 'open', limit: 5, role: 'assignee' });
               setShowTasksPopover(!showTasksPopover);
               setShowNotifications(false);
             }}
@@ -142,7 +136,7 @@ export function TopBar() {
                 ? 'border-indigo-500 bg-indigo-50 text-indigo-600' 
                 : 'border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200'
             }`}
-            title="待我审批确认的任务"
+            title={t('topbar.todoListTriggerTitle')}
           >
             <ClipboardList className="w-4 h-4" />
             {openTasksCount > 0 && (
@@ -156,16 +150,16 @@ export function TopBar() {
           {showTasksPopover && (
             <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-96">
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800">待办审批确认清单</span>
+                <span className="text-xs font-bold text-slate-800">{t('topbar.todoListTitle')}</span>
                 <span className="text-[10px] font-bold text-slate-400 bg-white border border-slate-150 px-2 py-0.5 rounded-full">
-                  {openTasksCount} 个任务
+                  {t('topbar.todoListCount', { count: openTasksCount })}
                 </span>
               </div>
 
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-72">
                 {openTasksCount === 0 ? (
                   <div className="py-10 text-center text-slate-400 text-xs">
-          暂无待处理的确认指派任务
+                    {t('topbar.todoListEmpty')}
                   </div>
                 ) : (
                   userTasks.map((wrapper: any) => {
@@ -173,7 +167,9 @@ export function TopBar() {
                     const project = wrapper.projectSummary;
                     const target = wrapper.targetSummary;
                     const creator = wrapper.creatorSummary;
-                    const kindLabel = NodeKindText[target.nodeKind] || target.nodeKind || '未知';
+                    const kindKey = `nodeKind.${target.nodeKind}`;
+                    const translatedKind = t(kindKey);
+                    const kindLabel = translatedKind === kindKey ? target.nodeKind || t('nodeKind.unknown') : translatedKind;
 
                     return (
                       <div 
@@ -193,24 +189,24 @@ export function TopBar() {
                               ? 'bg-amber-50 text-amber-600'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低'}
+                            {task.priority === 'high' ? t('topbar.priority.high') : task.priority === 'medium' ? t('topbar.priority.medium') : t('topbar.priority.low')}
                           </span>
                         </div>
                         
                         <div className="text-xs font-bold text-slate-800 line-clamp-1">
-                          {task.title}
+                          {getCollaborationTaskTitle(task, t)}
                         </div>
 
                         <div className="text-[10px] text-slate-500 bg-slate-50 rounded px-2 py-1 flex items-center justify-between">
-                          <span className="font-semibold truncate max-w-[180px]">{target.nodeName || '未指定'}</span>
+                          <span className="font-semibold truncate max-w-[180px]">{target.nodeName || t('topbar.unspecified')}</span>
                           <span className="text-[9px] text-slate-400 uppercase tracking-wider shrink-0">{kindLabel}</span>
                         </div>
 
                         <div className="flex items-center justify-between text-[9px] text-slate-400">
-                          <span>发起: {creator.email}</span>
+                          <span>{t('topbar.initiatedBy', { email: creator.email })}</span>
                           <span className="flex items-center gap-0.5">
                             <Clock className="w-3 h-3 text-slate-400" />
-                            <span>{new Date(task.createdAt).toLocaleString()}</span>
+                      <span>{new Date(task.createdAt).toLocaleString(i18n.language)}</span>
                           </span>
                         </div>
                       </div>
@@ -234,7 +230,7 @@ export function TopBar() {
                 ? 'border-indigo-500 bg-indigo-50 text-indigo-600' 
                 : 'border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200'
             }`}
-            title="通知中心"
+            title={t('topbar.notificationsCenter')}
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
@@ -247,13 +243,13 @@ export function TopBar() {
           {showNotifications && (
             <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col max-h-96">
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800">通知消息中心</span>
+                <span className="text-xs font-bold text-slate-800">{t('topbar.notificationCenterTitle')}</span>
                 {unreadCount > 0 && (
                   <button
                     onClick={handleMarkAllRead}
                     className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
                   >
-                    全部已读
+                    {t('topbar.markAllRead')}
                   </button>
                 )}
               </div>
@@ -261,10 +257,12 @@ export function TopBar() {
               <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-72">
                 {notifications.length === 0 ? (
                   <div className="py-10 text-center text-slate-400 text-xs">
-          暂无通知消息
+                    {t('topbar.noNotifications')}
                   </div>
                 ) : (
-                  notifications.map((n: any) => (
+                  notifications.map((n: any) => {
+                    const presentation = getNotificationPresentation(n, t);
+                    return (
                     <div 
                       key={n.id} 
                       className={`p-3.5 hover:bg-slate-50 transition-colors flex flex-col gap-1.5 relative ${
@@ -275,17 +273,18 @@ export function TopBar() {
                         <span className="absolute top-4 right-4 w-2 h-2 bg-indigo-600 rounded-full"></span>
                       )}
                       <div className="text-xs font-bold text-slate-800 pr-4">
-                        {n.title}
+                        {presentation.title}
                       </div>
                       <div className="text-[11px] text-slate-500 leading-normal">
-                        {n.body}
+                        {presentation.body}
                       </div>
                       <div className="text-[9px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{new Date(n.createdAt).toLocaleString()}</span>
+                    <span>{new Date(n.createdAt).toLocaleString(i18n.language)}</span>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -297,7 +296,7 @@ export function TopBar() {
           <button
             onClick={() => setShowMembers(true)}
             className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all cursor-pointer"
-            title="项目成员管理"
+            title={t('topbar.projectMembers')}
           >
             <Users className="w-4 h-4" />
           </button>
@@ -306,7 +305,7 @@ export function TopBar() {
         <button
           onClick={() => navigate('/settings')}
           className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all cursor-pointer"
-          title="账户与 LLM 设置"
+          title={t('topbar.accountSettings')}
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -314,7 +313,7 @@ export function TopBar() {
         <button
           onClick={handleLogout}
           className="p-2 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-rose-600 hover:border-rose-200 shadow-sm transition-all cursor-pointer"
-          title="退出登录"
+          title={t('topbar.logout')}
         >
           <LogOut className="w-4 h-4" />
         </button>

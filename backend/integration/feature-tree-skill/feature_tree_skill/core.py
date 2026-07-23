@@ -270,9 +270,7 @@ class FeaturesPipeline:
     async def run(self) -> dict[str, str]:
         nl_text = await self._read_requirement()
         actors_text = await self._read_actors()
-        loop = asyncio.get_running_loop()
-        features_json = await loop.run_in_executor(
-            None,
+        features_json = await asyncio.to_thread(
             self._generator.generate,
             nl_text,
             actors_text,

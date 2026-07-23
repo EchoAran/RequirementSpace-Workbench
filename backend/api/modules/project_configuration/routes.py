@@ -5,9 +5,15 @@ from typing import Any
 from backend.api.dependencies.auth import get_current_user
 from backend.database.database import get_session
 from backend.database.model import UserModel, ProjectModel
-from backend.api.dependencies.project_access import require_project_member, require_project_role
+from backend.api.dependencies.project_access import (
+    require_project_member,
+    require_project_role,
+    require_project_config_read_access,
+    require_project_config_write_access,
+)
 from backend.api.modules.project_configuration.schemas import (
     ProjectConfigurationResponse,
+    ProjectConfigurationUpdate,
     GenerationStrategyConfigResponse,
     GenerationStrategyConfigUpdate,
     ProjectKnowledgeSummary,
@@ -19,6 +25,9 @@ from backend.api.modules.project_configuration.application.project_configuration
 from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
     GenerationStrategyConfigService,
 )
+from backend.api.modules.project_configuration.application.content_locale_service import (
+    ProjectContentLocaleService,
+)
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/configuration",
@@ -27,6 +36,7 @@ router = APIRouter(
 
 config_service = ProjectConfigurationService()
 strategy_service = GenerationStrategyConfigService()
+content_locale_service = ProjectContentLocaleService()
 
 
 @router.get("", response_model=ProjectConfigurationResponse)
@@ -34,13 +44,14 @@ async def get_project_configuration(
     project_id: str,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_config_read_access),
 ):
     """Retrieve aggregated project configurations summary."""
-    project = await require_project_member(project_id, user, session)
     try:
         return await config_service.get_configuration(
             project_id=project.id,
             project_public_id=project.public_id,
+            content_locale=project.content_locale,
             user_id=user.id,
             session=session
         )
@@ -49,6 +60,44 @@ async def get_project_configuration(
             status_code=500,
             detail=f"Failed to retrieve project configuration: {str(exc)}",
         )
+
+
+@router.put("", response_model=ProjectConfigurationResponse)
+async def update_project_configuration(
+    project_id: str,
+    request: ProjectConfigurationUpdate,
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_config_write_access),
+):
+    """Update project configuration (requires owner/admin role)."""
+    try:
+        if "content_locale" in request.model_fields_set:
+            changed = await content_locale_service.update(
+                project=project,
+                content_locale=request.content_locale,
+                session=session,
+            )
+            if changed:
+                await session.commit()
+
+        return await config_service.get_configuration(
+            project_id=project.id,
+            project_public_id=project.public_id,
+            content_locale=project.content_locale,
+            user_id=user.id,
+            session=session
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update project configuration: {str(exc)}",
+        )
+
 
 
 @router.get("/generation-strategies", response_model=GenerationStrategyConfigResponse)

@@ -317,8 +317,8 @@ class NodeSnapshotService:
                     project_id=task.project_id,
                     task_id=task.id,
                     event_type="task_superseded",
-                    title="确认指派任务已失效",
-                    body=f"您指派的确认任务 '{task.title}' 已失效，因为相关节点的内容已被更新。"
+                    title="collaboration.notifications.singleTaskSuperseded.title",
+                    body="collaboration.notifications.singleTaskSuperseded.body"
                 )
                 session.add(notif)
         
@@ -373,7 +373,7 @@ class NodeSnapshotService:
                         project_id=task.project_id,
                         task_id=task.id,
                         event_type="task_superseded",
-                        title="批量确认指派已失效",
-                        body=f"您的批量确认任务 '{task.title}' 已失效，因为其中一个关联节点内容已被修改。"
+                        title="collaboration.notifications.batchTaskSuperseded.title",
+                        body="collaboration.notifications.batchTaskSuperseded.body"
                     )
                     session.add(notif)

@@ -1,8 +1,10 @@
+import { useTranslation } from 'react-i18next';
 import React from 'react';
 import { Finding } from '@/core/schema';
 import { cn } from '@/lib/utils';
 import { getFindingCapability, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { findingSeverityLabel, findingTargetIds } from '@/core/findingPresentation';
+import { getFindingText } from '@/core/findingText';
 
 export interface IssueCardProps {
   issue: Finding;
@@ -11,15 +13,18 @@ export interface IssueCardProps {
   onIgnore: (issue: Finding) => void;
 }
 
-const severityText = {
-  high: '高风险',
-  medium: '需处理',
-  low: '提示',
-};
+
 
 export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSlot, onIgnore }) => {
+  const { t } = useTranslation();
+  const severityText = {
+    high: t('issueCard.severity.high'),
+    medium: t('issueCard.severity.medium'),
+    low: t('issueCard.severity.low'),
+  };
   const ir = useWorkspaceStore((state) => state.ir);
   const severity = findingSeverityLabel(issue);
+  const localizedIssue = getFindingText(issue, t);
   const relatedNodeTitles = findingTargetIds(issue)
     .map((nodeId) => ir?.nodes[nodeId]?.title)
     .filter((title): title is string => Boolean(title));
@@ -39,7 +44,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
     >
       <div className="p-4 cursor-pointer flex-1" onClick={() => onClick(issue)}>
         <div className="flex justify-between items-start mb-2">
-          <h4 className="font-bold text-sm text-slate-900 leading-tight">{issue.title}</h4>
+          <h4 className="font-bold text-sm text-slate-900 leading-tight">{localizedIssue.title}</h4>
           <span
             className={cn(
               'px-1.5 py-0.5 text-[10px] font-black rounded shrink-0 ml-2',
@@ -53,7 +58,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
             {severityText[severity]}
           </span>
         </div>
-        <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">{issue.description}</p>
+        <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">{localizedIssue.description}</p>
 
         {relatedNodeTitles.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -92,7 +97,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
           }}
           className="flex-1 py-1.5 text-xs font-bold border border-slate-200 text-slate-600 rounded-md bg-white hover:bg-slate-50 transition-colors shadow-sm"
         >
-          忽略
+          {t('issueCard.ignoreBtn')}
         </button>
       </div>
     </div>

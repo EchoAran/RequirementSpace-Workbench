@@ -6,7 +6,7 @@ from typing import Any
 
 from backend.api.modules.preview_convergence.ports.preview_generator import PrototypePageGeneratorPort
 from backend.api.modules.preview_convergence.public import PrototypeGenerationService
-from backend.core.generators.prototype_generator import PrototypeGenerator
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.integration.skill_backed_services.llm_json_client import (
     SkillBackedLLMJsonClient,
     render_prompt,
@@ -22,8 +22,7 @@ class SkillBackedPrototypePageGenerator(PrototypePageGeneratorPort):
         )
         self._skill_generator = gherkin2code_core.Gherkin2Code()
         self._llm_json_client = SkillBackedLLMJsonClient()
-        self._generator = PrototypeGenerator()
-        self._max_concurrency = 5
+        self._max_concurrency = 2
 
     async def generate_pages(
         self,
@@ -47,22 +46,28 @@ class SkillBackedPrototypePageGenerator(PrototypePageGeneratorPort):
                         user_requirement=self._requirement_payload_for_target(target),
                         acceptance_criteria=target["acceptance_criteria"],
                     )
-                    source = "gherkin2code_skill"
-                except Exception:
-                    code = await self._generator.generate_page(target["input"])
-                    source = "placeholder_fallback"
+                except Exception as error:
+                    input_data = target["input"]
+                    raise RuntimeError(
+                        "prototype_page_generation_failed: "
+                        f"page_id={target['page_id']}, "
+                        f"role={input_data.actor.actorName}, "
+                        f"feature={input_data.feature.featureName}: {error}"
+                    ) from error
                 return PrototypeGenerationService._page_payload(
                     target=target,
                     code=code,
-                    source=source,
+                    source="gherkin2code_skill",
                 )
 
-        return await asyncio.gather(
-            *[
-                generate_one(target)
-                for target in targets
-            ]
-        )
+        tasks = [asyncio.create_task(generate_one(target)) for target in targets]
+        try:
+            return await asyncio.gather(*tasks)
+        except Exception:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     async def _generate_with_skill(
         self,
@@ -80,7 +85,14 @@ class SkillBackedPrototypePageGenerator(PrototypePageGeneratorPort):
                 ),
             },
         )
-        code = await self._llm_json_client.ask_json(prompt)
+        code = await self._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_requirement,
+                acceptance_criteria,
+            ),
+            timeout_seconds=300.0,
+        )
         return self._validate_code_payload(code)
 
     @staticmethod

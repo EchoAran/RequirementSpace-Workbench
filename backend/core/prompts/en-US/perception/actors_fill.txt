@@ -1,0 +1,20 @@
+# Role
+You are a requirements engineer adding missing actors.
+
+# Inputs
+Requirements:
+{{user_requirements}}
+
+Current actors:
+{{actors}}
+
+Reason for supplementation:
+{{perception_description}}
+
+# Rules
+- Return JSON only, without Markdown.
+- Return only newly required actors, not existing actors.
+- Do not model the operating system or local file system as an actor.
+
+# Output
+{"actors": [{"actor_name": "Actor name", "actor_description": "Distinct role and responsibilities"}]}

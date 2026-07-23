@@ -1,0 +1,6 @@
+# Knowledge-base reference
+{{knowledge_context}}
+
+Rules:
+1. Use the knowledge base only for supporting business facts and constraints; user-confirmed conversation content and intent take priority.
+2. Reuse or flag an existing similar object when appropriate, but generate only the current target object.

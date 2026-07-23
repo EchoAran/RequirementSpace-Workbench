@@ -72,6 +72,7 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
             ),
             query=input_data.user_feedback,
             print_log=True,
+            protected_inputs=self._protected_inputs(input_data),
         )
 
         actors_payload = ActorNode.schema(
@@ -110,16 +111,6 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
             ),
             query=input_data.user_feedback,
             print_log=True,
+            protected_inputs=self._protected_inputs(input_data),
         )
         return json.loads(response)
-
-if __name__ == "__main__":
-    import asyncio
-    from backend.schemas import ActorNode, PerceptionSlot, PerceptionKindType, BusinessObjectAttributeNode, FlowStepNode, FlowStepType
-
-    flows_filler = FlowsFiller()
-
-    user_requirements = "极简纯净本地音乐播放器，不联网、无会员、无广告，只读取电脑本地音乐文件，支持无损格式 Flac/WAV/MP3 播放，自带歌词本地匹配、音效均衡器、歌单自定义、睡眠定时关闭、全局快捷键切歌，界面清爽轻量化，替代臃肿的主流音乐播放器。"
-
-    # 测试数据因编码问题已省略，详细测试用例请参考其他 filler 文件
-    pass

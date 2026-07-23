@@ -8,6 +8,7 @@ from backend.api.modules.decision_workflow.ports.ports import (
 )
 from backend.api.modules.requirements_core.ports import get_scenario_generation_service
 from backend.database.model import ScenarioModel
+from backend.core.prompt_resolver import get_content_locale
 
 
 class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -33,7 +34,11 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         actor_id = target.get("actor_id")
 
         from backend.api.modules.decision_workflow.ports.ports import build_strategy_feedback
-        strategy_hint = build_strategy_feedback(context, "生成场景集")
+        is_english = get_content_locale() == "en-US"
+        strategy_hint = build_strategy_feedback(
+            context,
+            "scenario set" if is_english else "生成场景集",
+        )
         feedback = context.user_feedback or ""
         combined = f"{strategy_hint}\n{feedback}".strip()
 
@@ -60,6 +65,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 feature_node_map=feature_node_map,
                 target_pairs=target_pairs,
                 user_feedback=combined,
+                max_concurrency=self._service._batch_max_concurrency,
             )
             scenarios = await self._service._attach_acceptance_criteria_to_generated_scenarios(
                 user_requirements=user_requirements,
@@ -67,9 +73,10 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 feature_node_map=feature_node_map,
                 generated_scenarios=generated_scenarios,
                 user_feedback=combined,
+                max_concurrency=self._service._batch_max_concurrency,
             )
-            feature_name = "批量功能"
-            actor_name = "多角色"
+            feature_name = "Batch Features" if is_english else "批量功能"
+            actor_name = "Multiple Actors" if is_english else "多角色"
         else:
             draft_payload, response_payload = await self._service._generate_preview(
                 project_id=context.project_id,
@@ -113,12 +120,16 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         }
 
         strat_lbl = context.strategy_label or context.strategy
-        title = f"场景方案 — {len(scenarios)} 个场景" if generation_mode == "batch" else f"{feature_name} × {actor_name} — {len(scenarios)} 个场景"
-        rationale = f"按 {strat_lbl} 策略批量生成的场景集" if generation_mode == "batch" else f"按 {strat_lbl} 策略为 {feature_name} × {actor_name} 生成的场景集"
-        comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(strat_lbl, scenarios, feature_name, actor_name)
-        apply_desc = "此方案将为选定功能点新增场景" if generation_mode == "batch" else f"此方案将为 {feature_name} × {actor_name} 新增场景"
-
-        apply_desc = "此方案将清空并重建目标范围内的场景与验收标准"
+        if is_english:
+            title = f"Scenario Option — {len(scenarios)} scenarios" if generation_mode == "batch" else f"{feature_name} × {actor_name} — {len(scenarios)} scenarios"
+            rationale = f"Scenario set generated in batch using the {strat_lbl} strategy" if generation_mode == "batch" else f"Scenario set generated for {feature_name} × {actor_name} using the {strat_lbl} strategy"
+            comparison_summary = f"Batch scenario generation: {len(scenarios)} items" if generation_mode == "batch" else self._make_comparison_summary(strat_lbl, scenarios, feature_name, actor_name, is_english=True)
+            apply_desc = "This option clears and rebuilds the scenarios and acceptance criteria in the target scope"
+        else:
+            title = f"场景方案 — {len(scenarios)} 个场景" if generation_mode == "batch" else f"{feature_name} × {actor_name} — {len(scenarios)} 个场景"
+            rationale = f"按 {strat_lbl} 策略批量生成的场景集" if generation_mode == "batch" else f"按 {strat_lbl} 策略为 {feature_name} × {actor_name} 生成的场景集"
+            comparison_summary = f"批量推演场景：共 {len(scenarios)} 项" if generation_mode == "batch" else self._make_comparison_summary(strat_lbl, scenarios, feature_name, actor_name)
+            apply_desc = "此方案将清空并重建目标范围内的场景与验收标准"
         return GenerationCandidate(
             title=title,
             rationale=rationale,
@@ -192,17 +203,32 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     @staticmethod
     def _make_comparison_summary(
-        strategy: str, scenarios: list[dict], feature_name: str, actor_name: str,
+        strategy: str,
+        scenarios: list[dict],
+        feature_name: str,
+        actor_name: str,
+        is_english: bool = False,
     ) -> str:
-        descriptions = {
+        descriptions = ({
+            "balanced": "Balanced scenario coverage",
+            "comprehensive": "Comprehensive positive and exception-path coverage",
+            "minimal": "Core happy-path scenarios",
+            "risk_averse": "Risk-averse scenario set",
+            "workflow_first": "Workflow-driven scenario organization",
+        } if is_english else {
             "balanced": "场景覆盖均衡",
             "comprehensive": "全面覆盖正向与异常路径",
             "minimal": "核心主路径场景",
             "risk_averse": "保守场景集",
             "workflow_first": "流程驱动场景编排",
-        }
+        })
         desc = descriptions.get(strategy, strategy)
         scenario_names = ", ".join(s["scenario_name"] for s in scenarios[:3])
+        if is_english:
+            return (
+                f"{desc}: {len(scenarios)} scenarios ({scenario_names})"
+                f" — for {feature_name} × {actor_name}"
+            )
         return (
             f"{desc}：{len(scenarios)} 个场景（{scenario_names}）"
             f" — 针对 {feature_name} × {actor_name}"

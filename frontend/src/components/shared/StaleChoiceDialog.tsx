@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw, Check } from 'lucide-react';
 
 interface StaleChoiceDialogProps {
@@ -15,6 +16,7 @@ export function StaleChoiceDialog({
   onRegenerate,
   onCancel,
 }: StaleChoiceDialogProps) {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -25,8 +27,8 @@ export function StaleChoiceDialog({
             <AlertTriangle className="w-5 h-5 text-amber-600" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-800">项目上下文已变化</h3>
-            <p className="text-xs text-slate-500 mt-0.5">此候选可能不适用当前项目状态</p>
+            <h3 className="text-base font-bold text-slate-800">{t('panel.staleChoiceTitle')}</h3>
+            <p className="text-xs text-slate-500 mt-0.5">{t('panel.staleChoiceSubtitle')}</p>
           </div>
         </div>
 
@@ -40,20 +42,20 @@ export function StaleChoiceDialog({
             className="inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 transition-colors"
           >
             <Check className="w-4 h-4" />
-            仍要采纳
+            {t('panel.staleChoiceAdopt')}
           </button>
           <button
             onClick={onRegenerate}
             className="inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
-            取消并重新生成
+            {t('panel.staleChoiceRegenerate')}
           </button>
           <button
             onClick={onCancel}
             className="inline-flex items-center justify-center h-11 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
           >
-            稍后再说
+            {t('panel.staleChoiceCancel')}
           </button>
         </div>
       </div>

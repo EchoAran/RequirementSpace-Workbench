@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Circle } from "lucide-react";
 
 interface Option {
@@ -7,6 +8,7 @@ interface Option {
 }
 
 export function ReadinessChecklist({ title, items }: { title: string; items: Option[] }) {
+  const { t } = useTranslation();
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
       <h4 className="font-semibold text-sm text-slate-800 mb-3">{title}</h4>
@@ -21,7 +23,7 @@ export function ReadinessChecklist({ title, items }: { title: string; items: Opt
             <span className={it.checked ? "text-slate-600" : "text-slate-800 font-medium"}>
               {it.label}
               {!it.checked && it.type === 'blocking' && (
-                <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold align-middle">阻塞</span>
+                <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold align-middle">{t('gateCheck.blockingBadge')}</span>
               )}
             </span>
           </div>

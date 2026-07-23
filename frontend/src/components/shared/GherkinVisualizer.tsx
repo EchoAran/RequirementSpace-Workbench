@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
@@ -161,6 +162,7 @@ export const GherkinVisualRenderer: React.FC<{
   rightBadges?: React.ReactNode[];
   onClick?: () => void;
 }> = ({ text, title, badge, statusBadge, rightBadges, onClick }) => {
+  const { t } = useTranslation();
   const parsed = parseGherkin(text);
   const { clauses, examples, boundary, businessMeaning } = parsed;
 
@@ -262,7 +264,7 @@ export const GherkinVisualRenderer: React.FC<{
                 );
               })
             ) : (
-              <div className="text-xs text-slate-400 italic">无前置条件</div>
+              <div className="text-xs text-slate-400 italic">{t('gherkinVisualizer.noGiven')}</div>
             )}
           </div>
 
@@ -300,7 +302,7 @@ export const GherkinVisualRenderer: React.FC<{
                 );
               })
             ) : (
-              <div className="text-xs text-slate-400 italic">无触发时机</div>
+              <div className="text-xs text-slate-400 italic">{t('gherkinVisualizer.noWhen')}</div>
             )}
           </div>
 
@@ -338,16 +340,16 @@ export const GherkinVisualRenderer: React.FC<{
                 );
               })
             ) : (
-              <div className="text-xs text-slate-400 italic">无预期结果</div>
+              <div className="text-xs text-slate-400 italic">{t('gherkinVisualizer.noThen')}</div>
             )}
           </div>
         </div>
       ) : (
         /* Regular Business Meaning View */
         <div className="mb-4 bg-slate-50/40 border border-slate-100 rounded-xl p-3 hover:bg-slate-50 transition-colors">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block mb-1">BUSINESS MEANING (需求含义说明)</span>
+          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block mb-1">{t('gherkinVisualizer.businessMeaning')}</span>
           <p className="text-xs text-slate-700 font-medium leading-relaxed">
-            {businessMeaning || '空需求内容'}
+            {businessMeaning || t('gherkinVisualizer.emptyDemand')}
           </p>
         </div>
       )}
@@ -356,7 +358,7 @@ export const GherkinVisualRenderer: React.FC<{
       {examples && examples.headers && examples.headers.length > 0 && (
         <div className="mb-4 overflow-hidden border border-slate-100 rounded-xl shadow-inner">
           <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-100">
-            <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">EXAMPLES (规则判定用例表)</span>
+            <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t('gherkinVisualizer.examples')}</span>
           </div>
           <div className="overflow-x-auto max-h-[160px] overflow-y-auto">
             <table className="min-w-full divide-y divide-slate-100 text-[10px] text-left">
@@ -403,6 +405,7 @@ export const GherkinVisualEditor: React.FC<{
   initialText: string;
   onChange: (newText: string) => void;
 }> = ({ initialText, onChange }) => {
+  const { t } = useTranslation();
   const [clauses, setClauses] = useState<GherkinClause[]>([]);
   const [boundary, setBoundary] = useState('');
   const [examplesHeaders, setExamplesHeaders] = useState<string[]>([]);
@@ -519,13 +522,13 @@ export const GherkinVisualEditor: React.FC<{
       {/* Clauses Section */}
       <div className="space-y-2.5">
         <div className="flex justify-between items-center">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Gherkin 逻辑子句配置</span>
+          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">{t('gherkinVisualizer.clauseConfig')}</span>
           <button 
             type="button" 
             onClick={addClause}
             className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold border border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 px-2 py-0.5 rounded-lg transition-all"
           >
-            + 追加子句
+            {t('gherkinVisualizer.addClause')}
           </button>
         </div>
 
@@ -547,7 +550,7 @@ export const GherkinVisualEditor: React.FC<{
               <input
                 type="text"
                 value={clause.content}
-                placeholder={`输入 ${clause.keyword} 所需的具体业务条件...`}
+                placeholder={t('gherkinVisualizer.clausePlaceholder', { kw: clause.keyword })}
                 onChange={(e) => handleClauseChange(idx, 'content', e.target.value)}
                 className="grow text-xs bg-white border border-slate-200 rounded-lg py-1 px-3 text-slate-700 font-medium placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
               />
@@ -555,7 +558,7 @@ export const GherkinVisualEditor: React.FC<{
               <button
                 type="button"
                 onClick={() => removeClause(idx)}
-                title="删除此行子句"
+                title={t('gherkinVisualizer.deleteClauseTooltip')}
                 className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 border border-slate-200 bg-white hover:bg-rose-50 transition-all text-xs"
               >
                 <X className="h-3.5 w-3.5" />
@@ -568,7 +571,7 @@ export const GherkinVisualEditor: React.FC<{
       {/* Examples Grid Section */}
       <div className="space-y-2.5">
         <div className="flex justify-between items-center">
-          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">判定规则用例表格 (Examples)</span>
+          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">{t('gherkinVisualizer.examplesTitle')}</span>
           <div className="flex gap-1.5">
             {examplesHeaders.length > 0 && (
               <button 
@@ -576,7 +579,7 @@ export const GherkinVisualEditor: React.FC<{
                 onClick={addExampleColumn}
                 className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold border border-slate-200 bg-white hover:bg-slate-50 px-2 py-0.5 rounded-lg transition-all"
               >
-                + 添加变量列
+                {t('gherkinVisualizer.addVarCol')}
               </button>
             )}
             <button 
@@ -584,7 +587,7 @@ export const GherkinVisualEditor: React.FC<{
               onClick={addExampleRow}
               className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold border border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 px-2 py-0.5 rounded-lg transition-all"
             >
-              {examplesHeaders.length > 0 ? '+ 追加测试行' : '+ 启用规则测试表'}
+              {examplesHeaders.length > 0 ? t('gherkinVisualizer.addTestRow') : t('gherkinVisualizer.enableTestTable')}
             </button>
           </div>
         </div>
@@ -601,13 +604,13 @@ export const GherkinVisualEditor: React.FC<{
                           type="text"
                           value={header}
                           onChange={(e) => updateExampleHeader(colIdx, e.target.value)}
-                          placeholder="变量名"
+                          placeholder={t('gherkinVisualizer.varName')}
                           className="w-full text-[10px] font-bold text-slate-600 bg-transparent border-0 focus:ring-0 focus:outline-none p-0 text-center font-mono"
                         />
                         <button
                           type="button"
                           onClick={() => removeExampleColumn(colIdx)}
-                          title="删除此变量列"
+                          title={t('gherkinVisualizer.deleteVarColTooltip')}
                           className="text-[9px] text-slate-300 hover:text-rose-500 font-bold leading-none p-0.5"
                         >
                           <X className="h-3 w-3" />
@@ -615,7 +618,7 @@ export const GherkinVisualEditor: React.FC<{
                       </div>
                     </th>
                   ))}
-                  <th className="w-8 px-2 py-1.5 text-center">操作</th>
+                  <th className="w-8 px-2 py-1.5 text-center">{t('gherkinVisualizer.operation')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
@@ -627,7 +630,7 @@ export const GherkinVisualEditor: React.FC<{
                           type="text"
                           value={cell}
                           onChange={(e) => updateExampleCell(rowIdx, colIdx, e.target.value)}
-                          placeholder="输入值"
+                          placeholder={t('gherkinVisualizer.inputValue')}
                           className="w-full text-[10px] text-slate-700 bg-transparent border-0 focus:ring-0 focus:outline-none p-0 font-medium font-mono"
                         />
                       </td>
@@ -636,7 +639,7 @@ export const GherkinVisualEditor: React.FC<{
                       <button
                         type="button"
                         onClick={() => removeExampleRow(rowIdx)}
-                        title="删除此测试行"
+                        title={t('gherkinVisualizer.deleteTestRowTooltip')}
                         className="text-[10px] text-slate-400 hover:text-rose-500 font-bold p-0.5"
                       >
                         <X className="h-3 w-3" />
@@ -652,11 +655,11 @@ export const GherkinVisualEditor: React.FC<{
 
       {/* Boundary Input Section */}
       <div className="space-y-1.5">
-        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">边界规则判定说明</span>
+        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">{t('gherkinVisualizer.boundaryRulesLabel')}</span>
         <input
           type="text"
           value={boundary}
-          placeholder="说明任何边界规则判定条件"
+          placeholder={t('gherkinVisualizer.boundaryRulesPlaceholder')}
           onChange={(e) => handleBoundaryChange(e.target.value)}
           className="w-full text-xs bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-slate-700 font-semibold placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
         />

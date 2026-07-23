@@ -133,31 +133,15 @@ class FlowGenerationService:
         session,
     ) -> tuple[dict, dict]:
         (
-            user_requirements,
+            raw,
             actor_nodes,
             feature_nodes,
             leaf_feature_count,
-        ) = await self._load_project_context(
+            use_three_step_generation,
+        ) = await self.generate_raw(
             project_id=project_id,
+            user_feedback=user_feedback,
             session=session,
-        )
-        use_three_step_generation = (
-            leaf_feature_count >= self._three_step_leaf_feature_threshold
-        )
-
-        raw = await self._flows_generator.generate(
-            FlowsGeneratorInput(
-                user_requirements=user_requirements,
-                actors=actor_nodes,
-                features=feature_nodes,
-                user_feedback=user_feedback,
-            ),
-            use_old_prompt=not use_three_step_generation,
-        )
-        self._validate_generated_flows(
-            raw=raw,
-            actor_nodes=actor_nodes,
-            feature_nodes=feature_nodes,
         )
 
         draft_payload = {
@@ -180,6 +164,50 @@ class FlowGenerationService:
         )
 
         return draft_payload, response_payload
+
+    async def generate_raw(
+        self,
+        project_id: int,
+        user_feedback: str | None,
+        session,
+        validate_result: bool = True,
+    ) -> tuple[dict, list[ActorNode], list[FeatureNode], int, bool]:
+        (
+            user_requirements,
+            actor_nodes,
+            feature_nodes,
+            leaf_feature_count,
+        ) = await self._load_project_context(
+            project_id=project_id,
+            session=session,
+        )
+        use_three_step_generation = (
+            leaf_feature_count >= self._three_step_leaf_feature_threshold
+        )
+
+        raw = await self._flows_generator.generate(
+            FlowsGeneratorInput(
+                user_requirements=user_requirements,
+                actors=actor_nodes,
+                features=feature_nodes,
+                user_feedback=user_feedback,
+            ),
+            use_combined_prompt=not use_three_step_generation,
+        )
+        if validate_result:
+            self._validate_generated_flows(
+                raw=raw,
+                actor_nodes=actor_nodes,
+                feature_nodes=feature_nodes,
+            )
+
+        return (
+            raw,
+            actor_nodes,
+            feature_nodes,
+            leaf_feature_count,
+            use_three_step_generation,
+        )
 
     @staticmethod
     async def _load_project_context(

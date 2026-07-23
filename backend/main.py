@@ -127,6 +127,9 @@ from backend.api.modules.collaboration.routes.notifications import (
 from backend.api.modules.auth_account.routes.auth import (
     router as auth_router,
 )
+from backend.api.modules.auth_account.routes.preferences import (
+    router as preferences_router,
+)
 from backend.api.modules.auth_account.routes.llm_config import (
     router as account_router,
 )
@@ -290,6 +293,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 import traceback
 from backend.core.llm_context import is_web_request_ctx
+from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 
 
 def _request_log_path(request: Request) -> str:
@@ -328,6 +332,17 @@ async def web_request_context_middleware(request: Request, call_next):
     finally:
         is_web_request_ctx.reset(token)
         clear_log_context()
+
+@app.exception_handler(LLMContentLocaleMismatchError)
+async def llm_content_locale_mismatch_handler(
+    request: Request,
+    exc: LLMContentLocaleMismatchError,
+):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc)},
+    )
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -556,6 +571,7 @@ app.include_router(collaboration_tasks_router, dependencies=[Depends(require_pro
 app.include_router(user_tasks_router)
 app.include_router(notifications_router)
 app.include_router(auth_router)
+app.include_router(preferences_router)
 app.include_router(account_router)
 app.include_router(project_knowledge_config_router)
 app.include_router(project_knowledge_router)

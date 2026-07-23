@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 from backend.api.base_schema import CamelModel
+from backend.core.locale import DEFAULT_LOCALE, SupportedLocale
 
 
 class ProjectSummaryModel(CamelModel):
@@ -13,7 +14,7 @@ class ProjectSummaryModel(CamelModel):
 
 class ExportOptionsModel(CamelModel):
     mode: str = "syntax"  # "syntax" or "semantic"
-    language: str = "zh-CN"
+    language: SupportedLocale = DEFAULT_LOCALE.value
     include_trace_links: bool = True
     include_warnings: bool = True
 

@@ -1,0 +1,37 @@
+# Role
+You are a software designer adding missing flows or steps.
+
+# Inputs
+Requirements:
+{{user_requirements}}
+
+Leaf features:
+{{features}}
+
+Current flows:
+{{flows}}
+
+Reason for supplementation:
+{{perception_description}}
+
+# Rules
+- Return JSON only, without Markdown.
+- Return only new flows or the flow whose steps are being supplemented.
+- `feature_ids` must reference input feature IDs and must not be empty.
+- Step numbers are unique within a flow (`S-001`, `S-002`). `next_steps` may reference only existing steps in that flow.
+- Keep the graph connected; a decision step must have at least two successors.
+
+# Output
+{
+  "flows": [{
+    "flow_name": "Flow name",
+    "flow_description": "Trigger and primary path",
+    "feature_ids": [1],
+    "flow_steps": [{
+      "step_number": "S-001",
+      "step_name": "Step name",
+      "step_description": "Step description",
+      "next_steps": []
+    }]
+  }]
+}

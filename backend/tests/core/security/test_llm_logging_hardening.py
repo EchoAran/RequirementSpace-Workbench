@@ -40,7 +40,7 @@ async def test_llm_non_200_logs_metadata_only(caplog):
         
         with patch("httpx.AsyncClient.post", return_value=mock_response):
             with patch.object(LLMHandler, "_sleep_before_retry", side_effect=_no_sleep):
-                with caplog.at_level(logging.ERROR):
+                with caplog.at_level(logging.ERROR), caplog.at_level(logging.ERROR, logger="backend"):
                     res = await handler._call_api(
                         request_data={},
                         print_log=False,
@@ -91,7 +91,7 @@ async def test_llm_invalid_format_logs_metadata_only(caplog):
         
         with patch("httpx.AsyncClient.post", return_value=mock_response):
             with patch.object(LLMHandler, "_sleep_before_retry", side_effect=_no_sleep):
-                with caplog.at_level(logging.ERROR):
+                with caplog.at_level(logging.ERROR), caplog.at_level(logging.ERROR, logger="backend"):
                     res = await handler._call_api(
                         request_data={},
                         print_log=False,
@@ -135,7 +135,7 @@ async def test_llm_exception_is_sanitized(caplog):
         # Cause exception containing sensitive details
         with patch("httpx.AsyncClient.post", side_effect=ValueError("connection to postgresql://admin:db-secret@localhost/private failed api_key=plain-secret")):
             with patch.object(LLMHandler, "_sleep_before_retry", side_effect=_no_sleep):
-                with caplog.at_level(logging.ERROR):
+                with caplog.at_level(logging.ERROR), caplog.at_level(logging.ERROR, logger="backend"):
                     res = await handler._call_api(
                         request_data={},
                         print_log=False,

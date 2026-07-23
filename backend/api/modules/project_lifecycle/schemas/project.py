@@ -170,6 +170,9 @@ class ProjectDetailResponse(CamelModel):
     kano_status: str = "missing"
     unlocked_stages: list[str] = []
     unresolved_gates: list[UnresolvedGateResponse] = []
+    status_code: str = "not_started"
+    status: str = ""
+    issue_count: int = 0
     current_user_role: Optional[str] = None
     members_summary: Optional[list[dict]] = None
 

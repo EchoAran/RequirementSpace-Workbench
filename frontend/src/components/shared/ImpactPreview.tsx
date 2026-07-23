@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { FileText, GitBranch, MessageSquare, CheckSquare, Info } from 'lucide-react';
 
 export interface ImpactGroup {
@@ -7,10 +8,11 @@ export interface ImpactGroup {
 }
 
 export function ImpactPreview({ impacts }: { impacts: ImpactGroup[] }) {
+  const { t } = useTranslation();
   if (!impacts || impacts.length === 0) {
     return (
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 h-full flex items-center justify-center">
-        <p className="text-xs text-slate-400 italic">选择范围动作后查看后端影响分析</p>
+        <p className="text-xs text-slate-400 italic">{t('impactPreview.emptyTip')}</p>
       </div>
     );
   }
@@ -32,7 +34,7 @@ export function ImpactPreview({ impacts }: { impacts: ImpactGroup[] }) {
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">影响分析预览</h4>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">{t('impactPreview.title')}</h4>
       <div className="space-y-4">
         {impacts.map((group, idx) => (
           <div key={idx} className="space-y-2">

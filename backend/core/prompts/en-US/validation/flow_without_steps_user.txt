@@ -1,0 +1,19 @@
+## Empty flow
+Name: {flow_name}
+Description: {flow_description}
+
+## Parent feature and requirements
+Feature: {feature_name}
+Feature description: {feature_description}
+Requirements: {user_requirements}
+
+## Existing actors
+{actors_json}
+
+## Existing business objects
+{business_objects_json}
+
+Recommend 3-6 core steps, including participants and a short explanation. This is guidance only and must not write data automatically.
+
+Return this JSON shape:
+{{"fallback": {{"kind": "manual_action", "reason": "1. Step name - participant and explanation\n2. Step name - participant and explanation"}}}}

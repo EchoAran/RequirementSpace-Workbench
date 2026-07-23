@@ -372,8 +372,8 @@ class AIAddDraftHandler:
                 task = CollaborationTaskModel(
                     project_id=project_id,
                     task_type="resolve_conflict",
-                    title=f"解决 {target_type} 的 AI 写入冲突",
-                    description="在 AI 生成建议后，项目相关上下文发生了变化，请手动处理冲突。",
+                    title="collaboration.taskTitles.resolveConflict",
+                    description="collaboration.taskDescriptions.resolveConflict",
                     status="open",
                     priority="normal",
                     created_by_user_id=owner_user_id,
@@ -413,8 +413,8 @@ class AIAddDraftHandler:
                     project_id=project_id,
                     task_id=None,
                     event_type="conflict_detected",
-                    title="检测到 AI 写入冲突",
-                    body=f"您提交的 AI 建议 {target_type} 检测到冲突，已转为冲突处理任务。"
+                    title="collaboration.notifications.conflictDetected.title",
+                    body="collaboration.notifications.conflictDetected.body"
                 )
                 db_session.add(notif)
                 await db_session.flush()

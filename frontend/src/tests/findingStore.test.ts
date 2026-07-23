@@ -3,17 +3,21 @@ import { getFriendlyErrorMessage, getFindingCapability, useWorkspaceStore } from
 import { workspaceApi } from '../lib/api';
 import { Finding } from '../core/schema';
 
+const generateScenarios = useWorkspaceStore.getState().generateScenarios;
+
 // Mock workspaceApi
 vi.mock('../lib/api', () => ({
   workspaceApi: {
     listFindings: vi.fn(),
     updateFindingStatus: vi.fn(),
     rediagnoseNextSuggestion: vi.fn(),
+    getRediagnoseStatus: vi.fn(),
     getNextSuggestion: vi.fn(),
     list: vi.fn().mockResolvedValue([]),
     getById: vi.fn(),
     listChoiceGroups: vi.fn().mockResolvedValue([]),
     createGenerationChoiceGroup: vi.fn(),
+    createScenarioGenerationDraft: vi.fn(),
     discardChoiceGroup: vi.fn(),
     resolveIssue: vi.fn(),
   }
@@ -32,7 +36,8 @@ describe('useWorkspaceStore - Finding Integration', () => {
         gate: [],
         health: []
       },
-      ir: null
+      ir: null,
+      generateScenarios,
     });
   });
 
@@ -285,6 +290,44 @@ describe('useWorkspaceStore - Finding Integration', () => {
     expect(state.findingsByView.next_action[0].code).toBe('GENERATE_SCENARIOS');
   });
 
+  it('5b. runDiagnosis - polls the dedicated endpoint until the full perception chain finishes', async () => {
+    vi.useFakeTimers();
+    try {
+      useWorkspaceStore.setState({
+        ir: { projectId: 'project-123' } as any,
+        activePage: '/what',
+        isDiagnosing: false,
+      });
+      vi.mocked(workspaceApi.rediagnoseNextSuggestion).mockResolvedValueOnce({
+        suggestion: { code: 'ACTOR_PERCEPTION_RUNNING', status: 'running' },
+      });
+      vi.mocked(workspaceApi.getRediagnoseStatus)
+        .mockResolvedValueOnce({
+          suggestion: { code: 'FEATURE_PERCEPTION_RUNNING', status: 'running' },
+        })
+        .mockResolvedValueOnce({
+          suggestion: {
+            sourceType: 'predefined',
+            code: 'ENTER_HOW',
+            status: 'ready',
+          },
+        });
+      vi.spyOn(useWorkspaceStore.getState(), 'refreshWorkspace').mockResolvedValueOnce(undefined);
+
+      const diagnosis = useWorkspaceStore.getState().runDiagnosis('what');
+      await vi.advanceTimersByTimeAsync(4000);
+      await diagnosis;
+
+      expect(workspaceApi.getRediagnoseStatus).toHaveBeenCalledTimes(2);
+      expect(workspaceApi.getRediagnoseStatus).toHaveBeenNthCalledWith(1, 'project-123', 'what');
+      expect(workspaceApi.getNextSuggestion).not.toHaveBeenCalled();
+      expect(useWorkspaceStore.getState().isDiagnosing).toBe(false);
+      expect(useWorkspaceStore.getState().lastActionMessageToken).toBe('store.finding.noSuggestions');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('6. startFindingSuggestion - handles kind=create_draft actions and delegates to store generators', async () => {
     useWorkspaceStore.setState({
       ir: { projectId: 'project-123' } as any
@@ -377,7 +420,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
   it('8. startFindingSuggestion - handles wait actions', async () => {
     useWorkspaceStore.setState({
       ir: { projectId: 'project-123' } as any,
-      lastActionMessage: null
+      lastActionMessageToken: null
     });
 
     const store = useWorkspaceStore.getState();
@@ -406,13 +449,13 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     await useWorkspaceStore.getState().startFindingSuggestion(finding);
 
-    expect(useWorkspaceStore.getState().lastActionMessage).toBe('建议已更新：生成场景');
+    expect(useWorkspaceStore.getState().lastActionMessageToken).toBe('store.finding.fixSuggestionsRegenerated');
   });
 
   it('8b. startFindingSuggestion - handles wait actions (running -> running)', async () => {
     useWorkspaceStore.setState({
       ir: { projectId: 'project-123' } as any,
-      lastActionMessage: null
+      lastActionMessageToken: null
     });
 
     const store = useWorkspaceStore.getState();
@@ -441,13 +484,13 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     await useWorkspaceStore.getState().startFindingSuggestion(finding);
 
-    expect(useWorkspaceStore.getState().lastActionMessage).toBe('AI 仍在分析中');
+    expect(useWorkspaceStore.getState().lastActionMessageToken).toBe('store.finding.aiAnalyzing');
   }, 15000);
 
   it('8c. startFindingSuggestion - handles wait actions (running -> failed)', async () => {
     useWorkspaceStore.setState({
       ir: { projectId: 'project-123' } as any,
-      lastActionMessage: null
+      lastActionMessageToken: null
     });
 
     const store = useWorkspaceStore.getState();
@@ -476,13 +519,18 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     await useWorkspaceStore.getState().startFindingSuggestion(finding);
 
-    expect(useWorkspaceStore.getState().lastActionMessage).toBe('重新诊断：大模型连接超时');
+    const state = useWorkspaceStore.getState();
+    expect(state.lastActionMessageToken).toBe('store.finding.reDiagnose');
+    expect(state.lastActionMessageTokenInterpolation).toEqual({
+      key: 'store.finding.reDiagnose',
+      values: { desc: '大模型连接超时' },
+    });
   });
 
   it('8d. startFindingSuggestion - handles wait actions (running -> stage_transition ready)', async () => {
     useWorkspaceStore.setState({
       ir: { projectId: 'project-123' } as any,
-      lastActionMessage: null
+      lastActionMessageToken: null
     });
 
     const store = useWorkspaceStore.getState();
@@ -517,7 +565,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     await useWorkspaceStore.getState().startFindingSuggestion(finding);
 
-    expect(useWorkspaceStore.getState().lastActionMessage).toBe('当前阶段可申请进入下一阶段');
+    expect(useWorkspaceStore.getState().lastActionMessageToken).toBe('store.finding.stageTransitionAvailable');
   });
 
   it('9. startFindingSuggestion - handles retry actions', async () => {
@@ -672,7 +720,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
     const state = useWorkspaceStore.getState();
     expect(state.activeDraft).toEqual(mockDraft);
     expect(state.activeDraftType).toBe('repair');
-    expect(state.lastActionMessage).toBe('已生成修复建议：修复草稿标题');
+    expect(state.lastActionMessageToken).toBe('store.actions.fixSuggestionsGenerated');
   });
 
   it('12. executeFindingIssueResolution - handles unsupported resolution type', async () => {
@@ -708,7 +756,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     const state = useWorkspaceStore.getState();
     expect(state.lastIssueResolution.resolution_type).toBe('unsupported');
-    expect(state.lastActionMessage).toBe('暂不支持自动修复');
+    expect(state.lastActionMessageToken).toBe('store.actions.autoFixUnsupported');
   });
 
   it('13. executeFindingIssueResolution - handles issue not found (sets error)', async () => {
@@ -723,8 +771,8 @@ describe('useWorkspaceStore - Finding Integration', () => {
     await useWorkspaceStore.getState().executeFindingIssueResolution('non-existent-issue');
 
     const state = useWorkspaceStore.getState();
-    expect(state.error).toBe('找不到对应问题，请重新诊断后再试。');
-    expect(state.lastActionMessage).toBe('找不到对应问题，请重新诊断后再试。');
+    expect(state.error).toBe('store.finding.issueNotFound');
+    expect(state.lastActionMessageToken).toBe('store.finding.issueNotFound');
   });
 
   it('14. executeProcessorAction - handles open_panel payload not found fallback to route navigation', async () => {
@@ -762,7 +810,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     const state = useWorkspaceStore.getState();
     expect(state.activePage).toBe('/flow');
-    expect(state.lastActionMessage).toBe('无法定位目标对象，已导航到对应页面：/flow');
+    expect(state.lastActionMessageToken).toBe('store.actions.navigatedToPage');
   });
 
   it('15. executeGateFindingAction - runs via unified resolveIssue API for known gate code', async () => {
@@ -830,7 +878,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
     await expect(useWorkspaceStore.getState().executeGateFindingAction(finding)).rejects.toThrow();
 
     const state = useWorkspaceStore.getState();
-    expect(state.error).toBe('自动处理缺陷失败');
+    expect(state.error).toBe('store.errors.autoFixFailed');
   });
 
   it('17. createGenerationChoiceGroup - reuses an identical open group without conflict prompt', async () => {
@@ -901,9 +949,12 @@ describe('useWorkspaceStore - Finding Integration', () => {
   });
 
   it('19. getFriendlyErrorMessage - normalizes common LLM provider failures', () => {
-    expect(getFriendlyErrorMessage('Request timed out after 100s')).toContain('AI 服务响应超时');
-    expect(getFriendlyErrorMessage('429 rate limit exceeded')).toContain('API 配额');
-    expect(getFriendlyErrorMessage('401 invalid api key')).toContain('API 密钥');
+    expect(getFriendlyErrorMessage('Request timed out after 100s')).toBe('store.errors.timeout');
+    expect(getFriendlyErrorMessage('429 rate limit exceeded')).toBe('store.errors.quota');
+    expect(getFriendlyErrorMessage('401 invalid api key')).toBe('store.errors.unauthorized');
+    expect(getFriendlyErrorMessage('llm_content_locale_mismatch')).toBe(
+      'store.errors.llm_content_locale_mismatch',
+    );
   });
 
   it('20. getFindingCapability - uses backend capability when present', () => {
@@ -1007,5 +1058,63 @@ describe('useWorkspaceStore - Finding Integration', () => {
 
     expect(state.findingsByView.issues.length).toBe(1);
     expect(state.findingsByView.issues[0].capability).toEqual(mockCap);
+  });
+
+  it('24. generateScenarios - does not retry the legacy draft after a choice request fails', async () => {
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockRejectedValueOnce(
+      new Error('Internal Server Error')
+    );
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      backendChoiceGroups: {},
+      error: null,
+    });
+
+    await useWorkspaceStore.getState().generateScenarios([10, 11]);
+
+    expect(workspaceApi.createScenarioGenerationDraft).not.toHaveBeenCalled();
+    expect(useWorkspaceStore.getState().error).toBe('Internal Server Error');
+    expect(useWorkspaceStore.getState().isGenerating).toBe(false);
+  });
+
+  it('25. generateScenarios - uses full mode when no feature id is provided', async () => {
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockResolvedValueOnce({
+      id: '100',
+      status: 'open',
+      generationType: 'scenario',
+      choices: [],
+    } as any);
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      backendChoiceGroups: {},
+      error: null,
+    });
+
+    await useWorkspaceStore.getState().generateScenarios(undefined);
+
+    expect(workspaceApi.createGenerationChoiceGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { generation_mode: 'full' } })
+    );
+  });
+
+  it('26. generateScenarios - requests one candidate for a large batch', async () => {
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockResolvedValueOnce({
+      id: '101',
+      status: 'open',
+      generationType: 'scenario',
+      choices: [],
+    } as any);
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      backendChoiceGroups: {},
+      error: null,
+    });
+    const featureIds = Array.from({ length: 67 }, (_, index) => index + 1);
+
+    await useWorkspaceStore.getState().generateScenarios(featureIds);
+
+    expect(workspaceApi.createGenerationChoiceGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ candidate_count: 1 })
+    );
   });
 });

@@ -36,6 +36,7 @@ from backend.api.modules.decision_workflow.ports.ports import (
     CandidateRunResult,
 )
 from backend.core.ai_operation_monitor import log_ai_operation_result
+from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import (
     CHOICE_GROUP_CREATED,
@@ -360,7 +361,19 @@ class GenerationChoiceService:
                 session=session
             )
 
+        batch_feature_count = 0
+        if generation_type == "scenario" and (target or {}).get("generation_mode") == "batch":
+            batch_feature_count = len((target or {}).get("feature_ids") or [])
+            if batch_feature_count > 25 and resolved_strategies:
+                resolved_strategies = resolved_strategies[:1]
+
         run_count = len(resolved_strategies) if resolved_strategies else config.candidate_count
+        if batch_feature_count > 25:
+            run_count = 1
+        candidate_timeout = config.timeout_seconds * max(
+            1,
+            (batch_feature_count + 49) // 50,
+        )
 
         # 并发生成候选
         base_ctx = CandidateContext(
@@ -371,18 +384,30 @@ class GenerationChoiceService:
             project_id=project_id,
             session=session,
         )
-        # Scenario candidates already fan out over feature/actor pairs internally.
-        # Serializing the outer candidates prevents multiplying provider requests.
-        candidate_concurrency = 1 if generation_type == "scenario" else config.max_concurrency
+        scenario_mode = (target or {}).get("generation_mode", "pair")
+        if generation_type == "scenario":
+            candidate_concurrency = (
+                min(2, run_count)
+                if scenario_mode in {"single", "pair"}
+                else 1
+            )
+        else:
+            candidate_concurrency = config.max_concurrency
         result = await run_candidate_generation(
             count=run_count,
             max_concurrency=candidate_concurrency,
-            timeout_seconds=config.timeout_seconds,
+            timeout_seconds=candidate_timeout,
             generate_one=adapter.generate_candidate,
             progress_callback=progress_callback,
             base_context=base_ctx,
             resolved_strategies=resolved_strategies,
         )
+
+        if any(
+            error.message == LLMContentLocaleMismatchError.code
+            for error in result.errors
+        ):
+            raise LLMContentLocaleMismatchError()
 
         # 去重: 按生成顺序依次判断，保留先出现的
         deduped: list[GenerationCandidate] = []
@@ -391,7 +416,8 @@ class GenerationChoiceService:
                 deduped.append(c)
 
         # 判断是否达到部分成功下限
-        is_partial_failure = len(deduped) < config.partial_success_min
+        required_successes = 1 if batch_feature_count > 25 else config.partial_success_min
+        is_partial_failure = len(deduped) < required_successes
         if is_partial_failure:
             log_event(
                 logger,

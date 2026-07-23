@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import React from 'react';
 import { ChevronDown, ChevronRight, User, Cpu, GitBranch } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
@@ -117,6 +119,7 @@ export function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; dept
 }
 
 export function ExpandableFeatureTree({ features }: { features: any[] }) {
+  const { t } = useTranslation();
   const nestedTree = buildNestedFeatureTree(features);
   return (
     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 select-text">
@@ -126,7 +129,7 @@ export function ExpandableFeatureTree({ features }: { features: any[] }) {
         ))
       ) : (
         <div className="text-[10px] text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-          暂无功能节点
+          {t('choicePreview.featureTreeEmpty')}
         </div>
       )}
     </div>
@@ -134,13 +137,14 @@ export function ExpandableFeatureTree({ features }: { features: any[] }) {
 }
 
 export function DetailedActorList({ actors }: { actors: any[] }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 select-text">
       {actors.length > 0 ? (
         actors.map((actor: any, i: number) => (
           <div key={i} className="p-2.5 rounded-xl bg-slate-50/50 border border-slate-200/60 shadow-sm space-y-1.5 hover:border-indigo-200 transition-colors">
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.5 rounded-md leading-none select-none">角色</span>
+              <span className="text-[9px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1.5 py-0.5 rounded-md leading-none select-none">{t('choicePreview.roleBadge')}</span>
               <span className="text-[11px] font-extrabold text-slate-800 leading-none">{actor.actor_name || actor.name}</span>
             </div>
             {(actor.actor_description || actor.description) && (
@@ -152,7 +156,7 @@ export function DetailedActorList({ actors }: { actors: any[] }) {
         ))
       ) : (
         <div className="text-[10px] text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-          暂无参与者角色
+          {t('choicePreview.actorListEmpty')}
         </div>
       )}
     </div>
@@ -197,6 +201,7 @@ export function ChoicePreviewRenderer({
 function ProjectCreationPreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const project = preview || payload || {};
   const actors = asArray(payload?.actors || preview?.actors || []);
   const features = asArray(payload?.features || preview?.features || []);
@@ -207,7 +212,7 @@ function ProjectCreationPreview({
     <div className="space-y-6">
       <div>
         <h4 className="text-xl font-bold text-slate-900 mb-1">
-          {project.project_name || '未命名项目'}
+          {project.project_name || t('choicePreview.unnamedProject')}
         </h4>
         {project.project_description && (
           <p className="text-sm text-slate-500 leading-relaxed">
@@ -218,16 +223,16 @@ function ProjectCreationPreview({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">涉众角色定义</h5>
-          <span className="text-xs font-bold text-slate-400">（{normalizedActors.length} 个角色）</span>
+          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('choicePreview.stakeholdersTitle')}</h5>
+          <span className="text-xs font-bold text-slate-400">{t('choicePreview.stakeholdersCount', { count: normalizedActors.length })}</span>
         </div>
         <DetailedActorList actors={normalizedActors} />
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能模块树</h5>
-          <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
+          <h5 className="text-xs font-black uppercase tracking-wide text-slate-500">{t('choiceGroupPreview.featuresDiffTitle')}</h5>
+          <span className="text-xs font-bold text-slate-400">{t('choicePreview.featuresCount', { count: features.length })}</span>
         </div>
         <ExpandableFeatureTree features={features} />
       </div>
@@ -241,13 +246,14 @@ function ProjectCreationPreview({
 function ActorPreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const actors = preview?.actors || payload?.actors || [];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-black uppercase tracking-wide text-slate-500">参与者列表</span>
-        <span className="text-xs font-bold text-slate-400">（{actors.length} 个）</span>
+        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('choicePreview.actorsTitle')}</span>
+        <span className="text-xs font-bold text-slate-400">{t('choicePreview.actorsCount', { count: actors.length })}</span>
       </div>
 
       <DetailedActorList actors={actors} />
@@ -261,6 +267,7 @@ function ActorPreview({
 function ScenarioPreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const scenarios = preview?.scenarios || payload?.scenarios || [];
   const featureName = preview?.feature_name || (scenarios[0]?.feature_name) || '';
   const actorName = preview?.actor_name || (scenarios[0]?.actor_name) || '';
@@ -271,7 +278,7 @@ function ScenarioPreview({
         <Chip className="bg-indigo-50 text-indigo-700 border-indigo-100">{featureName}</Chip>
         <span className="text-slate-300">×</span>
         <Chip className="bg-amber-50 text-amber-700 border-amber-100">{actorName}</Chip>
-        <span className="text-xs text-slate-400 ml-auto">{scenarios.length} 个场景</span>
+        <span className="text-xs text-slate-400 ml-auto">{t('choicePreview.scenariosCount', { count: scenarios.length })}</span>
       </div>
 
       <div className="divide-y divide-slate-100">
@@ -296,6 +303,7 @@ function ScenarioPreview({
 function ACPreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const criteria = preview?.criteria || payload?.acceptance_criteria || [];
   return (
     <div className="space-y-4">
@@ -307,15 +315,15 @@ function ACPreview({
               <GherkinVisualRenderer
                 key={ac.id || ac.criterion_id || i}
                 text={text}
-                title={`验收标准 #${i + 1}`}
-                badge="验收标准"
+                title={`t('choicePreview.acBadge') #${i + 1}`}
+                badge="t('choicePreview.acBadge')"
               />
             );
           })}
         </div>
       ) : (
         <div className="text-xs text-slate-400 italic bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
-          暂无验收标准数据
+          {t('choicePreview.acEmpty')}
         </div>
       )}
     </div>
@@ -327,13 +335,14 @@ function ACPreview({
 function FeaturePreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const features = preview?.features || payload?.features || [];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-black uppercase tracking-wide text-slate-500">核心功能分解</span>
-        <span className="text-xs font-bold text-slate-400">（{features.length} 个节点）</span>
+        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t('choiceGroupPreview.featuresDiffTitle')}</span>
+        <span className="text-xs font-bold text-slate-400">{t('choicePreview.featuresCount', { count: features.length })}</span>
       </div>
 
       <ExpandableFeatureTree features={features} />
@@ -347,14 +356,15 @@ function FeaturePreview({
 function FlowPreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const flows = preview?.flows || [];
   const boCount = preview?.business_object_count || 0;
   return (
     <div className="space-y-5">
       <div className="flex justify-between items-center bg-slate-50 border border-slate-150 rounded-xl p-3">
-        <span className="text-xs text-slate-600 font-semibold">包含 {flows.length} 个业务流程</span>
+        <span className="text-xs text-slate-600 font-semibold">{t('choicePreview.flowsCount', { count: flows.length })}</span>
         <span className="rounded bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-          {boCount} 个业务对象数据
+          {t('choicePreview.businessObjectsCount', { count: boCount })}
         </span>
       </div>
       
@@ -399,7 +409,7 @@ function FlowPreview({
                             {number}
                           </span>
                           <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 leading-none">
-            {type === 'actorAction' ? <><User className="h-3 w-3" /> 交互</> : type === 'systemAction' ? <><Cpu className="h-3 w-3" /> 自动</> : <><GitBranch className="h-3 w-3" /> 分支</>}
+            {type === 'actorAction' ? <><User className="h-3 w-3" /> {t('choicePreview.stepInteract')}</> : type === 'systemAction' ? <><Cpu className="h-3 w-3" /> {t('choicePreview.stepAuto')}</> : <><GitBranch className="h-3 w-3" /> {t('choicePreview.stepBranch')}</>}
                           </span>
                           <h6 className="text-xs font-bold text-slate-800 leading-none">{name}</h6>
                         </div>
@@ -409,7 +419,7 @@ function FlowPreview({
                         <div className="mt-2.5 grid gap-2.5 text-[10px] leading-none sm:grid-cols-2">
                           {actors.length > 0 && (
                             <div>
-                              <div className="mb-1 font-bold text-slate-400">执行角色</div>
+                              <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepExecRole')}</div>
                               <div className="flex flex-wrap gap-1">
                                 {actors.map((act) => (
                                   <span key={act} className="rounded bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 font-bold">{act}</span>
@@ -419,7 +429,7 @@ function FlowPreview({
                           )}
                           {(inputs.length > 0 || outputs.length > 0) && (
                             <div>
-                              <div className="mb-1 font-bold text-slate-400">输入 / 输出业务数据</div>
+                              <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepIoData')}</div>
                               <div className="flex flex-wrap gap-1">
                                 {inputs.map((inp) => (
                                   <span key={inp} className="rounded bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 font-bold">In: {inp}</span>
@@ -458,15 +468,18 @@ function FlowPreview({
 function ScopePreview({
   preview, payload, comparisonSummary,
 }: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   const scopes = preview?.scopes || [];
 
   const isCurrent = (status: string) => {
     const s = String(status || '').toLowerCase();
-    return s === 'current' || s === '本期';
+    const currentZh = i18n.t('choicePreview.scopeStatusLabel.current', { lng: 'zh-CN' });
+    return s === 'current' || s === currentZh;
   };
   const isPostponed = (status: string) => {
     const s = String(status || '').toLowerCase();
-    return s === 'postponed' || s === '暂缓';
+    const postponedZh = i18n.t('choicePreview.scopeStatusLabel.postponed', { lng: 'zh-CN' });
+    return s === 'postponed' || s === postponedZh;
   };
 
   const current = scopes.filter((s: any) => isCurrent(s.scope_status)).length;
@@ -476,21 +489,21 @@ function ScopePreview({
   return (
     <div className="space-y-4">
       <div className="flex gap-3 text-xs">
-        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold rounded-full border border-emerald-100/50">本期 {current}</span>
-        <span className="px-2.5 py-1 bg-sky-50 text-sky-700 font-bold rounded-full border border-sky-100/50">暂缓 {postponed}</span>
-        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded-full border border-slate-200/50">不纳入 {excluded}</span>
+        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold rounded-full border border-emerald-100/50">{t('choicePreview.scopeStatus.current', { count: current })}</span>
+        <span className="px-2.5 py-1 bg-sky-50 text-sky-700 font-bold rounded-full border border-sky-100/50">{t('choicePreview.scopeStatus.postponed', { count: postponed })}</span>
+        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded-full border border-slate-200/50">{t('choicePreview.scopeStatus.exclude', { count: excluded })}</span>
       </div>
       <div className="divide-y divide-slate-100">
         {scopes.map((s: any, i: number) => (
           <div key={i} className="py-3 first:pt-0 last:pb-0 text-left">
             <div className="flex items-center gap-2">
-              <p className="text-xs font-bold text-slate-800">{s.feature_name || `功能 #${s.feature_id}`}</p>
+              <p className="text-xs font-bold text-slate-800">{s.feature_name || `Feature #${s.feature_id}`}</p>
               <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md ${
                 isCurrent(s.scope_status) ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                 isPostponed(s.scope_status) ? 'bg-sky-50 text-sky-700 border border-sky-100' :
                 'bg-rose-50 text-rose-700 border border-rose-100'
               }`}>
-                {isCurrent(s.scope_status) ? '本期' : isPostponed(s.scope_status) ? '暂缓' : '不纳入'}
+                {isCurrent(s.scope_status) ? t('choicePreview.scopeStatusLabel.current') : isPostponed(s.scope_status) ? t('choicePreview.scopeStatusLabel.postponed') : t('choicePreview.scopeStatusLabel.exclude')}
               </span>
             </div>
             {s.kano_category && (
@@ -513,6 +526,7 @@ function ScopePreview({
 function GenericPreview({
   preview, comparisonSummary,
 }: { preview?: any; comparisonSummary?: string }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       {preview && Object.keys(preview).length > 0 ? (
@@ -520,7 +534,7 @@ function GenericPreview({
           {JSON.stringify(preview, null, 2)}
         </pre>
       ) : (
-        <p className="text-sm text-slate-400 italic">暂无预览信息</p>
+        <p className="text-sm text-slate-400 italic">{t('choicePreview.noPreview')}</p>
       )}
     </div>
   );

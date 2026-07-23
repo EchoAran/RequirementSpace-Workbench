@@ -1,0 +1,21 @@
+## Scenario and parent feature
+Scenario: {scenario_name}
+Feature: {feature_name}
+Current scenario actor: {scenario_actor_name} ({scenario_actor_description})
+
+## Actors assigned to the feature
+{feature_actors_json}
+
+## All project actors
+{all_project_actors_json}
+
+Consider both binding the current actor to the feature and replacing the scenario actor with an existing feature actor. Return confidence and rationale for every candidate; otherwise return a fallback.
+
+Return this JSON shape:
+{{
+  "candidates": [
+    {{"repair_type": "bind_actor_to_feature", "title": "Bind actor to feature", "rationale": "Reason", "confidence": 0.85, "patch": {{"addLinks": [{{"type": "feature_actor_relation", "source_id": {feature_id}, "target_id": {scenario_actor_id}}}]}}, "requires_user_decision": true}},
+    {{"repair_type": "change_scenario_actor", "title": "Change scenario actor", "rationale": "Reason", "confidence": 0.7, "patch": {{"updateNodes": [{{"kind": "scenario", "id": {scenario_id}, "actor_id": 1}}]}}, "requires_user_decision": true}}
+  ],
+  "fallback": {{"kind": "manual_action", "reason": "No reliable consistency repair was found"}}
+}}

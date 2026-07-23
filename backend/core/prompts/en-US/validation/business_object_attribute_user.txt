@@ -1,0 +1,25 @@
+## Requirements context
+{user_requirements}
+
+## Target business object
+Name: {bo_name}
+Description: {bo_description}
+
+Return exactly one candidate containing 1-3 attributes. Allowed types: string, integer, float, boolean, date, datetime, text.
+
+Return this JSON shape:
+{{
+  "candidates": [{{
+    "repair_type": "add_attributes",
+    "title": "Add business-object attributes",
+    "rationale": "Why these attributes are appropriate",
+    "confidence": 0.9,
+    "patch": {{"addNodes": [{{
+      "kind": "business_object_attribute",
+      "business_object_id": {bo_id},
+      "name": "Attribute name",
+      "type": "string",
+      "description": "Attribute description"
+    }}]}}
+  }}]
+}}

@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.core.llm_protected_inputs import collect_protected_texts
+from backend.core.localized_messages import localized_message
 from backend.services.llm_handler_service import LLMHandler
 
 
@@ -127,11 +129,11 @@ class BaseIssueAISolver(ABC):
                 error=str(e),
             )
 
-    def fallback_result(self, reason: str = "AI 处理不可用，请手动处理") -> RepairResult:
+    def fallback_result(self, reason: str | None = None) -> RepairResult:
         """Return a fallback result when AI cannot process."""
         return RepairResult(
             fallback_kind="manual_action",
-            fallback_reason=reason,
+            fallback_reason=reason or localized_message("issue_unavailable"),
         )
 
     async def solve(
@@ -144,8 +146,8 @@ class BaseIssueAISolver(ABC):
         """Main entry point: build context, call LLM, parse result."""
         try:
             context = await self.build_prompt_context(project_id, issue_code, target, session)
-        except Exception as e:
-            return self.fallback_result(f"无法加载上下文: {e}")
+        except Exception:
+            return self.fallback_result(localized_message("issue_context_failed"))
 
         system_prompt = self.get_system_prompt()
         user_prompt = self.get_user_prompt(context)
@@ -156,18 +158,19 @@ class BaseIssueAISolver(ABC):
                 query=user_prompt,
                 print_log=True,
                 response_format={"type": "json_object"},
+                protected_inputs=collect_protected_texts(context, target),
             )
-        except Exception as e:
-            return self.fallback_result(f"AI 调用失败: {e}")
+        except Exception:
+            return self.fallback_result(localized_message("issue_call_failed"))
 
         if not response:
-            return self.fallback_result("AI 未返回有效响应")
+            return self.fallback_result(localized_message("issue_empty_response"))
 
         try:
             import json
             raw = json.loads(response)
-        except json.JSONDecodeError as e:
-            return self.fallback_result(f"AI 输出格式错误: {e}")
+        except json.JSONDecodeError:
+            return self.fallback_result(localized_message("issue_invalid_response"))
 
         result = self.parse_response(raw)
 
@@ -177,6 +180,8 @@ class BaseIssueAISolver(ABC):
 
         # Filter: if no valid candidates, fallback
         if not result.candidates:
-            return self.fallback_result(result.fallback_reason or "未生成有效修复方案")
+            return self.fallback_result(
+                result.fallback_reason or localized_message("issue_no_solution")
+            )
 
         return result

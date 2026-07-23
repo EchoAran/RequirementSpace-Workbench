@@ -185,9 +185,7 @@ class ScenarioPipeline:
 
     async def run(self) -> dict[str, Any]:
         nl_text = await self._read_requirement()
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
+        result = await asyncio.to_thread(
             self._generator.generate,
             nl_text,
             self._feature,

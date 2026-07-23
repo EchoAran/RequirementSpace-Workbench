@@ -7,6 +7,7 @@ from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
     SingleObjectGeneratorInput,
     inject_generator_knowledge_context,
+    serialize_prompt_data,
 )
 from backend.core.generators.single_object.prompts.single_business_object_prompt import (
     SINGLE_BUSINESS_OBJECT_GENERATE_PROMPT,
@@ -25,8 +26,8 @@ class SingleBusinessObjectGenerator(BaseSingleObjectGenerator):
         existing_bos = input_data.project_context.get("business_objects", [])
         existing_flows = input_data.project_context.get("flows", [])
 
-        bos_str = _format_bo_list(existing_bos)
-        flows_str = _format_flow_list(existing_flows)
+        bos_str = serialize_prompt_data(existing_bos)
+        flows_str = serialize_prompt_data(existing_flows)
 
         prompt = SINGLE_BUSINESS_OBJECT_GENERATE_PROMPT.replace(
             "{{user_requirements}}", input_data.user_requirements
@@ -37,37 +38,12 @@ class SingleBusinessObjectGenerator(BaseSingleObjectGenerator):
         )
         prompt = inject_generator_knowledge_context(prompt, input_data.knowledge_context)
 
-        conversation_text = _format_conversation_summary(input_data.conversation_summary)
+        conversation_text = serialize_prompt_data(input_data.conversation_summary)
 
         response = await self._llm_handler.call_llm(
             prompt=prompt,
             query=conversation_text,
             print_log=False,
+            protected_inputs=self._protected_inputs(input_data),
         )
         return json.loads(response)
-
-
-def _format_bo_list(bos: list[dict]) -> str:
-    if not bos:
-        return "（暂无业务数据对象）"
-    lines = []
-    for b in bos:
-        lines.append(f"- ID={b.get('id')}: {b.get('name', '')}")
-    return "\n".join(lines)
-
-
-def _format_flow_list(flows: list[dict]) -> str:
-    if not flows:
-        return "（暂无流程）"
-    lines = []
-    for f in flows:
-        lines.append(f"- ID={f.get('id')}: {f.get('name', '')}")
-    return "\n".join(lines)
-
-
-def _format_conversation_summary(summary: dict) -> str:
-    known_facts = summary.get("known_facts", [])
-    parts = ["以下是用户经过访谈确认的需求信息："]
-    for fact in known_facts:
-        parts.append(f"- {fact.get('key', '')}: {fact.get('value', '')}")
-    return "\n".join(parts)

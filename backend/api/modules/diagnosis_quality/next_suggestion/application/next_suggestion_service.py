@@ -67,6 +67,22 @@ class NextSuggestionService:
                 public_project_id=pub_id,
             )
 
+            transition_code = {
+                "what": "ENTER_HOW",
+                "how": "ENTER_SCOPE",
+                "scope": "ENTER_PREVIEW",
+            }.get(stage)
+
+            if not include_perception and suggestion_node.code == transition_code:
+                active_slot = await self._perception_job_service.get_active_slot_suggestion(
+                    project_id=project_id,
+                    stage=stage,
+                    session=session,
+                    public_project_id=pub_id,
+                )
+                if active_slot is not None:
+                    suggestion_node = active_slot
+
             if include_perception and stage == "what" and suggestion_node.code == "ENTER_HOW":
                 perception_suggestion = await (
                     self._perception_job_service
@@ -93,10 +109,16 @@ class NextSuggestionService:
                 if perception_suggestion is not None:
                     suggestion_node = perception_suggestion
 
-            suggestion = suggestion_node.to_dict()
+            if (
+                suggestion_node.code == transition_code
+                and await self._is_stage_advanced(project_id, stage, session)
+            ):
+                suggestion = None
+            else:
+                suggestion = suggestion_node.to_dict()
 
             # Defensive assertion checks for internal ID leakage
-            if "action" in suggestion and isinstance(suggestion["action"], dict):
+            if suggestion and "action" in suggestion and isinstance(suggestion["action"], dict):
                 act = suggestion["action"]
                 if "route" in act and isinstance(act["route"], str):
                     if f"/projects/{project_id}/" in act["route"] or act["route"].endswith(f"/projects/{project_id}"):
@@ -227,6 +249,21 @@ class NextSuggestionService:
             return True
 
         return False
+
+    @staticmethod
+    async def _is_stage_advanced(project_id: int, stage: str, session) -> bool:
+        from backend.database.model import ProjectModel
+
+        result = await session.execute(
+            select(ProjectModel.unlocked_stages).where(ProjectModel.id == project_id)
+        )
+        unlocked_text = result.scalar_one_or_none()
+        if unlocked_text is None:
+            raise ValueError("project_not_found")
+        unlocked = {
+            item.strip() for item in unlocked_text.split(",") if item.strip()
+        }
+        return stage in unlocked
 
     @staticmethod
     def _build_locked_stage_suggestion(

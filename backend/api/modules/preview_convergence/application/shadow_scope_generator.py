@@ -23,9 +23,7 @@ class PreviewShadowScopeGenerator:
                 )
             
             feature_tree = scope_service._adapter.build_kano_feature_tree(leaf_feature_nodes)
-            loop = asyncio.get_running_loop()
-            raw = await loop.run_in_executor(
-                None,
+            raw = await asyncio.to_thread(
                 scope_service._kano_skill.analyze,
                 requirement_text,
                 feature_tree,

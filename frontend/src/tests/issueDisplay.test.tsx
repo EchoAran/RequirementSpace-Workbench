@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStageGate, getStageIssues } from '../core/selectors';
+import { getStageIssues } from '../core/selectors';
 import { isCountableFinding } from '../core/findingPresentation';
 import type { Finding, RequirementSpace } from '../core/schema';
 
@@ -45,14 +45,5 @@ describe('canonical Finding issue display', () => {
 
     expect(getStageIssues(space, 'what').map((item) => item.findingId)).toEqual(['what-finding']);
     expect(getStageIssues(space, 'how').map((item) => item.findingId)).toEqual(['how-finding']);
-  });
-
-  it('builds stage gates directly from RequirementSpace.findings', () => {
-    const space = spaceWith([
-      finding({ findingId: 'what-finding' }),
-      finding({ findingId: 'how-finding', stage: 'how', code: 'FLOW_WITHOUT_STEPS' }),
-    ]);
-
-    expect(buildStageGate(space, 'what').issues.map((item) => item.findingId)).toEqual(['what-finding']);
   });
 });

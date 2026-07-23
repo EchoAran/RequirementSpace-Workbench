@@ -74,6 +74,7 @@ class ProjectConfigurationService:
         self,
         project_id: int,
         project_public_id: str,
+        content_locale: str | None,
         user_id: int,
         session: AsyncSession
     ) -> ProjectConfigurationResponse:
@@ -118,6 +119,7 @@ class ProjectConfigurationService:
 
         return ProjectConfigurationResponse(
             project_id=project_public_id,
+            content_locale=content_locale,
             generation_strategy=strategy_config,
             knowledge=knowledge_summary,
             llm=llm_summary

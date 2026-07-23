@@ -130,7 +130,7 @@ def test_post_prototype_preview_success(client_with_auth, test_db):
     # Mock service call
     with patch("backend.api.modules.preview_convergence.routes.prototype.get_prototype_generation_service") as mock_get_service:
         mock_service = MagicMock()
-        mock_service.generate_preview = AsyncMock(side_effect=fake_generate_preview)
+        mock_service.start_generation = AsyncMock(side_effect=fake_generate_preview)
         mock_get_service.return_value = mock_service
 
         response = client.post(f"/api/projects/{project_id}/prototype-preview", json={"force_regenerate": True})
@@ -149,7 +149,7 @@ def test_post_prototype_preview_project_not_found(client_with_auth):
     
     with patch("backend.api.modules.preview_convergence.routes.prototype.get_prototype_generation_service") as mock_get_service:
         mock_service = MagicMock()
-        mock_service.generate_preview = AsyncMock(side_effect=ValueError("project_not_found"))
+        mock_service.start_generation = AsyncMock(side_effect=ValueError("project_not_found"))
         mock_get_service.return_value = mock_service
         response = client.post("/api/projects/999/prototype-preview", json={"force_regenerate": True})
         assert response.status_code == 404
@@ -162,7 +162,7 @@ def test_post_prototype_preview_invalid_skill_payload(client_with_auth):
     
     with patch("backend.api.modules.preview_convergence.routes.prototype.get_prototype_generation_service") as mock_get_service:
         mock_service = MagicMock()
-        mock_service.generate_preview = AsyncMock(side_effect=ValueError("invalid_skill_payload"))
+        mock_service.start_generation = AsyncMock(side_effect=ValueError("invalid_skill_payload"))
         mock_get_service.return_value = mock_service
         response = client.post(f"/api/projects/{project_id}/prototype-preview", json={"force_regenerate": True})
         assert response.status_code == 400
@@ -195,6 +195,32 @@ def test_get_latest_prototype_preview_success(client_with_auth):
         assert response.status_code == 200
         assert response.json()["prototypeId"] == 100
         assert response.json()["html"] == "<p>Latest</p>"
+
+
+def test_get_latest_prototype_preview_resumes_generating_job(client_with_auth):
+    client, project_id = client_with_auth
+    mock_response = PrototypePreviewResponse(
+        prototype_id=101,
+        project_id=project_id,
+        html="",
+        javascript="",
+        css="",
+        pages=[],
+        source="role_feature_pages",
+        status="generating",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    with patch("backend.api.modules.preview_convergence.routes.prototype.get_prototype_generation_service") as mock_get_service:
+        mock_service = MagicMock()
+        mock_service.get_latest_preview = AsyncMock(return_value=mock_response)
+        mock_get_service.return_value = mock_service
+
+        response = client.get(f"/api/projects/{project_id}/prototype-preview/latest")
+
+        assert response.status_code == 200
+        mock_service.ensure_generation_running.assert_called_once()
 
 
 def test_get_latest_prototype_preview_missing(client_with_auth):

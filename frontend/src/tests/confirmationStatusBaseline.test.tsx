@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { StatusBadge } from '../components/shared/StatusBadge';
-import { NodeStatusToText } from '../core/schema';
+import { NodeStatusToText } from '../core/presentationLabels';
 
 describe('confirmationStatusBaseline - StatusBadge rendering', () => {
   it('renders confirmed state correctly', () => {

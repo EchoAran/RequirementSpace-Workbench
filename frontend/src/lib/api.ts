@@ -71,7 +71,7 @@ export const workspaceApi = {
   createBlankProject: async (payload: { user_requirements: string; project_name?: string; project_description?: string; knowledge_workspace_id?: string }): Promise<ProjectCreationConfirmResponse> => {
     return http.post<ProjectCreationConfirmResponse>('/blank_projects', payload);
   },
-  createProjectCreationDraft: async (payload: { user_requirements: string; project_name?: string; project_description?: string }): Promise<ProjectCreationDraft> => {
+  createProjectCreationDraft: async (payload: { user_requirements: string; project_name?: string; project_description?: string; knowledge_workspace_id?: string }): Promise<ProjectCreationDraft> => {
     return http.post<ProjectCreationDraft>('/project_creation_drafts', payload);
   },
   regenerateProjectCreationDraft: async (draftId: string, feedback?: string): Promise<ProjectCreationDraft> => {
@@ -302,6 +302,9 @@ export const workspaceApi = {
   },
   rediagnoseNextSuggestion: async (projectId: string, stage: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/next-suggestion/rediagnose`, { stage });
+  },
+  getRediagnoseStatus: async (projectId: string, stage: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/next-suggestion/rediagnose/status`, { stage });
   },
   createSlotFillingDraft: async (projectId: string, perceptionJobId: number, fillerKind: string): Promise<any> => {
     const kind = fillerKind === 'ac' || fillerKind === 'acceptanceCriteria' || fillerKind === 'acceptance_criterion'
@@ -610,7 +613,19 @@ export const workspaceApi = {
   },
 
   getProjectConfiguration: async (projectId: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/configuration`);
+    const config = await http.get<any>(`/projects/${projectId}/configuration`);
+    if (config) {
+      config.contentLocale = config.content_locale;
+    }
+    return config;
+  },
+
+  updateProjectConfiguration: async (projectId: string, payload: { content_locale: string | null }): Promise<any> => {
+    const config = await http.put<any>(`/projects/${projectId}/configuration`, payload);
+    if (config) {
+      config.contentLocale = config.content_locale;
+    }
+    return config;
   },
 
   updateProjectGenerationStrategies: async (projectId: string, payload: any): Promise<any> => {

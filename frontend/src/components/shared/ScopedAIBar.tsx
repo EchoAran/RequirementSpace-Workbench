@@ -6,6 +6,7 @@
  *   generates an edit draft with diff preview, confirms or discards.
  */
 
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ProjectionKind } from '@/core/schema';
@@ -37,11 +38,11 @@ const pageToProjection = (page: string): ProjectionKind => {
   return 'goal';
 };
 
-const pageToStageLabel = (page: string): string => {
-  if (page === '/flow') return 'How 运作流建模';
-  if (page === '/scope') return 'Scope 范围决策';
-  if (page === '/preview') return 'Preview 方案预览';
-  return 'What 角色能力建模';
+const pageToStageLabel = (page: string, t: any): string => {
+  if (page === '/flow') return t('aiBar.howStage');
+  if (page === '/scope') return t('aiBar.scopeStage');
+  if (page === '/preview') return t('aiBar.previewStage');
+  return t('aiBar.whatStage');
 };
 
 const getObjectId = (obj: any): string => {
@@ -52,11 +53,11 @@ const getObjectId = (obj: any): string => {
   return id !== undefined && id !== null ? String(id) : '';
 };
 
-const getObjectTitle = (obj: any): string => {
+const getObjectTitle = (obj: any, t: any): string => {
   const title = obj?.title ?? obj?.name ?? obj?.actorName ?? obj?.featureName ??
     obj?.scenarioName ?? obj?.criterionContent ?? obj?.businessObjectName ??
     obj?.businessObjectAttributeName ?? obj?.flowName ?? obj?.stepName ?? getObjectId(obj);
-  return title !== undefined && title !== null && String(title).trim() ? String(title) : '未命名对象';
+  return title !== undefined && null !== title && String(title).trim() ? String(title) : t('aiBar.unnamedObj');
 };
 
 const getObjectKind = (obj: any): string | undefined => {
@@ -74,14 +75,14 @@ const getObjectKind = (obj: any): string | undefined => {
   );
 };
 
-const getObjectScopePrefix = (kind?: string): string => {
+const getObjectScopePrefix = (kind: string | undefined, t: any): string => {
   const m: Record<string, string> = {
-    feature: '能力点', flow: '业务流程', flow_step: '流程步骤',
-    business_object: '数据对象', business_object_attribute: '数据字段',
-    actor: '业务角色', scenario: '业务场景', acceptance_criterion: '验收标准',
-    scope: '范围决策', perception_slot: '感知槽',
+    feature: t('aiBar.kindLabels.feature'), flow: t('aiBar.kindLabels.flow'), flow_step: t('aiBar.kindLabels.flow_step'),
+    business_object: t('aiBar.kindLabels.business_object'), business_object_attribute: t('aiBar.kindLabels.business_object_attribute'),
+    actor: t('aiBar.kindLabels.actor'), scenario: t('aiBar.kindLabels.scenario'), acceptance_criterion: t('aiBar.kindLabels.acceptance_criterion'),
+    scope: t('aiBar.kindLabels.scope'), perception_slot: t('aiBar.kindLabels.perception_slot'),
   };
-  return m[kind || ''] || '选中项';
+  return m[kind || ''] || t('aiBar.kindLabels.selected');
 };
 
 /** Map frontend object kind to backend edit target_type. */
@@ -101,6 +102,7 @@ const kindToExplainType: Record<string, string> = {
 };
 
 export function ScopedAIBar() {
+  const { t } = useTranslation();
   const { ir } = useWorkspaceStore();
   const selectedObject: any = useWorkspaceStore(selectSelectedObject);
   const location = useLocation();
@@ -200,11 +202,11 @@ export function ScopedAIBar() {
   // ── Scope ──
   const scopes = useMemo(() => {
     const next: AIScope[] = [
-      { kind: 'projection', projection: pageToProjection(currentPage), label: `当前阶段: ${pageToStageLabel(currentPage)}` },
-      { kind: 'workspace', label: '整个系统空间' },
+      { kind: 'projection', projection: pageToProjection(currentPage), label: t('aiBar.currentStage', { stage: pageToStageLabel(currentPage, t) }) },
+      { kind: 'workspace', label: t('aiBar.entireWorkspace') },
     ];
     if (selectedObject) {
-      next.unshift({ kind: 'node', nodeId: getObjectId(selectedObject), label: `${getObjectScopePrefix(getObjectKind(selectedObject))}: ${getObjectTitle(selectedObject)}` });
+      next.unshift({ kind: 'node', nodeId: getObjectId(selectedObject), label: `${getObjectScopePrefix(getObjectKind(selectedObject), t)}: ${getObjectTitle(selectedObject, t)}` });
     }
     return next;
   }, [currentPage, selectedObject]);
@@ -266,9 +268,9 @@ export function ScopedAIBar() {
     try {
       const projectId = ir?.projectId ?? (ir as any)?.project_id ?? 0;
       const res = await workspaceApi.explainAI(projectId, toExplainScope(scope), q);
-      setMessages(prev => [...prev, { role: 'assistant', content: res.answer || '(收到空回答)' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: res.answer || t('aiBar.emptyAnswer') }]);
     } catch (err: any) {
-      const m = err?.detail || '请求失败，请稍后重试';
+      const m = err?.detail || t('aiBar.explainFailed');
       setError(m);
       setMessages(prev => [...prev, { role: 'assistant', content: m }]);
     } finally { setIsLoading(false); }
@@ -292,7 +294,7 @@ export function ScopedAIBar() {
       setEditSessionId(sid);
       setEditStep('chat');
     } catch (err: any) {
-      setEditError(err?.detail || '创建编辑会话失败');
+      setEditError(err?.detail || t('aiBar.sessionFailed'));
       setEditStep('idle');
     }
   }, [canEdit, isNodeScope, editTargetType, scope, ir]);
@@ -309,7 +311,7 @@ export function ScopedAIBar() {
       setEditMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       if (res.isReadyToGenerate ?? res.is_ready_to_generate) setEditStep('ready');
     } catch (err: any) {
-      setEditMessages(prev => [...prev, { role: 'assistant', content: err?.detail || '发送失败' }]);
+      setEditMessages(prev => [...prev, { role: 'assistant', content: err?.detail || t('aiBar.chatFailed') }]);
     } finally { setEditIsSending(false); }
   }, [editInput, editSessionId, editIsSending]);
 
@@ -325,7 +327,7 @@ export function ScopedAIBar() {
       setEditDraft(res);
       setEditStep('preview');
     } catch (err: any) {
-      setEditError(err?.detail || '生成编辑草稿失败');
+      setEditError(err?.detail || t('aiBar.draftFailed'));
       setEditStep('ready');
     }
   }, [editSessionId]);
@@ -342,7 +344,7 @@ export function ScopedAIBar() {
         setEditStep('idle'); setEditSessionId(null); setEditMessages([]); setEditDraft(null);
       }, 1500);
     } catch (err: any) {
-      setEditError(err?.detail || '确认失败');
+      setEditError(err?.detail || t('aiBar.confirmFailed'));
     } finally { setEditIsConfirming(false); }
   }, [editDraft]);
 
@@ -376,7 +378,7 @@ export function ScopedAIBar() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className="p-1 bg-indigo-50 rounded-lg text-indigo-500"><Sparkles className="w-3.5 h-3.5" /></span>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">AI 助手</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">{t('aiBar.title')}</span>
             </div>
             <button type="button" onClick={() => setIsCollapsed(true)} className="p-1 hover:bg-slate-200 rounded-md text-slate-400 hover:text-slate-600 transition-colors"><Minus className="w-3.5 h-3.5" /></button>
           </div>
@@ -387,14 +389,14 @@ export function ScopedAIBar() {
               onClick={() => handleModeChange('explain')}
               className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${mode === 'explain' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              问答
+              {t('aiBar.explainTab')}
             </button>
             <button
               type="button"
               onClick={() => handleModeChange('edit')}
               className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${mode === 'edit' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              修改
+              {t('aiBar.editTab')}
             </button>
           </div>
         </div>
@@ -403,7 +405,7 @@ export function ScopedAIBar() {
         {mode === 'explain' && (
           <div className="px-4 pt-2.5 pb-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">范围:</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">{t('aiBar.scopeLabel')}</span>
               <select
                 value={selectedScopeIndex}
                 onChange={(e) => setSelectedScopeIndex(Number(e.target.value))}
@@ -419,13 +421,13 @@ export function ScopedAIBar() {
         {mode === 'edit' && (
           <div className="px-4 pt-2.5 pb-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">对象:</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">{t('aiBar.objectLabel')}</span>
               <span className="flex-1 bg-slate-100 text-slate-700 text-xs font-extrabold px-3 py-1.5 rounded-xl">
-                {isNodeScope ? scope.label : '请选中一个具体对象'}
+                {isNodeScope ? scope.label : t('aiBar.selectObject')}
               </span>
             </div>
             {!canEdit && (
-              <p className="text-[10px] text-amber-600 mt-1 font-medium">修改模式需要选中一个具体对象（角色/功能/流程/业务对象）</p>
+              <p className="text-[10px] text-amber-600 mt-1 font-medium">{t('aiBar.selectObjectTip')}</p>
             )}
           </div>
         )}
@@ -437,7 +439,7 @@ export function ScopedAIBar() {
               {messages.length === 0 && (
                 <div className="text-center py-6">
                   <Bot className="w-8 h-8 text-indigo-200 mx-auto mb-2" />
-                  <p className="text-[10px] text-slate-400 leading-relaxed">输入你的问题，AI 将基于当前范围内的项目数据进行解释回答。</p>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">{t('aiBar.explainTip')}</p>
                 </div>
               )}
               {messages.map((msg, i) => (
@@ -462,10 +464,10 @@ export function ScopedAIBar() {
             <div className="px-4 pb-3 pt-1 border-t border-slate-100">
               <div className="flex items-center gap-1.5 text-[9px] text-slate-400 bg-slate-50 border border-slate-100/50 rounded-lg p-1.5 mb-2 font-medium">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                <span>AI 将参考项目知识库中已启用且处理成功的资料。</span>
+                <span>{t('aiBar.retrieving')}</span>
               </div>
               <div className="flex gap-2">
-                <textarea ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={handleExplainKeyDown} placeholder="输入你的问题..." rows={1}
+                <textarea ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={handleExplainKeyDown} placeholder={t('aiBar.askPlaceholder')} rows={1}
                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed" />
                 <button onClick={handleExplainSubmit} disabled={!question.trim() || isLoading}
                   className="self-end p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
@@ -475,10 +477,10 @@ export function ScopedAIBar() {
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                  <span>当前将对【{scope.label}】进行解释回答</span>
+                  <span>{t('aiBar.explainingObj', { label: scope.label })}</span>
                 </div>
                 {messages.length > 0 && (
-                  <button onClick={handleClear} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600"><RotateCcw className="w-3 h-3" />清除</button>
+                  <button onClick={handleClear} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600"><RotateCcw className="w-3 h-3" />{t('aiBar.clearBtn')}</button>
                 )}
               </div>
             </div>
@@ -491,14 +493,14 @@ export function ScopedAIBar() {
             {editStep === 'idle' && (
               <div className="px-4 py-6 text-center">
                 <FileText className="w-8 h-8 text-indigo-200 mx-auto mb-2" />
-                <p className="text-[10px] text-slate-400 leading-relaxed mb-3">选中一个对象后，通过对话描述你想做的修改。</p>
+                <p className="text-[10px] text-slate-400 leading-relaxed mb-3">{t('aiBar.editTip')}</p>
                 <button
                   type="button"
                   onClick={handleEditStart}
                   disabled={!canEdit}
                   className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  开始编辑
+                  {t('aiBar.initEdit')}
                 </button>
               </div>
             )}
@@ -506,7 +508,7 @@ export function ScopedAIBar() {
             {(editStep === 'creating_session') && (
               <div className="px-4 py-8 flex items-center justify-center gap-2 text-xs text-slate-500">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                创建编辑会话...
+                {t('aiBar.initializingSession')}
               </div>
             )}
 
@@ -515,7 +517,7 @@ export function ScopedAIBar() {
                 <div className="px-4 py-2 max-h-[280px] overflow-y-auto space-y-2.5 min-h-[80px]">
                   {editMessages.length === 0 && (
                     <div className="text-center py-4">
-                      <p className="text-[10px] text-slate-400">描述你想对【{scope.label}】做的修改...</p>
+                      <p className="text-[10px] text-slate-400">{t('aiBar.editingObj', { label: scope.label })}</p>
                     </div>
                   )}
                   {editMessages.map((msg, i) => (
@@ -540,11 +542,11 @@ export function ScopedAIBar() {
                 <div className="px-4 pb-3 pt-1 border-t border-slate-100 space-y-2">
                   <div className="flex items-center gap-1.5 text-[9px] text-slate-400 bg-slate-50 border border-slate-100/50 rounded-lg p-1.5 mb-1 font-medium">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                    <span>AI 将参考项目知识库中已启用且处理成功的资料。</span>
+                    <span>{t('aiBar.retrieving')}</span>
                   </div>
                   {editStep === 'chat' && (
                     <div className="flex gap-2">
-                      <textarea value={editInput} onChange={e => setEditInput(e.target.value)} onKeyDown={handleEditKeyDown} placeholder="描述修改内容..." rows={1}
+                      <textarea value={editInput} onChange={e => setEditInput(e.target.value)} onKeyDown={handleEditKeyDown} placeholder={t('aiBar.editPlaceholder')} rows={1}
                         className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed" />
                       <button onClick={handleEditSend} disabled={!editInput.trim() || editIsSending}
                         className="self-end p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors shadow-sm disabled:opacity-50">
@@ -555,14 +557,14 @@ export function ScopedAIBar() {
                   {editStep === 'ready' && (
                     <div className="flex gap-2">
                       <button onClick={handleGenerateEditDraft} className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm">
-                        <Sparkles className="w-4 h-4" />生成编辑草稿
+                        <Sparkles className="w-4 h-4" />{t('aiBar.generateDraftBtn')}
                       </button>
-                      <button onClick={() => { setEditStep('chat'); }} className="px-3 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">继续对话</button>
+                      <button onClick={() => { setEditStep('chat'); }} className="px-3 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">{t('aiBar.backToChat')}</button>
                     </div>
                   )}
                   {editStep === 'generating' && (
                     <div className="flex items-center justify-center gap-2 py-2 text-xs text-slate-500">
-                      <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />正在生成编辑草稿...
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />{t('aiBar.generatingDraft')}
                     </div>
                   )}
                 </div>
@@ -573,7 +575,7 @@ export function ScopedAIBar() {
               <div className="px-4 py-3">
                 <div className="bg-amber-50/80 border border-amber-100 rounded-2xl p-4 space-y-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
-                    <FileText className="w-3.5 h-3.5" />修改预览
+                    <FileText className="w-3.5 h-3.5" />{t('aiBar.previewDiff')}
                   </div>
                   <div className="space-y-2">
                     {Object.entries(editDraft.preview || {}).map(([field, change]: [string, any]) => (
@@ -594,10 +596,10 @@ export function ScopedAIBar() {
                 <div className="flex gap-2 mt-3">
                   <button onClick={handleConfirmEdit} disabled={editIsConfirming}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50">
-                    {editIsConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}确认修改
+                    {editIsConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{t('aiBar.confirmEdit')}
                   </button>
                   <button onClick={handleDiscardEdit} disabled={editIsConfirming}
-                    className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">丢弃</button>
+                    className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">{t('aiBar.discardEdit')}</button>
                 </div>
               </div>
             )}
@@ -605,7 +607,7 @@ export function ScopedAIBar() {
             {editStep === 'done' && (
               <div className="px-4 pb-3">
                 <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-4 py-3 rounded-2xl flex items-center gap-2">
-                  <Check className="w-4 h-4" />修改已保存！
+                  <Check className="w-4 h-4" />{t('aiBar.editSaved')}
                 </div>
               </div>
             )}

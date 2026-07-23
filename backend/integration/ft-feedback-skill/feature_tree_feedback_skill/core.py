@@ -184,9 +184,7 @@ class FeatureTreeFeedbackPipeline:
     async def run(self) -> dict[str, str]:
         feature_tree_text = await self._read_feature_tree()
         feedback_text = await self._read_feedback()
-        loop = asyncio.get_running_loop()
-        features_json = await loop.run_in_executor(
-            None,
+        features_json = await asyncio.to_thread(
             self._generator.generate,
             feature_tree_text,
             feedback_text,

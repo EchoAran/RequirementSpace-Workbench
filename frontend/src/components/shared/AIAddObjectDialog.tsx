@@ -11,6 +11,7 @@
  *   onConfirm — callback fired after successful confirmation (refresh data)
  */
 
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send,
@@ -48,13 +49,7 @@ interface ChatMessage {
 
 type DialogStep = 'creating' | 'chat' | 'ready' | 'generating' | 'preview' | 'confirming' | 'done';
 
-const TARGET_LABELS: Record<AIAddTargetType, string> = {
-  actor: '参与者',
-  feature_leaf: '功能点',
-  feature_branch: '功能模块',
-  flow: '业务流程',
-  business_object: '业务数据对象',
-};
+
 
 export function AIAddObjectDialog({
   isOpen,
@@ -64,6 +59,7 @@ export function AIAddObjectDialog({
   anchor,
   onConfirm,
 }: AIAddObjectDialogProps) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<DialogStep>('creating');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -94,7 +90,7 @@ export function AIAddObjectDialog({
         setStep('chat');
       } catch (err: any) {
         if (cancelled) return;
-        setError(err?.detail || '创建会话失败');
+        setError(err?.detail || t('addObjectDialog.createSessionFailed'));
         setStep('chat');
       }
     })();
@@ -122,7 +118,7 @@ export function AIAddObjectDialog({
         setStep('ready');
       }
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: err?.detail || '发送消息失败，请稍后重试' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: err?.detail || t('addObjectDialog.sendMessageFailed') }]);
     } finally {
       setIsSending(false);
     }
@@ -144,7 +140,7 @@ export function AIAddObjectDialog({
       setDraft(res);
       setStep('preview');
     } catch (err: any) {
-      setError(err?.detail || '生成草稿失败');
+      setError(err?.detail || t('addObjectDialog.generateDraftFailed'));
       setStep('ready');
     }
   }, [sessionId]);
@@ -159,7 +155,7 @@ export function AIAddObjectDialog({
       onConfirm();
       setTimeout(() => onClose(), 1200);
     } catch (err: any) {
-      setError(err?.detail || '确认失败');
+      setError(err?.detail || t('addObjectDialog.confirmFailed'));
     } finally {
       setIsConfirming(false);
     }
@@ -200,7 +196,14 @@ export function AIAddObjectDialog({
 
   if (!isOpen) return null;
 
-  const targetLabel = TARGET_LABELS[targetType] || targetType;
+  const targetLabels: Record<AIAddTargetType, string> = {
+    actor: t('addObjectDialog.targetLabels.actor'),
+    feature_leaf: t('addObjectDialog.targetLabels.feature_leaf'),
+    feature_branch: t('addObjectDialog.targetLabels.feature_branch'),
+    flow: t('addObjectDialog.targetLabels.flow'),
+    business_object: t('addObjectDialog.targetLabels.business_object'),
+  };
+  const targetLabel = targetLabels[targetType] || targetType;
   const preview = draft?.preview ?? {};
 
   return (
@@ -221,15 +224,15 @@ export function AIAddObjectDialog({
                 <Sparkles className="w-4 h-4 text-indigo-600" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800">AI 添加{targetLabel}</h3>
+                <h3 className="font-extrabold text-sm text-slate-800">{t('addObjectDialog.headerTitle', { target: targetLabel })}</h3>
                 <p className="text-[10px] text-slate-500 mt-0.5">
-                  {step === 'creating' && '正在创建会话...'}
-                  {step === 'chat' && '描述你需要添加的对象细节'}
-                  {step === 'ready' && '已了解需求，可生成草稿'}
-                  {step === 'generating' && '正在生成草稿...'}
-                  {step === 'preview' && '预览并确认草稿'}
-                  {step === 'confirming' && '正在保存...'}
-                  {step === 'done' && '已确认保存'}
+                  {step === 'creating' && t('addObjectDialog.stepTitle.creating')}
+                  {step === 'chat' && t('addObjectDialog.stepTitle.chat')}
+                  {step === 'ready' && t('addObjectDialog.stepTitle.ready')}
+                  {step === 'generating' && t('addObjectDialog.stepTitle.generating')}
+                  {step === 'preview' && t('addObjectDialog.stepTitle.preview')}
+                  {step === 'confirming' && t('addObjectDialog.stepTitle.confirming')}
+                  {step === 'done' && t('addObjectDialog.stepTitle.done')}
                 </p>
               </div>
             </div>
@@ -253,9 +256,8 @@ export function AIAddObjectDialog({
           {messages.length === 0 && step !== 'creating' && (
             <div className="text-center py-8 px-4">
               <Bot className="w-10 h-10 text-indigo-200 mx-auto mb-3" />
-              <p className="text-xs text-slate-500 leading-relaxed">
-                和 AI 聊聊你要添加的{targetLabel}吧。
-                <br />AI 会通过提问逐步了解你的需求。
+              <p className="whitespace-pre-line text-xs text-slate-500 leading-relaxed">
+                {t('addObjectDialog.chatTip', { target: targetLabel })}
               </p>
             </div>
           )}
@@ -310,28 +312,28 @@ export function AIAddObjectDialog({
             <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-4 space-y-2">
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
                 <FileText className="w-3.5 h-3.5" />
-                生成草稿预览
+                {t('addObjectDialog.previewTitle')}
               </div>
               <div className="space-y-1.5 text-xs text-slate-700">
                 {preview.name && (
-                  <p><span className="font-bold text-slate-800">名称：</span>{preview.name}</p>
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.name')}</span>{preview.name}</p>
                 )}
                 {preview.description && (
-                  <p><span className="font-bold text-slate-800">描述：</span>{preview.description}</p>
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.description')}</span>{preview.description}</p>
                 )}
                 {preview.featureKind && (
-                  <p><span className="font-bold text-slate-800">类型：</span>
-                    {preview.featureKind === 'leaf' ? '功能点' : '功能模块'}
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.type')}</span>
+                    {preview.featureKind === 'leaf' ? t('addObjectDialog.previewFields.feature_leaf') : t('addObjectDialog.previewFields.feature_branch')}
                   </p>
                 )}
                 {preview.actorIds && preview.actorIds.length > 0 && (
-                  <p><span className="font-bold text-slate-800">关联参与者 ID：</span>{preview.actorIds.join(', ')}</p>
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.actorIds')}</span>{preview.actorIds.join(', ')}</p>
                 )}
                 {preview.featureIds && preview.featureIds.length > 0 && (
-                  <p><span className="font-bold text-slate-800">关联功能 ID：</span>{preview.featureIds.join(', ')}</p>
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.featureIds')}</span>{preview.featureIds.join(', ')}</p>
                 )}
                 {preview.attributeCount !== undefined && (
-                  <p><span className="font-bold text-slate-800">属性数量：</span>{preview.attributeCount}</p>
+                  <p><span className="font-bold text-slate-800">{t('addObjectDialog.previewFields.attributeCount')}</span>{preview.attributeCount}</p>
                 )}
               </div>
               {draft.rationale && (
@@ -348,7 +350,7 @@ export function AIAddObjectDialog({
           <div className="px-4 pb-3">
             <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-4 py-3 rounded-2xl flex items-center gap-2">
               <Check className="w-4 h-4" />
-              {targetLabel}已创建成功！
+              {t('addObjectDialog.createSuccess', { target: targetLabel })}
             </div>
           </div>
         )}
@@ -363,13 +365,13 @@ export function AIAddObjectDialog({
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
               >
                 <Sparkles className="w-4 h-4" />
-                生成草稿
+                {t('addObjectDialog.generateDraftBtn')}
               </button>
               <button
                 onClick={handleRestart}
                 className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
               >
-                继续对话
+                {t('addObjectDialog.continueChatBtn')}
               </button>
             </div>
           )}
@@ -386,14 +388,14 @@ export function AIAddObjectDialog({
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                确认并创建
+                {t('addObjectDialog.confirmBtn')}
               </button>
               <button
                 onClick={handleDiscard}
                 disabled={isConfirming}
                 className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
               >
-                丢弃
+                {t('addObjectDialog.discardBtn')}
               </button>
             </div>
           )}
@@ -401,7 +403,7 @@ export function AIAddObjectDialog({
           {step === 'generating' && (
             <div className="flex items-center justify-center gap-2 py-2.5 text-xs text-slate-500">
               <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-              AI 正在根据对话摘要生成{targetLabel}...
+              {t('addObjectDialog.generatingDraftTip', { target: targetLabel })}
             </div>
           )}
 
@@ -411,7 +413,7 @@ export function AIAddObjectDialog({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={`描述你要添加的${targetLabel}...`}
+                placeholder={t('addObjectDialog.inputPlaceholder', { target: targetLabel })}
                 rows={2}
                 className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-medium resize-none leading-relaxed"
               />

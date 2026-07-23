@@ -8,6 +8,8 @@ import hashlib
 from typing import Any, Optional
 
 from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
+from backend.core.llm_context import LLMRequestContext, current_llm_context
+from backend.core.locale import DEFAULT_LOCALE
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
 from backend.integration.skill_backed_services.llm_json_client import SyncSkillBackedLLMJsonClient
@@ -47,6 +49,15 @@ class SplSemanticExportService:
         if not self._available:
             raise ValueError("spl_export_skill_unavailable")
 
+        effective_context = llm_ctx or current_llm_context.get()
+        api_url = getattr(effective_context, "api_url", None)
+        api_key = getattr(effective_context, "api_key", None)
+        model_name = getattr(effective_context, "model_name", None)
+        content_locale = getattr(effective_context, "content_locale", None) or DEFAULT_LOCALE.value
+        content_locale_source = getattr(
+            effective_context, "content_locale_source", None
+        ) or "default"
+
         # Convert Pydantic ProjectDetailResponse to raw dictionaries
         detail_dict = detail.model_dump()
         payload = {
@@ -63,24 +74,20 @@ class SplSemanticExportService:
             "unresolved_gates": detail_dict.get("unresolved_gates", []),
             "export_options": {
                 "mode": "semantic",
-                "language": "zh-CN",
+                "language": content_locale,
                 "include_trace_links": True,
                 "include_warnings": True,
             }
         }
 
         # Dynamically extract LLM configuration credentials from llm_ctx
-        api_url = getattr(llm_ctx, "api_url", None)
-        api_key = getattr(llm_ctx, "api_key", None)
-        model_name = getattr(llm_ctx, "model_name", None)
-
         llm_fingerprint_source = f"{api_url or ''}|{model_name or ''}"
         llm_fingerprint = hashlib.sha256(llm_fingerprint_source.encode("utf-8")).hexdigest()[:12]
 
         # Calculate snapshot hash for cache lookup
         project_json = detail.model_dump_json()
         snapshot_hash = hashlib.sha256(project_json.encode("utf-8")).hexdigest()
-        cache_key = f"{detail.project_id}:semantic:{snapshot_hash}:{llm_fingerprint}"
+        cache_key = f"{detail.project_id}:semantic:{content_locale}:{snapshot_hash}:{llm_fingerprint}"
 
         now = time.time()
         if cache_key in _SEMANTIC_EXPORT_CACHE:
@@ -108,16 +115,24 @@ class SplSemanticExportService:
             except (ValueError, TypeError):
                 export_timeout = 120.0
 
-            # Run the synchronous skill.export inside an executor thread with wait_for timeout
-            loop = asyncio.get_running_loop()
-            result_dict = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    skill.export,
-                    payload,
-                ),
-                timeout=export_timeout
-            )
+            token = None
+            if effective_context is not None:
+                request_context = LLMRequestContext(
+                    api_url=api_url or "",
+                    api_key=api_key or "",
+                    model_name=model_name or "",
+                    content_locale=content_locale,
+                    content_locale_source=content_locale_source,
+                )
+                token = current_llm_context.set(request_context)
+            try:
+                result_dict = await asyncio.wait_for(
+                    asyncio.to_thread(skill.export, payload),
+                    timeout=export_timeout,
+                )
+            finally:
+                if token is not None:
+                    current_llm_context.reset(token)
             
             # Validate output using SplExportOutput schema
             output = SplExportOutput.model_validate(result_dict)

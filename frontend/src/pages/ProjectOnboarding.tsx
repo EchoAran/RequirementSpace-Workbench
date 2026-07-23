@@ -17,8 +17,10 @@ import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewM
 import { ProjectInterviewDialog } from '@/components/shared/ProjectInterviewDialog';
 import { useNavigate } from 'react-router-dom';
 import { buildProjectRoute } from '@/core/selectors';
+import { useTranslation } from 'react-i18next';
 
 export function ProjectOnboarding() {
+  const { t } = useTranslation();
   const {
     startAIOnboarding,
     confirmAIOnboarding,
@@ -133,10 +135,9 @@ export function ProjectOnboarding() {
 
   const handleCreateBlank = async () => {
     if (!prompt.trim()) return;
-    await createBlankWorkspace(name.trim(), description.trim(), prompt.trim());
-    const state = useWorkspaceStore.getState();
-    if (state.currentSystemView === 'workspace' && state.ir) {
-      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    const projectId = await createBlankWorkspace(name.trim(), description.trim(), prompt.trim());
+    if (projectId) {
+      navigate(buildProjectRoute(projectId, '/overview'));
     }
   };
 
@@ -168,18 +169,16 @@ export function ProjectOnboarding() {
   };
 
   const handleConfirmDraft = async () => {
-    await confirmAIOnboarding();
-    const state = useWorkspaceStore.getState();
-    if (state.currentSystemView === 'workspace' && state.ir) {
-      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    const projectId = await confirmAIOnboarding();
+    if (projectId) {
+      navigate(buildProjectRoute(projectId, '/overview'));
     }
   };
 
   const handleAcceptChoice = async (choiceId: string) => {
-    await acceptOnboardingChoice(choiceId);
-    const state = useWorkspaceStore.getState();
-    if (state.currentSystemView === 'workspace' && state.ir) {
-      navigate(buildProjectRoute(state.ir.projectId, '/overview'));
+    const projectId = await acceptOnboardingChoice(choiceId);
+    if (projectId) {
+      navigate(buildProjectRoute(projectId, '/overview'));
     }
   };
 
@@ -213,12 +212,12 @@ export function ProjectOnboarding() {
           className="absolute -top-10 left-0 flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium"
         >
           <ArrowLeft className="w-4 h-4" />
-          返回工作台首页
+          {t('onboarding.backToHome')}
         </button>
 
         <div className="text-center mb-10 mt-4">
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mb-4">
-            开始构建项目需求
+            {t('onboarding.title')}
           </h1>
         </div>
 
@@ -226,44 +225,44 @@ export function ProjectOnboarding() {
           {isWorking && !isGeneratingChoices && !isUploadingDocument && (
             <div className="absolute inset-0 bg-white/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
               <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
-              <p className="font-bold text-slate-800 text-base">正在处理项目草稿...</p>
-              <p className="text-sm text-slate-500 mt-1">这会生成项目概要、角色定义和初始功能树。</p>
+              <p className="font-bold text-slate-800 text-base">{t('onboarding.processingDraft')}</p>
+              <p className="text-sm text-slate-500 mt-1">{t('onboarding.processingDraftDesc')}</p>
             </div>
           )}
 
           <div className="p-8 space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 tracking-wide">项目名称（可选）</label>
+                <label className="text-xs font-bold text-slate-700 tracking-wide">{t('onboarding.projectNameLabel')}</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full p-3 text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow text-sm"
-                  placeholder="留空则由 AI 自动生成"
+                  placeholder={t('onboarding.projectNamePlaceholder')}
                   disabled={isWorking}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 tracking-wide">项目简述（可选）</label>
+                <label className="text-xs font-bold text-slate-700 tracking-wide">{t('onboarding.projectDescLabel')}</label>
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full p-3 text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow text-sm"
-                  placeholder="一句话描述业务目标"
+                  placeholder={t('onboarding.projectDescPlaceholder')}
                   disabled={isWorking}
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 tracking-wide">项目业务诉求与愿景（必填）</label>
+              <label className="text-xs font-bold text-slate-700 tracking-wide">{t('onboarding.promptLabel')}</label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="w-full h-36 p-4 text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-shadow text-sm"
-                placeholder="描述你想构建什么应用、目标用户是谁、核心流程是什么。"
+                placeholder={t('onboarding.promptPlaceholder')}
                 disabled={isWorking}
               />
             </div>
@@ -272,8 +271,8 @@ export function ProjectOnboarding() {
             {knowledgeBaseEnabled && (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-700 tracking-wide flex items-center justify-between">
-                  <span>项目参考资料（可选）</span>
-                  <span className="text-[10px] text-slate-400 font-normal">支持 .txt, .md, .pdf, .docx, .xlsx，单个最大 20MB</span>
+                  <span>{t('onboarding.kbTitle')}</span>
+                  <span className="text-[10px] text-slate-400 font-normal">{t('onboarding.kbNotice')}</span>
                 </label>
 
                 <div
@@ -304,7 +303,7 @@ export function ProjectOnboarding() {
                   )}
                   
                   <div className="text-xs font-medium text-slate-600">
-                    {isUploadingDocument ? '正在上传文件中...' : '拖拽文件到这里，或点击上传'}
+                    {isUploadingDocument ? t('onboarding.kbDragging') : t('onboarding.kbDragDrop')}
                   </div>
                 </div>
 
@@ -324,37 +323,36 @@ export function ProjectOnboarding() {
                               <div className="font-semibold text-slate-700 truncate">{doc.original_filename}</div>
                               <div className="text-[10px] text-slate-400 mt-0.5">{formatBytes(doc.file_size)}</div>
                             </div>
-                          </div>
+                        </div>
 
-                          <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-3 shrink-0">
                             {isReady && (
                               <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold border border-emerald-100 px-2 py-0.5 rounded-lg text-[10px]">
                                 <CheckCircle className="w-3 h-3 text-emerald-600" />
-                                可用于 AI
+                                {t('onboarding.kbStatusReady')}
                               </span>
                             )}
 
                             {isProcessing && (
                               <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 font-bold border border-amber-100 px-2 py-0.5 rounded-lg text-[10px] animate-pulse">
                                 <Clock className="w-3 h-3 text-amber-500 animate-spin" />
-                                解析中...
+                                {t('onboarding.kbStatusProcessing')}
                               </span>
                             )}
 
                             {isFailed && (
                               <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 font-bold border border-rose-100 px-2 py-0.5 rounded-lg text-[10px]" title={doc.error_message || undefined}>
                                 <XCircle className="w-3 h-3 text-rose-500" />
-                                转换失败
+                                {t('onboarding.kbStatusFailed')}
                               </span>
                             )}
-
                             <div className="flex items-center gap-1">
                               {isFailed && (
                                 <button
                                   type="button"
                                   onClick={() => void retryCreationDocument(doc.public_id)}
                                   className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
-                                  title="重试解析"
+                                  title={t('onboarding.kbRetryTitle')}
                                 >
                                   <RefreshCw className="w-3.5 h-3.5" />
                                 </button>
@@ -363,7 +361,7 @@ export function ProjectOnboarding() {
                                 type="button"
                                 onClick={() => void deleteCreationDocument(doc.public_id)}
                                 className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-rose-600 transition-colors"
-                                title="删除文档"
+                                title={t('onboarding.kbDeleteTitle')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -382,16 +380,16 @@ export function ProjectOnboarding() {
                 {error}
               </div>
             )}
-          </div>
+        </div>
 
-          <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-3">
+        <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-3">
             <button
               type="button"
               onClick={() => setIsInterviewOpen(true)}
               className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-6 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
             >
               <MessageCircle className="w-4 h-4 mr-1.5" />
-              先简单聊聊
+              {t('onboarding.btnTalk')}
             </button>
             <button
               type="button"
@@ -399,11 +397,11 @@ export function ProjectOnboarding() {
               disabled={!prompt.trim() || isWorking}
               className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl border border-slate-200 bg-white px-6 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
             >
-              创建空白项目
+              {t('onboarding.btnCreateBlank')}
             </button>
             <div className="relative group">
               <div className="pointer-events-none absolute bottom-full right-0 mb-2 w-56 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-relaxed text-slate-600 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0 z-30">
-                先生成 2 套完整方案草稿，选择最合适的进入工作区。
+                {t('onboarding.btnGenerateAIChoiceTooltip')}
               </div>
               <button
                 type="button"
@@ -411,19 +409,19 @@ export function ProjectOnboarding() {
                 disabled={!prompt.trim() || isWorking}
                 className="inline-flex h-12 min-w-[168px] items-center justify-center rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white shadow-lg shadow-indigo-100 transition-colors hover:bg-indigo-700 disabled:opacity-50"
               >
-                生成AI项目草稿
+                {t('onboarding.btnGenerateAIChoice')}
               </button>
             </div>
-          </div>
+        </div>
 
-          <ProjectInterviewDialog
+        <ProjectInterviewDialog
             isOpen={isInterviewOpen}
             onClose={() => setIsInterviewOpen(false)}
           />
         </div>
-      </div>
+    </div>
 
-      {/* Warning dialog for documents currently converting/uploading */}
+    {/* Warning dialog for documents currently converting/uploading */}
       {showWarningModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-2xl max-w-md w-full space-y-4 animate-in zoom-in-95 duration-200">
@@ -432,34 +430,34 @@ export function ProjectOnboarding() {
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-black text-slate-800">资料尚在解析处理中</h3>
+                <h3 className="text-sm font-black text-slate-800">{t('onboarding.warningModal.title')}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  您上传的部分参考资料仍在进行解析和中文分词切块。如果您现在选择继续创建，AI 将无法参考尚未处理完成的文件内容。
+                  {t('onboarding.warningModal.desc')}
                 </p>
               </div>
-            </div>
+          </div>
 
-            <div className="flex justify-end gap-2.5 pt-2">
+          <div className="flex justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={() => setShowWarningModal(false)}
                 className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
               >
-                稍等一下
+                {t('onboarding.warningModal.wait')}
               </button>
               <button
                 type="button"
                 onClick={proceedWithWarning}
                 className="px-4 py-2 bg-indigo-600 rounded-xl text-xs font-bold text-white hover:bg-indigo-700 shadow-md shadow-indigo-100 transition-colors"
               >
-                继续创建
+                {t('onboarding.warningModal.proceed')}
               </button>
             </div>
           </div>
         </div>
-      )}
+    )}
 
-      {/* Choice Group Preview Modal (multi-candidate) */}
+    {/* Choice Group Preview Modal (multi-candidate) */}
       <ChoiceGroupPreviewModal
         group={activeChoiceGroup}
         isWorking={isWorking}
@@ -468,9 +466,9 @@ export function ProjectOnboarding() {
         onAccept={handleAcceptChoice}
         onDiscard={handleDiscardChoiceGroup}
         onDefer={handleDeferChoiceGroup}
-      />
+    />
 
-      {/* Fallback: old single-draft modal (kept for compatibility) */}
+    {/* Fallback: old single-draft modal (kept for compatibility) */}
       <DraftPreviewModal
         draft={activeDraftType === 'project' ? activeDraft : null}
         draftType={activeDraftType === 'project' ? activeDraftType : null}
@@ -478,7 +476,7 @@ export function ProjectOnboarding() {
         onDiscard={discardAIOnboarding}
         onRegenerate={(feedback) => regenerateAIOnboarding(feedback)}
         onConfirm={handleConfirmDraft}
-        confirmLabel="确认并进入工作区"
+        confirmLabel={t('onboarding.draftConfirmLabel')}
       />
     </div>
   );

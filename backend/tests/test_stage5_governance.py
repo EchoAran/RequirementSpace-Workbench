@@ -7,6 +7,7 @@ from backend.database.model import (
     ActorModel,
     FeatureModel,
     PerceptionJobModel,
+    PerceptionSlotModel,
     GenerativeDraftModel,
 )
 from backend.schemas import PerceptionJobStatus
@@ -92,14 +93,14 @@ async def test_next_suggestion_perception_insertion_order(db_session):
     # Define NextSuggestionService
     suggestion_service = NextSuggestionService()
 
-    # Normal next suggestion is rule-based and must not auto-start perception jobs.
+    # An already advanced stage must not keep suggesting the completed transition.
     res = await suggestion_service.get_next_suggestion(
         project_id=project_id,
         stage="what",
         session=db_session,
         public_project_id=public_id,
     )
-    assert res["suggestion"]["code"] == "ENTER_HOW"
+    assert res["suggestion"] is None
 
     # Manual rediagnose is the explicit entry point for AI perception.
     res = await suggestion_service.rediagnose_next_suggestion(
@@ -131,6 +132,14 @@ async def test_next_suggestion_perception_insertion_order(db_session):
         "perception_kind_code": "ACTOR",
         "perception_description": "Found a missing actor: Admin",
     }
+    db_session.add(
+        PerceptionSlotModel(
+            id=job_actor.id,
+            project_id=project_id,
+            perception_kind="角色结点",
+            description="Found a missing actor: Admin",
+        )
+    )
 
     # Seed FEATURE perception job (which hasn't been created yet)
     job_feature = PerceptionJobModel(
@@ -148,6 +157,15 @@ async def test_next_suggestion_perception_insertion_order(db_session):
     )
     db_session.add(job_feature)
     await db_session.commit()
+
+    # Normal finding refreshes surface the active slot instead of reviving ENTER_HOW.
+    res_cached = await suggestion_service.get_next_suggestion(
+        project_id=project_id,
+        stage="what",
+        session=db_session,
+        public_project_id=public_id,
+    )
+    assert res_cached["suggestion"]["code"] == "ACTOR_SLOT"
 
     # Explicit perception reads should keep ACTOR priority over FEATURE.
     res_ready = await suggestion_service.get_next_suggestion(
@@ -174,6 +192,74 @@ async def test_next_suggestion_perception_insertion_order(db_session):
     )
     assert res_ready_2["suggestion"]["code"] == "FEATURE_SLOT"
     assert res_ready_2["suggestion"]["description"] == "Found a missing feature: Login"
+
+    # Polling reports a failed perceptron instead of silently retrying forever.
+    from fastapi import BackgroundTasks
+    job_feature.status = PerceptionJobStatus.FAILED.value
+    job_feature.error_message = "LLM request failed"
+    await db_session.commit()
+    res_failed = await suggestion_service.get_next_suggestion(
+        project_id=project_id,
+        stage="what",
+        session=db_session,
+        background_tasks=BackgroundTasks(),
+        public_project_id=public_id,
+        include_perception=True,
+    )
+    assert res_failed["suggestion"]["code"] == "FEATURE_PERCEPTION_FAILED"
+    assert job_feature.status == PerceptionJobStatus.FAILED.value
+
+
+@pytest.mark.asyncio
+async def test_perception_poll_advances_after_empty_result(db_session):
+    from fastapi import BackgroundTasks
+    from backend.api.modules.diagnosis_quality.perception.application.job import (
+        PerceptionJobService,
+    )
+    from backend.core.detectors.issue_context_loader import load_issue_project_context
+
+    project = ProjectModel(
+        name="Perception Poll Test",
+        description="Testing sequential perception polling",
+        owner_user_id=1,
+        user_requirements="Default requirement space",
+        unlocked_stages="what",
+    )
+    db_session.add(project)
+    await db_session.commit()
+
+    service = PerceptionJobService()
+    context = await load_issue_project_context(project_id=project.id, session=db_session)
+    actor_job = PerceptionJobModel(
+        project_id=project.id,
+        stage="what",
+        perception_kind="ACTOR",
+        target_type="project",
+        target_id="",
+        context_hash=service._build_context_hash("ACTOR", "", context),
+        status=PerceptionJobStatus.DONE_EMPTY.value,
+    )
+    db_session.add(actor_job)
+    await db_session.commit()
+
+    background_tasks = BackgroundTasks()
+    suggestion = await service.get_next_what_suggestion(
+        project_id=project.id,
+        session=db_session,
+        background_tasks=background_tasks,
+        public_project_id=project.public_id,
+    )
+
+    assert suggestion is not None
+    assert suggestion.code == "FEATURE_PERCEPTION_RUNNING"
+    assert len(background_tasks.tasks) == 1
+    feature_job_result = await db_session.execute(
+        select(PerceptionJobModel).where(
+            PerceptionJobModel.project_id == project.id,
+            PerceptionJobModel.perception_kind == "FEATURE",
+        )
+    )
+    assert feature_job_result.scalar_one().status == PerceptionJobStatus.RUNNING.value
 
 
 @pytest.mark.asyncio

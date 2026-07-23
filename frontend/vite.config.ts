@@ -6,8 +6,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig(({ mode }) => {
   return {
-    // 生产环境编译时使用子路径，本地开发调试时使用根路径 '/'
-    base: mode === 'production' ? '/requirement_space_workbench/' : '/',
+    // 生产环境与本地调试统一使用根路径 '/'
+    base: '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

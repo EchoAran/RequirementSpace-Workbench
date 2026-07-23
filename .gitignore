@@ -19,7 +19,12 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.cache/
 htmlcov/
+coverage/
 .coverage
 .coverage.*
 coverage.xml
@@ -42,14 +47,29 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
+*.tsbuildinfo
+.eslintcache
 
 # Logs and temporary files
 *.log
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
+*~
 pip-log.txt
 pip-delete-this-directory.txt
 backup/
 tmp/
 temp/
+scratch/
+
+# Test-generated comparison and result files
+backend/tests/contracts/*.new.json
+test-results/
 
 # IDE and OS files
 .idea/

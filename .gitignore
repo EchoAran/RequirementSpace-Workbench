@@ -73,3 +73,6 @@ docs/development_specifications/*
 # Local runtime storage
 storage/
 
+.docs/
+
+.plugin/

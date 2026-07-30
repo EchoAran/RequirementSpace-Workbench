@@ -339,5 +339,3 @@ export function TopBar() {
     </header>
   );
 }
-
-export default TopBar;

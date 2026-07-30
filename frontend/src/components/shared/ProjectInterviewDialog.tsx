@@ -8,11 +8,9 @@
 
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Sparkles, Send, Loader2, Bot, User, Check, X } from 'lucide-react';
 import { workspaceApi } from '@/lib/api';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { buildProjectRoute } from '@/core/selectors';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -26,11 +24,9 @@ interface ProjectInterviewDialogProps {
 
 export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDialogProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isReady, setIsReady] = useState(false);
   const [summary, setSummary] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -56,7 +52,6 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
       const res = await workspaceApi.interviewChat(initialMessages);
       setMessages([{ role: 'assistant', content: res.reply }]);
       if (res.is_ready) {
-        setIsReady(true);
         setSummary(res.summary);
         setStep('ready');
       }
@@ -80,7 +75,6 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
       const res = await workspaceApi.interviewChat(updatedMessages);
       setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
       if (res.is_ready) {
-        setIsReady(true);
         setSummary(res.summary);
         setStep('ready');
       }

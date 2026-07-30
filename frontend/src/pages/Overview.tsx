@@ -3,7 +3,6 @@ import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ChoiceCard } from '@/components/shared/ChoiceCard';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import { StaleChoiceDialog } from '@/components/shared/StaleChoiceDialog';
-import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationWorkspace } from '@/components/collaboration/ConfirmationWorkspace';
 import { useState, useCallback, useEffect, useMemo } from 'react';
@@ -12,8 +11,7 @@ import {
   useWorkspaceStore,
   selectChoices
 } from '@/store/useWorkspaceStore';
-import { Cpu, Database, RefreshCw, Sliders } from 'lucide-react';
-import { NodeKindToRoute } from '@/core/schema';
+import { Cpu, Database, Sliders } from 'lucide-react';
 import { findingProjection } from '@/core/findingPresentation';
 import { getAuditActionTypeLabel, getAuditSummary } from '@/core/auditActionLabels';
 import { useTranslation } from 'react-i18next';
@@ -36,7 +34,6 @@ export function Overview() {
     activeStaleChoice,
     clearStaleChoice,
     regenerateChoiceGroup,
-    deferOnboardingChoiceGroup,
     discardChoiceGroup,
     backendChoiceGroups,
   } = useWorkspaceStore();

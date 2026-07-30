@@ -2,7 +2,6 @@
 from sqlalchemy import select
 
 from backend.core.llm_protected_inputs import collect_protected_texts
-from backend.database.model import AIAddSessionModel, ProjectModel
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class AIAddSessionInteractor:
 
     async def get_session(self, session_id: int, session) -> dict:
         """Get session details by ID."""
-        from backend.database.model import AIAddSessionModel, ProjectModel
+        from backend.database.model import ProjectModel
 
         db_session = await self._get_session_or_raise(session_id, session)
 
@@ -75,27 +74,12 @@ class AIAddSessionInteractor:
         """
         Append a user message, run the interview strategy, return the assistant reply.
         """
-        from backend.database.model import AIAddMessageModel
-
-        # Load session
         ai_session = await self._get_session_or_raise(session_id, db_session)
-
         if ai_session.status != "active":
             raise ValueError(f"session_not_active: status={ai_session.status}")
 
-        # Save user message
-        user_msg = AIAddMessageModel(
-            session_id=session_id,
-            role="user",
-            content=content,
-        )
-        db_session.add(user_msg)
-        await db_session.flush()
-
-        # Get strategy
+        await self._save_user_message(session_id, content, db_session)
         strategy = self._strategy_registry.get(ai_session.target_type)
-
-        # Load project context (only what the strategy needs)
         project_context = await self._load_context(
             ai_session.project_id,
             strategy.required_context,
@@ -108,7 +92,6 @@ class AIAddSessionInteractor:
             content,
         )
 
-        # Build llm_call_chat function the strategy can use
         llm_handler = self._get_llm_handler()
         async def llm_call_chat(messages: list[dict], response_format: dict | None = None) -> str | None:
             return await llm_handler.call_chat(
@@ -117,65 +100,106 @@ class AIAddSessionInteractor:
                 protected_inputs=protected_inputs,
             )
 
-        # Build query for references retrieval
-        query_parts = [ai_session.target_type, content]
-        if ai_session.anchor_payload:
-            query_parts.append(str(ai_session.anchor_payload))
-        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
-            known_facts = ai_session.summary_payload.get("known_facts")
-            if known_facts:
-                query_parts.append(str(known_facts))
-        combined_query = " ".join(query_parts)
-
         from backend.services.knowledge.context_builder import KnowledgeContextBuilder
         knowledge_context = await KnowledgeContextBuilder.build(
             project_id=ai_session.project_id,
             purpose="ai_add_interview",
-            query=combined_query,
+            query=self._build_knowledge_query(ai_session, content),
             token_budget=3000,
             session=db_session,
         )
         protected_inputs += collect_protected_texts(knowledge_context)
-
-        # Execute strategy
-        import inspect
-        sig = inspect.signature(strategy.interview)
-        has_knowledge_context = (
-            "knowledge_context" in sig.parameters
-            or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        result = await self._execute_interview(
+            strategy,
+            project_context,
+            ai_session,
+            content,
+            llm_call_chat,
+            knowledge_context,
+        )
+        return await self._complete_interview(
+            session_id,
+            ai_session,
+            result,
+            db_session,
         )
 
-        if has_knowledge_context:
-            result = await strategy.interview(
-                project_context=project_context,
-                anchor=ai_session.anchor_payload,
-                current_summary=ai_session.summary_payload,
-                latest_user_message=content,
-                llm_call_chat=llm_call_chat,
-                knowledge_context=knowledge_context,
+    @staticmethod
+    async def _save_user_message(session_id: int, content: str, db_session) -> None:
+        from backend.database.model import AIAddMessageModel
+
+        db_session.add(
+            AIAddMessageModel(
+                session_id=session_id,
+                role="user",
+                content=content,
             )
-        else:
-            result = await strategy.interview(
-                project_context=project_context,
-                anchor=ai_session.anchor_payload,
-                current_summary=ai_session.summary_payload,
-                latest_user_message=content,
-                llm_call_chat=llm_call_chat,
+        )
+        await db_session.flush()
+
+    @staticmethod
+    def _build_knowledge_query(ai_session, content: str) -> str:
+        query_parts = [ai_session.target_type, content]
+        if ai_session.anchor_payload:
+            query_parts.append(str(ai_session.anchor_payload))
+        if ai_session.summary_payload and isinstance(
+            ai_session.summary_payload,
+            dict,
+        ):
+            known_facts = ai_session.summary_payload.get("known_facts")
+            if known_facts:
+                query_parts.append(str(known_facts))
+        return " ".join(query_parts)
+
+    @staticmethod
+    async def _execute_interview(
+        strategy,
+        project_context: dict,
+        ai_session,
+        content: str,
+        llm_call_chat,
+        knowledge_context,
+    ) -> dict:
+        import inspect
+
+        signature = inspect.signature(strategy.interview)
+        accepts_knowledge_context = (
+            "knowledge_context" in signature.parameters
+            or any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
             )
+        )
+        kwargs = {
+            "project_context": project_context,
+            "anchor": ai_session.anchor_payload,
+            "current_summary": ai_session.summary_payload,
+            "latest_user_message": content,
+            "llm_call_chat": llm_call_chat,
+        }
+        if accepts_knowledge_context:
+            kwargs["knowledge_context"] = knowledge_context
+        return await strategy.interview(**kwargs)
+
+    @staticmethod
+    async def _complete_interview(
+        session_id: int,
+        ai_session,
+        result: dict,
+        db_session,
+    ) -> dict:
+        from backend.database.model import AIAddMessageModel
 
         assistant_message = result.get("assistant_message", "")
         is_ready = bool(result.get("is_ready_to_generate", False))
         summary = result.get("summary", {})
-
-        # Save assistant message
-        assistant_msg = AIAddMessageModel(
-            session_id=session_id,
-            role="assistant",
-            content=assistant_message,
+        db_session.add(
+            AIAddMessageModel(
+                session_id=session_id,
+                role="assistant",
+                content=assistant_message,
+            )
         )
-        db_session.add(assistant_msg)
-
-        # Update session
         ai_session.summary_payload = summary
         ai_session.ready_to_generate = is_ready
         if is_ready:
@@ -186,9 +210,7 @@ class AIAddSessionInteractor:
             session_id, ai_session.target_type, is_ready,
             summary.get("round_count", "?"),
         )
-
         await db_session.flush()
-
         return {
             "session_id": session_id,
             "assistant_message": assistant_message,

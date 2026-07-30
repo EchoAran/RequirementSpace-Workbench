@@ -55,7 +55,6 @@ def _make_summary(affected_nodes: list, affected_relations: list) -> str:
     node_changes = {}
     for n in affected_nodes:
         c = n.get("change", "")
-        name = n.get("name", "")
         node_changes[c] = node_changes.get(c, 0) + 1
     for change, count in node_changes.items():
         parts.append(f"{change}: {count} 项")

@@ -7,12 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_project
 from backend.database.model import UserModel
 from backend.api.modules.ai_interaction.ai_explain.schemas import (
     ExplainRequest,
     ExplainResponse,
-    ExplainContextSummary,
 )
 from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
 from backend.database.database import get_session

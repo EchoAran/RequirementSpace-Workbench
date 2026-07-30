@@ -78,6 +78,23 @@ class SkillBackedAcceptanceCriteriaGenerationService(
                 for scenario in scenario_nodes
             },
         )
+        return self._build_preview_payloads(
+            project_id=project_id,
+            generation_mode=generation_mode,
+            scenario_nodes=scenario_nodes,
+            gherkin_context_by_scenario_id=gherkin_context_by_scenario_id,
+            generated_acceptance_criteria=generated_acceptance_criteria,
+        )
+
+    @staticmethod
+    def _build_preview_payloads(
+        *,
+        project_id: int,
+        generation_mode: str,
+        scenario_nodes: list[ScenarioNode],
+        gherkin_context_by_scenario_id: dict[int, dict],
+        generated_acceptance_criteria: list[dict],
+    ) -> tuple[dict, dict]:
         scenario_name_map = {
             scenario.scenarioId: scenario.scenarioName
             for scenario in scenario_nodes

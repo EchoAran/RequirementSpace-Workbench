@@ -20,28 +20,39 @@ class FlowsFillerInput(FillerInput):
 
 class FlowsFiller(BaseFiller[FlowsFillerInput]):
     async def fill(self, input_data: FlowsFillerInput) -> Dict:
-        user_requirements_ = input_data.user_requirements
+        flows_response = await self._llm_handler.call_llm(
+            prompt=self._build_flows_prompt(input_data),
+            query=input_data.user_feedback,
+            print_log=True,
+            protected_inputs=self._protected_inputs(input_data),
+        )
+        response = await self._llm_handler.call_llm(
+            prompt=self._build_flow_labels_prompt(input_data, flows_response),
+            query=input_data.user_feedback,
+            print_log=True,
+            protected_inputs=self._protected_inputs(input_data),
+        )
+        return json.loads(response)
 
+    @staticmethod
+    def _build_flows_prompt(input_data: FlowsFillerInput) -> str:
         features_payload = FeatureNode.schema(
             many=True,
             only=("featureId", "featureName", "featureDescription", "actorIds")
-        ).dump(node for node in input_data.features if len(node.childrenIds) == 0)      # 筛选出没有孩子的结点，即叶子结点
-
-        features_ = json.dumps(
+        ).dump(node for node in input_data.features if len(node.childrenIds) == 0)
+        features = json.dumps(
             {"features": features_payload},
             ensure_ascii=False,
             indent=2
         )
-
         perception_description_payload = PerceptionSlot.schema(
             only=("perceptionDescription",)
         ).dump(input_data.perception_description)
-        perception_description_ = json.dumps(
+        perception_description = json.dumps(
             perception_description_payload,
             ensure_ascii=False,
             indent=2,
         )
-
         flows_payload = FlowNode.schema(
             many=True,
             only=(
@@ -55,37 +66,35 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
                 "flowSteps.nextStepIds",
             ),
         ).dump(input_data.flows)
-
-        flows_ = json.dumps(
+        flows = json.dumps(
             {"flows": flows_payload,},
             ensure_ascii=False,
             indent=2,
         )
-
-        # 第一步，生成补充的流程
-        flows_response = await self._llm_handler.call_llm(
-            prompt=flows_fill_prompt.replace(
-                "{{user_requirements}}",f"{user_requirements_}").replace(
-                "{{features}}", f"{features_}").replace(
-                "{{flows}}", f"{flows_}").replace(
-                "{{perception_description}}", f"{perception_description_}"
-            ),
-            query=input_data.user_feedback,
-            print_log=True,
-            protected_inputs=self._protected_inputs(input_data),
+        return flows_fill_prompt.replace(
+            "{{user_requirements}}", f"{input_data.user_requirements}"
+        ).replace(
+            "{{features}}", f"{features}"
+        ).replace(
+            "{{flows}}", f"{flows}"
+        ).replace(
+            "{{perception_description}}", f"{perception_description}"
         )
 
+    @staticmethod
+    def _build_flow_labels_prompt(
+        input_data: FlowsFillerInput,
+        flows_response: str,
+    ) -> str:
         actors_payload = ActorNode.schema(
             many=True,
             only=("actorId", "actorName", "actorDescription")
         ).dump(input_data.actors)
-
-        actors_ = json.dumps(
+        actors = json.dumps(
             {"actors": actors_payload},
             ensure_ascii=False,
             indent=2
         )
-
         business_objects_payload = BusinessObjectNode.schema(
             many=True,
             only=(
@@ -95,22 +104,15 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
                 "businessObjectAttributes",
             ),
         ).dump(input_data.business_objects)
-
-        business_objects_ = json.dumps(
+        business_objects = json.dumps(
             {"business_objects": business_objects_payload},
             ensure_ascii=False,
             indent=2,
         )
-
-        # 第二步 生成或标记流程相关属性
-        response = await self._llm_handler.call_llm(
-            prompt=business_objects_actors_label_prompt.replace(
-                "{{actors}}", f"{actors_}").replace(
-                "{{business_objects}}", f"{business_objects_}").replace(
-                "{{flow}}", f"{flows_response}"
-            ),
-            query=input_data.user_feedback,
-            print_log=True,
-            protected_inputs=self._protected_inputs(input_data),
+        return business_objects_actors_label_prompt.replace(
+            "{{actors}}", f"{actors}"
+        ).replace(
+            "{{business_objects}}", f"{business_objects}"
+        ).replace(
+            "{{flow}}", f"{flows_response}"
         )
-        return json.loads(response)

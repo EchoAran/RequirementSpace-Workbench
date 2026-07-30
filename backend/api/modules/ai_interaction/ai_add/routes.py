@@ -8,13 +8,11 @@ from backend.api.modules.ai_interaction.ai_add.schemas import (
     AIAddSessionCreateRequest,
     AIAddSessionResponse,
     AIAddSessionMessagesResponse,
-    AIAddMessageItem,
     AIAddMessageRequest,
     AIAddMessageResponse,
     AIAddGenerateDraftResponse,
     AIAddConfirmDraftResponse,
     AIAddDiscardDraftResponse,
-    AIAddSessionErrorResponse,
 )
 from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 from backend.database.database import get_session

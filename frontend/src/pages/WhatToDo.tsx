@@ -13,10 +13,7 @@ import {
   useWorkspaceStore, 
   selectActors, 
 } from '@/store/useWorkspaceStore';
-import { findingTargetIds } from '@/core/findingPresentation';
 import {
-  buildProjectRoute,
-  getStageIssues,
   getChildCapabilities,
   getRootCapabilities,
 } from '@/core/selectors';
@@ -282,19 +279,18 @@ export function WhatToDo() {
     generateActors, regenerateActors, confirmActors,
     generateFeatures, regenerateFeatures, confirmFeatures,
     generateScenarios, regenerateScenarios, confirmScenarios,
-    generateAcceptanceCriteria, regenerateAcceptanceCriteria, confirmAcceptanceCriteria,
-    discardDraft, activeDraft, activeDraftType, isGenerating, isLoading, isDiagnosing,
+    regenerateAcceptanceCriteria, confirmAcceptanceCriteria,
+    discardDraft, activeDraft, activeDraftType, isGenerating, isLoading,
     addActor, addFeature,
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress,
-    acceptChoice, discardChoiceGroup, deferOnboardingChoiceGroup,
+    acceptChoice, discardChoiceGroup,
     addScenario, deleteScenario, addAcceptanceCriterion, deleteAcceptanceCriterion,
     updateScenario, updateAcceptanceCriterion,
     setNodeStatus,
-    deleteActor, deleteFeature, expandSlot, runDiagnosis, triggerGateCheck, requestStageTransition,
+    deleteActor, deleteFeature, runDiagnosis, requestStageTransition,
     confirmRepairDraft,
     discardRepairDraft,
     regenerateRepairDraft,
-    executeFindingIssueResolution, updateIssueAttributes, clearPerceptionSlot
   } = useWorkspaceStore();
   
   const actors = useWorkspaceStore(selectActors);
@@ -328,7 +324,6 @@ export function WhatToDo() {
   const [modalNewScenContent, setModalNewScenContent] = useState('');
   const [modalNewScenActorId, setModalNewScenActorId] = useState<number>(0);
   const [modalAddingAcForScenId, setModalAddingAcForScenId] = useState<number | null>(null);
-  const [modalNewAcContent, setModalNewAcContent] = useState('');
   const [showAddScenarioForm, setShowAddScenarioForm] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
 
@@ -338,7 +333,6 @@ export function WhatToDo() {
   const [editingScenarioContent, setEditingScenarioContent] = useState('');
   const [editingScenarioActorId, setEditingScenarioActorId] = useState<number>(0);
   const [editingAcId, setEditingAcId] = useState<number | null>(null);
-  const [editingAcContent, setEditingAcContent] = useState('');
   const [collapsedScenarioIds, setCollapsedScenarioIds] = useState<Record<number, boolean>>({});
   const [collapsedAcScenarioIds, setCollapsedAcScenarioIds] = useState<Record<number, boolean>>({});
 
@@ -363,7 +357,7 @@ export function WhatToDo() {
   );
 
 
-  const executeManualAction = (kind: string, targetId?: number, focusMode?: string) => {
+  const executeManualAction = (kind: string, targetId?: number) => {
     if (kind === 'missing_actor' || kind === 'what_onboarding') {
       setIsAddActorModalOpen(true);
     } else if (kind === 'missing_feature') {
@@ -398,62 +392,12 @@ export function WhatToDo() {
     }
   };
 
-  const handleManualAction = (slot: any) => {
-    if (slot.kind === 'generative_perception_slot') {
-      void clearPerceptionSlot();
-      return;
-    }
-    executeManualAction(slot.kind, slot.targetId || slot.actions?.manual?.targetId, slot.actions?.manual?.focusMode);
-  };
-
-  const handleAIAction = async (slot: any) => {
-    const kind = slot.kind;
-    if (kind === 'stage_gate_transition_confirm') {
-      await runDiagnosis();
-    } else if (kind === 'what_onboarding' || kind === 'missing_actor') {
-      await generateActors();
-    } else if (kind === 'missing_feature') {
-      await generateFeatures();
-    } else if (kind === 'missing_scenario' && slot.targetId) {
-      await generateScenarios([slot.targetId]);
-    } else if (kind === 'missing_acceptance_criteria' && slot.targetId) {
-      const featObj = ir?.features?.find((f: any) => f.featureId === slot.targetId);
-      const badScenIds = (featObj?.scenarios || [])
-        .filter((s: any) => !s.acceptanceCriteria || s.acceptanceCriteria.length === 0)
-        .map((s: any) => s.scenarioId);
-      if (badScenIds.length > 0) {
-        await generateAcceptanceCriteria(badScenIds);
-      }
-    } else {
-      if (slot.id) {
-        await expandSlot(slot.id);
-      }
-    }
-  };
-
-  const whatIssues = getStageIssues(ir, 'what');
-
-  const handleIssueClick = (issue: any) => {
-    setSelectedObject(issue);
-    const targetId = findingTargetIds(issue)[0];
-    if (targetId) {
-      setHighlightTarget(targetId);
-    }
-  };
-
-  const openIssueFlow = async (issue: any) => {
-    const slotId = await executeFindingIssueResolution(issue.findingId);
-    if (slotId) {
-      await expandSlot(slotId);
-    }
-  };
-
   // Consume pendingManualAction on mount or action change
   useEffect(() => {
     if (pendingManualAction && ir) {
-      const { kind, targetId, focusMode } = pendingManualAction;
+      const { kind, targetId } = pendingManualAction;
       setPendingManualAction(null);
-      executeManualAction(kind, targetId, focusMode);
+      executeManualAction(kind, targetId);
     }
   }, [pendingManualAction, ir]);
 
@@ -539,7 +483,6 @@ export function WhatToDo() {
       );
       if (firstBadScen) {
         setModalAddingAcForScenId(firstBadScen.scenarioId);
-        setModalNewAcContent('');
       }
     }
   }, [managedFeatObj, highlightTarget]);

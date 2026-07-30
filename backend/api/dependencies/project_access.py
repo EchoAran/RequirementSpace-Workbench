@@ -12,7 +12,6 @@ from backend.database.model import (
     ProjectModel,
     ProjectMemberModel,
     ProjectMemberStatus,
-    ProjectMemberRole,
 )
 
 logger = get_logger(__name__)

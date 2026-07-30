@@ -29,10 +29,7 @@ from backend.core.detectors import (
     WhatIssueDetector,
 )
 from backend.core.issue_resolution import IssueSolverRegistry
-from backend.core.issue_resolution.ai.base_ai_solver import (
-    RepairProposal,
-    RepairResult,
-)
+from backend.core.issue_resolution.ai.base_ai_solver import RepairResult
 from backend.core.issue_resolution.draft_factory import (
     IssueResolutionDraftFactory,
 )
@@ -167,64 +164,20 @@ class IssueRepairService:
 
         Returns a dict matching IssueResolutionResponse schema.
         """
-        # 1. Validate project
         await self._ensure_project_exists(project_id, session)
-
-        # 2. Resolve stage
         resolved_stage = self._resolve_stage(stage, issue_code)
-
-        # 3. Re-detect issues for the stage
         current_issues = await self._detect_stage_issues(project_id, resolved_stage, session)
-
-        # 4. Build IssueTarget for matching
         issue_target = self._build_target(target)
         issue_target_dict = self._target_to_dict(target)
-
-        # 4a. Validate target for issue codes that require one
         self._validate_target_for_code(issue_code, target)
-
-        # 5. Match current issue
         matched_issue = self._find_matching_issue(current_issues, issue_code, issue_target)
-
-        # 6. If issue no longer exists → check if code is known or truly unsupported
         if matched_issue is None:
-            is_known = self._is_known_code(issue_code)
-            if not is_known:
-                return {
-                    "project_id": project_id,
-                    "issue_code": issue_code,
-                    "resolution_type": "unsupported",
-                    "title": "暂不支持自动处理",
-                    "description": f"当前系统暂不支持自动处理「{issue_code}」类型的问题。",
-                    "action": {"kind": "manual_action", "payload": {}},
-                    "draft_id": None,
-                    "draft": {},
-                    "patch": None,
-                    "issue_fingerprint": None,
-                    "context_hash": None,
-                }
-            return {
-                "project_id": project_id,
-                "issue_code": issue_code,
-                "resolution_type": "already_resolved",
-                "title": "该问题已解决",
-                "description": "当前项目中已经找不到这个问题。",
-                "action": {"kind": "refresh_issues"},
-                "draft_id": None,
-                "draft": {},
-                "patch": None,
-                "issue_fingerprint": None,
-                "context_hash": None,
-            }
+            return self._build_unmatched_issue_response(project_id, issue_code)
 
-        # 7. Build fingerprint and context hash
         issue_fp = self._build_fingerprint(resolved_stage, issue_code, matched_issue.target)
         context_hash = await self._build_context_hash(project_id, matched_issue, session)
-
-        # 8. Look up capability from registry to drive dispatch
         cap = get_issue_capability(issue_code)
 
-        # 9. AI solver path (ai_repair capability)
         if cap.kind == IssueCapabilityKind.AI_REPAIR:
             ai_solver = _AI_SOLVERS.get(issue_code)
             if ai_solver is None:
@@ -251,11 +204,67 @@ class IssueRepairService:
                     session=session,
                 )
 
-        # 10. Registry path (generation_draft / open_panel / unsupported)
+        return await self._resolve_with_registry(
+            project_id=project_id,
+            issue_code=issue_code,
+            stage=resolved_stage,
+            issue_target=issue_target,
+            issue_id=matched_issue.issueId,
+            issue_fp=issue_fp,
+            context_hash=context_hash,
+            metadata=metadata,
+            session=session,
+        )
+
+    def _build_unmatched_issue_response(
+        self,
+        project_id: int,
+        issue_code: str,
+    ) -> dict:
+        if not self._is_known_code(issue_code):
+            return {
+                "project_id": project_id,
+                "issue_code": issue_code,
+                "resolution_type": "unsupported",
+                "title": "暂不支持自动处理",
+                "description": f"当前系统暂不支持自动处理「{issue_code}」类型的问题。",
+                "action": {"kind": "manual_action", "payload": {}},
+                "draft_id": None,
+                "draft": {},
+                "patch": None,
+                "issue_fingerprint": None,
+                "context_hash": None,
+            }
+        return {
+            "project_id": project_id,
+            "issue_code": issue_code,
+            "resolution_type": "already_resolved",
+            "title": "该问题已解决",
+            "description": "当前项目中已经找不到这个问题。",
+            "action": {"kind": "refresh_issues"},
+            "draft_id": None,
+            "draft": {},
+            "patch": None,
+            "issue_fingerprint": None,
+            "context_hash": None,
+        }
+
+    async def _resolve_with_registry(
+        self,
+        project_id: int,
+        issue_code: str,
+        stage: str,
+        issue_target: IssueTarget | None,
+        issue_id: str,
+        issue_fp: str,
+        context_hash: str,
+        metadata: dict,
+        session: AsyncSession,
+    ) -> dict:
         registry_metadata = {
             **(metadata or {}),
-            "issue_id": matched_issue.issueId if matched_issue else None,
-            "stage": resolved_stage,
+            "issue_id": issue_id,
+            "stage": stage,
             "issue_fingerprint": issue_fp,
             "context_hash": context_hash,
         }
@@ -274,26 +283,41 @@ class IssueRepairService:
                 resolution=resolution,
                 session=session,
             )
-            log_event(
-                logger,
-                logging.INFO,
-                "domain",
-                ISSUE_REPAIR_DRAFT_CREATED,
-                "Issue repair draft created",
-                project_id=project_id,
-                issue_code=issue_code,
-                stage=resolved_stage,
-                target_type=issue_target.targetType if issue_target else None,
-                target_id=issue_target.targetId if issue_target else None,
-                draft_id=getattr(resolution, "draftId", None),
+            self._log_draft_created(
+                project_id,
+                issue_code,
+                stage,
+                issue_target,
+                getattr(resolution, "draftId", None),
             )
 
-        # 12. Build unified response dict
         result = resolution.to_dict()
         result["project_id"] = project_id
         result["issue_fingerprint"] = issue_fp
         result["context_hash"] = context_hash
         return result
+
+    @staticmethod
+    def _log_draft_created(
+        project_id: int,
+        issue_code: str,
+        stage: str,
+        issue_target: IssueTarget | None,
+        draft_id,
+    ) -> None:
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            ISSUE_REPAIR_DRAFT_CREATED,
+            "Issue repair draft created",
+            project_id=project_id,
+            issue_code=issue_code,
+            stage=stage,
+            target_type=issue_target.targetType if issue_target else None,
+            target_id=issue_target.targetId if issue_target else None,
+            draft_id=draft_id,
+        )
 
     async def _resolve_with_ai(
         self,
@@ -311,12 +335,132 @@ class IssueRepairService:
         session: AsyncSession,
     ) -> dict:
         """AI solver path: call solver, validate, create draft, return response."""
-        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_draft_service import (
-            IssueRepairDraftService,
+        result = await self._call_ai_solver(
+            project_id,
+            issue_code,
+            target,
+            issue_target,
+            stage,
+            ai_solver,
+            session,
+        )
+        if result.fallback_to_registry:
+            return await self._resolve_ai_registry_fallback(
+                project_id,
+                issue_code,
+                stage,
+                issue_target,
+                issue_fp,
+                context_hash,
+                metadata,
+                session,
+            )
+
+        if result.result_type == "choice_group" and len(result.candidates) > 1:
+            return await self._handle_choice_group(
+                project_id=project_id, issue_code=issue_code,
+                issue_id=issue_id, stage=stage, target=target,
+                issue_fp=issue_fp, context_hash=context_hash,
+                result=result, session=session,
+            )
+
+        if not result.candidates:
+            return self._build_no_ai_candidate_response(
+                project_id,
+                issue_code,
+                target,
+                issue_fp,
+                context_hash,
+                result.fallback_reason,
+            )
+
+        candidate = result.candidates[0]
+        validation_failure = await self._validate_ai_candidate_patch(
+            project_id,
+            issue_code,
+            target,
+            issue_fp,
+            context_hash,
+            candidate,
+            session,
+        )
+        if validation_failure:
+            return validation_failure
+
+        return await self._create_ai_repair_draft(
+            project_id,
+            issue_code,
+            issue_id,
+            stage,
+            target,
+            issue_target,
+            issue_fp,
+            context_hash,
+            candidate,
+            session,
         )
 
+    def _build_no_ai_candidate_response(
+        self,
+        project_id: int,
+        issue_code: str,
+        target: dict | None,
+        issue_fp: str,
+        context_hash: str,
+        fallback_reason: str | None,
+    ) -> dict:
+        return self._build_ai_manual_action_response(
+            project_id,
+            issue_code,
+            target,
+            issue_fp,
+            context_hash,
+            "无法自动修复",
+            fallback_reason or "AI 无法确定修复方案，请手动处理。",
+        )
+
+    async def _validate_ai_candidate_patch(
+        self,
+        project_id: int,
+        issue_code: str,
+        target: dict | None,
+        issue_fp: str,
+        context_hash: str,
+        candidate,
+        session: AsyncSession,
+    ) -> dict | None:
+        if not candidate.patch:
+            return None
+        report = await self._validator.validate(
+            project_id=project_id,
+            issue_code=issue_code,
+            patch=candidate.patch,
+            session=session,
+        )
+        if report.get("valid"):
+            return None
+        return self._build_ai_manual_action_response(
+            project_id,
+            issue_code,
+            target,
+            issue_fp,
+            context_hash,
+            "修复方案校验未通过",
+            "; ".join(report.get("errors", [])),
+        )
+
+    @staticmethod
+    async def _call_ai_solver(
+        project_id: int,
+        issue_code: str,
+        target: dict | None,
+        issue_target: IssueTarget | None,
+        stage: str,
+        ai_solver,
+        session: AsyncSession,
+    ) -> RepairResult:
         try:
-            result: RepairResult = await ai_solver.solve(
+            return await ai_solver.solve(
                 project_id=project_id,
                 issue_code=issue_code,
                 target=target,
@@ -339,96 +483,87 @@ class IssueRepairService:
             )
             raise
 
-        # P4: fallback_to_registry — solver wants generation_draft path
-        if result.fallback_to_registry:
-            resolution = await self._solver_registry.resolve(
+    async def _resolve_ai_registry_fallback(
+        self,
+        project_id: int,
+        issue_code: str,
+        stage: str,
+        issue_target: IssueTarget | None,
+        issue_fp: str,
+        context_hash: str,
+        metadata: dict,
+        session: AsyncSession,
+    ) -> dict:
+        resolution = await self._solver_registry.resolve(
+            project_id=project_id,
+            issue_code=issue_code,
+            target=issue_target,
+            metadata=metadata,
+            session=session,
+        )
+        if resolution.resolutionType == "generation_draft":
+            resolution = await self._draft_factory.create_draft(
                 project_id=project_id,
-                issue_code=issue_code,
-                target=issue_target,
-                metadata=metadata,
+                resolution=resolution,
                 session=session,
             )
-            if resolution.resolutionType == "generation_draft":
-                resolution = await self._draft_factory.create_draft(
-                    project_id=project_id, resolution=resolution, session=session,
-                )
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "domain",
-                    ISSUE_REPAIR_DRAFT_CREATED,
-                    "Issue repair draft created",
-                    project_id=project_id,
-                    issue_code=issue_code,
-                    stage=stage,
-                    target_type=issue_target.targetType if issue_target else None,
-                    target_id=issue_target.targetId if issue_target else None,
-                    draft_id=getattr(resolution, "draftId", None),
-                )
-            response = resolution.to_dict()
-            response["project_id"] = project_id
-            response["issue_fingerprint"] = issue_fp
-            response["context_hash"] = context_hash
-            return response
-
-        # Branch: choice_group (multiple candidates)
-        if result.result_type == "choice_group" and len(result.candidates) > 1:
-            return await self._handle_choice_group(
-                project_id=project_id, issue_code=issue_code,
-                issue_id=issue_id, stage=stage, target=target,
-                issue_fp=issue_fp, context_hash=context_hash,
-                result=result, session=session,
+            self._log_draft_created(
+                project_id,
+                issue_code,
+                stage,
+                issue_target,
+                getattr(resolution, "draftId", None),
             )
+        response = resolution.to_dict()
+        response["project_id"] = project_id
+        response["issue_fingerprint"] = issue_fp
+        response["context_hash"] = context_hash
+        return response
 
-        # If no candidates, return manual_action fallback
-        if not result.candidates:
-            return {
-                "project_id": project_id,
-                "issue_code": issue_code,
-                "resolution_type": "manual_action",
-                "title": "无法自动修复",
-                "description": result.fallback_reason or "AI 无法确定修复方案，请手动处理。",
-                "action": {
-                    "kind": "open_panel",
-                    "payload": {"target": target},
-                },
-                "draft_id": None,
-                "draft": {},
-                "patch": None,
-                "issue_fingerprint": issue_fp,
-                "context_hash": context_hash,
-            }
+    @staticmethod
+    def _build_ai_manual_action_response(
+        project_id: int,
+        issue_code: str,
+        target: dict | None,
+        issue_fp: str,
+        context_hash: str,
+        title: str,
+        description: str,
+    ) -> dict:
+        return {
+            "project_id": project_id,
+            "issue_code": issue_code,
+            "resolution_type": "manual_action",
+            "title": title,
+            "description": description,
+            "action": {
+                "kind": "open_panel",
+                "payload": {"target": target},
+            },
+            "draft_id": None,
+            "draft": {},
+            "patch": None,
+            "issue_fingerprint": issue_fp,
+            "context_hash": context_hash,
+        }
 
-        # Single candidate: take the highest confidence
-        candidate = result.candidates[0]
+    async def _create_ai_repair_draft(
+        self,
+        project_id: int,
+        issue_code: str,
+        issue_id: str,
+        stage: str,
+        target: dict | None,
+        issue_target: IssueTarget | None,
+        issue_fp: str,
+        context_hash: str,
+        candidate,
+        session: AsyncSession,
+    ) -> dict:
+        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_draft_service import (
+            IssueRepairDraftService,
+        )
 
-        # Validate the patch
-        if candidate.patch:
-            report = await self._validator.validate(
-                project_id=project_id,
-                issue_code=issue_code,
-                patch=candidate.patch,
-                session=session,
-            )
-            if not report.get("valid"):
-                return {
-                    "project_id": project_id,
-                    "issue_code": issue_code,
-                    "resolution_type": "manual_action",
-                    "title": "修复方案校验未通过",
-                    "description": "; ".join(report.get("errors", [])),
-                    "action": {
-                        "kind": "open_panel",
-                        "payload": {"target": target},
-                    },
-                    "draft_id": None,
-                    "draft": {},
-                    "patch": None,
-                    "issue_fingerprint": issue_fp,
-                    "context_hash": context_hash,
-                }
-
-        # Create repair draft
         draft_service = IssueRepairDraftService()
         draft = await draft_service.create_draft(
             project_id=project_id,
@@ -445,18 +580,12 @@ class IssueRepairService:
             context_hash=context_hash,
             session=session,
         )
-        log_event(
-            logger,
-            logging.INFO,
-            "domain",
-            ISSUE_REPAIR_DRAFT_CREATED,
-            "Issue repair draft created",
-            project_id=project_id,
-            issue_code=issue_code,
-            stage=stage,
-            target_type=issue_target.targetType if issue_target else None,
-            target_id=issue_target.targetId if issue_target else None,
-            draft_id=draft.get("draft_id"),
+        self._log_draft_created(
+            project_id,
+            issue_code,
+            stage,
+            issue_target,
+            draft.get("draft_id"),
         )
 
         return {

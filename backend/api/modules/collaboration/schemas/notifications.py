@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import Field
 from backend.api.base_schema import CamelModel
 
 class NotificationResponse(CamelModel):

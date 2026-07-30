@@ -22,7 +22,7 @@ export type ScopeStatus = 'current' | 'postponed' | 'exclude';
 
 export type FlowStepType = 'actorAction' | 'systemAction' | 'judgment';
 
-export type PerceptionKindType =
+type PerceptionKindType =
   | '角色结点'
   | '功能模块结点'
   | '功能叶子结点'
@@ -196,26 +196,6 @@ export interface FlowNode {
 
 export type Stage = 'what' | 'how' | 'scope';
 
-export interface StageGateResult {
-  stage: Stage;
-  mandatoryChecksPassed: boolean;
-  passed: boolean;
-  issues: Finding[];
-  activeSlot?: PerceptionSlot;
-  blockingSlot?: PerceptionSlot;
-  missingKinds: string[];
-}
-
-export interface PageHealth {
-  statusCode: 'not_started' | 'in_progress' | 'needs_attention' | 'ready' | 'locked' | 'real_ready' | 'shadow_available' | 'ready_to_advance';
-  statusLabel: string;
-  disabled: boolean;
-  disabledReason?: string;
-  issueCount: number;
-  hasBlockingSlot: boolean;
-  nextSlot?: PerceptionSlot;
-}
-
 // 感知槽建议
 export interface PerceptionSlot {
   id: string;
@@ -304,14 +284,14 @@ export interface RequirementSpace {
 export type FindingType = 'issue' | 'next_suggestion' | 'gate_condition' | 'quality_hint';
 export type BlockingScope = 'none' | 'stage_transition' | 'preview' | 'export' | 'checkpoint';
 
-export type IssueCapabilityKind =
+type IssueCapabilityKind =
   | 'ai_repair'
   | 'generation_draft'
   | 'open_panel'
   | 'manual_action'
   | 'unsupported';
 
-export interface IssueCapability {
+interface IssueCapability {
   kind: IssueCapabilityKind;
   action_label: string;
   enabled: boolean;
@@ -542,7 +522,7 @@ export interface ProjectCreationChoiceGroupDeferResponse {
   message: string;
 }
 
-export interface GenerationChoiceGroup {
+interface GenerationChoiceGroup {
   id: number | string;
   projectId: string;
   status: string;
@@ -555,7 +535,7 @@ export interface GenerationChoiceGroup {
   choices: GenerationChoiceItem[];
 }
 
-export interface GenerationChoiceItem {
+interface GenerationChoiceItem {
   id: number | string;
   title: string;
   rationale: string;

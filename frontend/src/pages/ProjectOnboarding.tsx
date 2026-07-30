@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next';
 export function ProjectOnboarding() {
   const { t } = useTranslation();
   const {
-    startAIOnboarding,
     confirmAIOnboarding,
     regenerateAIOnboarding,
     discardAIOnboarding,

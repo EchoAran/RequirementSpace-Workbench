@@ -4,29 +4,20 @@ import {
   ActorNode,
   FeatureNode,
   ScenarioNode,
-  AcceptanceCriterionNode,
   ScopeNode,
-  BusinessObjectNode,
   BusinessObjectAttributeNode,
   FlowNode,
   FlowStepNode,
-  PerceptionSlot,
   ScopeStatus,
   Finding,
-  FindingType,
-  BlockingScope,
   Choice,
   ChoiceGroup,
-  GoalNode,
-  CapabilityNode,
-  TaskNode,
   NodeStatus,
   GraphPatch,
   FlowStepType,
   BaseNode,
   WorkspaceListItem,
   PendingManualAction,
-  KnowledgeWorkspace,
   KnowledgeDocument,
 } from '@/core/schema';
 import { workspaceApi } from '@/lib/api';
@@ -241,13 +232,214 @@ const loadBackendFindingsAndViews = async (
   }
 };
 
-export const normalizeRequirementSpace = (
+const addActorNodes = (nodes: Record<string, any>, actors: any[]) => {
+  actors.forEach(a => {
+    const id = a.actorId.toString();
+    nodes[id] = {
+      ...a,
+      id,
+      title: a.actorName,
+      description: a.actorDescription,
+      status: getConfirmationStatus(a.confirmationStatus),
+      scopeStatus: 'in_scope'
+    };
+  });
+};
+
+const addFeatureNodes = (nodes: Record<string, any>, features: any[]) => {
+  features.forEach(f => {
+    const id = f.featureId.toString();
+    nodes[id] = {
+      ...f,
+      id,
+      title: f.featureName,
+      description: f.featureDescription,
+      status: getConfirmationStatus(f.confirmationStatus),
+      scopeStatus: f.scope?.scopeStatus || 'in_scope'
+    };
+    (f.scenarios || []).forEach((s: any) => {
+      const id = s.scenarioId.toString();
+      nodes[id] = {
+        ...s,
+        id,
+        title: s.scenarioName,
+        description: s.scenarioContent,
+        status: getConfirmationStatus(s.confirmationStatus),
+        scopeStatus: 'in_scope'
+      };
+      (s.acceptanceCriteria || []).forEach((ac: any) => {
+        const criterionId = ac.criterionId.toString();
+        nodes[criterionId] = {
+          ...ac,
+          id: criterionId,
+          title: i18n.t('confirmationWorkspace.nodeKindLabels.acceptance_criterion'),
+          description: ac.criterionContent,
+          status: getConfirmationStatus(ac.confirmationStatus),
+          scopeStatus: 'in_scope'
+        };
+      });
+    });
+  });
+};
+
+const addBusinessObjectNodes = (
+  nodes: Record<string, any>,
+  businessObjects: any[]
+) => {
+  businessObjects.forEach(b => {
+    const id = b.businessObjectId.toString();
+    nodes[id] = {
+      ...b,
+      id,
+      title: b.businessObjectName,
+      description: b.businessObjectDescription,
+      status: getConfirmationStatus(b.confirmationStatus),
+      scopeStatus: 'in_scope'
+    };
+    (b.businessObjectAttributes || []).forEach((attr: any) => {
+      const id = attr.businessObjectAttributeId.toString();
+      nodes[id] = {
+        ...attr,
+        id,
+        title: attr.businessObjectAttributeName,
+        description: attr.businessObjectAttributeDescription,
+        status: 'confirmed',
+        scopeStatus: 'in_scope'
+      };
+    });
+  });
+};
+
+const addFlowNodes = (nodes: Record<string, any>, flows: any[]) => {
+  flows.forEach(flow => {
+    const id = flow.flowId.toString();
+    nodes[id] = {
+      ...flow,
+      id,
+      title: flow.flowName,
+      description: flow.flowDescription,
+      status: getConfirmationStatus(flow.confirmationStatus),
+      scopeStatus: 'in_scope'
+    };
+    (flow.flowSteps || []).forEach((step: any) => {
+      const stepId = step.stepId.toString();
+      nodes[stepId] = {
+        ...step,
+        id: stepId,
+        title: step.stepName,
+        description: step.stepDescription,
+        status: 'confirmed',
+        scopeStatus: 'in_scope'
+      };
+    });
+  });
+};
+
+const addScreenNodes = (
+  nodes: Record<string, any>,
+  businessObjects: any[]
+) => {
+  businessObjects.forEach(bo => {
+    const screenId = `screen_${bo.businessObjectId}`;
+    nodes[screenId] = {
+      kind: 'screen',
+      id: screenId,
+      title: `${bo.businessObjectName} ${i18n.t('rightPanel.coreFeatureNode')}`,
+      description: `${i18n.t('store.bo.boardDesc')}`,
+      status: 'confirmed',
+      scopeStatus: 'in_scope'
+    };
+  });
+};
+
+const buildSyntheticLinks = (
+  actors: any[],
+  businessObjects: any[],
+  flows: any[]
+) => {
+  const links: any[] = [];
+  actors.forEach(actor => {
+    businessObjects.forEach(bo => {
+      const screenId = `screen_${bo.businessObjectId}`;
+      links.push({
+        id: `link_accessible_${screenId}_${actor.actorId}`,
+        sourceId: screenId,
+        targetId: actor.actorId.toString(),
+        type: 'accessible_by'
+      });
+    });
+  });
+  flows.forEach(flow => {
+    (flow.flowSteps || []).forEach((step: any) => {
+      const objectIds = [...new Set([
+        ...(step.inputBusinessObjectIds || []),
+        ...(step.outputBusinessObjectIds || [])
+      ])];
+      objectIds.forEach(objectId => {
+        const screenId = `screen_${objectId}`;
+        links.push({
+          id: `link_triggers_${screenId}_${step.stepId}`,
+          sourceId: screenId,
+          targetId: step.stepId.toString(),
+          type: 'triggers'
+        });
+      });
+    });
+  });
+  return links;
+};
+
+const buildCompatibilityCache = (
+  actors: any[],
+  features: any[],
+  flows: any[],
+  choiceGroups: Record<string, ChoiceGroup>
+) => {
+  const actorsCompatible = actors.map(actor => ({
+    ...actor,
+    id: actor.actorId.toString(),
+    title: actor.actorName,
+    description: actor.actorDescription,
+    status: getConfirmationStatus(actor.confirmationStatus),
+    scopeStatus: 'in_scope'
+  }));
+  const flowStepsCompatible = flows.flatMap(flow => (
+    flow.flowSteps || []
+  ).map((step: any, index: number) => ({
+    ...step,
+    id: step.stepId.toString(),
+    title: step.stepName,
+    description: step.stepDescription,
+    status: 'confirmed',
+    position: index + 1
+  })));
+  const goalsCompatible = features.map(feature => ({
+    kind: 'feature',
+    featureId: feature.featureId,
+    featureName: feature.featureName,
+    featureDescription: feature.featureDescription
+  }));
+  const choicesCompatible: Choice[] = [];
+  Object.values(choiceGroups).forEach((group: any) => {
+    if (group.choices) choicesCompatible.push(...group.choices);
+  });
+  return {
+    actorsCompatible,
+    flowStepsCompatible,
+    goalsCompatible,
+    capabilitiesCompatible: goalsCompatible,
+    tasksCompatible: goalsCompatible,
+    scopeItemsCompatible: features.filter(feature => feature.scope !== null),
+    choicesCompatible
+  };
+};
+
+const normalizeRequirementSpace = (
   space: RequirementSpace | null,
   issueFindings?: Finding[] | null,
   backendChoiceGroups?: Record<string, ChoiceGroup>,
   backendFindingsLoaded?: boolean
 ): RequirementSpace | null => {
-  console.log('normalizeRequirementSpace called with space:', space?.projectName, 'has_space:', !!space);
   if (!space) return null;
 
   // 1. Ensure arrays exist
@@ -260,173 +452,22 @@ export const normalizeRequirementSpace = (
 
   // 2. Prepare nodes dictionary
   const nodes: Record<string, any> = {};
-
-  // Actors
-  actors.forEach(a => {
-    const id = a.actorId.toString();
-    nodes[id] = {
-      ...a,
-      id,
-      title: a.actorName,
-      description: a.actorDescription,
-      status: getConfirmationStatus((a as any).confirmationStatus),
-      scopeStatus: 'in_scope'
-    };
-  });
-
-  // Features (goals/capabilities/tasks)
-  features.forEach(f => {
-    const id = f.featureId.toString();
-    nodes[id] = {
-      ...f,
-      id,
-      title: f.featureName,
-      description: f.featureDescription,
-      status: getConfirmationStatus((f as any).confirmationStatus),
-      scopeStatus: f.scope?.scopeStatus || 'in_scope'
-    };
-    
-    // Scenarios under features
-    (f.scenarios || []).forEach(s => {
-      const sid = s.scenarioId.toString();
-      nodes[sid] = {
-        ...s,
-        id: sid,
-        title: s.scenarioName,
-        description: s.scenarioContent,
-        status: getConfirmationStatus((s as any).confirmationStatus),
-        scopeStatus: 'in_scope'
-      };
-      
-      // Acceptance criteria
-      (s.acceptanceCriteria || []).forEach(ac => {
-        const acid = ac.criterionId.toString();
-        nodes[acid] = {
-          ...ac,
-          id: acid,
-          title: i18n.t('confirmationWorkspace.nodeKindLabels.acceptance_criterion'),
-          description: ac.criterionContent,
-          status: getConfirmationStatus((ac as any).confirmationStatus),
-          scopeStatus: 'in_scope'
-        };
-      });
-    });
-  });
-
-  // Business Objects
-  businessObjects.forEach(b => {
-    const id = b.businessObjectId.toString();
-    nodes[id] = {
-      ...b,
-      id,
-      title: b.businessObjectName,
-      description: b.businessObjectDescription,
-      status: getConfirmationStatus((b as any).confirmationStatus),
-      scopeStatus: 'in_scope'
-    };
-    
-    // Attributes
-    (b.businessObjectAttributes || []).forEach(attr => {
-      const attrId = attr.businessObjectAttributeId.toString();
-      nodes[attrId] = {
-        ...attr,
-        id: attrId,
-        title: attr.businessObjectAttributeName,
-        description: attr.businessObjectAttributeDescription,
-        status: 'confirmed',
-        scopeStatus: 'in_scope'
-      };
-    });
-  });
-
-  // Flows and FlowSteps
-  flows.forEach(fl => {
-    const id = fl.flowId.toString();
-    nodes[id] = {
-      ...fl,
-      id,
-      title: fl.flowName,
-      description: fl.flowDescription,
-      status: getConfirmationStatus((fl as any).confirmationStatus),
-      scopeStatus: 'in_scope'
-    };
-    
-    // Flow Steps
-    (fl.flowSteps || []).forEach(st => {
-      const stepId = st.stepId.toString();
-      nodes[stepId] = {
-        ...st,
-        id: stepId,
-        title: st.stepName,
-        description: st.stepDescription,
-        status: 'confirmed',
-        scopeStatus: 'in_scope'
-      };
-    });
-  });
+  addActorNodes(nodes, actors);
+  addFeatureNodes(nodes, features);
+  addBusinessObjectNodes(nodes, businessObjects);
+  addFlowNodes(nodes, flows);
 
   // 3. Synthesized Screens as nodes for layout compatibility
-  actors.forEach(actor => {
-    businessObjects.forEach(bo => {
-      const screenId = `screen_${bo.businessObjectId}`;
-      if (!nodes[screenId]) {
-        nodes[screenId] = {
-          kind: 'screen',
-          id: screenId,
-          title: `${bo.businessObjectName} ${i18n.t('rightPanel.coreFeatureNode')}`,
-          description: `${i18n.t('store.bo.boardDesc')}`,
-          status: 'confirmed',
-          scopeStatus: 'in_scope'
-        };
-      }
-    });
-  });
+  addScreenNodes(nodes, businessObjects);
 
   // 4. Synthesized Links
-  const linksList: any[] = [];
-  
-  // Accessible_by links: from screen to actor
-  actors.forEach(actor => {
-    businessObjects.forEach(bo => {
-      const screenId = `screen_${bo.businessObjectId}`;
-      linksList.push({
-        id: `link_accessible_${screenId}_${actor.actorId}`,
-        sourceId: screenId,
-        targetId: actor.actorId.toString(),
-        type: 'accessible_by'
-      });
-    });
-  });
-
-  // Triggers links: from screen to flow step
-  flows.forEach(fl => {
-    (fl.flowSteps || []).forEach(st => {
-      const boIds = [...new Set([...(st.inputBusinessObjectIds || []), ...(st.outputBusinessObjectIds || [])])];
-      boIds.forEach(boId => {
-        const screenId = `screen_${boId}`;
-        linksList.push({
-          id: `link_triggers_${screenId}_${st.stepId}`,
-          sourceId: screenId,
-          targetId: st.stepId.toString(),
-          type: 'triggers'
-        });
-      });
-    });
-  });
+  const linksList = buildSyntheticLinks(actors, businessObjects, flows);
 
   const dedupedLinksList = Array.from(
     new Map(linksList.map((link) => [link.id, link])).values()
   );
 
   // 5. Detect and index issues
-  const normalizedSpaceForRules = {
-    ...space,
-    actors,
-    features,
-    businessObjects,
-    flows,
-    perceptionSlot
-  };
   const issuesList = backendFindingsLoaded && issueFindings
     ? issueFindings.filter((finding) => finding.type === 'issue' && visibleIssueStages.has(finding.stage as any))
     : [];
@@ -447,43 +488,13 @@ export const normalizeRequirementSpace = (
     };
   }
 
-  // 7. Pre-cached compatible arrays for stable select references
-  const actorsCompatible = actors.map(a => ({
-    ...a,
-    id: a.actorId.toString(),
-    title: a.actorName,
-    description: a.actorDescription,
-    status: getConfirmationStatus((a as any).confirmationStatus),
-    scopeStatus: 'in_scope'
-  }));
-
-  const flowStepsCompatible = flows.flatMap(f => (f.flowSteps || []).map((step, idx) => ({
-    ...step,
-    id: step.stepId.toString(),
-    title: step.stepName,
-    description: step.stepDescription,
-    status: 'confirmed',
-    position: idx + 1
-  })));
-
-  const goalsCompatible = features.map(f => ({
-    kind: 'feature',
-    featureId: f.featureId,
-    featureName: f.featureName,
-    featureDescription: f.featureDescription
-  }));
-
-  const capabilitiesCompatible = goalsCompatible;
-  const tasksCompatible = goalsCompatible;
-  const scopeItemsCompatible = features.filter(f => f.scope !== null);
-
   const choiceGroupsRecord = backendChoiceGroups || space.choiceGroups || {};
-  const choicesCompatible: Choice[] = [];
-  Object.values(choiceGroupsRecord).forEach((cg: any) => {
-    if (cg.choices) {
-      choicesCompatible.push(...cg.choices);
-    }
-  });
+  const compatibilityCache = buildCompatibilityCache(
+    actors,
+    features,
+    flows,
+    choiceGroupsRecord
+  );
 
   return {
     ...space,
@@ -499,19 +510,10 @@ export const normalizeRequirementSpace = (
     choiceGroups: choiceGroupsRecord,
     findings: issuesList,
     // Stable Selector Cache Fields
-    actorsCompatible,
-    flowStepsCompatible,
+    ...compatibilityCache,
     linksCompatible: linksList,
-    goalsCompatible,
-    capabilitiesCompatible,
-    tasksCompatible,
-    scopeItemsCompatible,
-    choicesCompatible
   } as any;
 };
-
-// Helper for generating IDs
-const makeIntId = () => Math.floor(1000 + Math.random() * 9000);
 
 const isSlotFillingDraft = (draft: any | null | undefined) => (
   draft?.perceptionJobId !== undefined || draft?.perception_job_id !== undefined
@@ -565,6 +567,26 @@ const findConflictingChoiceGroup = (
 };
 
 const GENERATION_CONFLICT_PENDING_ERROR = 'generation_choice_conflict_pending';
+const CHOICE_GROUP_DISABLED_ERROR = 'choice_group_disabled';
+
+const shouldUseLegacyGeneration = async (
+  requestChoiceGroup: () => Promise<unknown>,
+  getState: () => Pick<WorkspaceState, 'sessionVersion' | 'pendingGenerationConflict'>,
+  expectedVersion: number,
+): Promise<boolean> => {
+  try {
+    await requestChoiceGroup();
+    return false;
+  } catch (error) {
+    const state = getState();
+    return (
+      state.sessionVersion === expectedVersion
+      && !state.pendingGenerationConflict
+      && error instanceof Error
+      && error.message === CHOICE_GROUP_DISABLED_ERROR
+    );
+  }
+};
 
 const buildInitialChoiceProgress = (candidateCount?: number, candidateLabels: string[] = []) => {
   const totalCandidates = candidateCount || 2;
@@ -1014,6 +1036,56 @@ const withWorkspaceId = (state: WorkspaceState): string => {
   return state.ir.projectId;
 };
 
+type WorkspaceHydrationData = Awaited<ReturnType<typeof loadBackendFindingsAndViews>> & {
+  backendChoiceGroups: Record<string, ChoiceGroup>;
+};
+
+const loadWorkspaceHydration = async (
+  projectId: string,
+  expectedVersion: number,
+  getState: () => WorkspaceState,
+): Promise<WorkspaceHydrationData | null> => {
+  const findings = await loadBackendFindingsAndViews(projectId);
+  if (getState().sessionVersion !== expectedVersion) return null;
+
+  const backendChoiceGroups: Record<string, ChoiceGroup> = {};
+  try {
+    const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
+    if (getState().sessionVersion !== expectedVersion) return null;
+    for (const group of groups) {
+      const compatible = mapBackendChoiceGroupToCompatible(group);
+      backendChoiceGroups[compatible.id] = compatible;
+    }
+  } catch (error) {
+    console.warn('Failed to load choice groups:', error);
+  }
+
+  await getState().loadAuditLogs(projectId);
+  if (getState().sessionVersion !== expectedVersion) return null;
+  await getState().loadStageProgress(projectId);
+  if (getState().sessionVersion !== expectedVersion) return null;
+  return { ...findings, backendChoiceGroups };
+};
+
+const buildOpenedWorkspaceState = (
+  space: RequirementSpace,
+  hydration: WorkspaceHydrationData,
+): Partial<WorkspaceState> => ({
+  currentSystemView: 'workspace',
+  activePage: '/overview',
+  initialPrompt: space.userRequirements,
+  ...hydration,
+  backendFindingsLoaded: true,
+  ir: space,
+  selectedObject: null,
+  selectedObjectId: null,
+  selectedNodeId: null,
+  selectedSlotId: null,
+  highlightTarget: null,
+  pendingManualAction: null,
+  isLoading: false,
+});
+
 const getGateFindingContextHash = (finding: any): string => {
   if (!finding || !finding.metadata) return '';
 
@@ -1065,9 +1137,97 @@ function buildAggregateTarget(finding: Finding): any {
   }
   return finding.target || null;
 }
+
+const resolveProcessorActionPage = (route: string) => {
+  if (
+    route.endsWith('/what') ||
+    route === 'what' ||
+    route.endsWith('/projects/what')
+  ) return '/what';
+  if (
+    route.endsWith('/how') ||
+    route.endsWith('/flow') ||
+    route === 'how' ||
+    route === 'flow' ||
+    route.endsWith('/projects/how') ||
+    route.endsWith('/projects/flow')
+  ) return '/flow';
+  if (
+    route.endsWith('/scope') ||
+    route === 'scope' ||
+    route.endsWith('/projects/scope')
+  ) return '/scope';
+  if (
+    route.endsWith('/preview') ||
+    route === 'preview' ||
+    route.endsWith('/projects/preview')
+  ) return '/preview';
+  return null;
+};
+
+const findProcessorPanelTarget = (
+  panel: string,
+  payload: any,
+  ir: RequirementSpace | null
+) => {
+  if (!ir) return null;
+  if (panel === 'feature' || panel === 'scope') {
+    const id = (
+      payload.feature_id ||
+      payload.featureId ||
+      payload.scopeId ||
+      payload.scope_id
+    )?.toString();
+    const feature = ir.features?.find(
+      (item: any) => item.featureId.toString() === id
+    );
+    return feature ? {
+      ...feature,
+      kind: panel === 'scope' ? 'scope' : 'feature'
+    } : null;
+  }
+  if (panel === 'actor') {
+    const id = (payload.actor_id || payload.actorId)?.toString();
+    const actor = ir.actors?.find(
+      (item: any) => item.actorId.toString() === id
+    );
+    return actor ? { ...actor, kind: 'actor' } : null;
+  }
+  if (panel === 'scenario') {
+    const id = (payload.scenario_id || payload.scenarioId)?.toString();
+    let scenario: any = null;
+    ir.features?.forEach((feature: any) => {
+      const match = feature.scenarios?.find(
+        (item: any) => item.scenarioId.toString() === id
+      );
+      if (match) scenario = match;
+    });
+    return scenario ? { ...scenario, kind: 'scenario' } : null;
+  }
+  if (panel === 'flow' || panel === 'flow_editor') {
+    const id = (payload.flow_id || payload.flowId)?.toString();
+    const flow = ir.flows?.find(
+      (item: any) => item.flowId.toString() === id
+    );
+    return flow ? { ...flow, kind: 'flow' } : null;
+  }
+  if (panel === 'business_object') {
+    const id = (
+      payload.business_object_id ||
+      payload.businessObjectId
+    )?.toString();
+    const businessObject = ir.businessObjects?.find(
+      (item: any) => item.businessObjectId.toString() === id
+    );
+    return businessObject
+      ? { ...businessObject, kind: 'business_object' }
+      : null;
+  }
+  return null;
+};
+
 export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   const set = (update: any, replace?: boolean) => {
-    console.log('Store set called. Update type:', typeof update, 'keys:', typeof update === 'object' && update !== null ? Object.keys(update) : 'function');
     if (typeof update === 'function') {
       (rawSet as any)((state: WorkspaceState) => {
         const next = update(state);
@@ -1090,34 +1250,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   };
 
-  const executeProcessorAction = async (
+  const executeCreateDraftAction = async (
     action: any,
-    context: { stage?: string; findingCode?: string; target?: any },
-    version: number,
-    options?: { navigate?: (path: string) => void }
+    context: { findingCode?: string; target?: any }
   ) => {
-    if (!action) return null;
-
-    const kind = action.kind;
-
-    if (kind === 'stage_transition') {
-      const transitionAction = action.transition_action || action.transitionAction;
-      if (transitionAction) {
-        if (options?.navigate) {
-          await get().requestStageTransition(transitionAction, { navigate: options.navigate });
-        }
-        return {
-          type: 'stage_transition',
-          action: transitionAction,
-        };
-      }
-      return null;
-    }
-
-    if (kind === 'create_draft') {
       const draftType = action.draft_type || action.draftType;
       const code = context.findingCode || '';
-
       if (code === 'GENERATE_ACTORS' || draftType === 'actor_generation') {
         await get().generateActors(false);
       } else if (code === 'GENERATE_FEATURES' || draftType === 'feature_generation') {
@@ -1148,29 +1286,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
       return {
         type: 'business_action',
-        kind,
+        kind: action.kind,
         action,
       };
-    } else if (kind === 'navigate') {
-      const route = action.route || '';
-      let page: any = null;
-      if (route.endsWith('/what') || route === 'what' || route.endsWith('/projects/what')) {
-        page = '/what';
-      } else if (
-        route.endsWith('/how') ||
-        route.endsWith('/flow') ||
-        route === 'how' ||
-        route === 'flow' ||
-        route.endsWith('/projects/how') ||
-        route.endsWith('/projects/flow')
-      ) {
-        page = '/flow';
-      } else if (route.endsWith('/scope') || route === 'scope' || route.endsWith('/projects/scope')) {
-        page = '/scope';
-      } else if (route.endsWith('/preview') || route === 'preview' || route.endsWith('/projects/preview')) {
-        page = '/preview';
-      }
+  };
 
+  const executeNavigateAction = (
+    action: any,
+    options?: { navigate?: (path: string) => void }
+  ) => {
+      const route = action.route || '';
+      const page = resolveProcessorActionPage(route);
       const projectId = get().ir?.projectId;
       if (projectId && route) {
         let resolvedRoute = route;
@@ -1188,94 +1314,157 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         };
       }
       return null;
-    } else if (kind === 'wait') {
-      const stage = (action.stage || context.stage || 'what') as 'what' | 'how' | 'scope';
-      const projectId = get().ir?.projectId;
-      
-      set({ lastActionMessageToken: 'store.actions.refreshingAnalysis' });
-      
-      if (!projectId) {
-        return {
-          type: 'wait',
-          jobId: action.job_id || action.jobId,
-          stage,
-          message: 'store.errors.projectIdMissing',
-          status: 'failed',
-        };
-      }
+  };
 
-      let res = await workspaceApi.getNextSuggestion(projectId, stage);
-      if (get().sessionVersion !== version) return;
-      let currentSug = res.suggestion;
-
-      if (currentSug && currentSug.status === 'running') {
-        const maxAttempts = 4;
-        let attempts = 0;
-        
-        while (attempts < maxAttempts) {
-          set({ lastActionMessageToken: 'store.actions.runningDiagnosis' });
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          if (get().sessionVersion !== version) return;
-          
-          res = await workspaceApi.getNextSuggestion(projectId, stage);
-          if (get().sessionVersion !== version) return;
-          currentSug = res.suggestion;
-          
-          if (!currentSug || currentSug.status !== 'running') {
-            break;
-          }
-          attempts++;
-        }
-      }
-
-      // Update in store
-      set((s: WorkspaceState) => ({
-        nextSuggestions: {
-          ...s.nextSuggestions,
-          [stage]: currentSug
-        }
-      }));
-
-      await get().refreshWorkspace();
-
-      let status = 'idle';
-      let message = 'store.finding.diagnosisComplete';
-
-      if (currentSug) {
-        if (currentSug.status === 'running') {
-          status = 'running';
-          message = 'store.finding.aiAnalyzing';
-        } else if (currentSug.status === 'failed') {
-          status = 'failed';
-          message = 'store.finding.reDiagnose';
-          set({
-            lastActionMessageTokenInterpolation: {
-              key: message,
-              values: { desc: currentSug.description || i18n.t('store.errors.analysisError') },
-            },
-          });
-        } else if (
-          currentSug.code === 'ENTER_HOW' ||
-          currentSug.code === 'ENTER_SCOPE' ||
-          currentSug.metadata?.action?.kind === 'stage_transition'
-        ) {
-          status = 'ready_to_advance';
-          message = 'store.finding.stageTransitionAvailable';
-        } else {
-          status = 'suggestion_changed';
-          message = 'store.finding.fixSuggestionsRegenerated';
-        }
-      }
-
-      set({ lastActionMessageToken: message });
-
+  const executeWaitAction = async (
+    action: any,
+    context: { stage?: string },
+    version: number
+  ) => {
+    const stage = (action.stage || context.stage || 'what') as 'what' | 'how' | 'scope';
+    const projectId = get().ir?.projectId;
+    set({ lastActionMessageToken: 'store.actions.refreshingAnalysis' });
+    if (!projectId) {
       return {
         type: 'wait',
         jobId: action.job_id || action.jobId,
         stage,
-        message,
-        status,
+        message: 'store.errors.projectIdMissing',
+        status: 'failed',
       };
+    }
+    let response = await workspaceApi.getNextSuggestion(projectId, stage);
+    if (get().sessionVersion !== version) return;
+    let suggestion = response.suggestion;
+    if (suggestion?.status === 'running') {
+      let attempts = 0;
+      while (attempts < 4) {
+        set({ lastActionMessageToken: 'store.actions.runningDiagnosis' });
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (get().sessionVersion !== version) return;
+        response = await workspaceApi.getNextSuggestion(projectId, stage);
+        if (get().sessionVersion !== version) return;
+        suggestion = response.suggestion;
+        if (!suggestion || suggestion.status !== 'running') break;
+        attempts++;
+      }
+    }
+    set((state: WorkspaceState) => ({
+      nextSuggestions: {
+        ...state.nextSuggestions,
+        [stage]: suggestion
+      }
+    }));
+    await get().refreshWorkspace();
+    let status = 'idle';
+    let message = 'store.finding.diagnosisComplete';
+    if (suggestion?.status === 'running') {
+      status = 'running';
+      message = 'store.finding.aiAnalyzing';
+    } else if (suggestion?.status === 'failed') {
+      status = 'failed';
+      message = 'store.finding.reDiagnose';
+      set({
+        lastActionMessageTokenInterpolation: {
+          key: message,
+          values: {
+            desc: suggestion.description || i18n.t('store.errors.analysisError')
+          },
+        },
+      });
+    } else if (suggestion) {
+      if (
+        suggestion.code === 'ENTER_HOW' ||
+        suggestion.code === 'ENTER_SCOPE' ||
+        suggestion.metadata?.action?.kind === 'stage_transition'
+      ) {
+        status = 'ready_to_advance';
+        message = 'store.finding.stageTransitionAvailable';
+      } else {
+        status = 'suggestion_changed';
+        message = 'store.finding.fixSuggestionsRegenerated';
+      }
+    }
+    set({ lastActionMessageToken: message });
+    return {
+      type: 'wait',
+      jobId: action.job_id || action.jobId,
+      stage,
+      message,
+      status,
+    };
+  };
+
+  const executeOpenPanelAction = async (
+    action: any,
+    options?: { navigate?: (path: string) => void }
+  ) => {
+    const panel = action.panel;
+    const payload = action.payload || {};
+    let found = false;
+    if (panel === 'perception_slot') {
+      const jobId = payload.perception_job_id || payload.perceptionJobId;
+      if (jobId) {
+        await get().expandSlot(jobId.toString());
+        found = true;
+      }
+    } else {
+      const target = findProcessorPanelTarget(panel, payload, get().ir);
+      if (target) {
+        get().setSelectedObject(target);
+        found = true;
+      }
+    }
+    if (!found && (panel === 'flow' || panel === 'flow_editor')) {
+      const route = `/projects/${get().ir?.projectId}/flow`;
+      if (options?.navigate) options.navigate(route);
+      else get().setActivePage('/flow');
+      found = true;
+    }
+    if (!found) {
+      const page = resolveProcessorActionPage(action.route || '');
+      if (page) {
+        if (options?.navigate) {
+          options.navigate(`/projects/${get().ir?.projectId}${page}`);
+        } else {
+          get().setActivePage(page);
+        }
+        set({ lastActionMessageToken: 'store.actions.navigatedToPage' });
+      } else {
+        set({ lastActionMessageToken: 'store.actions.unableToLocate' });
+      }
+    }
+    return {
+      type: 'open_panel',
+      panel,
+      payload,
+    };
+  };
+
+  const executeProcessorAction = async (
+    action: any,
+    context: { stage?: string; findingCode?: string; target?: any },
+    version: number,
+    options?: { navigate?: (path: string) => void }
+  ) => {
+    if (!action) return null;
+    const kind = action.kind;
+    if (kind === 'stage_transition') {
+      const transitionAction = action.transition_action || action.transitionAction;
+      if (transitionAction) {
+        if (options?.navigate) {
+          await get().requestStageTransition(transitionAction, { navigate: options.navigate });
+        }
+        return { type: 'stage_transition', action: transitionAction };
+      }
+      return null;
+    }
+    if (kind === 'create_draft') {
+      return executeCreateDraftAction(action, context);
+    } else if (kind === 'navigate') {
+      return executeNavigateAction(action, options);
+    } else if (kind === 'wait') {
+      return executeWaitAction(action, context, version);
     } else if (kind === 'open_gate_findings') {
       const stage = (context.stage || 'what') as 'what' | 'how' | 'scope';
       const actionMap: Record<string, string> = {
@@ -1305,123 +1494,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         stage,
       };
     } else if (kind === 'open_panel') {
-      const panel = action.panel;
-      const payload = action.payload || {};
-      let found = false;
-
-      if (panel === 'perception_slot') {
-        const jobId = payload.perception_job_id || payload.perceptionJobId;
-        if (jobId) {
-          await get().expandSlot(jobId.toString());
-          found = true;
-        }
-      } else if (panel === 'feature') {
-        const featId = (payload.feature_id || payload.featureId)?.toString();
-        if (featId) {
-          const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
-          if (featObj) {
-            get().setSelectedObject({ ...featObj, kind: 'feature' });
-            found = true;
-          }
-        }
-      } else if (panel === 'actor') {
-        const actorId = (payload.actor_id || payload.actorId)?.toString();
-        if (actorId) {
-          const actObj = get().ir?.actors?.find((a: any) => a.actorId.toString() === actorId);
-          if (actObj) {
-            get().setSelectedObject({ ...actObj, kind: 'actor' });
-            found = true;
-          }
-        }
-      } else if (panel === 'scenario') {
-        const scenarioId = (payload.scenario_id || payload.scenarioId)?.toString();
-        if (scenarioId) {
-          let scenarioObj: any = null;
-          get().ir?.features?.forEach((f: any) => {
-            const s = f.scenarios?.find((sc: any) => sc.scenarioId.toString() === scenarioId);
-            if (s) scenarioObj = s;
-          });
-          if (scenarioObj) {
-            get().setSelectedObject({ ...scenarioObj, kind: 'scenario' });
-            found = true;
-          }
-        }
-      } else if (panel === 'flow' || panel === 'flow_editor') {
-        const flowId = (payload.flow_id || payload.flowId)?.toString();
-        if (flowId) {
-          const flowObj = get().ir?.flows?.find((fl: any) => fl.flowId.toString() === flowId);
-          if (flowObj) {
-            get().setSelectedObject({ ...flowObj, kind: 'flow' });
-            found = true;
-          }
-        }
-        if (!found) {
-          // Navigate to How page as fallback
-          if (options?.navigate) {
-            options.navigate(`/projects/${get().ir?.projectId}/flow`);
-          } else {
-            get().setActivePage('/flow');
-          }
-          found = true;
-        }
-      } else if (panel === 'business_object') {
-        const boId = (payload.business_object_id || payload.businessObjectId)?.toString();
-        if (boId) {
-          const boObj = get().ir?.businessObjects?.find((bo: any) => bo.businessObjectId.toString() === boId);
-          if (boObj) {
-            get().setSelectedObject({ ...boObj, kind: 'business_object' });
-            found = true;
-          }
-        }
-      } else if (panel === 'scope') {
-        const featId = (payload.feature_id || payload.featureId || payload.scopeId || payload.scope_id)?.toString();
-        if (featId) {
-          const featObj = get().ir?.features?.find((f: any) => f.featureId.toString() === featId);
-          if (featObj) {
-            get().setSelectedObject({ ...featObj, kind: 'scope' });
-            found = true;
-          }
-        }
-      }
-
-      if (!found) {
-        // Fallback: Check action.route
-        let routed = false;
-        if (action.route) {
-          const route = action.route;
-          let page: any = null;
-          if (route.endsWith('/what') || route === 'what' || route.endsWith('/projects/what')) page = '/what';
-          else if (
-            route.endsWith('/how') ||
-            route.endsWith('/flow') ||
-            route === 'how' ||
-            route === 'flow' ||
-            route.endsWith('/projects/how') ||
-            route.endsWith('/projects/flow')
-          )
-            page = '/flow';
-          else if (route.endsWith('/scope') || route === 'scope' || route.endsWith('/projects/scope')) page = '/scope';
-          else if (route.endsWith('/preview') || route === 'preview' || route.endsWith('/projects/preview')) page = '/preview';
-
-          if (page) {
-            if (options?.navigate) {
-              options.navigate(`/projects/${get().ir?.projectId}${page}`);
-            } else {
-              get().setActivePage(page);
-            }
-            routed = true;
-            set({ lastActionMessageToken: 'store.actions.navigatedToPage' });
-          }
-        }
-        if (!routed) {
-          set({ lastActionMessageToken: 'store.actions.unableToLocate' });
-        }
-      }
-      return {
-        type: 'open_panel',
-        panel,
-        payload,
-      };
+      return executeOpenPanelAction(action, options);
     }
     return null;
   };
@@ -1507,6 +1580,94 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       backendChoiceGroups: nextChoiceGroups,
       ir: state.ir,
     };
+  };
+
+  const reuseExistingGenerationChoiceGroup = (group: ChoiceGroup) => {
+    set({
+      activeChoiceGroup: group,
+      activeDraft: null,
+      activeDraftType: null,
+      pendingGenerationConflict: null,
+      choiceGroupGenerationProgress: null,
+      error: null,
+      isGeneratingChoices: false,
+      isGenerating: false,
+      lastActionMessageToken: 'store.project.existingCandidatesOpened',
+    });
+    return group;
+  };
+
+  const raisePendingGenerationConflict = (
+    group: ChoiceGroup,
+    generationType: string,
+    conflictAction?: PendingGenerationConflict['action'],
+    conflictArgs?: Record<string, any>,
+  ) => {
+    set({
+      pendingGenerationConflict: {
+        action: conflictAction || 'generateFeatures',
+        generationType: generationType as PendingGenerationConflict['generationType'],
+        existingGroupId: group.id,
+        existingGroupLabel: getGenerationTypeLabel(generationType),
+        ...(conflictArgs || {}),
+      } as PendingGenerationConflict,
+      error: null,
+    });
+    throw new Error(GENERATION_CONFLICT_PENDING_ERROR);
+  };
+
+  const loadGenerationChoiceDefaults = async (
+    projectId: string,
+    candidateCount?: number,
+  ) => {
+    let effectiveCandidateCount = candidateCount;
+    let candidateLabels: string[] = [];
+    if (effectiveCandidateCount === undefined) {
+      try {
+        const projectConfiguration = await workspaceApi.getProjectConfiguration(projectId);
+        const strategyConfig = projectConfiguration?.generation_strategy;
+        effectiveCandidateCount = strategyConfig?.candidate_count;
+        candidateLabels = (strategyConfig?.strategies || [])
+          .filter((strategy: any) => strategy.enabled)
+          .slice(0, effectiveCandidateCount)
+          .map((strategy: any) => getGenerationStrategyPresentation(strategy, i18n.t).label);
+        set({ projectConfiguration });
+      } catch {
+        // Keep generation available when the configuration summary cannot be loaded.
+      }
+    }
+    return { effectiveCandidateCount, candidateLabels };
+  };
+
+  const discardConflictingGenerationChoiceGroup = async (
+    projectId: string,
+    group: ChoiceGroup,
+    version: number,
+  ) => {
+    await workspaceApi.discardChoiceGroup(projectId, Number(group.id));
+    if (get().sessionVersion !== version) return false;
+    set((state: WorkspaceState) => ({
+      ...removeChoiceGroupFromWorkspace(group.id, state),
+      pendingGenerationConflict: null,
+      activeChoiceGroup:
+        state.activeChoiceGroup && String(state.activeChoiceGroup.id) === group.id
+          ? null
+        : state.activeChoiceGroup,
+    }));
+    return true;
+  };
+
+  const completeGenerationChoiceGroup = (group: ChoiceGroup) => {
+    set((state: WorkspaceState) => ({
+      ...syncChoiceGroupToWorkspace(group, state),
+      isGeneratingChoices: false,
+      activeDraft: null,
+      activeDraftType: null,
+      pendingGenerationConflict: null,
+      choiceGroupGenerationProgress: null,
+      lastActionMessageToken: 'store.project.candidatesGenerated',
+    }));
+    return group;
   };
 
   return {
@@ -1631,42 +1792,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         const space = await workspaceApi.getById(list[0].id);
         if (get().sessionVersion !== version) return;
         const projectId = space.projectId;
-
-        let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
-
-        const findingsData = await loadBackendFindingsAndViews(projectId);
-        if (get().sessionVersion !== version) return;
-        try {
-          const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
-          if (get().sessionVersion !== version) return;
-          groups.forEach((cg: any) => {
-            const compatible = mapBackendChoiceGroupToCompatible(cg);
-            choiceGroupsRecord[compatible.id] = compatible;
-          });
-        } catch (cgErr) {
-          console.warn('Failed to load choice groups in openExistingProject:', cgErr);
-        }
-        await get().loadAuditLogs(projectId);
-        if (get().sessionVersion !== version) return;
-        await get().loadStageProgress(projectId);
-        if (get().sessionVersion !== version) return;
-
-        set({
-          currentSystemView: 'workspace',
-          activePage: '/overview',
-          initialPrompt: space.userRequirements,
-          ...findingsData,
-          backendFindingsLoaded: true,
-          backendChoiceGroups: choiceGroupsRecord,
-          ir: space,
-          selectedObject: null,
-          selectedObjectId: null,
-          selectedNodeId: null,
-          selectedSlotId: null,
-          highlightTarget: null,
-          pendingManualAction: null,
-          isLoading: false
-        });
+        const hydration = await loadWorkspaceHydration(projectId, version, get);
+        if (!hydration) return;
+        set(buildOpenedWorkspaceState(space, hydration));
       } else {
         set({ currentSystemView: 'onboarding', isLoading: false });
       }
@@ -1683,43 +1811,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const space = await workspaceApi.getById(workspaceId);
       if (get().sessionVersion !== version) return false;
       const projectId = space.projectId;
-      
-      let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
-      
-        const findingsData = await loadBackendFindingsAndViews(projectId);
-        if (get().sessionVersion !== version) return false;
-        try {
-          const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
-          if (get().sessionVersion !== version) return false;
-          groups.forEach((cg: any) => {
-            const compatible = mapBackendChoiceGroupToCompatible(cg);
-            choiceGroupsRecord[compatible.id] = compatible;
-          });
-        } catch (cgErr) {
-          console.warn('Failed to load choice groups:', cgErr);
-        }
-        await get().loadAuditLogs(projectId);
-        if (get().sessionVersion !== version) return false;
-        await get().loadStageProgress(projectId);
-        if (get().sessionVersion !== version) return false;
-
-        set({
-          currentSystemView: 'workspace',
-          activePage: '/overview',
-          initialPrompt: space.userRequirements,
-          ...findingsData,
-          backendFindingsLoaded: true,
-          backendChoiceGroups: choiceGroupsRecord,
-          ir: space,
-          selectedObject: null,
-          selectedObjectId: null,
-          selectedNodeId: null,
-          selectedSlotId: null,
-          highlightTarget: null,
-          pendingManualAction: null,
-          isLoading: false
-        });
-        return true;
+      const hydration = await loadWorkspaceHydration(projectId, version, get);
+      if (!hydration) return false;
+      set(buildOpenedWorkspaceState(space, hydration));
+      return true;
     } catch (err) {
       if (get().sessionVersion !== version) return false;
       set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false });
@@ -1734,30 +1829,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     try {
       const space = await workspaceApi.getById(id);
       if (get().sessionVersion !== version) return;
-      
-      let choiceGroupsRecord: Record<string, ChoiceGroup> = {};
-      
-      const findingsData = await loadBackendFindingsAndViews(id);
-      if (get().sessionVersion !== version) return;
-      try {
-        const groups = await workspaceApi.listChoiceGroups(id, 'open');
-        if (get().sessionVersion !== version) return;
-        groups.forEach((cg: any) => {
-          const compatible = mapBackendChoiceGroupToCompatible(cg);
-          choiceGroupsRecord[compatible.id] = compatible;
-        });
-      } catch (cgErr) {
-        console.warn('Failed to load choice groups in refresh:', cgErr);
-      }
-      await get().loadAuditLogs(id);
-      if (get().sessionVersion !== version) return;
-      await get().loadStageProgress(id);
-      if (get().sessionVersion !== version) return;
+      const hydration = await loadWorkspaceHydration(id, version, get);
+      if (!hydration) return;
 
       set((s: WorkspaceState) => ({
-        ...findingsData,
+        ...hydration,
         backendFindingsLoaded: true,
-        backendChoiceGroups: choiceGroupsRecord,
         ir: space,
         selectedObject: findSelectedObjectInIr(space, s.selectedObjectId, s.selectedObject)
       }));
@@ -2407,56 +2484,26 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     } = params;
     if (import.meta.env.VITE_GENERATION_CHOICE_GROUP_ENABLED === 'false') {
       set({ isGeneratingChoices: false, isGenerating: false });
-      throw new Error('choice_group_disabled');
+      throw new Error(CHOICE_GROUP_DISABLED_ERROR);
     }
 
     const conflictingGroup = findConflictingChoiceGroup(get().backendChoiceGroups, generationType, target);
     if (conflictingGroup && !forceReplace && !userFeedback) {
-      set({
-        activeChoiceGroup: conflictingGroup,
-        activeDraft: null,
-        activeDraftType: null,
-        pendingGenerationConflict: null,
-        choiceGroupGenerationProgress: null,
-        error: null,
-        isGeneratingChoices: false,
-        isGenerating: false,
-        lastActionMessageToken: 'store.project.existingCandidatesOpened',
-      });
-      return conflictingGroup;
+      return reuseExistingGenerationChoiceGroup(conflictingGroup);
     }
 
     if (conflictingGroup && !forceReplace && userFeedback) {
-      set({
-        pendingGenerationConflict: {
-          action: conflictAction || 'generateFeatures',
-          generationType: generationType as PendingGenerationConflict['generationType'],
-          existingGroupId: conflictingGroup.id,
-          existingGroupLabel: getGenerationTypeLabel(generationType),
-          ...(conflictArgs || {}),
-        } as PendingGenerationConflict,
-        error: null,
-      });
-      throw new Error(GENERATION_CONFLICT_PENDING_ERROR);
+      return raisePendingGenerationConflict(
+        conflictingGroup,
+        generationType,
+        conflictAction,
+        conflictArgs,
+      );
     }
 
-    let effectiveCandidateCount = candidateCount;
-    let candidateLabels: string[] = [];
-
-    if (effectiveCandidateCount === undefined) {
-      try {
-        const projectConfiguration = await workspaceApi.getProjectConfiguration(projectId);
-        const strategyConfig = projectConfiguration?.generation_strategy;
-        effectiveCandidateCount = strategyConfig?.candidate_count;
-        candidateLabels = (strategyConfig?.strategies || [])
-          .filter((strategy: any) => strategy.enabled)
-          .slice(0, effectiveCandidateCount)
-          .map((strategy: any) => getGenerationStrategyPresentation(strategy, i18n.t).label);
-        set({ projectConfiguration });
-      } catch {
-        // Keep generation available when the configuration summary cannot be loaded.
-      }
-    }
+    const { effectiveCandidateCount, candidateLabels } = candidateCount === undefined
+      ? await loadGenerationChoiceDefaults(projectId)
+      : { effectiveCandidateCount: candidateCount, candidateLabels: [] };
 
     const version = get().sessionVersion;
     set({
@@ -2468,16 +2515,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
     try {
       if (conflictingGroup && forceReplace) {
-        await workspaceApi.discardChoiceGroup(projectId, Number(conflictingGroup.id));
-        if (get().sessionVersion !== version) return null;
-        set((state: WorkspaceState) => ({
-          ...removeChoiceGroupFromWorkspace(conflictingGroup.id, state),
-          pendingGenerationConflict: null,
-          activeChoiceGroup:
-            state.activeChoiceGroup && String(state.activeChoiceGroup.id) === conflictingGroup.id
-              ? null
-          : state.activeChoiceGroup,
-        }));
+        const discarded = await discardConflictingGenerationChoiceGroup(
+          projectId,
+          conflictingGroup,
+          version,
+        );
+        if (!discarded) return null;
       }
 
       const group = await workspaceApi.createGenerationChoiceGroup({
@@ -2488,16 +2531,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         user_feedback: userFeedback || null,
       });
       if (get().sessionVersion !== version) return null;
-      set((state: WorkspaceState) => ({
-        ...syncChoiceGroupToWorkspace(group, state),
-        isGeneratingChoices: false,
-        activeDraft: null,
-        activeDraftType: null,
-        pendingGenerationConflict: null,
-        choiceGroupGenerationProgress: null,
-        lastActionMessageToken: 'store.project.candidatesGenerated',
-      }));
-      return group;
+      return completeGenerationChoiceGroup(group);
     } catch (err) {
       if (get().sessionVersion !== version) return null;
       if (err instanceof Error && err.message === GENERATION_CONFLICT_PENDING_ERROR) {
@@ -2753,21 +2787,19 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   generateActors: async (forceReplace = false) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    try {
-      const group = await get().createGenerationChoiceGroup({
+    const useLegacyGeneration = await shouldUseLegacyGeneration(
+      () => get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'actor',
         forceReplace,
         conflictAction: 'generateActors',
-      });
-      if (get().sessionVersion !== version) return;
-      if (group || get().pendingGenerationConflict) return;
-    } catch (_err) {
-      if (get().sessionVersion !== version) return;
-      if (get().pendingGenerationConflict) return;
-    }
+      }),
+      get,
+      version,
+    );
+    if (!useLegacyGeneration) return;
+
     try {
-      // Fallback: old single-draft flow
       const draft = await workspaceApi.createActorGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessageToken: 'store.actor.listGenerated' });
@@ -2836,19 +2868,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   generateFeatures: async (forceReplace = false) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    try {
-      const group = await get().createGenerationChoiceGroup({
+    const useLegacyGeneration = await shouldUseLegacyGeneration(
+      () => get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'feature',
         forceReplace,
         conflictAction: 'generateFeatures',
-      });
-      if (get().sessionVersion !== version) return;
-      if (group || get().pendingGenerationConflict) return;
-    } catch (_err) {
-      if (get().sessionVersion !== version) return;
-      if (get().pendingGenerationConflict) return;
-    }
+      }),
+      get,
+      version,
+    );
+    if (!useLegacyGeneration) return;
+
     try {
       const draft = await workspaceApi.createFeatureGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
@@ -2920,19 +2951,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   generateFlowsAndObjects: async (forceReplace = false) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    try {
-      const group = await get().createGenerationChoiceGroup({
+    const useLegacyGeneration = await shouldUseLegacyGeneration(
+      () => get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'flow',
         forceReplace,
         conflictAction: 'generateFlowsAndObjects',
-      });
-      if (get().sessionVersion !== version) return;
-      if (group || get().pendingGenerationConflict) return;
-    } catch (_err) {
-      if (get().sessionVersion !== version) return;
-      if (get().pendingGenerationConflict) return;
-    }
+      }),
+      get,
+      version,
+    );
+    if (!useLegacyGeneration) return;
+
     try {
       const draft = await workspaceApi.createFlowGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
@@ -3015,29 +3045,20 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         ? { generation_mode: 'batch', feature_ids: targetFeatureIds }
         : { generation_mode: 'full' };
 
-    try {
-      const group = await get().createGenerationChoiceGroup({
+    const useLegacyGeneration = await shouldUseLegacyGeneration(
+      () => get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'scenario',
         target: generationTarget,
-        candidateCount: targetFeatureIds.length > 25 ? 1 : undefined,
         forceReplace,
         conflictAction: 'generateScenarios',
         conflictArgs: { featureIds },
-      });
-      if (get().sessionVersion !== version) return;
-      if (group || get().pendingGenerationConflict) return;
-      if (get().error) return;
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      if (get().pendingGenerationConflict) return;
-      if (!(err instanceof Error) || err.message !== 'choice_group_disabled') {
-        set({ error: err instanceof Error ? err.message : 'store.project.generatingCandidatesFailed' });
-        return;
-      }
-    }
+      }),
+      get,
+      version,
+    );
+    if (!useLegacyGeneration) return;
 
-    // Use the legacy draft path only when choice groups are explicitly disabled.
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.scenario.generatingDraft' });
     try {
       if (Array.isArray(featureIds)) {
@@ -3146,22 +3167,19 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const pId = withWorkspaceId(get());
     const isSingleTarget = Array.isArray(scenarioIds) && scenarioIds.length === 1;
     if (isSingleTarget) {
-      try {
-        const group = await get().createGenerationChoiceGroup({
+      const useLegacyGeneration = await shouldUseLegacyGeneration(
+        () => get().createGenerationChoiceGroup({
           projectId: pId,
           generationType: 'acceptance_criteria',
           target: { generation_mode: 'single', scenario_ids: scenarioIds },
           forceReplace,
           conflictAction: 'generateAcceptanceCriteria',
           conflictArgs: { scenarioIds },
-        });
-        if (get().sessionVersion !== version) return;
-        if (group || get().pendingGenerationConflict) return;
-      } catch (_err) {
-        if (get().sessionVersion !== version) return;
-        if (get().pendingGenerationConflict) return;
-        /* fall through */
-      }
+        }),
+        get,
+        version,
+      );
+      if (!useLegacyGeneration) return;
     }
     try {
       const draft = await workspaceApi.createAcceptanceCriteriaGenerationDraft(pId, scenarioIds);
@@ -3234,19 +3252,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   generateScope: async (forceReplace = false) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    try {
-      const group = await get().createGenerationChoiceGroup({
+    const useLegacyGeneration = await shouldUseLegacyGeneration(
+      () => get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'scope',
         forceReplace,
         conflictAction: 'generateScope',
-      });
-      if (get().sessionVersion !== version) return;
-      if (group || get().pendingGenerationConflict) return;
-    } catch (_err) {
-      if (get().sessionVersion !== version) return;
-      if (get().pendingGenerationConflict) return;
-    }
+      }),
+      get,
+      version,
+    );
+    if (!useLegacyGeneration) return;
+
     try {
       const draft = await workspaceApi.createScopeGenerationDraft(pId);
       if (get().sessionVersion !== version) return;
@@ -3538,7 +3555,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  updateScenario: async (featureId, scenarioId, updates) => {
+  updateScenario: async (_featureId, scenarioId, updates) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalScenario: any = null;
@@ -3569,7 +3586,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  deleteScenario: async (featureId, scenarioId) => {
+  deleteScenario: async (_featureId, scenarioId) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3592,7 +3609,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   // Acceptance Criteria CRUD
-  addAcceptanceCriterion: async (featureId, scenarioId, content) => {
+  addAcceptanceCriterion: async (_featureId, scenarioId, content) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3607,7 +3624,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  updateAcceptanceCriterion: async (featureId, scenarioId, criterionId, content) => {
+  updateAcceptanceCriterion: async (_featureId, scenarioId, criterionId, content) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalAc: any = null;
@@ -3639,7 +3656,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  deleteAcceptanceCriterion: async (featureId, scenarioId, criterionId) => {
+  deleteAcceptanceCriterion: async (_featureId, scenarioId, criterionId) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4403,7 +4420,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     }
   },
-  rewrite: async (scope, instruction) => {
+  rewrite: async (_scope, instruction) => {
     const version = get().sessionVersion;
     set({ isLoading: true, error: null });
     try {
@@ -4435,15 +4452,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     }
   },
-  explainImpact: async (scope, patch, choiceId) => {
+  explainImpact: async (scope, _patch, _choiceId) => {
     const version = get().sessionVersion;
     set({ isLoading: true, error: null });
     try {
       const projectId = withWorkspaceId(get());
 
       let targetFeatureId: number | null = null;
-      let featureName = '';
-
       // 1. Try to get feature ID from scope
       if (scope?.kind === 'node' && scope.nodeId) {
         const numId = parseInt(scope.nodeId, 10);
@@ -4451,7 +4466,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           const feat = get().ir?.features.find(f => f.featureId === numId);
           if (feat) {
             targetFeatureId = numId;
-            featureName = feat.featureName;
           }
         }
       }
@@ -4461,7 +4475,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         const selObj = get().selectedObject;
         if (selObj && (selObj as any).featureId) {
           targetFeatureId = (selObj as any).featureId;
-          featureName = (selObj as any).featureName || '';
         }
       }
 
@@ -4473,12 +4486,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         return;
       }
 
-      const res = await workspaceApi.impactPreview(projectId, targetFeatureId, 'postponed');
+      await workspaceApi.impactPreview(projectId, targetFeatureId, 'postponed');
       if (get().sessionVersion !== version) return;
-      
-      const scenarioCount = res.affectedScenarios?.length || 0;
-      const flowCount = res.affectedFlows?.length || 0;
-      const boCount = res.affectedBusinessObjects?.length || 0;
 
       set({
         isLoading: false,
@@ -4787,33 +4796,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 // Backward compatibility selectors for components
 const emptyArray: any[] = [];
 
-export const selectGoals = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as GoalNode[];
-  return (state.ir as any).goalsCompatible || emptyArray;
-};
-
-export const selectCapabilities = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as CapabilityNode[];
-  return (state.ir as any).capabilitiesCompatible || emptyArray;
-};
-
-export const selectTasks = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as TaskNode[];
-  return (state.ir as any).tasksCompatible || emptyArray;
-};
-
 export const selectActors = (state: WorkspaceState) => {
   if (!state.ir) return emptyArray as ActorNode[];
   return (state.ir as any).actorsCompatible || emptyArray;
-};
-
-export const selectFlowSteps = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as FlowStepNode[];
-  return (state.ir as any).flowStepsCompatible || emptyArray;
-};
-
-export const selectIssues = (state: WorkspaceState) => {
-  return state.findingsByView.issues || emptyArray;
 };
 
 export const selectChoices = (state: WorkspaceState) => {
@@ -4826,14 +4811,7 @@ export const selectScopeItems = (state: WorkspaceState) => {
   return (state.ir as any).scopeItemsCompatible || emptyArray;
 };
 
-export const selectLinks = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray;
-  return (state.ir as any).linksCompatible || emptyArray;
-};
-
 export const selectSelectedObject = (state: WorkspaceState) => {
   if (state.selectedObject) return state.selectedObject;
   return findSelectedObjectInIr(state.ir, state.selectedObjectId);
 };
-
-export const selectCurrentPage = (state: WorkspaceState) => state.activePage;

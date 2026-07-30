@@ -1,9 +1,7 @@
-from datetime import datetime
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.model import (
     UserModel,
-    ProjectModel,
     ProjectMemberModel,
     ProjectMemberRole,
     ProjectMemberStatus,

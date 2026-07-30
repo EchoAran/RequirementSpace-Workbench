@@ -17,6 +17,42 @@ from backend.api.modules.decision_workflow.candidate_generation.application.gene
     get_generation_choice_applier,
 )
 
+_NODE_INVALIDATION = {
+    "actor": (
+        {"what"},
+        {"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
+    ),
+    "feature": (
+        {"what", "how", "scope"},
+        {"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"},
+    ),
+    "scenario": (
+        {"what"},
+        {"SCENARIO", "ACCEPTANCE_CRITERION"},
+    ),
+    "acceptance_criterion": (
+        {"what"},
+        {"ACCEPTANCE_CRITERION"},
+    ),
+    "business_object": ({"how", "scope"}, {"FLOW"}),
+    "flow": ({"how"}, {"FLOW"}),
+    "flow_step": ({"how"}, {"FLOW"}),
+    "scope": ({"scope"}, {"SCOPE"}),
+}
+
+_LINK_INVALIDATION = {
+    "feature_actor_relation": (
+        {"what", "how", "scope"},
+        {"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"},
+    ),
+    "feature_actor": (
+        {"what", "how", "scope"},
+        {"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"},
+    ),
+    "flow_feature_relation": ({"how"}, {"FLOW"}),
+    "flow_feature": ({"how"}, {"FLOW"}),
+}
+
 
 class ChoiceService:
     def __init__(self):
@@ -57,36 +93,65 @@ class ChoiceService:
         session.add(group)
         await session.flush()
 
+        created_choices = await self._create_repair_choices(
+            valid,
+            group_id=group.id,
+            project_id=project_id,
+            issue_code=issue_code,
+            session=session,
+        )
+        await session.flush()
+
+        from backend.database.model import ProjectModel
+        proj_stmt = select(ProjectModel.public_id).where(ProjectModel.id == project_id)
+        project_public_id = (await session.execute(proj_stmt)).scalar_one()
+        return self._build_repair_choice_group_response(
+            group,
+            created_choices,
+            project_public_id=project_public_id,
+        )
+
+    @staticmethod
+    async def _create_repair_choices(
+        candidates,
+        *,
+        group_id: int,
+        project_id: int,
+        issue_code: str | None,
+        session,
+    ) -> list[ChoiceModel]:
         created_choices = []
-        for c in valid:
+        for candidate in candidates:
             choice = ChoiceModel(
-                choice_group_id=group.id,
-                title=c.title,
-                rationale=c.rationale,
+                choice_group_id=group_id,
+                title=candidate.title,
+                rationale=candidate.rationale,
                 status="candidate",
-                patch=c.patch,
-                # 旧 path 默认 apply_mode = patch
+                patch=candidate.patch,
                 apply_mode="patch",
             )
-            # P5: generate impact preview for each candidate
             from backend.core.issue_resolution.impact_preview import build_impact_preview
             try:
                 preview = await build_impact_preview(
-                    c.patch, project_id, issue_code or "", session,
+                    candidate.patch,
+                    project_id,
+                    issue_code or "",
+                    session,
                 )
                 choice.impact_preview = preview
             except Exception:
                 pass
             session.add(choice)
             created_choices.append(choice)
+        return created_choices
 
-        await session.flush()
-
-        # Get public_id of the project
-        from backend.database.model import ProjectModel
-        proj_stmt = select(ProjectModel.public_id).where(ProjectModel.id == project_id)
-        project_public_id = (await session.execute(proj_stmt)).scalar_one()
- 
+    @staticmethod
+    def _build_repair_choice_group_response(
+        group: ChoiceGroupModel,
+        choices: list[ChoiceModel],
+        *,
+        project_public_id: str,
+    ) -> dict:
         return {
             "id": group.id,
             "project_id": project_public_id,
@@ -100,8 +165,14 @@ class ChoiceService:
             "target": group.target,
             "context_hash": group.context_hash,
             "choices": [
-                {"id": ch.id, "title": ch.title, "rationale": ch.rationale, "status": ch.status, "patch": ch.patch}
-                for ch in created_choices
+                {
+                    "id": choice.id,
+                    "title": choice.title,
+                    "rationale": choice.rationale,
+                    "status": choice.status,
+                    "patch": choice.patch,
+                }
+                for choice in choices
             ],
         }
 
@@ -187,7 +258,32 @@ class ChoiceService:
         - "draft_payload": apply via GenerationChoiceApplier (new generation path)
         Stale check runs before draft_payload acceptance unless force=True.
         """
-        # 1. Fetch choice
+        choice, group = await self._load_choice_for_acceptance(
+            project_id,
+            choice_id,
+            session,
+        )
+        if choice.apply_mode == "patch":
+            return await self._accept_patch_mode_choice(
+                choice,
+                group,
+                project_id=project_id,
+                choice_id=choice_id,
+                session=session,
+            )
+        if choice.apply_mode == "draft_payload":
+            return await self._accept_draft_payload_choice(
+                choice,
+                group,
+                project_id=project_id,
+                choice_id=choice_id,
+                session=session,
+                force=force,
+            )
+        raise ValueError(f"unsupported_choice_apply_mode: {choice.apply_mode}")
+
+    @staticmethod
+    async def _load_choice_for_acceptance(project_id, choice_id, session):
         choice_res = await session.execute(
             select(ChoiceModel)
             .where(ChoiceModel.id == choice_id)
@@ -204,205 +300,230 @@ class ChoiceService:
 
         if group.status == "resolved":
             raise ValueError("choice_group_already_resolved")
+        return choice, group
 
-        # 3. 分派: 按 apply_mode 选择采纳路径
-        if choice.apply_mode == "patch":
-            # --- patch 路径: 现有 issue repair 行为 ---
-            async with session.begin_nested():
-                result = await self._accept_patch_choice(choice, group, project_id, session)
-            # 返回前附加 apply_behavior 字段（patch 型默认为 merge）
-            return ChoiceActionResponse(
-                message=_accept_message(result),
-                choice_id=choice_id,
-                status="accepted",
-                resolved_issue_ids=result.get("resolved_issue_ids", []),
-                remaining_issue_ids=result.get("remaining_issue_ids", []),
-                new_issue_ids=result.get("new_issue_ids", []),
-                partially_resolved=result.get("partially_resolved", False),
-                is_stale=False,
-                apply_behavior="merge",
-                apply_behavior_description="应用补丁到当前项目状态",
+    async def _accept_patch_mode_choice(
+        self,
+        choice,
+        group,
+        *,
+        project_id: int,
+        choice_id: int,
+        session,
+    ) -> ChoiceActionResponse:
+        async with session.begin_nested():
+            result = await self._accept_patch_choice(
+                choice,
+                group,
+                project_id,
+                session,
             )
+        return ChoiceActionResponse(
+            message=_accept_message(result),
+            choice_id=choice_id,
+            status="accepted",
+            resolved_issue_ids=result.get("resolved_issue_ids", []),
+            remaining_issue_ids=result.get("remaining_issue_ids", []),
+            new_issue_ids=result.get("new_issue_ids", []),
+            partially_resolved=result.get("partially_resolved", False),
+            is_stale=False,
+            apply_behavior="merge",
+            apply_behavior_description="应用补丁到当前项目状态",
+        )
 
-        elif choice.apply_mode == "draft_payload":
-            # --- draft_payload 路径: generation choice ---
-            # Phase 1: stale 检查 (UX-5)
-            if not force and group.generation_type:
-                adapter = get_adapter(group.generation_type)
-                is_stale, stale_reason = await adapter.is_context_stale(choice, session)
-                if is_stale:
-                    # 标记 group 为 stale，前端可通过列表查询看到黄色警告（UX-5）
-                    group.status = "stale"
-                    group.status_detail = {
-                        **(group.status_detail or {}),
-                        "stale_reason": stale_reason,
-                        "stale_at": str(datetime.now(UTC)),
-                    }
-                    # Phase 6: stale audit log
-                    session.add(AuditLogModel(
-                        project_id=project_id,
-                        action_type="generation_choice_group_stale",
-                        summary=f"候选过期: {stale_reason}",
-                        target_type="choice",
-                        target_id=str(choice_id),
-                        payload={
-                            "generation_type": group.generation_type,
-                            "choice_id": choice_id,
-                            "stale_reason": stale_reason,
-                        },
-                    ))
-                    await session.flush()
-                    return ChoiceActionResponse(
-                        message="choice_context_stale",
-                        choice_id=choice_id,
-                        status="candidate",
-                        is_stale=True,
-                        stale_reason=stale_reason,
-                    )
+    async def _accept_draft_payload_choice(
+        self,
+        choice,
+        group,
+        *,
+        project_id: int,
+        choice_id: int,
+        session,
+        force: bool,
+    ) -> ChoiceActionResponse:
+        stale_response = await self._check_generation_choice_staleness(
+            choice,
+            group,
+            project_id=project_id,
+            choice_id=choice_id,
+            session=session,
+            force=force,
+        )
+        if stale_response:
+            return stale_response
 
-            # 分派到 applier
-            applier = get_generation_choice_applier()
-            draft_type = choice.draft_type or group.generation_type or ""
-            try:
-                apply_result = await applier.apply(
-                    draft_type,
-                    choice.payload,
-                    session,
-                    project_id=project_id,
-                )
-            except Exception as exc:
-                raise ValueError(f"choice_apply_failed: {exc}") from exc
-
-            # 更新状态
-            choice.status = "accepted"
-            await self._reject_siblings(choice, group, session)
-
-            # 清除 perception slot
-            if group.slot_id is not None:
-                from backend.database.model import PerceptionSlotModel
-                slot_res = await session.execute(
-                    select(PerceptionSlotModel).where(PerceptionSlotModel.id == group.slot_id)
-                )
-                slot = slot_res.scalar_one_or_none()
-                if slot:
-                    await session.delete(slot)
-                group.slot_id = None
-
-            group.status = "resolved"
-
-            # Phase 6: audit log with structured payload
-            session.add(AuditLogModel(
+        applier = get_generation_choice_applier()
+        draft_type = choice.draft_type or group.generation_type or ""
+        try:
+            await applier.apply(
+                draft_type,
+                choice.payload,
+                session,
                 project_id=project_id,
-                action_type="generation_choice_accepted",
-                summary=f"接受 {draft_type} 候选: {choice.title}",
-                target_type="choice",
-                target_id=str(choice_id),
-                payload={
-                    "draft_type": draft_type,
-                    "choice_id": choice_id,
-                    "generation_type": group.generation_type,
-                    "candidate_count": group.candidate_count,
-                    "success_count": group.success_count,
-                    "context_hash": group.context_hash,
-                },
-            ))
-            await session.flush()
-
-            # UX-6: 从 choice 上取采纳行为说明
-            # GenerationCandidate 的 apply_behavior 在创建时写入 choice 的 score 或 payload
-            # 暂时从 adapter 获取
-            adapter_info = _get_apply_behavior(draft_type, choice)
-            return ChoiceActionResponse(
-                message="choice_accepted",
-                choice_id=choice_id,
-                status="accepted",
-                is_stale=False,
-                apply_behavior=adapter_info["behavior"],
-                apply_behavior_description=adapter_info["description"],
             )
+        except Exception as exc:
+            raise ValueError(f"choice_apply_failed: {exc}") from exc
 
-        else:
-            raise ValueError(f"unsupported_choice_apply_mode: {choice.apply_mode}")
+        choice.status = "accepted"
+        await self._reject_siblings(choice, group, session)
+        await self._delete_linked_perception_slot(group, session)
+        group.status = "resolved"
+        self._record_generation_choice_acceptance(
+            choice,
+            group,
+            project_id=project_id,
+            choice_id=choice_id,
+            draft_type=draft_type,
+            session=session,
+        )
+        await session.flush()
+        adapter_info = _get_apply_behavior(draft_type, choice)
+        return ChoiceActionResponse(
+            message="choice_accepted",
+            choice_id=choice_id,
+            status="accepted",
+            is_stale=False,
+            apply_behavior=adapter_info["behavior"],
+            apply_behavior_description=adapter_info["description"],
+        )
+
+    @staticmethod
+    async def _check_generation_choice_staleness(
+        choice,
+        group,
+        *,
+        project_id: int,
+        choice_id: int,
+        session,
+        force: bool,
+    ) -> ChoiceActionResponse | None:
+        if force or not group.generation_type:
+            return None
+        adapter = get_adapter(group.generation_type)
+        is_stale, stale_reason = await adapter.is_context_stale(choice, session)
+        if not is_stale:
+            return None
+
+        group.status = "stale"
+        group.status_detail = {
+            **(group.status_detail or {}),
+            "stale_reason": stale_reason,
+            "stale_at": str(datetime.now(UTC)),
+        }
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="generation_choice_group_stale",
+            summary=f"候选过期: {stale_reason}",
+            target_type="choice",
+            target_id=str(choice_id),
+            payload={
+                "generation_type": group.generation_type,
+                "choice_id": choice_id,
+                "stale_reason": stale_reason,
+            },
+        ))
+        await session.flush()
+        return ChoiceActionResponse(
+            message="choice_context_stale",
+            choice_id=choice_id,
+            status="candidate",
+            is_stale=True,
+            stale_reason=stale_reason,
+        )
+
+    @staticmethod
+    def _record_generation_choice_acceptance(
+        choice,
+        group,
+        *,
+        project_id: int,
+        choice_id: int,
+        draft_type: str,
+        session,
+    ) -> None:
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="generation_choice_accepted",
+            summary=f"接受 {draft_type} 候选: {choice.title}",
+            target_type="choice",
+            target_id=str(choice_id),
+            payload={
+                "draft_type": draft_type,
+                "choice_id": choice_id,
+                "generation_type": group.generation_type,
+                "candidate_count": group.candidate_count,
+                "success_count": group.success_count,
+                "context_hash": group.context_hash,
+            },
+        ))
 
     async def _accept_patch_choice(self, choice, group, project_id, session) -> dict:
         """Apply a patch-type choice (existing issue repair logic)."""
-        # 3. Apply the patch dynamically
         await self.patch_engine.apply_patch(project_id, choice.patch, session)
-
-        # 4. Update status
         choice.status = "accepted"
-
-        # Reject siblings
         await self._reject_siblings(choice, group, session)
-
         group.status = "resolved"
 
-        # 5. Delete associated Perception Slot if exists
-        if group.slot_id is not None:
-            from backend.database.model import PerceptionSlotModel
-            slot_res = await session.execute(
-                select(PerceptionSlotModel).where(PerceptionSlotModel.id == group.slot_id)
-            )
-            slot = slot_res.scalar_one_or_none()
-            if slot:
-                await session.delete(slot)
-            group.slot_id = None
-
-        # 6. Analyze patch to dynamically determine affected stages to mark stale
-        stages_to_invalidate = set()
-        kinds_to_invalidate = set()
-        for op in ["addNodes", "updateNodes", "deleteNodes"]:
-            for node in choice.patch.get(op, []):
-                kind = node.get("kind")
-                if kind == "actor":
-                    stages_to_invalidate.add("what")
-                    kinds_to_invalidate.update(
-                        {"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"}
-                    )
-                elif kind == "feature":
-                    stages_to_invalidate.update(["what", "how", "scope"])
-                    kinds_to_invalidate.update(
-                        {"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"}
-                    )
-                elif kind == "scenario":
-                    stages_to_invalidate.add("what")
-                    kinds_to_invalidate.update({"SCENARIO", "ACCEPTANCE_CRITERION"})
-                elif kind == "acceptance_criterion":
-                    stages_to_invalidate.add("what")
-                    kinds_to_invalidate.add("ACCEPTANCE_CRITERION")
-                elif kind == "business_object":
-                    stages_to_invalidate.update(["how", "scope"])
-                    kinds_to_invalidate.add("FLOW")
-                elif kind == "flow":
-                    stages_to_invalidate.add("how")
-                    kinds_to_invalidate.add("FLOW")
-                elif kind == "flow_step":
-                    stages_to_invalidate.add("how")
-                    kinds_to_invalidate.add("FLOW")
-                elif kind == "scope":
-                    stages_to_invalidate.add("scope")
-                    kinds_to_invalidate.add("SCOPE")
-
-        for link in choice.patch.get("addLinks", []):
-            link_type = link.get("type") or link.get("relationType") or link.get("relation_type")
-            if link_type in ["feature_actor_relation", "feature_actor"]:
-                stages_to_invalidate.update(["what", "how", "scope"])
-                kinds_to_invalidate.update(
-                    {"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"}
-                )
-            elif link_type in ["flow_feature_relation", "flow_feature"]:
-                stages_to_invalidate.update(["how"])
-                kinds_to_invalidate.add("FLOW")
-
-        if stages_to_invalidate:
+        await self._delete_linked_perception_slot(group, session)
+        stages, kinds = self._collect_patch_invalidation(choice.patch)
+        if stages:
             await get_notifier().mark_stale(
                 project_id=project_id,
-                stages=stages_to_invalidate,
-                perception_kinds=kinds_to_invalidate or None,
+                stages=stages,
+                perception_kinds=kinds or None,
                 session=session,
             )
 
-        # P3: issue regression verification for issue_repair choices
+        issue_diff = await self._verify_patch_choice_resolution(
+            group,
+            project_id,
+            session,
+        )
+        self._record_choice_acceptance_audit(
+            choice,
+            group,
+            project_id,
+            issue_diff,
+            session,
+        )
+        await session.flush()
+        return issue_diff
+
+    @staticmethod
+    async def _delete_linked_perception_slot(group, session) -> None:
+        if group.slot_id is None:
+            return
+        from backend.database.model import PerceptionSlotModel
+
+        slot_res = await session.execute(
+            select(PerceptionSlotModel).where(PerceptionSlotModel.id == group.slot_id)
+        )
+        slot = slot_res.scalar_one_or_none()
+        if slot:
+            await session.delete(slot)
+        group.slot_id = None
+
+    @staticmethod
+    def _collect_patch_invalidation(patch: dict) -> tuple[set, set]:
+        stages = set()
+        kinds = set()
+        for op in ["addNodes", "updateNodes", "deleteNodes"]:
+            for node in patch.get(op, []):
+                invalidation = _NODE_INVALIDATION.get(node.get("kind"))
+                if invalidation:
+                    stages.update(invalidation[0])
+                    kinds.update(invalidation[1])
+
+        for link in patch.get("addLinks", []):
+            link_type = link.get("type") or link.get("relationType") or link.get("relation_type")
+            invalidation = _LINK_INVALIDATION.get(link_type)
+            if invalidation:
+                stages.update(invalidation[0])
+                kinds.update(invalidation[1])
+        return stages, kinds
+
+    @staticmethod
+    async def _verify_patch_choice_resolution(group, project_id, session) -> dict:
         resolved_ids, remaining_ids, new_ids = [], [], []
         is_partial = False
         if group.source_type == "issue_repair" and group.stage and group.issue_id and group.issue_code:
@@ -441,32 +562,38 @@ class ChoiceService:
                 ]
                 is_partial = len(resolved_ids) > 0 and len(target_remaining) > 0
 
-        # 审计日志
-        session.add(AuditLogModel(
-            project_id=project_id,
-            action_type="accept_choice",
-            summary=f"接受选项: {choice.title}",
-            target_type="choice",
-            target_id=str(choice_id),
-            payload={
-                "issue_code": group.issue_code,
-                "resolution_type": "choice",
-                "choice_id": str(choice.id),
-                "solver_name": choice.title,
-                "context_hash": group.context_hash,
-                "resolved_issue_ids": resolved_ids,
-                "new_issue_ids": new_ids,
-                "partially_resolved": is_partial,
-            },
-        ))
-        await session.flush()
-
         return {
             "resolved_issue_ids": resolved_ids,
             "remaining_issue_ids": remaining_ids,
             "new_issue_ids": new_ids,
             "partially_resolved": is_partial,
         }
+
+    @staticmethod
+    def _record_choice_acceptance_audit(
+        choice,
+        group,
+        project_id,
+        issue_diff,
+        session,
+    ) -> None:
+        session.add(AuditLogModel(
+            project_id=project_id,
+            action_type="accept_choice",
+            summary=f"接受选项: {choice.title}",
+            target_type="choice",
+            target_id=str(choice.id),
+            payload={
+                "issue_code": group.issue_code,
+                "resolution_type": "choice",
+                "choice_id": str(choice.id),
+                "solver_name": choice.title,
+                "context_hash": group.context_hash,
+                "resolved_issue_ids": issue_diff["resolved_issue_ids"],
+                "new_issue_ids": issue_diff["new_issue_ids"],
+                "partially_resolved": issue_diff["partially_resolved"],
+            },
+        ))
 
     async def _reject_siblings(self, accepted_choice, group, session):
         """Mark all other choices in the group as rejected."""
@@ -548,16 +675,39 @@ class ChoiceService:
             raise ValueError("resolved_group_cannot_be_discarded")
 
         group.status = "discarded"
-        # 所有候选标记为 discarded
-        for c in group.choices:
-            c.status = "discarded"
+        for choice in group.choices:
+            choice.status = "discarded"
+        self._record_choice_group_discarded(
+            group,
+            project_id=project_id,
+            group_id=group_id,
+            session=session,
+        )
 
-        # 审计日志: generation group 与 issue repair group 使用不同 action_type
+        await session.flush()
+        return self._build_choice_group_response(group)
+
+    @staticmethod
+    def _record_choice_group_discarded(
+        group: ChoiceGroupModel,
+        *,
+        project_id: int,
+        group_id: int,
+        session,
+    ) -> None:
         is_generation = group.generation_type is not None
         session.add(AuditLogModel(
             project_id=project_id,
-            action_type="generation_choice_group_discarded" if is_generation else "discard_choice_group",
-            summary=f"丢弃{'生成' if is_generation else '修复'}候选组: {group.generation_type or group.source_type or group.issue_code or ''} (id={group_id})",
+            action_type=(
+                "generation_choice_group_discarded"
+                if is_generation
+                else "discard_choice_group"
+            ),
+            summary=(
+                f"丢弃{'生成' if is_generation else '修复'}候选组: "
+                f"{group.generation_type or group.source_type or group.issue_code or ''} "
+                f"(id={group_id})"
+            ),
             target_type="choice_group",
             target_id=str(group_id),
             payload={
@@ -568,9 +718,10 @@ class ChoiceService:
             },
         ))
 
-        await session.flush()
-
-        # 构建响应
+    @staticmethod
+    def _build_choice_group_response(
+        group: ChoiceGroupModel,
+    ) -> ChoiceGroupResponse:
         return ChoiceGroupResponse(
             id=group.id,
             project_id=group.project.public_id,
@@ -592,23 +743,23 @@ class ChoiceService:
             status_detail=group.status_detail,
             choices=[
                 ChoiceResponse(
-                    id=c.id,
-                    choice_group_id=c.choice_group_id,
-                    title=c.title,
-                    rationale=c.rationale,
-                    status=c.status,
-                    patch=c.patch,
-                    impact_preview=c.impact_preview,
-                    payload=c.payload,
-                    draft_type=c.draft_type,
-                    apply_mode=c.apply_mode or "patch",
-                    preview=c.preview,
-                    score=c.score,
-                    error=c.error,
-                    created_at=c.created_at,
-                    updated_at=c.updated_at,
+                    id=choice.id,
+                    choice_group_id=choice.choice_group_id,
+                    title=choice.title,
+                    rationale=choice.rationale,
+                    status=choice.status,
+                    patch=choice.patch,
+                    impact_preview=choice.impact_preview,
+                    payload=choice.payload,
+                    draft_type=choice.draft_type,
+                    apply_mode=choice.apply_mode or "patch",
+                    preview=choice.preview,
+                    score=choice.score,
+                    error=choice.error,
+                    created_at=choice.created_at,
+                    updated_at=choice.updated_at,
                 )
-                for c in group.choices
+                for choice in group.choices
             ],
             created_at=group.created_at,
             updated_at=group.updated_at,

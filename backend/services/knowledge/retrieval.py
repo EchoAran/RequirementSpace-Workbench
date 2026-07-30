@@ -52,7 +52,33 @@ class KnowledgeRetrievalService:
         if not KNOWLEDGE_BASE_ENABLED or not query:
             return []
 
-        # 1. Query candidate chunks from active, AI-enabled documents
+        candidate_chunks = await KnowledgeRetrievalService._load_candidates(
+            session,
+            project_id,
+            workspace_id,
+        )
+        if not candidate_chunks:
+            return []
+
+        query_tokens, query_phrases = (
+            KnowledgeRetrievalService._build_search_terms(query)
+        )
+        scored_chunks = [
+            scored
+            for chunk in candidate_chunks
+            if (
+                scored := KnowledgeRetrievalService._score_chunk(
+                    chunk,
+                    query_tokens,
+                    query_phrases,
+                )
+            ) is not None
+        ]
+        scored_chunks.sort(key=lambda item: (-item["score"], -item["created_at"]))
+        return [item["chunk"] for item in scored_chunks[:top_n]]
+
+    @staticmethod
+    async def _load_candidates(session, project_id, workspace_id) -> list:
         stmt = (
             select(KnowledgeChunkModel)
             .join(KnowledgeDocumentModel)
@@ -68,62 +94,52 @@ class KnowledgeRetrievalService:
         elif workspace_id is not None:
             stmt = stmt.where(KnowledgeChunkModel.workspace_id == workspace_id)
         else:
-            # Neither project nor workspace id provided: return empty
             return []
 
         result = await session.execute(stmt)
-        candidate_chunks = result.scalars().all()
-        if not candidate_chunks:
-            return []
+        return result.scalars().all()
 
-        # 2. Extract query tokens and phrases
+    @staticmethod
+    def _build_search_terms(query: str) -> tuple[list[str], list[str]]:
         query_tokens = tokenize_for_search(query)
         query_phrases = extract_phrases(query)
-
         if not query_tokens:
-            # If tokenization results in nothing, fall back to simple substring match check on candidates
             query_tokens = [query.lower()]
             query_phrases = [query.lower()] if len(query) >= 2 else []
+        return query_tokens, query_phrases
 
-        # 3. Score candidates
-        scored_chunks = []
-        for chunk in candidate_chunks:
-            doc = chunk.document
-            
-            # Tokenize body, heading path, and filename
-            body_tokens = set(tokenize_for_search(chunk.text))
-            title_tokens = set(tokenize_for_search(chunk.heading_path))
-            filename_tokens = set(tokenize_for_search(doc.original_filename))
-
-            # Compute hit counts
-            body_keyword_hit = sum(1 for q_t in query_tokens if q_t in body_tokens)
-            title_hit = sum(1 for q_t in query_tokens if q_t in title_tokens)
-            filename_hit = sum(1 for q_t in query_tokens if q_t in filename_tokens)
-
-            # Compute phrase matches
-            phrase_hit = 0
-            text_lower = chunk.text.lower()
-            path_lower = chunk.heading_path.lower()
-            name_lower = doc.original_filename.lower()
-
-            for phrase in query_phrases:
-                if phrase in text_lower or phrase in path_lower or phrase in name_lower:
-                    phrase_hit += 1
-
-            # Scoring formula
-            score = title_hit * 3 + filename_hit * 2 + body_keyword_hit + phrase_hit * 2
-
-            # Only return chunks with score > 0
-            if score > 0:
-                scored_chunks.append({
-                    "chunk": chunk,
-                    "score": score,
-                    "created_at": doc.created_at.timestamp() if doc.created_at else 0
-                })
-
-        # 4. Sort by score descending, then by created_at descending (recency)
-        # Ties are broken by the most recently uploaded documents
-        scored_chunks.sort(key=lambda x: (-x["score"], -x["created_at"]))
-
-        # Return the chunk models up to top_n
-        return [item["chunk"] for item in scored_chunks[:top_n]]
+    @staticmethod
+    def _score_chunk(chunk, query_tokens: list[str], query_phrases: list[str]):
+        document = chunk.document
+        body_tokens = set(tokenize_for_search(chunk.text))
+        title_tokens = set(tokenize_for_search(chunk.heading_path))
+        filename_tokens = set(tokenize_for_search(document.original_filename))
+        body_keyword_hit = sum(
+            1 for token in query_tokens if token in body_tokens
+        )
+        title_hit = sum(1 for token in query_tokens if token in title_tokens)
+        filename_hit = sum(
+            1 for token in query_tokens if token in filename_tokens
+        )
+        text_lower = chunk.text.lower()
+        path_lower = chunk.heading_path.lower()
+        name_lower = document.original_filename.lower()
+        phrase_hit = sum(
+            1
+            for phrase in query_phrases
+            if phrase in text_lower
+            or phrase in path_lower
+            or phrase in name_lower
+        )
+        score = title_hit * 3 + filename_hit * 2 + body_keyword_hit + phrase_hit * 2
+        if score <= 0:
+            return None
+        return {
+            "chunk": chunk,
+            "score": score,
+            "created_at": (
+                document.created_at.timestamp()
+                if document.created_at
+                else 0
+            ),
+        }

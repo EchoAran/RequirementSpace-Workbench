@@ -67,9 +67,3 @@ class AIAddConfirmDraftResponse(BaseModel):
 class AIAddDiscardDraftResponse(BaseModel):
     draft_id: str
     message: str = "draft_discarded"
-
-
-class AIAddSessionErrorResponse(BaseModel):
-    error_code: str
-    message: str
-    details: dict = Field(default_factory=dict)

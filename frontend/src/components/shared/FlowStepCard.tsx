@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next';
-import i18n from '@/i18n';
 import { NodeStatus } from "@/core/schema";
 import { StatusBadge } from "./StatusBadge";
 import { ObjectLinkChips } from "./ObjectLinkChips";

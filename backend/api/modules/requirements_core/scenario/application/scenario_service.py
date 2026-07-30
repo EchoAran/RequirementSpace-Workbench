@@ -5,13 +5,12 @@ from backend.database.model import (
     ScenarioAcceptanceCriterionModel,
     FeatureModel,
     ActorModel,
-    AuditLogModel,
     ConfirmationStatus,
 )
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.scenario.schemas import (
     ScenarioCreateRequest,
     ScenarioUpdateRequest,

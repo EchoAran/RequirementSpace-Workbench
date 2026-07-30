@@ -19,8 +19,7 @@ import {
   Activity,
   Save,
   Globe,
-  Key,
-  Languages
+  Key
 } from 'lucide-react';
 
 export function AccountSettings() {
@@ -47,20 +46,10 @@ export function AccountSettings() {
   const workspaces = useWorkspaceStore(state => state.workspaces);
   const loadWorkspaces = useWorkspaceStore(state => state.loadWorkspaces);
   const projectId = ir?.projectId;
-  const projectName = ir?.projectName;
 
   const [activeTab, setActiveTab] = useState<'personal' | 'project'>('personal');
   const [projectConfigSummaries, setProjectConfigSummaries] = useState<Record<string, any>>({});
   const [isLoadingProjectIndex, setIsLoadingProjectIndex] = useState(false);
-
-  // Project LLM states
-  const [projectConfig, setProjectConfig] = useState<any | null>(null);
-  const [projectApiUrl, setProjectApiUrl] = useState('');
-  const [projectApiKey, setProjectApiKey] = useState('');
-  const [projectModelName, setProjectModelName] = useState('');
-  const [isEditingProject, setIsEditingProject] = useState(false);
-  const [isTestingProject, setIsTestingProject] = useState(false);
-  const [projectTestResult, setProjectTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Preferred locale state
   const [selectedLocale, setSelectedLocale] = useState<UiLocale>(
@@ -125,30 +114,9 @@ export function AccountSettings() {
     }
   };
 
-  const fetchProjectConfig = async () => {
-    if (!projectId) return;
-    try {
-      const data = await workspaceApi.getProjectLLMConfig(projectId);
-      setProjectConfig(data);
-      if (data.configured) {
-        setProjectApiUrl(data.apiUrl || '');
-        setProjectModelName(data.modelName || '');
-      } else {
-        setProjectApiUrl('');
-        setProjectModelName('');
-      }
-      setProjectApiKey('');
-    } catch (err: any) {
-      console.error(err);
-    }
-  };
-
   useEffect(() => {
     void fetchConfig();
     void loadWorkspaces();
-    if (projectId) {
-      void fetchProjectConfig();
-    }
   }, [projectId, loadWorkspaces]);
 
   useEffect(() => {
@@ -191,113 +159,6 @@ export function AccountSettings() {
       return a.updatedAt < b.updatedAt ? 1 : -1;
     });
   }, [projectId, workspaces]);
-
-  const handleSaveProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectId) return;
-    setActionError(null);
-    setActionSuccess(null);
-
-    const cleanUrl = projectApiUrl.trim();
-    const cleanKey = projectApiKey.trim();
-    const cleanModel = projectModelName.trim();
-
-    if (!cleanUrl || !cleanKey || !cleanModel) {
-      setActionError(t('settings.account.fieldsRequired'));
-      return;
-    }
-
-    try {
-      const updated = await workspaceApi.updateProjectLLMConfig(projectId, {
-        api_url: cleanUrl,
-        api_key: cleanKey,
-        model_name: cleanModel,
-      });
-      setProjectConfig({
-        configured: updated.configured,
-        apiUrl: updated.apiUrl,
-        modelName: updated.modelName,
-        apiKeyLast4: updated.apiKeyLast4,
-      });
-      setIsEditingProject(false);
-      setProjectApiKey('');
-      setProjectTestResult(null);
-      setActionSuccess(t('settings.account.projectSaved'));
-      setTimeout(() => setActionSuccess(null), 3000);
-    } catch (err: any) {
-      setActionError(err?.response?.data?.detail || err.message || t('settings.account.projectSaveFailed'));
-    }
-  };
-
-  const handleDeleteProject = async () => {
-    if (!projectId) return;
-    const confirm = window.confirm(t('settings.account.clearProjectConfirm'));
-    if (!confirm) return;
-
-    setActionError(null);
-    setActionSuccess(null);
-    try {
-      await workspaceApi.deleteProjectLLMConfig(projectId);
-      setProjectConfig({
-        configured: false,
-        apiUrl: null,
-        modelName: null,
-        apiKeyLast4: null,
-      });
-      setProjectApiUrl('');
-      setProjectModelName('');
-      setProjectApiKey('');
-      setProjectTestResult(null);
-      setActionSuccess(t('settings.account.projectCleared'));
-      setTimeout(() => setActionSuccess(null), 3000);
-    } catch (err: any) {
-      setActionError(err?.response?.data?.detail || err.message || t('settings.account.projectClearFailed'));
-    }
-  };
-
-  const handleTestProject = async (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    if (!projectId) return;
-    setIsTestingProject(true);
-    setProjectTestResult(null);
-    try {
-      let res;
-      if (isEditingProject || !projectConfig?.configured) {
-        if (!projectApiUrl.trim() || !projectApiKey.trim() || !projectModelName.trim()) {
-      setProjectTestResult({ success: false, message: t('settings.account.completeConfigurationFirst') });
-          setIsTestingProject(false);
-          return;
-        }
-        res = await workspaceApi.testProjectLLMConfig(projectId, {
-          api_url: projectApiUrl.trim(),
-          api_key: projectApiKey.trim(),
-          model_name: projectModelName.trim(),
-        });
-      } else {
-        res = await workspaceApi.testProjectLLMConfig(projectId, {
-          api_url: projectConfig.apiUrl,
-          api_key: "",
-          model_name: projectConfig.modelName,
-        });
-      }
-
-      if (res.success) {
-      setProjectTestResult({ success: true, message: t('settings.account.projectConnectionSucceeded') });
-      } else {
-        setProjectTestResult({
-          success: false,
-        message: t('settings.account.connectionFailed', { error: res.error_detail || t('settings.account.upstreamUnavailable') })
-        });
-      }
-    } catch (err: any) {
-      setProjectTestResult({
-        success: false,
-        message: t('settings.account.networkError', { error: err.message || t('settings.account.urlUnavailable') })
-      });
-    } finally {
-      setIsTestingProject(false);
-    }
-  };
 
   const handleTest = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -513,7 +374,6 @@ export function AccountSettings() {
                 onClick={() => {
                   setActiveTab('personal');
                   setTestResult(null);
-                  setProjectTestResult(null);
                 }}
                 className={`pb-2 px-1 text-xs font-bold border-b-2 transition-all cursor-pointer ${
                   activeTab === 'personal'
@@ -527,7 +387,6 @@ export function AccountSettings() {
                 onClick={() => {
                   setActiveTab('project');
                   setTestResult(null);
-                  setProjectTestResult(null);
                 }}
                 className={`pb-2 px-1 text-xs font-bold border-b-2 transition-all cursor-pointer ${
                   activeTab === 'project'
@@ -869,22 +728,22 @@ export function AccountSettings() {
           )}
 
           {/* Test results banner */}
-          {((activeTab === 'personal' && testResult) || (activeTab === 'project' && projectTestResult)) && (
+          {activeTab === 'personal' && testResult && (
             <div
               className={`p-4 rounded-2xl border text-xs flex items-start gap-3 animate-in slide-in-from-top-2 duration-200 ${
-                (activeTab === 'personal' ? testResult!.success : projectTestResult!.success)
+                testResult.success
                   ? 'bg-emerald-50 border-emerald-100 text-emerald-950'
                   : 'bg-rose-50 border-rose-100 text-rose-950'
               }`}
             >
-              {(activeTab === 'personal' ? testResult!.success : projectTestResult!.success) ? (
+              {testResult.success ? (
                 <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               ) : (
                 <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               )}
               <div className="space-y-1">
-                <span className="font-bold">{(activeTab === 'personal' ? testResult!.success : projectTestResult!.success) ? t('settings.account.testPassed') : t('settings.account.testFailed')}</span>
-                <p className="leading-relaxed text-slate-600">{(activeTab === 'personal' ? testResult!.message : projectTestResult!.message)}</p>
+                <span className="font-bold">{testResult.success ? t('settings.account.testPassed') : t('settings.account.testFailed')}</span>
+                <p className="leading-relaxed text-slate-600">{testResult.message}</p>
               </div>
             </div>
           )}

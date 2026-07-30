@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from uuid import uuid4
 
 from backend.api.modules.requirements_core.public import (
     ScenarioGenerationService,
@@ -72,30 +71,15 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             session=session,
         )
 
-        generated_scenarios = []
-        gherkin_by_target = {}
-
-        for feature_id, actor_id in target_pairs:
-            key = self._target_key(feature_id, actor_id)
-            raw_gherkin = draft.get("gherkin_by_target", {}).get(key)
-            if raw_gherkin is None:
-                continue
-
-            feature_node = feature_node_map[feature_id]
-            actor_node = actor_node_map[actor_id]
-            revised = await self._revise_gherkin(
+        generated_scenarios, gherkin_by_target = (
+            await self._revise_draft_targets(
+                draft,
+                target_pairs=target_pairs,
+                actor_node_map=actor_node_map,
+                feature_node_map=feature_node_map,
                 user_feedback=user_feedback,
-                gherkin_content=raw_gherkin,
-                feature_name=feature_node.featureName,
             )
-            items, target_gherkin = self._adapter.scenario_items_from_revised_gherkin(
-                revised,
-                feature=feature_node,
-                actor=actor_node,
-            )
-            generated_scenarios.extend(items)
-            gherkin_by_target[key] = target_gherkin
-
+        )
         if not generated_scenarios:
             return await super().regenerate_draft(
                 draft_id=draft_id,
@@ -125,6 +109,39 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             session=session,
         )
         return response_payload
+
+    async def _revise_draft_targets(
+        self,
+        draft: dict,
+        *,
+        target_pairs: list[tuple[int, int]],
+        actor_node_map,
+        feature_node_map,
+        user_feedback: str,
+    ) -> tuple[list[dict], dict]:
+        generated_scenarios = []
+        gherkin_by_target = {}
+        for feature_id, actor_id in target_pairs:
+            key = self._target_key(feature_id, actor_id)
+            raw_gherkin = draft.get("gherkin_by_target", {}).get(key)
+            if raw_gherkin is None:
+                continue
+
+            feature_node = feature_node_map[feature_id]
+            actor_node = actor_node_map[actor_id]
+            revised = await self._revise_gherkin(
+                user_feedback=user_feedback,
+                gherkin_content=raw_gherkin,
+                feature_name=feature_node.featureName,
+            )
+            items, target_gherkin = self._adapter.scenario_items_from_revised_gherkin(
+                revised,
+                feature=feature_node,
+                actor=actor_node,
+            )
+            generated_scenarios.extend(items)
+            gherkin_by_target[key] = target_gherkin
+        return generated_scenarios, gherkin_by_target
 
     async def _generate_preview(
         self,
@@ -357,15 +374,40 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         session,
     ) -> dict:
-        from backend.database.model import (
-            GherkinSpecModel,
-            ScenarioAcceptanceCriterionModel,
-            ScenarioModel,
+        project_id = draft["project_id"]
+        specs_by_target = await SkillBackedScenarioGenerationService._persist_gherkin_specs(
+            draft,
+            session,
         )
+        scenarios = await SkillBackedScenarioGenerationService._persist_scenarios(
+            draft,
+            specs_by_target,
+            session,
+        )
+        acceptance_criterion_count = (
+            await SkillBackedScenarioGenerationService._persist_acceptance_criteria(
+                draft,
+                scenarios,
+                session,
+            )
+        )
+        return {
+            "project_id": project_id,
+            "scenario_count": len(draft["scenarios"]),
+            "acceptance_criterion_count": acceptance_criterion_count,
+            "scenario_ids": [
+                scenario.id
+                for scenario in scenarios
+            ],
+            "message": "scenarios_created",
+        }
+
+    @staticmethod
+    async def _persist_gherkin_specs(draft: dict, session) -> dict:
+        from backend.database.model import GherkinSpecModel
 
         project_id = draft["project_id"]
         specs_by_target: dict[str, GherkinSpecModel] = {}
-
         for target_key, gherkin_content in draft.get("gherkin_by_target", {}).items():
             try:
                 feature_id_text, actor_id_text = str(target_key).split(":", 1)
@@ -383,11 +425,19 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             )
             session.add(spec)
             specs_by_target[str(target_key)] = spec
-
         await session.flush()
+        return specs_by_target
 
+    @staticmethod
+    async def _persist_scenarios(
+        draft: dict,
+        specs_by_target: dict,
+        session,
+    ) -> list:
+        from backend.database.model import ScenarioModel
+
+        project_id = draft["project_id"]
         scenarios = []
-        acceptance_criterion_count = 0
         for item in draft["scenarios"]:
             acceptance_criteria = item.get("acceptance_criteria") or []
             if not acceptance_criteria:
@@ -410,9 +460,18 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
 
             session.add(scenario)
             scenarios.append(scenario)
-
         await session.flush()
+        return scenarios
 
+    @staticmethod
+    async def _persist_acceptance_criteria(
+        draft: dict,
+        scenarios: list,
+        session,
+    ) -> int:
+        from backend.database.model import ScenarioAcceptanceCriterionModel
+
+        acceptance_criterion_count = 0
         for scenario, item in zip(scenarios, draft["scenarios"], strict=True):
             for position, criterion in enumerate(item["acceptance_criteria"], start=1):
                 session.add(
@@ -424,19 +483,8 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
                     )
                 )
                 acceptance_criterion_count += 1
-
         await session.flush()
-
-        return {
-            "project_id": project_id,
-            "scenario_count": len(draft["scenarios"]),
-            "acceptance_criterion_count": acceptance_criterion_count,
-            "scenario_ids": [
-                scenario.id
-                for scenario in scenarios
-            ],
-            "message": "scenarios_created",
-        }
+        return acceptance_criterion_count
 
     @staticmethod
     def _build_draft_response(

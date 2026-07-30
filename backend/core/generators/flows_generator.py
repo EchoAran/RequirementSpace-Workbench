@@ -25,52 +25,77 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
         input_data: FlowsGeneratorInput,
         use_combined_prompt: bool = False,
     ) -> Dict:
-        user_requirements_ = input_data.user_requirements
-        feedback = input_data.user_feedback or ""
+        actors, features = self._serialize_prompt_context(input_data)
+        if use_combined_prompt:
+            return await self._generate_combined(
+                input_data,
+                actors,
+                features,
+            )
+        return await self._generate_sequential(
+            input_data,
+            actors,
+            features,
+        )
 
+    @staticmethod
+    def _serialize_prompt_context(
+        input_data: FlowsGeneratorInput,
+    ) -> tuple[str, str]:
         actors_payload = ActorNode.schema(
             many=True,
             only=("actorId", "actorName", "actorDescription")
         ).dump(input_data.actors)
-
-        actors_ = json.dumps(
+        actors = json.dumps(
             {"actors": actors_payload},
             ensure_ascii=False,
             indent=2
         )
-
         features_payload = FeatureNode.schema(
             many=True,
             only=("featureId", "featureName", "featureDescription", "actorIds")
         ).dump(node for node in input_data.features if len(node.childrenIds) == 0)      # 筛选出没有孩子的结点，即叶子结点
-
-        features_ = json.dumps(
+        features = json.dumps(
             {"features": features_payload},
             ensure_ascii=False,
             indent=2
         )
+        return actors, features
 
-        if use_combined_prompt:
-            response = await self._llm_handler.call_llm(
-                prompt=flows_generate_combined_prompt.replace(
-                    "{{user_requirements}}", f"{user_requirements_}").replace(
-                    "{{actors}}", f"{actors_}").replace(
-                    "{{features}}", f"{features_}"
-                ),
-                query=feedback,
-                print_log=False,
-                protected_inputs=self._protected_inputs(input_data),
-            )
-            result = self._loads_llm_json(response)
-            if not isinstance(result, dict):
-                raise ValueError("invalid_llm_response")
-            return result
+    async def _generate_combined(
+        self,
+        input_data: FlowsGeneratorInput,
+        actors: str,
+        features: str,
+    ) -> dict:
+        response = await self._llm_handler.call_llm(
+            prompt=flows_generate_combined_prompt.replace(
+                "{{user_requirements}}", f"{input_data.user_requirements}").replace(
+                "{{actors}}", f"{actors}").replace(
+                "{{features}}", f"{features}"
+            ),
+            query=input_data.user_feedback or "",
+            print_log=False,
+            protected_inputs=self._protected_inputs(input_data),
+        )
+        result = self._loads_llm_json(response)
+        if not isinstance(result, dict):
+            raise ValueError("invalid_llm_response")
+        return result
 
+    async def _generate_sequential(
+        self,
+        input_data: FlowsGeneratorInput,
+        actors: str,
+        features: str,
+    ) -> dict:
+        user_requirements = input_data.user_requirements
+        feedback = input_data.user_feedback or ""
         flows_response = await self._llm_handler.call_llm(
             prompt=flows_generate_prompt.replace(
-                "{{user_requirements}}",f"{user_requirements_}").replace(
-                "{{actors}}", f"{actors_}").replace(
-                "{{features}}", f"{features_}"
+                "{{user_requirements}}",f"{user_requirements}").replace(
+                "{{actors}}", f"{actors}").replace(
+                "{{features}}", f"{features}"
             ),
             query=feedback,
             print_log=False,
@@ -84,7 +109,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
 
         business_objects_response = await self._llm_handler.call_llm(
             prompt=business_objects_generate_prompt.replace(
-                "{{user_requirements}}", f"{user_requirements_}").replace(
+                "{{user_requirements}}", f"{user_requirements}").replace(
                 "{{flows}}", flows_
             ),
             query=feedback,
@@ -106,7 +131,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
 
         relations_response = await self._llm_handler.call_llm(
             prompt=business_object_in_flows_prompt.replace(
-                "{{user_requirements}}", f"{user_requirements_}").replace(
+                "{{user_requirements}}", f"{user_requirements}").replace(
                 "{{flows}}", flows_).replace(
                 "{{business_objects}}", business_objects_
             ),

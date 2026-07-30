@@ -23,6 +23,148 @@ class NextSuggestionService:
         }
         self._perception_job_service = PerceptionJobService()
 
+    async def _build_preview_suggestion(
+        self,
+        project_id: int,
+        public_project_id: str,
+        session,
+    ) -> dict:
+        await self._ensure_project_exists(project_id, session)
+        return NextSuggestion(
+            sourceType="predefined",
+            code="PREVIEW_READY",
+            title="查看预览",
+            description="当前已处于预览阶段。",
+            action={
+                "kind": "navigate",
+                "route": f"/projects/{public_project_id}/preview",
+            },
+        ).to_dict()
+
+    async def _replace_transition_suggestion(
+        self,
+        suggestion,
+        *,
+        project_id: int,
+        stage: str,
+        session,
+        background_tasks: BackgroundTasks | None,
+        public_project_id: str,
+        include_perception: bool,
+        transition_code: str | None,
+    ):
+        if not include_perception and suggestion.code == transition_code:
+            active_slot = (
+                await self._perception_job_service
+                .get_active_slot_suggestion(
+                    project_id=project_id,
+                    stage=stage,
+                    session=session,
+                    public_project_id=public_project_id,
+                )
+            )
+            if active_slot is not None:
+                suggestion = active_slot
+        if (
+            include_perception
+            and stage == "what"
+            and suggestion.code == "ENTER_HOW"
+        ):
+            perception = (
+                await self._perception_job_service
+                .get_next_what_suggestion(
+                    project_id=project_id,
+                    session=session,
+                    background_tasks=background_tasks,
+                    public_project_id=public_project_id,
+                )
+            )
+            if perception is not None:
+                suggestion = perception
+        if (
+            include_perception
+            and stage == "how"
+            and suggestion.code == "ENTER_SCOPE"
+        ):
+            perception = (
+                await self._perception_job_service
+                .get_next_how_suggestion(
+                    project_id=project_id,
+                    session=session,
+                    background_tasks=background_tasks,
+                    public_project_id=public_project_id,
+                )
+            )
+            if perception is not None:
+                suggestion = perception
+        return suggestion
+
+    @staticmethod
+    def _assert_public_project_id(
+        suggestion: dict | None,
+        project_id: int,
+    ) -> None:
+        if not suggestion or not isinstance(suggestion.get("action"), dict):
+            return
+        action = suggestion["action"]
+        route = action.get("route")
+        if isinstance(route, str) and (
+            f"/projects/{project_id}/" in route
+            or route.endswith(f"/projects/{project_id}")
+        ):
+            raise AssertionError(
+                f"Internal integer project ID {project_id} "
+                f"leaked in route: {route}"
+            )
+        payload = action.get("payload")
+        if isinstance(payload, dict):
+            value = payload.get("project_id")
+            if value == project_id or value == str(project_id):
+                raise AssertionError(
+                    f"Internal integer project ID {project_id} "
+                    f"leaked in payload: {payload}"
+                )
+
+    async def _build_policy_suggestion(
+        self,
+        policy,
+        *,
+        project_id: int,
+        stage: str,
+        session,
+        background_tasks: BackgroundTasks | None,
+        public_project_id: str,
+        include_perception: bool,
+    ) -> dict | None:
+        suggestion = await policy.get_next(
+            project_id=project_id,
+            session=session,
+            public_project_id=public_project_id,
+        )
+        transition_code = {
+            "what": "ENTER_HOW",
+            "how": "ENTER_SCOPE",
+            "scope": "ENTER_PREVIEW",
+        }.get(stage)
+        suggestion = await self._replace_transition_suggestion(
+            suggestion,
+            project_id=project_id,
+            stage=stage,
+            session=session,
+            background_tasks=background_tasks,
+            public_project_id=public_project_id,
+            include_perception=include_perception,
+            transition_code=transition_code,
+        )
+        if (
+            suggestion.code == transition_code
+            and await self._is_stage_advanced(project_id, stage, session)
+        ):
+            return None
+        result = suggestion.to_dict()
+        self._assert_public_project_id(result, project_id)
+        return result
+
     async def get_next_suggestion(
         self,
         project_id: int,
@@ -49,88 +191,21 @@ class NextSuggestionService:
         policy = self._policies.get(stage)
 
         if policy is None:
-            await self._ensure_project_exists(project_id, session)
-            suggestion = NextSuggestion(
-                sourceType="predefined",
-                code="PREVIEW_READY",
-                title="查看预览",
-                description="当前已处于预览阶段。",
-                action={
-                    "kind": "navigate",
-                    "route": f"/projects/{pub_id}/preview",
-                },
-            ).to_dict()
-        else:
-            suggestion_node = await policy.get_next(
-                project_id=project_id,
-                session=session,
-                public_project_id=pub_id,
+            suggestion = await self._build_preview_suggestion(
+                project_id,
+                pub_id,
+                session,
             )
-
-            transition_code = {
-                "what": "ENTER_HOW",
-                "how": "ENTER_SCOPE",
-                "scope": "ENTER_PREVIEW",
-            }.get(stage)
-
-            if not include_perception and suggestion_node.code == transition_code:
-                active_slot = await self._perception_job_service.get_active_slot_suggestion(
-                    project_id=project_id,
-                    stage=stage,
-                    session=session,
-                    public_project_id=pub_id,
-                )
-                if active_slot is not None:
-                    suggestion_node = active_slot
-
-            if include_perception and stage == "what" and suggestion_node.code == "ENTER_HOW":
-                perception_suggestion = await (
-                    self._perception_job_service
-                ).get_next_what_suggestion(
-                    project_id=project_id,
-                    session=session,
-                    background_tasks=background_tasks,
-                    public_project_id=pub_id,
-                )
-
-                if perception_suggestion is not None:
-                    suggestion_node = perception_suggestion
-
-            if include_perception and stage == "how" and suggestion_node.code == "ENTER_SCOPE":
-                perception_suggestion = await (
-                    self._perception_job_service
-                ).get_next_how_suggestion(
-                    project_id=project_id,
-                    session=session,
-                    background_tasks=background_tasks,
-                    public_project_id=pub_id,
-                )
-
-                if perception_suggestion is not None:
-                    suggestion_node = perception_suggestion
-
-            if (
-                suggestion_node.code == transition_code
-                and await self._is_stage_advanced(project_id, stage, session)
-            ):
-                suggestion = None
-            else:
-                suggestion = suggestion_node.to_dict()
-
-            # Defensive assertion checks for internal ID leakage
-            if suggestion and "action" in suggestion and isinstance(suggestion["action"], dict):
-                act = suggestion["action"]
-                if "route" in act and isinstance(act["route"], str):
-                    if f"/projects/{project_id}/" in act["route"] or act["route"].endswith(f"/projects/{project_id}"):
-                        raise AssertionError(
-                            f"Internal integer project ID {project_id} leaked in route: {act['route']}"
-                        )
-                if "payload" in act and isinstance(act["payload"], dict):
-                    val = act["payload"].get("project_id")
-                    if val == project_id or val == str(project_id):
-                        raise AssertionError(
-                            f"Internal integer project ID {project_id} leaked in payload: {act['payload']}"
-                        )
+        else:
+            suggestion = await self._build_policy_suggestion(
+                policy,
+                project_id=project_id,
+                stage=stage,
+                session=session,
+                background_tasks=background_tasks,
+                public_project_id=pub_id,
+                include_perception=include_perception,
+            )
 
         return {
             "project_id": pub_id,

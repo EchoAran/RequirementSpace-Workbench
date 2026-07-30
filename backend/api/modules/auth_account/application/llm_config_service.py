@@ -220,51 +220,78 @@ class LLMConfigService:
         self, user: UserModel, req: LLMConfigTestRequest, session: AsyncSession
     ) -> LLMConfigTestResponse:
         """Test LLM connectivity using either submitted or saved credentials."""
-        # 1. Resolve credentials to test
+        api_url, api_key, model_name = await self._resolve_test_credentials(
+            user,
+            req,
+            session,
+        )
+        return await self._execute_config_test(
+            user_id=user.id,
+            api_url=api_url,
+            api_key=api_key,
+            model_name=model_name,
+        )
+
+    async def _resolve_test_credentials(
+        self,
+        user: UserModel,
+        req: LLMConfigTestRequest,
+        session: AsyncSession,
+    ) -> tuple[str, str, str]:
         if user.role == UserRole.ADMIN.value:
-            # Admins must ONLY test using the server configuration from .env
             server_config = load_llm_config()
             if not server_config:
                 raise ValueError("server_llm_config_not_configured")
-            api_url = server_config["api_url"].rstrip("/")
-            api_key = server_config["api_key"]
-            model_name = server_config["model_name"]
-        else:
-            # Regular user checks submitted parameters or saved configuration
-            params = [req.api_url, req.api_key, req.model_name]
-            has_any = any(p is not None for p in params)
-            has_all = all(p is not None for p in params)
+            return (
+                server_config["api_url"].rstrip("/"),
+                server_config["api_key"],
+                server_config["model_name"],
+            )
 
-            if has_any and not has_all:
-                raise ValueError("llm_config_invalid")
+        params = [req.api_url, req.api_key, req.model_name]
+        has_any = any(param is not None for param in params)
+        has_all = all(param is not None for param in params)
+        if has_any and not has_all:
+            raise ValueError("llm_config_invalid")
+        if has_all:
+            return self._validate_submitted_test_credentials(req)
 
-            if has_all:
-                api_url = req.api_url.strip()
-                api_key = req.api_key.strip()
-                model_name = req.model_name.strip()
+        stmt = select(UserLLMConfigModel).where(
+            UserLLMConfigModel.user_id == user.id
+        )
+        res = await session.execute(stmt)
+        db_config = res.scalar_one_or_none()
+        if not db_config:
+            raise ValueError("llm_config_required")
+        return (
+            db_config.api_url,
+            decrypt_llm_api_key(db_config.encrypted_api_key),
+            db_config.model_name,
+        )
 
-                if not api_url or not api_key or not model_name:
-                    raise ValueError("llm_config_invalid")
+    @staticmethod
+    def _validate_submitted_test_credentials(
+        req: LLMConfigTestRequest,
+    ) -> tuple[str, str, str]:
+        api_url = req.api_url.strip()
+        api_key = req.api_key.strip()
+        model_name = req.model_name.strip()
+        if not api_url or not api_key or not model_name:
+            raise ValueError("llm_config_invalid")
+        if len(api_url) > 500 or len(model_name) > 255:
+            raise ValueError("llm_config_invalid")
+        if not validate_llm_url(api_url):
+            raise ValueError("llm_config_invalid")
+        return api_url.rstrip("/"), api_key, model_name
 
-                if len(api_url) > 500 or len(model_name) > 255:
-                    raise ValueError("llm_config_invalid")
-
-                if not validate_llm_url(api_url):
-                    raise ValueError("llm_config_invalid")
-
-                api_url = api_url.rstrip("/")
-            else:
-                # Use saved config
-                stmt = select(UserLLMConfigModel).where(UserLLMConfigModel.user_id == user.id)
-                res = await session.execute(stmt)
-                db_config = res.scalar_one_or_none()
-                if not db_config:
-                    raise ValueError("llm_config_required")
-                api_url = db_config.api_url
-                api_key = decrypt_llm_api_key(db_config.encrypted_api_key)
-                model_name = db_config.model_name
-
-        # 2. Execute POST request
+    @staticmethod
+    async def _execute_config_test(
+        *,
+        user_id: int,
+        api_url: str,
+        api_key: str,
+        model_name: str,
+    ) -> LLMConfigTestResponse:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
@@ -286,7 +313,7 @@ class LLMConfigService:
             duration = time.time() - start_time
 
             logger.info(
-                f"User {user.id} LLM config test to host {host} completed in {duration:.3f}s with status {status_code}"
+                f"User {user_id} LLM config test to host {host} completed in {duration:.3f}s with status {status_code}"
             )
 
             if status_code != 200:
@@ -309,7 +336,7 @@ class LLMConfigService:
         except httpx.TimeoutException:
             duration = time.time() - start_time
             logger.info(
-                f"User {user.id} LLM config test to host {host} timed out after {duration:.3f}s"
+                f"User {user_id} LLM config test to host {host} timed out after {duration:.3f}s"
             )
             return LLMConfigTestResponse(
                 success=False,
@@ -321,7 +348,7 @@ class LLMConfigService:
             # Sanitize the logged exception message to prevent secret key leaks
             err_msg = sanitize_secrets(str(exc), api_key)
             logger.info(
-                f"User {user.id} LLM config test to host {host} failed in {duration:.3f}s: {err_msg}"
+                f"User {user_id} LLM config test to host {host} failed in {duration:.3f}s: {err_msg}"
             )
             return LLMConfigTestResponse(
                 success=False,
@@ -332,70 +359,102 @@ class LLMConfigService:
     async def resolve_for_user(self, user_id: int, session: AsyncSession, project_id: int | None = None) -> dict:
         """Resolve LLM credentials for internal calls (Plaintext key returned)."""
         if project_id:
-            from backend.database.model import ProjectLLMConfigModel
-            stmt_proj = select(ProjectLLMConfigModel).where(ProjectLLMConfigModel.project_id == project_id)
-            res_proj = await session.execute(stmt_proj)
-            db_proj = res_proj.scalar_one_or_none()
-            if db_proj:
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "auth",
-                    LLM_CONFIG_RESOLVED,
-                    "LLM config resolved",
-                    user_id=user_id,
-                    project_id=project_id,
-                    config_scope="project",
-                )
-                return {
-                    "api_url": db_proj.api_url.rstrip("/"),
-                    "api_key": decrypt_llm_api_key(db_proj.encrypted_api_key),
-                    "model_name": db_proj.model_name,
-                }
+            project_config = await self._resolve_project_config(
+                user_id,
+                project_id,
+                session,
+            )
+            if project_config:
+                return project_config
 
-        # Load user first to check role
         stmt_user = select(UserModel).where(UserModel.id == user_id)
         res_user = await session.execute(stmt_user)
         user = res_user.scalar_one_or_none()
-
         if not user:
             raise ValueError("user_not_found")
-
         if user.role == UserRole.ADMIN.value:
-            server_config = load_llm_config()
-            if not server_config:
-                log_event(
-                    logger,
-                    logging.WARNING,
-                    "auth",
-                    LLM_CONFIG_MISSING,
-                    "LLM config missing",
-                    user_id=user_id,
-                    project_id=project_id,
-                    config_scope="server",
-                )
-                raise ValueError("server_llm_config_not_configured")
+            return self._resolve_admin_server_config(user_id, project_id)
+        return await self._resolve_personal_config(
+            user_id,
+            project_id,
+            session,
+        )
+
+    @staticmethod
+    async def _resolve_project_config(
+        user_id: int,
+        project_id: int,
+        session: AsyncSession,
+    ) -> dict | None:
+        from backend.database.model import ProjectLLMConfigModel
+
+        result = await session.execute(
+            select(ProjectLLMConfigModel).where(
+                ProjectLLMConfigModel.project_id == project_id
+            )
+        )
+        config = result.scalar_one_or_none()
+        if not config:
+            return None
+        log_event(
+            logger,
+            logging.INFO,
+            "auth",
+            LLM_CONFIG_RESOLVED,
+            "LLM config resolved",
+            user_id=user_id,
+            project_id=project_id,
+            config_scope="project",
+        )
+        return {
+            "api_url": config.api_url.rstrip("/"),
+            "api_key": decrypt_llm_api_key(config.encrypted_api_key),
+            "model_name": config.model_name,
+        }
+
+    @staticmethod
+    def _resolve_admin_server_config(
+        user_id: int,
+        project_id: int | None,
+    ) -> dict:
+        server_config = load_llm_config()
+        if not server_config:
             log_event(
                 logger,
-                logging.INFO,
+                logging.WARNING,
                 "auth",
-                LLM_CONFIG_RESOLVED,
-                "LLM config resolved",
+                LLM_CONFIG_MISSING,
+                "LLM config missing",
                 user_id=user_id,
                 project_id=project_id,
                 config_scope="server",
             )
-            return {
-                "api_url": server_config["api_url"].rstrip("/"),
-                "api_key": server_config["api_key"],
-                "model_name": server_config["model_name"],
-            }
+            raise ValueError("server_llm_config_not_configured")
+        log_event(
+            logger,
+            logging.INFO,
+            "auth",
+            LLM_CONFIG_RESOLVED,
+            "LLM config resolved",
+            user_id=user_id,
+            project_id=project_id,
+            config_scope="server",
+        )
+        return {
+            "api_url": server_config["api_url"].rstrip("/"),
+            "api_key": server_config["api_key"],
+            "model_name": server_config["model_name"],
+        }
 
-        # Regular user
+    @staticmethod
+    async def _resolve_personal_config(
+        user_id: int,
+        project_id: int | None,
+        session: AsyncSession,
+    ) -> dict:
         stmt_config = select(UserLLMConfigModel).where(UserLLMConfigModel.user_id == user_id)
         res_config = await session.execute(stmt_config)
         db_config = res_config.scalar_one_or_none()
-
         if not db_config:
             log_event(
                 logger,
@@ -408,7 +467,6 @@ class LLMConfigService:
                 config_scope="personal",
             )
             raise ValueError("llm_config_required")
-
         log_event(
             logger,
             logging.INFO,

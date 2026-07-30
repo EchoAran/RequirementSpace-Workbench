@@ -22,6 +22,47 @@ export function LeftNav() {
 
   const stageProgress = useWorkspaceStore(s => s.stageProgress);
 
+  const handleNavClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    page: string,
+    disabled: boolean,
+  ) => {
+    if (!disabled) return;
+    event.preventDefault();
+    if (!stageProgress?.stages) return;
+
+    const previousStageByPage: Record<string, string> = {
+      '/flow': 'what',
+      '/scope': 'how',
+    };
+    const transitionByStage: Record<string, 'enter_how' | 'enter_scope' | 'enter_preview'> = {
+      what: 'enter_how',
+      how: 'enter_scope',
+      scope: 'enter_preview',
+    };
+    const previousStageKey = previousStageByPage[page];
+    const previousStage = stageProgress.stages.find(
+      (stage: any) => stage.stage === previousStageKey,
+    );
+    if (!previousStage) return;
+
+    if (previousStage.statusCode === 'ready_to_advance') {
+      useWorkspaceStore.getState().requestStageTransition(
+        transitionByStage[previousStageKey],
+        { navigate },
+      );
+      return;
+    }
+
+    const fallbackReason = previousStageKey
+      ? t('nav.lockReason.fillRules', {
+          stage: previousStageKey === 'what' ? 'What' : 'How',
+        })
+      : t('nav.lockReason.generic');
+    const reason = getStageCheckMessage(previousStage.failedChecks?.[0], t) || fallbackReason;
+    useWorkspaceStore.getState().setError(reason);
+  };
+
   const getCounts = (path: string) => {
     if (path === '/overview') {
       return {
@@ -198,42 +239,7 @@ export function LeftNav() {
             <Link
               key={item.page}
               to={disabled ? '#' : to}
-              onClick={(e) => {
-                if (stageProgress && stageProgress.stages) {
-                  if (disabled) {
-                    e.preventDefault();
-                    const stageMap: Record<string, string> = {
-                      '/flow': 'what',
-                      '/scope': 'how'
-                    };
-                    const prevStageKey = stageMap[item.page];
-                    if (prevStageKey) {
-                      const prevStage = stageProgress.stages.find((s: any) => s.stage === prevStageKey);
-                      if (prevStage) {
-                        if (prevStage.statusCode === 'ready_to_advance') {
-                          const actionMap: Record<string, 'enter_how' | 'enter_scope' | 'enter_preview'> = {
-                            'what': 'enter_how',
-                            'how': 'enter_scope',
-                            'scope': 'enter_preview'
-                          };
-                          useWorkspaceStore.getState().requestStageTransition(actionMap[prevStageKey], { navigate });
-                        } else {
-                          let reason = getStageCheckMessage(prevStage.failedChecks?.[0], t);
-                          if (!reason) {
-                            if (prevStageKey === 'what') reason = t('nav.lockReason.fillRules', { stage: 'What' });
-                            else if (prevStageKey === 'how') reason = t('nav.lockReason.fillRules', { stage: 'How' });
-                            else reason = t('nav.lockReason.generic');
-                          }
-                          useWorkspaceStore.getState().setError(reason);
-                        }
-                      }
-                    }
-                  }
-                  return;
-                }
-
-                if (disabled) e.preventDefault();
-              }}
+              onClick={(event) => handleNavClick(event, item.page, disabled)}
               className={cn(
                 "flex items-center rounded-xl transition-colors relative block",
                 collapsed ? "p-3 justify-center" : "p-3",

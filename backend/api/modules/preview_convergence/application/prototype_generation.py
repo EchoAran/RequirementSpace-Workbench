@@ -321,29 +321,19 @@ class PrototypeGenerationService:
         generator_input: PrototypeGeneratorInput,
         detail,
     ) -> list[dict[str, Any]]:
-        actors_by_id = {
-            actor.actorId: actor
-            for actor in generator_input.actors
-        }
         feature_details_by_id = {
             feature.feature_id: feature
             for feature in detail.features
         }
-        leaf_features = [
-            feature
-            for feature in generator_input.features
-            if not feature.childrenIds
-        ]
-        if any(item.scope is not None for item in detail.features):
-            leaf_features = [
-                feature
-                for feature in leaf_features
-                if (
-                    feature_details_by_id.get(feature.featureId) is not None
-                    and feature_details_by_id[feature.featureId].scope is not None
-                    and feature_details_by_id[feature.featureId].scope.scope_status == "current"
-                )
-            ]
+        actors_by_id = {
+            actor.actorId: actor
+            for actor in generator_input.actors
+        }
+        leaf_features = cls._select_prototype_features(
+            generator_input,
+            detail,
+            feature_details_by_id,
+        )
 
         targets: list[dict[str, Any]] = []
         for feature in leaf_features:
@@ -364,35 +354,19 @@ class PrototypeGenerationService:
                     for scenario in feature.scenarios
                     if scenario.actorId == actor_id
                 ] or list(feature.scenarios)
-                acceptance_criteria = cls._acceptance_criteria_for_target(
-                    actor=actor,
-                    feature=feature,
-                    scenarios=scenarios,
-                    feature_detail=feature_detail,
-                )
                 targets.append(
-                    {
-                        "page_id": f"role-{actor.actorId}-feature-{feature.featureId}",
-                        "actor": actor,
-                        "feature": feature,
-                        "acceptance_criteria": acceptance_criteria,
-                        "input": PrototypePageGeneratorInput(
-                            project_id=generator_input.project_id,
-                            project_name=generator_input.project_name,
-                            project_description=generator_input.project_description,
-                            user_requirements=generator_input.user_requirements,
-                            actor=actor,
-                            feature=feature,
-                            scenarios=scenarios,
-                            business_objects=generator_input.business_objects,
-                            flows=[
-                                flow
-                                for flow in generator_input.flows
-                                if feature.featureId in flow.featureIds
-                            ],
-                            acceptance_criteria=acceptance_criteria,
-                        ),
-                    }
+                    cls._build_role_feature_target(
+                        generator_input,
+                        actor,
+                        feature,
+                        scenarios,
+                        [
+                            flow
+                            for flow in generator_input.flows
+                            if feature.featureId in flow.featureIds
+                        ],
+                        feature_detail,
+                    )
                 )
 
         if targets:
@@ -401,34 +375,76 @@ class PrototypeGenerationService:
         if generator_input.actors and generator_input.features:
             actor = generator_input.actors[0]
             feature = generator_input.features[0]
-            acceptance_criteria = cls._acceptance_criteria_for_target(
-                actor=actor,
-                feature=feature,
-                scenarios=feature.scenarios,
-                feature_detail=feature_details_by_id.get(feature.featureId),
-            )
             return [
-                {
-                    "page_id": f"role-{actor.actorId}-feature-{feature.featureId}",
-                    "actor": actor,
-                    "feature": feature,
-                    "acceptance_criteria": acceptance_criteria,
-                    "input": PrototypePageGeneratorInput(
-                        project_id=generator_input.project_id,
-                        project_name=generator_input.project_name,
-                        project_description=generator_input.project_description,
-                        user_requirements=generator_input.user_requirements,
-                        actor=actor,
-                        feature=feature,
-                        scenarios=feature.scenarios,
-                        business_objects=generator_input.business_objects,
-                        flows=generator_input.flows,
-                        acceptance_criteria=acceptance_criteria,
-                    ),
-                }
+                cls._build_role_feature_target(
+                    generator_input,
+                    actor,
+                    feature,
+                    feature.scenarios,
+                    generator_input.flows,
+                    feature_details_by_id.get(feature.featureId),
+                )
             ]
 
         return []
+
+    @staticmethod
+    def _select_prototype_features(
+        generator_input: PrototypeGeneratorInput,
+        detail,
+        feature_details_by_id: dict,
+    ) -> list[FeatureNode]:
+        leaf_features = [
+            feature
+            for feature in generator_input.features
+            if not feature.childrenIds
+        ]
+        if not any(item.scope is not None for item in detail.features):
+            return leaf_features
+        return [
+            feature
+            for feature in leaf_features
+            if (
+                feature_details_by_id.get(feature.featureId) is not None
+                and feature_details_by_id[feature.featureId].scope is not None
+                and feature_details_by_id[feature.featureId].scope.scope_status == "current"
+            )
+        ]
+
+    @classmethod
+    def _build_role_feature_target(
+        cls,
+        generator_input: PrototypeGeneratorInput,
+        actor: ActorNode,
+        feature: FeatureNode,
+        scenarios: list[ScenarioNode],
+        flows: list[FlowNode],
+        feature_detail,
+    ) -> dict[str, Any]:
+        acceptance_criteria = cls._acceptance_criteria_for_target(
+            actor=actor,
+            feature=feature,
+            scenarios=scenarios,
+            feature_detail=feature_detail,
+        )
+        return {
+            "page_id": f"role-{actor.actorId}-feature-{feature.featureId}",
+            "actor": actor,
+            "feature": feature,
+            "acceptance_criteria": acceptance_criteria,
+            "input": PrototypePageGeneratorInput(
+                project_id=generator_input.project_id,
+                project_name=generator_input.project_name,
+                project_description=generator_input.project_description,
+                user_requirements=generator_input.user_requirements,
+                actor=actor,
+                feature=feature,
+                scenarios=scenarios,
+                business_objects=generator_input.business_objects,
+                flows=flows,
+                acceptance_criteria=acceptance_criteria,
+            ),
+        }
 
     @staticmethod
     def _acceptance_criteria_for_target(
@@ -514,18 +530,45 @@ class PrototypeGenerationService:
         detail,
         gherkin_specs: list[dict],
     ) -> PrototypeGeneratorInput:
-        actors = [
+        scenarios_by_feature, all_scenarios = (
+            PrototypeGenerationService._build_scenario_nodes(detail.features)
+        )
+        return PrototypeGeneratorInput(
+            project_id=detail.project_id,
+            project_name=detail.project_name,
+            project_description=detail.project_description,
+            user_requirements=detail.user_requirements,
+            actors=PrototypeGenerationService._build_actor_nodes(detail.actors),
+            features=PrototypeGenerationService._build_feature_nodes(
+                detail.features,
+                scenarios_by_feature,
+            ),
+            scenarios=all_scenarios,
+            business_objects=PrototypeGenerationService._build_business_object_nodes(
+                detail.business_objects
+            ),
+            flows=PrototypeGenerationService._build_flow_nodes(detail.flows),
+            gherkin_specs=gherkin_specs,
+        )
+
+    @staticmethod
+    def _build_actor_nodes(actors) -> list[ActorNode]:
+        return [
             ActorNode(
                 actorId=actor.actor_id,
                 actorName=actor.actor_name,
                 actorDescription=actor.actor_description,
             )
-            for actor in detail.actors
+            for actor in actors
         ]
 
+    @staticmethod
+    def _build_scenario_nodes(
+        features,
+    ) -> tuple[dict[int, list[ScenarioNode]], list[ScenarioNode]]:
         scenarios_by_feature: dict[int, list[ScenarioNode]] = {}
         all_scenarios: list[ScenarioNode] = []
-        for feature in detail.features:
+        for feature in features:
             feature_scenarios = []
             for scenario in feature.scenarios:
                 criteria = [
@@ -546,8 +589,14 @@ class PrototypeGenerationService:
                 feature_scenarios.append(node)
                 all_scenarios.append(node)
             scenarios_by_feature[feature.feature_id] = feature_scenarios
+        return scenarios_by_feature, all_scenarios
 
-        features = [
+    @staticmethod
+    def _build_feature_nodes(
+        features,
+        scenarios_by_feature: dict[int, list[ScenarioNode]],
+    ) -> list[FeatureNode]:
+        return [
             FeatureNode(
                 featureId=feature.feature_id,
                 featureName=feature.feature_name,
@@ -557,10 +606,14 @@ class PrototypeGenerationService:
                 childrenIds=feature.children_ids,
                 scenarios=scenarios_by_feature.get(feature.feature_id, []),
             )
-            for feature in detail.features
+            for feature in features
         ]
 
-        business_objects = [
+    @staticmethod
+    def _build_business_object_nodes(
+        business_objects,
+    ) -> list[BusinessObjectNode]:
+        return [
             BusinessObjectNode(
                 businessObjectId=item.business_object_id,
                 businessObjectName=item.business_object_name,
@@ -576,10 +629,12 @@ class PrototypeGenerationService:
                     for attribute in item.business_object_attributes
                 ],
             )
-            for item in detail.business_objects
+            for item in business_objects
         ]
 
-        flows = [
+    @staticmethod
+    def _build_flow_nodes(flows) -> list[FlowNode]:
+        return [
             FlowNode(
                 flowId=flow.flow_id,
                 flowName=flow.flow_name,
@@ -599,21 +654,8 @@ class PrototypeGenerationService:
                     for step in flow.flow_steps
                 ],
             )
-            for flow in detail.flows
+            for flow in flows
         ]
-
-        return PrototypeGeneratorInput(
-            project_id=detail.project_id,
-            project_name=detail.project_name,
-            project_description=detail.project_description,
-            user_requirements=detail.user_requirements,
-            actors=actors,
-            features=features,
-            scenarios=all_scenarios,
-            business_objects=business_objects,
-            flows=flows,
-            gherkin_specs=gherkin_specs,
-        )
 
     @staticmethod
     def _to_response(preview: PrototypePreviewModel) -> PrototypePreviewResponse:

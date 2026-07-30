@@ -3,7 +3,6 @@ from sqlalchemy.orm import selectinload
 from backend.database.model import (
     BusinessObjectModel,
     BusinessObjectAttributeModel,
-    AuditLogModel,
     ConfirmationStatus,
     flow_step_input_business_object_table,
     flow_step_output_business_object_table,
@@ -11,7 +10,7 @@ from backend.database.model import (
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.business_object.schemas import (
     BusinessObjectCreateRequest,
     BusinessObjectUpdateRequest,
@@ -19,6 +18,13 @@ from backend.api.modules.requirements_core.business_object.schemas import (
     BusinessObjectAttributeCreateRequest,
     BusinessObjectAttributeUpdateRequest,
     BusinessObjectAttributeResponse,
+)
+from .business_object_attribute_writer import (
+    apply_attribute_updates,
+    build_attribute_update_diff,
+    capture_attribute_state,
+    load_attribute_for_update,
+    serialize_business_object_attribute,
 )
 
 
@@ -268,56 +274,24 @@ class BusinessObjectService:
         req: BusinessObjectAttributeUpdateRequest,
         session,
     ) -> BusinessObjectAttributeResponse:
-        # Verify BO belongs to project
-        bo_res = await session.execute(
-            select(BusinessObjectModel).where(
-                BusinessObjectModel.project_id == project_id,
-                BusinessObjectModel.id == bo_id,
-            )
+        attr = await load_attribute_for_update(
+            session,
+            project_id,
+            bo_id,
+            attr_id,
         )
-        if bo_res.scalar_one_or_none() is None:
-            raise ValueError("business_object_not_found")
-
-        attr_res = await session.execute(
-            select(BusinessObjectAttributeModel).where(
-                BusinessObjectAttributeModel.business_object_id == bo_id,
-                BusinessObjectAttributeModel.id == attr_id,
-            )
-        )
-        attr = attr_res.scalar_one_or_none()
-
-        if attr is None:
-            raise ValueError("attribute_not_found")
 
         from backend.api.modules.collaboration.application.task_service import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "business_object_attribute", attr, req.last_seen_updated_at)
 
-        old_name = attr.name
-        old_description = attr.description
-        old_data_type = attr.data_type
-        old_example = attr.example
-
-        if req.name is not None:
-            attr.name = req.name
-        if req.description is not None:
-            attr.description = req.description
-        if req.data_type is not None:
-            attr.data_type = req.data_type
-        if req.example is not None:
-            attr.example = req.example
+        before = capture_attribute_state(attr)
+        apply_attribute_updates(attr, req)
 
         await session.flush()
 
         # 审计日志: 更新数据属性
         diff = {}
-        if old_name != attr.name:
-            diff["name"] = {"before": old_name, "after": attr.name}
-        if old_description != attr.description:
-            diff["description"] = {"before": old_description, "after": attr.description}
-        if old_data_type != attr.data_type:
-            diff["data_type"] = {"before": old_data_type, "after": attr.data_type}
-        if old_example != attr.example:
-            diff["example"] = {"before": old_example, "after": attr.example}
+        diff = build_attribute_update_diff(before, attr)
 
         await audit_service.record(
             session=session,
@@ -339,15 +313,7 @@ class BusinessObjectService:
         from backend.api.modules.collaboration.application.task_service import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "business_object_attribute", attr)
 
-        return BusinessObjectAttributeResponse(
-            attribute_id=attr.id,
-            business_object_id=attr.business_object_id,
-            name=attr.name,
-            description=attr.description,
-            data_type=attr.data_type,
-            example=attr.example,
-            confirmation_status=attr.confirmation_status,
-        )
+        return serialize_business_object_attribute(attr)
 
     async def delete_business_object_attribute(
         self,

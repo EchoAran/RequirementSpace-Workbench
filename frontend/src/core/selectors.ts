@@ -1,25 +1,9 @@
 import type {
   RequirementSpace,
-  ActorNode,
   FeatureNode,
-  ScenarioNode,
-  AcceptanceCriterionNode,
-  ScopeNode,
-  BusinessObjectNode,
-  BusinessObjectAttributeNode,
-  FlowNode,
   FlowStepNode,
-  PerceptionSlot,
-  ScopeStatus,
   Finding,
-  Choice,
-  ChoiceGroup,
-  GoalNode,
-  CapabilityNode,
-  TaskNode,
   NodeStatus,
-  GraphPatch,
-  FlowStepType,
   Stage,
 } from '@/core/schema';
 import {
@@ -34,67 +18,13 @@ const getConfirmationStatus = (value: unknown): NodeStatus => {
     ? value
     : 'ai_assumption';
 };
-export const selectAllNodes = (space: RequirementSpace | null): any[] => {
-  if (!space) return [];
-  const list: any[] = [];
-  (space.actors || []).forEach(a => list.push({ ...a, id: a.actorId.toString(), title: a.actorName, description: a.actorDescription, status: getConfirmationStatus((a as any).confirmationStatus), scopeStatus: 'in_scope' }));
-  (space.features || []).forEach(f => list.push({ ...f, id: f.featureId.toString(), title: f.featureName, description: f.featureDescription, status: getConfirmationStatus((f as any).confirmationStatus), scopeStatus: f.scope?.scopeStatus || 'in_scope' }));
-  (space.businessObjects || []).forEach(b => {
-    list.push({ ...b, id: b.businessObjectId.toString(), title: b.businessObjectName, description: b.businessObjectDescription, status: getConfirmationStatus((b as any).confirmationStatus), scopeStatus: 'in_scope' });
-    (b.businessObjectAttributes || []).forEach(attr => {
-      list.push({
-        ...attr,
-        id: attr.businessObjectAttributeId.toString(),
-        title: attr.businessObjectAttributeName,
-        description: attr.businessObjectAttributeDescription,
-        status: getConfirmationStatus((attr as any).confirmationStatus),
-        scopeStatus: 'in_scope',
-      });
-    });
-  });
-  (space.flows || []).forEach(fl => {
-    list.push({ ...fl, id: fl.flowId.toString(), title: fl.flowName, description: fl.flowDescription, status: getConfirmationStatus((fl as any).confirmationStatus), scopeStatus: 'in_scope' });
-    (fl.flowSteps || []).forEach(st => {
-      list.push({ ...st, id: st.stepId.toString(), title: st.stepName, description: st.stepDescription, status: getConfirmationStatus((st as any).confirmationStatus), scopeStatus: 'in_scope' });
-    });
-  });
-  return list;
-};
-
-export const selectAllIssues = (space: RequirementSpace | null): Finding[] => {
+const selectAllIssues = (space: RequirementSpace | null): Finding[] => {
   if (!space) return [];
   return space.findings || [];
 };
 
-export const selectAllLinks = (): any[] => [];
-export const selectAllSlots = (space: RequirementSpace | null): any[] => {
-  if (!space || !space.perceptionSlot) return [];
-  return [space.perceptionSlot];
-};
-export const selectAllChoiceGroups = (): any[] => [];
-export const selectAllChoices = (): any[] => [];
-
-export const selectPerformerActorIds = (space: RequirementSpace | null, taskId: string | number): number[] => {
-  if (!space) return [];
-  const numId = typeof taskId === 'string' ? parseInt(taskId, 10) : taskId;
-  // If it's a scenario/task
-  for (const feat of space.features || []) {
-    const sc = (feat.scenarios || []).find(s => s.scenarioId === numId);
-    if (sc) return [sc.actorId];
-  }
-  return [];
-};
-
-export const selectPerformerTitle = (space: RequirementSpace | null, taskId: string | number): string | null => {
-  if (!space) return null;
-  const actorIds = selectPerformerActorIds(space, taskId);
-  if (actorIds.length === 0) return i18n.t('selectors.system');
-  const actor = (space.actors || []).find(a => a.actorId === actorIds[0]);
-  return actor ? actor.actorName : i18n.t('selectors.system');
-};
-
 // Readiness summary calculation
-export type ReadinessDimension = {
+type ReadinessDimension = {
   kind: 'goal' | 'role' | 'system' | 'data' | 'ui';
   title: string;
   score: number;
@@ -153,8 +83,6 @@ export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary
 
   return { overallScore, dimensions: dims };
 };
-
-export const inferIssueStage = findingStage;
 
 export const getStageIssues = (space: RequirementSpace | null, stage: Stage): Finding[] => {
   if (!space) return [];
@@ -530,43 +458,6 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
   };
 };
 
-export type GoalBranchItem =
-  | { kind: 'issue'; issue: Finding; projection: string }
-  | { kind: 'slot'; slot: any; projection: string }
-  | { kind: 'choiceGroup'; choiceGroup: any; projection: string };
-
-export const buildGoalBranchItems = (space: RequirementSpace | null): GoalBranchItem[] => {
-  if (!space) return [];
-  const items: GoalBranchItem[] = [];
-
-  // Add active perception slot
-  if (space.perceptionSlot) {
-    const slotStage = ((space.perceptionSlot as any).stage || 'what') as Stage;
-    const projection = slotStage === 'how' ? 'system' : slotStage === 'scope' ? 'data' : 'goal';
-    items.push({
-      kind: 'slot',
-      slot: {
-        id: space.perceptionSlot.id,
-        name: space.perceptionSlot.perceptionKind,
-        description: space.perceptionSlot.perceptionDescription,
-        status: 'empty'
-      },
-      projection
-    });
-  }
-
-  // Add relevant rule issues
-  (space.findings || []).forEach((issue) => {
-    items.push({
-      kind: 'issue',
-      issue,
-      projection: findingProjection(issue),
-    });
-  });
-
-  return items;
-};
-
 export const normalizeScopeStatus = (status: string | undefined | null): 'current' | 'postponed' | 'exclude' => {
   if (!status) return 'current';
   const s = status.toLowerCase();
@@ -610,61 +501,6 @@ export const getChildCapabilities = (space: RequirementSpace | null, capId: stri
       scopeStatus: normalizeScopeStatus(f.scope?.scopeStatus),
       kind: 'feature'
     }));
-};
-
-export const getTasksForCapability = (space: RequirementSpace | null, capId: string | number): any[] => {
-  if (!space) return [];
-  const numId = typeof capId === 'string' ? parseInt(capId, 10) : capId;
-  const feature = (space.features || []).find(f => f.featureId === numId);
-  if (!feature) return [];
-
-  // Map scenarios of this feature as tasks
-  return (feature.scenarios || []).map(s => ({
-    id: s.scenarioId.toString(),
-    title: s.scenarioName,
-    outcome: s.scenarioContent,
-    status: getConfirmationStatus((s as any).confirmationStatus),
-    actorId: s.actorId.toString(),
-    scopeStatus: 'in_scope'
-  }));
-};
-
-export const buildTaskFootprint = (space: RequirementSpace | null, taskId: string | number): { flowStepCount: number; screenCount: number; objectCount: number } => {
-  if (!space) return { flowStepCount: 0, screenCount: 0, objectCount: 0 };
-  const numId = typeof taskId === 'string' ? parseInt(taskId, 10) : taskId;
-
-  // Locate the scenario matching scenarioId
-  let targetScenario: ScenarioNode | null = null;
-  for (const f of space.features || []) {
-    const s = (f.scenarios || []).find(sc => sc.scenarioId === numId);
-    if (s) {
-      targetScenario = s;
-      break;
-    }
-  }
-
-  if (!targetScenario) return { flowStepCount: 1, screenCount: 1, objectCount: 1 };
-
-  // Calculate realistic footprints
-  const flowStepCount = (space.flows || []).flatMap(f => f.flowSteps || []).filter(step => (step.actorIds || []).includes(targetScenario!.actorId)).length || 1;
-  const objectCount = (space.businessObjects || []).length || 1;
-
-  return {
-    flowStepCount,
-    screenCount: 1,
-    objectCount
-  };
-};
-
-export const formatImpactPreview = (space: RequirementSpace | null, impact: any) => {
-  if (!impact) return { goals: [], actors: [], flows: [], objects: [], screens: [] };
-  return {
-    goals: [],
-    actors: [],
-    flows: [],
-    objects: [],
-    screens: []
-  };
 };
 
 export const groupScopeItems = (space: RequirementSpace | null) => {
@@ -760,15 +596,4 @@ export const buildRolePages = (space: RequirementSpace | null, actorId: string |
       actions: (f.scenarios || []).map(s => s.scenarioName)
     };
   });
-};
-
-export const buildPlaybackForActor = (space: RequirementSpace | null, actorId: string | null) => {
-  if (!space || !actorId) return [];
-  const pages = buildRolePages(space, actorId);
-  return pages.map(page => ({
-    screenId: page.id,
-    screenTitle: page.name,
-    stepIds: page.relatedSteps,
-    stepTitles: page.relatedSteps
-  }));
 };

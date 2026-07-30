@@ -1,6 +1,6 @@
 from sqlalchemy import select
-from backend.database.model import ActorModel, AuditLogModel, ConfirmationStatus
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.database.model import ActorModel, ConfirmationStatus
+from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.actor.schemas import ActorCreateRequest, ActorUpdateRequest, ActorResponse
 from backend.services.audit_service import AuditService
 

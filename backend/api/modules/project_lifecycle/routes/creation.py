@@ -5,7 +5,7 @@ from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_owned_generative_draft
 from backend.api.dependencies.llm import get_llm_context
 from backend.database.model import UserModel, GenerativeDraftModel
-from backend.api.modules.project_lifecycle.schemas.audit import DraftRegenerateRequest
+from backend.api.base_schema import DraftRegenerateRequest
 from backend.api.modules.project_lifecycle.schemas.creation import (
     ProjectCreationConfirmResponse,
     ProjectCreationDraftCreateRequest,

@@ -1,6 +1,5 @@
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from backend.database.database import get_session
@@ -12,7 +11,14 @@ from backend.database.model import (
 )
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.project_access import require_project_member, require_project_role
-from backend.api.modules.collaboration.application.task_service import TaskService, snapshot_service, KIND_TO_MODEL
+from backend.api.modules.collaboration.application.task_service import TaskService
+from backend.api.modules.collaboration.application.node_snapshot_service import (
+    KIND_TO_MODEL,
+    NodeSnapshotService,
+)
+from backend.api.modules.collaboration.application.confirmation_summary_query import (
+    load_confirmation_summary,
+)
 from backend.api.modules.collaboration.schemas.tasks import (
     TaskCreateRequest,
     BatchTaskCreateRequest,
@@ -27,6 +33,7 @@ router = APIRouter(
     prefix="/api/projects/{project_id}/tasks",
     tags=["project_tasks"],
 )
+snapshot_service = NodeSnapshotService()
 
 # Project-scoped Summary Router
 summary_router = APIRouter(
@@ -300,141 +307,12 @@ async def get_confirmation_summary(
     current_user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_project_member),
 ):
-    pid = owned_project.id
-    
-    from backend.database.model import (
-        ActorModel, FeatureModel, ScenarioModel,
-        ScenarioAcceptanceCriterionModel, BusinessObjectModel,
-        BusinessObjectAttributeModel, FlowModel, FlowStepModel, ScopeModel,
-        ConfirmationStatus
+    summary = await load_confirmation_summary(
+        session,
+        project_id=owned_project.id,
+        user_id=current_user.id,
     )
-    ai_assumption_count = 0
-    
-    async def count_ai_assumptions(model_cls, is_subnode=False, parent_relation=None):
-        if not is_subnode:
-            stmt = sa.select(sa.func.count(model_cls.id)).where(
-                sa.and_(
-                    model_cls.project_id == pid,
-                    model_cls.confirmation_status == ConfirmationStatus.AI_ASSUMPTION.value
-                )
-            )
-            res = await session.execute(stmt)
-            return res.scalar() or 0
-        else:
-            stmt = sa.select(sa.func.count(model_cls.id)).join(parent_relation).where(
-                sa.and_(
-                    parent_relation.property.mapper.class_.project_id == pid,
-                    model_cls.confirmation_status == ConfirmationStatus.AI_ASSUMPTION.value
-                )
-            )
-            res = await session.execute(stmt)
-            return res.scalar() or 0
-
-    ai_assumption_count += await count_ai_assumptions(ActorModel)
-    ai_assumption_count += await count_ai_assumptions(FeatureModel)
-    ai_assumption_count += await count_ai_assumptions(ScenarioModel)
-    ai_assumption_count += await count_ai_assumptions(ScenarioAcceptanceCriterionModel, is_subnode=True, parent_relation=ScenarioAcceptanceCriterionModel.scenario)
-    ai_assumption_count += await count_ai_assumptions(BusinessObjectModel)
-    ai_assumption_count += await count_ai_assumptions(BusinessObjectAttributeModel, is_subnode=True, parent_relation=BusinessObjectAttributeModel.business_object)
-    ai_assumption_count += await count_ai_assumptions(FlowModel)
-    ai_assumption_count += await count_ai_assumptions(FlowStepModel, is_subnode=True, parent_relation=FlowStepModel.flow)
-    
-    scope_stmt = sa.select(sa.func.count(ScopeModel.id)).join(ScopeModel.feature).where(
-        sa.and_(
-            FeatureModel.project_id == pid,
-            ScopeModel.confirmation_status == ConfirmationStatus.AI_ASSUMPTION.value
-        )
-    )
-    scope_res = await session.execute(scope_stmt)
-    ai_assumption_count += scope_res.scalar() or 0
-
-    stmt_open = sa.select(sa.func.count(CollaborationTaskModel.id)).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open"
-        )
-    )
-    res_open = await session.execute(stmt_open)
-    open_task_count = res_open.scalar() or 0
-
-    stmt_me = sa.select(sa.func.count(CollaborationTaskModel.id)).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open",
-            CollaborationTaskModel.assigned_to_user_id == current_user.id
-        )
-    )
-    res_me = await session.execute(stmt_me)
-    assigned_to_me_count = res_me.scalar() or 0
-
-    stmt_creator = sa.select(sa.func.count(CollaborationTaskModel.id)).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open",
-            CollaborationTaskModel.created_by_user_id == current_user.id
-        )
-    )
-    res_creator = await session.execute(stmt_creator)
-    created_by_me_count = res_creator.scalar() or 0
-
-    stmt_rej = sa.select(sa.func.count(CollaborationTaskModel.id)).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "rejected",
-            CollaborationTaskModel.created_by_user_id == current_user.id
-        )
-    )
-    res_rej = await session.execute(stmt_rej)
-    rejected_count = res_rej.scalar() or 0
-
-    stmt_kind = sa.select(
-        CollaborationTaskModel.target_type, sa.func.count(CollaborationTaskModel.id)
-    ).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open"
-        )
-    ).group_by(CollaborationTaskModel.target_type)
-    res_kind = await session.execute(stmt_kind)
-    by_node_kind = {row[0]: row[1] for row in res_kind.all() if row[0] is not None}
-
-    stmt_batch = sa.select(CollaborationTaskModel.targets).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open",
-            CollaborationTaskModel.task_type == "confirm_nodes"
-        )
-    )
-    res_batch = await session.execute(stmt_batch)
-    for row in res_batch.scalars().all():
-        if row:
-            for pt in row:
-                kind = pt.get("node_kind")
-                if kind:
-                    by_node_kind[kind] = by_node_kind.get(kind, 0) + 1
-
-    stmt_assignee = sa.select(
-        UserModel.email, sa.func.count(CollaborationTaskModel.id)
-    ).join(
-        CollaborationTaskModel, CollaborationTaskModel.assigned_to_user_id == UserModel.id
-    ).where(
-        sa.and_(
-            CollaborationTaskModel.project_id == pid,
-            CollaborationTaskModel.status == "open"
-        )
-    ).group_by(UserModel.email)
-    res_assignee = await session.execute(stmt_assignee)
-    by_assignee = {row[0]: row[1] for row in res_assignee.all()}
-
-    return ConfirmationSummaryResponse(
-        ai_assumption_count=ai_assumption_count,
-        open_task_count=open_task_count,
-        assigned_to_me_count=assigned_to_me_count,
-        created_by_me_count=created_by_me_count,
-        rejected_count=rejected_count,
-        by_node_kind=by_node_kind,
-        by_assignee=by_assignee,
-    )
+    return ConfirmationSummaryResponse(**summary)
 
 
 @router.post("/confirm-nodes", response_model=TaskResponse)
@@ -467,6 +345,116 @@ async def create_confirm_nodes_task(
     return await _map_task(session, task_loaded)
 
 
+def _build_my_task_conditions(
+    *,
+    user_id: int,
+    role: str | None,
+    status: str | None,
+    task_type: str | None,
+) -> list:
+    if role == "creator":
+        conditions = [
+            CollaborationTaskModel.created_by_user_id == user_id
+        ]
+    elif role == "both":
+        conditions = [
+            sa.or_(
+                CollaborationTaskModel.assigned_to_user_id == user_id,
+                CollaborationTaskModel.created_by_user_id == user_id,
+            )
+        ]
+    else:
+        conditions = [
+            CollaborationTaskModel.assigned_to_user_id == user_id
+        ]
+    if status:
+        conditions.append(CollaborationTaskModel.status.in_(status.split(",")))
+    if task_type:
+        conditions.append(CollaborationTaskModel.task_type == task_type)
+    return conditions
+
+
+async def _resolve_task_project_id(session, project_public_id: str) -> int | None:
+    statement = sa.select(ProjectModel).where(
+        ProjectModel.public_id == project_public_id
+    )
+    result = await session.execute(statement)
+    project = result.scalar_one_or_none()
+    return project.id if project else None
+
+
+def _build_my_tasks_query(
+    conditions: list,
+    *,
+    offset: int | None,
+    limit: int | None,
+):
+    query = (
+        sa.select(CollaborationTaskModel)
+        .where(sa.and_(*conditions))
+        .options(
+            selectinload(CollaborationTaskModel.creator),
+            selectinload(CollaborationTaskModel.assignee),
+        )
+        .order_by(CollaborationTaskModel.created_at.desc())
+    )
+    if offset is not None:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    return query
+
+
+async def _load_task_projects(session, tasks: list) -> dict:
+    project_ids = list({task.project_id for task in tasks})
+    if not project_ids:
+        return {}
+    statement = sa.select(ProjectModel).where(ProjectModel.id.in_(project_ids))
+    result = await session.execute(statement)
+    return {project.id: project for project in result.scalars().all()}
+
+
+async def _build_user_task_response(
+    session,
+    task,
+    projects_map: dict,
+) -> dict:
+    mapped_task = await _map_task(session, task)
+    project = projects_map.get(task.project_id)
+    node_kind = None
+    node_id = None
+    if task.target_type and task.target_id:
+        node_kind = task.target_type
+        try:
+            node_id = int(task.target_id)
+        except ValueError:
+            pass
+    elif task.task_type == "confirm_nodes":
+        node_kind = "batch"
+
+    return {
+        "task": mapped_task,
+        "project_summary": {
+            "project_id": project.public_id if project else "",
+            "project_name": project.name if project else "",
+        },
+        "target_summary": {
+            "node_kind": node_kind,
+            "node_id": node_id,
+            "node_name": mapped_task.node_name,
+        },
+        "creator_summary": {
+            "user_id": task.created_by_user_id,
+            "email": task.creator.email if task.creator else "",
+        },
+        "assignee_summary": {
+            "user_id": task.assigned_to_user_id,
+            "email": task.assignee.email if task.assignee else "",
+        },
+        "content_changed": mapped_task.content_changed,
+    }
+
+
 @me_router.get("", response_model=list[UserTaskResponse])
 async def list_my_tasks(
     role: str | None = Query(None, description="Filter by role: assignee, creator, or both. Default is assignee."),
@@ -478,99 +466,28 @@ async def list_my_tasks(
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
-    conditions = []
-    if role == "creator":
-        conditions.append(CollaborationTaskModel.created_by_user_id == current_user.id)
-    elif role == "both":
-        conditions.append(
-            sa.or_(
-                CollaborationTaskModel.assigned_to_user_id == current_user.id,
-                CollaborationTaskModel.created_by_user_id == current_user.id
-            )
-        )
-    else:
-        conditions.append(CollaborationTaskModel.assigned_to_user_id == current_user.id)
-        
-    if status:
-        statuses = status.split(",")
-        conditions.append(CollaborationTaskModel.status.in_(statuses))
-    if task_type:
-        conditions.append(CollaborationTaskModel.task_type == task_type)
-    
+    conditions = _build_my_task_conditions(
+        user_id=current_user.id,
+        role=role,
+        status=status,
+        task_type=task_type,
+    )
     if project_id:
-        proj_query = sa.select(ProjectModel).where(ProjectModel.public_id == project_id)
-        res_proj = await session.execute(proj_query)
-        proj = res_proj.scalar_one_or_none()
-        if proj:
-            conditions.append(CollaborationTaskModel.project_id == proj.id)
-        else:
+        project_id_internal = await _resolve_task_project_id(session, project_id)
+        if project_id_internal is None:
             return []
-
-    query = sa.select(CollaborationTaskModel).where(sa.and_(*conditions)).options(
-        selectinload(CollaborationTaskModel.creator),
-        selectinload(CollaborationTaskModel.assignee)
-    ).order_by(CollaborationTaskModel.created_at.desc())
-
-    if offset is not None:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
-
+        conditions.append(
+            CollaborationTaskModel.project_id == project_id_internal
+        )
+    query = _build_my_tasks_query(
+        conditions,
+        offset=offset,
+        limit=limit,
+    )
     res = await session.execute(query)
     tasks = res.scalars().all()
-    
-    mapped_tasks = []
-    project_ids = list(set([t.project_id for t in tasks]))
-    projects_map = {}
-    if project_ids:
-        proj_stmt = sa.select(ProjectModel).where(ProjectModel.id.in_(project_ids))
-        proj_res = await session.execute(proj_stmt)
-        projects_map = {p.id: p for p in proj_res.scalars().all()}
-
-    for t in tasks:
-        mapped_t = await _map_task(session, t)
-        proj = projects_map.get(t.project_id)
-        
-        proj_summary = {
-            "project_id": proj.public_id if proj else "",
-            "project_name": proj.name if proj else ""
-        }
-        
-        node_kind = None
-        node_id = None
-        node_name = mapped_t.node_name
-        
-        if t.target_type and t.target_id:
-            node_kind = t.target_type
-            try:
-                node_id = int(t.target_id)
-            except ValueError:
-                pass
-        elif t.task_type == "confirm_nodes":
-            node_kind = "batch"
-
-        target_summary = {
-            "node_kind": node_kind,
-            "node_id": node_id,
-            "node_name": node_name
-        }
-        
-        creator_summary = {
-            "user_id": t.created_by_user_id,
-            "email": t.creator.email if t.creator else ""
-        }
-        assignee_summary = {
-            "user_id": t.assigned_to_user_id,
-            "email": t.assignee.email if t.assignee else ""
-        }
-        
-        mapped_tasks.append({
-            "task": mapped_t,
-            "project_summary": proj_summary,
-            "target_summary": target_summary,
-            "creator_summary": creator_summary,
-            "assignee_summary": assignee_summary,
-            "content_changed": mapped_t.content_changed
-        })
-        
-    return mapped_tasks
+    projects_map = await _load_task_projects(session, tasks)
+    return [
+        await _build_user_task_response(session, task, projects_map)
+        for task in tasks
+    ]

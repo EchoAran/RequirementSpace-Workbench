@@ -12,9 +12,8 @@
   issue_capabilities -X→ issue_resolution
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class IssueCapabilityKind(str, Enum):

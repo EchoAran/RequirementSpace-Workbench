@@ -8,7 +8,6 @@ import {
   Badge,
   LinkList,
   PanelShell,
-  scopeOptions,
   Section,
   SelectField,
   TextField,

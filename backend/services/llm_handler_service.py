@@ -23,12 +23,14 @@ from backend.core.llm_locale_validation import (
     validate_response_locale,
 )
 from backend.core.llm_language_protocol import (
-    CONTENT_LANGUAGE_PROTOCOL_MARKER,
+    CONTENT_LANGUAGE_PROTOCOL_MARKER as CONTENT_LANGUAGE_PROTOCOL_MARKER,
     append_language_protocol,
     apply_language_protocol_to_messages,
     language_protocol,
     remove_language_protocol,
 )
+
+__all__ = ["CONTENT_LANGUAGE_PROTOCOL_MARKER", "LLMHandler"]
 from backend.core.locale import DEFAULT_LOCALE
 from backend.core.logging import (
     category_enabled,
@@ -336,6 +338,156 @@ class LLMHandler:
         if validation_mode == "observe":
             return content
 
+        return await self._correct_locale_response(
+            content,
+            request_data=request_data,
+            expected_locale=expected_locale,
+            structured_response=structured_response,
+            protected_inputs=protected_inputs,
+            call_type=call_type,
+            timeout_seconds=timeout_seconds,
+            messages=messages,
+            locale_source=locale_source,
+            validation_mode=validation_mode,
+            initial=initial,
+        )
+
+    async def _correct_locale_response(
+        self,
+        content: str,
+        *,
+        request_data: dict,
+        expected_locale: str,
+        structured_response: bool,
+        protected_inputs: tuple[str, ...],
+        call_type: str,
+        timeout_seconds: float,
+        messages: list[dict],
+        locale_source: str,
+        validation_mode: str,
+        initial,
+    ) -> str:
+        self._log_locale_correction_requested(
+            expected_locale=expected_locale,
+            initial=initial,
+            call_type=call_type,
+            locale_source=locale_source,
+            validation_mode=validation_mode,
+        )
+        correction_request = self._build_locale_correction_request(
+            request_data,
+            messages=messages,
+            content=content,
+            expected_locale=expected_locale,
+        )
+        corrected, correction_duration_ms = await self._request_locale_correction(
+            correction_request,
+            timeout_seconds=timeout_seconds,
+        )
+        corrected_result = self._validate_locale_attempt(
+            corrected or "",
+            expected_locale=expected_locale,
+            messages=messages,
+            structured_response=structured_response,
+            protected_inputs=protected_inputs,
+            call_type=call_type,
+            locale_source=locale_source,
+            validation_mode=validation_mode,
+            attempt=2,
+        )
+        structure_preserved = self._locale_correction_preserves_structure(
+            original=content,
+            corrected=corrected,
+            messages=messages,
+            protected_inputs=protected_inputs,
+        )
+        correction_succeeded = (
+            corrected_result.outcome == "match" and structure_preserved
+        )
+        self._log_locale_correction_completed(
+            expected_locale=expected_locale,
+            corrected_result=corrected_result,
+            structure_preserved=structure_preserved,
+            correction_succeeded=correction_succeeded,
+            correction_duration_ms=correction_duration_ms,
+            call_type=call_type,
+            locale_source=locale_source,
+            validation_mode=validation_mode,
+        )
+        if correction_succeeded and corrected is not None:
+            return corrected
+
+        self._log_locale_validation_rejected(
+            expected_locale=expected_locale,
+            corrected_result=corrected_result,
+            structure_preserved=structure_preserved,
+            call_type=call_type,
+            locale_source=locale_source,
+            validation_mode=validation_mode,
+        )
+        raise LLMContentLocaleMismatchError()
+
+    async def _request_locale_correction(
+        self,
+        correction_request: dict,
+        *,
+        timeout_seconds: float,
+    ) -> tuple[str | None, int]:
+        started = time.perf_counter()
+        corrected = await self._call_api(
+            request_data=correction_request,
+            print_log=False,
+            prompt_label="",
+            query_label="",
+            timeout_seconds=timeout_seconds,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        return corrected, duration_ms
+
+    def _build_locale_correction_request(
+        self,
+        request_data: dict,
+        *,
+        messages: list[dict],
+        content: str,
+        expected_locale: str,
+    ) -> dict:
+        return {
+            **request_data,
+            "messages": [
+                *[dict(message) for message in messages],
+                {"role": "assistant", "content": content},
+                {
+                    "role": "user",
+                    "content": self._locale_correction_instruction(expected_locale),
+                },
+            ],
+        }
+
+    @staticmethod
+    def _locale_correction_preserves_structure(
+        *,
+        original: str,
+        corrected: str | None,
+        messages: list[dict],
+        protected_inputs: tuple[str, ...],
+    ) -> bool:
+        return corrected is not None and correction_preserves_structure(
+            original,
+            corrected,
+            messages=messages,
+            protected_inputs=protected_inputs,
+        )
+
+    def _log_locale_correction_requested(
+        self,
+        *,
+        expected_locale: str,
+        initial,
+        call_type: str,
+        locale_source: str,
+        validation_mode: str,
+    ) -> None:
         log_event(
             logger,
             logging.INFO,
@@ -351,46 +503,19 @@ class LLMHandler:
             validation_mode=validation_mode,
             model=self.model_name,
         )
-        correction_request = dict(request_data)
-        correction_request["messages"] = [
-            *[dict(message) for message in messages],
-            {"role": "assistant", "content": content},
-            {
-                "role": "user",
-                "content": self._locale_correction_instruction(expected_locale),
-            },
-        ]
-        correction_started = time.perf_counter()
-        corrected = await self._call_api(
-            request_data=correction_request,
-            print_log=False,
-            prompt_label="",
-            query_label="",
-            timeout_seconds=timeout_seconds,
-        )
-        correction_duration_ms = int(
-            (time.perf_counter() - correction_started) * 1000
-        )
-        corrected_result = self._validate_locale_attempt(
-            corrected or "",
-            expected_locale=expected_locale,
-            messages=messages,
-            structured_response=structured_response,
-            protected_inputs=protected_inputs,
-            call_type=call_type,
-            locale_source=locale_source,
-            validation_mode=validation_mode,
-            attempt=2,
-        )
-        structure_preserved = corrected is not None and correction_preserves_structure(
-            content,
-            corrected,
-            messages=messages,
-            protected_inputs=protected_inputs,
-        )
-        correction_succeeded = (
-            corrected_result.outcome == "match" and structure_preserved
-        )
+
+    def _log_locale_correction_completed(
+        self,
+        *,
+        expected_locale: str,
+        corrected_result,
+        structure_preserved: bool,
+        correction_succeeded: bool,
+        correction_duration_ms: int,
+        call_type: str,
+        locale_source: str,
+        validation_mode: str,
+    ) -> None:
         log_event(
             logger,
             logging.INFO if correction_succeeded else logging.WARNING,
@@ -410,9 +535,17 @@ class LLMHandler:
             validation_mode=validation_mode,
             model=self.model_name,
         )
-        if correction_succeeded:
-            return corrected
 
+    def _log_locale_validation_rejected(
+        self,
+        *,
+        expected_locale: str,
+        corrected_result,
+        structure_preserved: bool,
+        call_type: str,
+        locale_source: str,
+        validation_mode: str,
+    ) -> None:
         log_event(
             logger,
             logging.ERROR,
@@ -429,7 +562,6 @@ class LLMHandler:
             validation_mode=validation_mode,
             model=self.model_name,
         )
-        raise LLMContentLocaleMismatchError()
 
     @staticmethod
     def _validate_locale_attempt(
@@ -506,6 +638,12 @@ class LLMHandler:
         messages = request_data.get("messages")
         message_count = len(messages) if isinstance(messages, list) else None
         has_response_format = "response_format" in request_data
+        call_fields = {
+            "provider_host": host,
+            "model": model,
+            "has_response_format": has_response_format,
+            "message_count": message_count,
+        }
 
         for attempt in range(1, attempts + 1):
             self._log_prompt_sample(
@@ -514,177 +652,159 @@ class LLMHandler:
                 query_label=query_label,
             )
 
-            log_event(
-                logger,
-                logging.INFO,
-                "llm",
-                LLM_API_CALL_ATTEMPT,
-                "LLM API call attempt started",
-                provider_host=host,
-                model=model,
+            self._log_api_call_attempt(
+                call_fields,
                 attempt=attempt,
                 attempts=attempts,
                 timeout_seconds=timeout_seconds,
-                has_response_format=has_response_format,
-                message_count=message_count,
             )
-            start_time = time.perf_counter()
-
-            try:
-                with monitor_ai_operation("llm_api_call", attempt=attempt):
-                    timeout = httpx.Timeout(
-                        connect=10.0,
-                        read=timeout_seconds,
-                        write=30.0,
-                        pool=10.0,
-                    )
-                    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-                        response = await client.post(url, json=request_data, headers=headers)
-
-                duration_ms = int((time.perf_counter() - start_time) * 1000)
-
-                if response.status_code != 200:
-                    last_error_text = f"API call failed: status_code={response.status_code}"
-                    log_event(
-                        logger,
-                        logging.ERROR,
-                        "llm",
-                        LLM_API_CALL_FAILED,
-                        "LLM API call failed",
-                        provider_host=host,
-                        model=model,
-                        attempt=attempt,
-                        attempts=attempts,
-                        status_code=response.status_code,
-                        duration_ms=duration_ms,
-                        response_chars=len(response.text),
-                        error_type="http_status",
-                        has_response_format=has_response_format,
-                        message_count=message_count,
-                    )
-                    await self._sleep_before_retry(
-                        attempt,
-                        attempts,
-                        base_delay,
-                        provider_host=host,
-                        model=model,
-                    )
-                    continue
-
-                result = response.json()
-                content = self._extract_content(result)
-
-                if content is None:
-                    last_error_text = "LLM response format exception (invalid structure)"
-                    provider_request_id = response.headers.get("x-request-id") or None
-                    invalid_fields: dict[str, object] = {
-                        "provider_host": host,
-                        "model": model,
-                        "attempt": attempt,
-                        "attempts": attempts,
-                        "status_code": response.status_code,
-                        "duration_ms": duration_ms,
-                        "response_chars": len(response.text),
-                        "error_type": "invalid_response_structure",
-                        "has_response_format": has_response_format,
-                        "message_count": message_count,
-                    }
-                    if provider_request_id:
-                        invalid_fields["provider_request_id"] = provider_request_id
-                    log_event(
-                        logger,
-                        logging.ERROR,
-                        "llm",
-                        LLM_RESPONSE_INVALID,
-                        "LLM response returned invalid structure",
-                        **invalid_fields,
-                    )
-                    await self._sleep_before_retry(
-                        attempt,
-                        attempts,
-                        base_delay,
-                        provider_host=host,
-                        model=model,
-                    )
-                    continue
-
-                self._log_response_sample(print_log=print_log, content=content)
-                completed_fields: dict[str, object] = {
-                    "provider_host": host,
-                    "model": model,
-                    "attempt": attempt,
-                    "attempts": attempts,
-                    "status_code": response.status_code,
-                    "duration_ms": duration_ms,
-                    "response_chars": len(content),
-                    "has_response_format": has_response_format,
-                    "message_count": message_count,
-                }
-                provider_request_id = response.headers.get("x-request-id") or None
-                if provider_request_id:
-                    completed_fields["provider_request_id"] = provider_request_id
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "llm",
-                    LLM_API_CALL_COMPLETED,
-                    "LLM API call completed",
-                    **completed_fields,
-                )
-
+            content, attempt_error = await self._execute_api_attempt(
+                url=url,
+                request_data=request_data,
+                headers=headers,
+                timeout_seconds=timeout_seconds,
+                print_log=print_log,
+                call_fields=call_fields,
+                host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                base_delay=base_delay,
+            )
+            if content is not None:
                 return content
+            last_error_text = attempt_error
 
-            except httpx.ConnectError as exc:
-                last_error_text = sanitize_message(str(exc)) or type(exc).__name__
-                self._log_llm_exception(
-                    event=LLM_API_CALL_FAILED,
-                    message="LLM API connection failed",
-                    host=host,
-                    model=model,
-                    attempt=attempt,
-                    attempts=attempts,
-                    started=start_time,
-                    error_type=type(exc).__name__,
-                    error_message=last_error_text,
-                    has_response_format=has_response_format,
-                    message_count=message_count,
-                )
+        self._log_all_api_attempts_failed(
+            call_fields,
+            attempts=attempts,
+            error_message=last_error_text,
+        )
+        if raise_on_failure:
+            raise LLMCallFailedError(last_error_text or "LLM API call failed")
+        return None
 
-            except httpx.TimeoutException as exc:
-                last_error_text = sanitize_message(str(exc)) or type(exc).__name__
-                self._log_llm_exception(
-                    event=LLM_API_CALL_FAILED,
-                    message="LLM API request timed out",
-                    host=host,
-                    model=model,
-                    attempt=attempt,
-                    attempts=attempts,
-                    started=start_time,
-                    error_type=type(exc).__name__,
-                    error_message=last_error_text,
-                    has_response_format=has_response_format,
-                    message_count=message_count,
-                )
+    async def _execute_api_attempt(
+        self,
+        *,
+        url: str,
+        request_data: dict,
+        headers: dict,
+        timeout_seconds: float,
+        print_log: bool,
+        call_fields: dict[str, object],
+        host: str,
+        model,
+        attempt: int,
+        attempts: int,
+        base_delay: float,
+    ) -> tuple[str | None, str | None]:
+        started = time.perf_counter()
+        try:
+            response = await self._post_chat_completion(
+                url,
+                request_data=request_data,
+                headers=headers,
+                timeout_seconds=timeout_seconds,
+                attempt=attempt,
+            )
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            return await self._classify_api_response(
+                response,
+                duration_ms=duration_ms,
+                print_log=print_log,
+                call_fields=call_fields,
+                host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                base_delay=base_delay,
+            )
+        except httpx.ConnectError as exc:
+            error_text = self._record_api_exception(
+                exc,
+                message="LLM API connection failed",
+                host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                started=started,
+                call_fields=call_fields,
+            )
+        except httpx.TimeoutException as exc:
+            error_text = self._record_api_exception(
+                exc,
+                message="LLM API request timed out",
+                host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                started=started,
+                call_fields=call_fields,
+            )
+        except Exception as exc:
+            error_text = self._record_api_exception(
+                exc,
+                message="Unexpected error during LLM API call",
+                host=host,
+                model=model,
+                attempt=attempt,
+                attempts=attempts,
+                started=started,
+                call_fields=call_fields,
+                include_traceback=True,
+            )
 
-            except Exception as exc:
-                last_error_text = sanitize_message(f"{exc} ({type(exc).__name__})")
-                tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                sanitized_tb = sanitize_message(tb_str)
-                self._log_llm_exception(
-                    event=LLM_API_CALL_FAILED,
-                    message="Unexpected error during LLM API call",
-                    host=host,
-                    model=model,
-                    attempt=attempt,
-                    attempts=attempts,
-                    started=start_time,
-                    error_type=type(exc).__name__,
-                    error_message=last_error_text,
-                    has_response_format=has_response_format,
-                    message_count=message_count,
-                    sanitized_traceback=sanitized_tb,
-                )
+        await self._sleep_before_retry(
+            attempt,
+            attempts,
+            base_delay,
+            provider_host=host,
+            model=model,
+        )
+        return None, error_text
 
+    @staticmethod
+    async def _post_chat_completion(
+        url: str,
+        *,
+        request_data: dict,
+        headers: dict,
+        timeout_seconds: float,
+        attempt: int,
+    ) -> httpx.Response:
+        with monitor_ai_operation("llm_api_call", attempt=attempt):
+            timeout = httpx.Timeout(
+                connect=10.0,
+                read=timeout_seconds,
+                write=30.0,
+                pool=10.0,
+            )
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+                return await client.post(url, json=request_data, headers=headers)
+
+    async def _classify_api_response(
+        self,
+        response: httpx.Response,
+        *,
+        duration_ms: int,
+        print_log: bool,
+        call_fields: dict[str, object],
+        host: str,
+        model,
+        attempt: int,
+        attempts: int,
+        base_delay: float,
+    ) -> tuple[str | None, str | None]:
+        if response.status_code != 200:
+            error_text = f"API call failed: status_code={response.status_code}"
+            self._log_http_status_failure(
+                call_fields,
+                attempt=attempt,
+                attempts=attempts,
+                duration_ms=duration_ms,
+                response=response,
+            )
             await self._sleep_before_retry(
                 attempt,
                 attempts,
@@ -692,24 +812,198 @@ class LLMHandler:
                 provider_host=host,
                 model=model,
             )
+            return None, error_text
 
+        content = self._extract_content(response.json())
+        if content is None:
+            error_text = "LLM response format exception (invalid structure)"
+            self._log_invalid_api_response(
+                call_fields,
+                attempt=attempt,
+                attempts=attempts,
+                duration_ms=duration_ms,
+                response=response,
+            )
+            await self._sleep_before_retry(
+                attempt,
+                attempts,
+                base_delay,
+                provider_host=host,
+                model=model,
+            )
+            return None, error_text
+
+        self._log_response_sample(print_log=print_log, content=content)
+        self._log_api_call_completed(
+            call_fields,
+            attempt=attempt,
+            attempts=attempts,
+            duration_ms=duration_ms,
+            response=response,
+            content=content,
+        )
+        return content, None
+
+    def _record_api_exception(
+        self,
+        exc: Exception,
+        *,
+        message: str,
+        host: str,
+        model,
+        attempt: int,
+        attempts: int,
+        started: float,
+        call_fields: dict[str, object],
+        include_traceback: bool = False,
+    ) -> str:
+        if include_traceback:
+            error_text = sanitize_message(f"{exc} ({type(exc).__name__})")
+            traceback_text = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
+            sanitized_traceback = sanitize_message(traceback_text)
+        else:
+            error_text = sanitize_message(str(exc)) or type(exc).__name__
+            sanitized_traceback = None
+        self._log_llm_exception(
+            event=LLM_API_CALL_FAILED,
+            message=message,
+            host=host,
+            model=model,
+            attempt=attempt,
+            attempts=attempts,
+            started=started,
+            error_type=type(exc).__name__,
+            error_message=error_text,
+            has_response_format=bool(call_fields["has_response_format"]),
+            message_count=call_fields["message_count"],
+            sanitized_traceback=sanitized_traceback,
+        )
+        return error_text
+
+    @staticmethod
+    def _log_api_call_attempt(
+        call_fields: dict[str, object],
+        *,
+        attempt: int,
+        attempts: int,
+        timeout_seconds: float,
+    ) -> None:
+        log_event(
+            logger,
+            logging.INFO,
+            "llm",
+            LLM_API_CALL_ATTEMPT,
+            "LLM API call attempt started",
+            **call_fields,
+            attempt=attempt,
+            attempts=attempts,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @staticmethod
+    def _log_http_status_failure(
+        call_fields: dict[str, object],
+        *,
+        attempt: int,
+        attempts: int,
+        duration_ms: int,
+        response: httpx.Response,
+    ) -> None:
+        log_event(
+            logger,
+            logging.ERROR,
+            "llm",
+            LLM_API_CALL_FAILED,
+            "LLM API call failed",
+            **call_fields,
+            attempt=attempt,
+            attempts=attempts,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            response_chars=len(response.text),
+            error_type="http_status",
+        )
+
+    @staticmethod
+    def _log_invalid_api_response(
+        call_fields: dict[str, object],
+        *,
+        attempt: int,
+        attempts: int,
+        duration_ms: int,
+        response: httpx.Response,
+    ) -> None:
+        invalid_fields = {
+            **call_fields,
+            "attempt": attempt,
+            "attempts": attempts,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "response_chars": len(response.text),
+            "error_type": "invalid_response_structure",
+        }
+        provider_request_id = response.headers.get("x-request-id") or None
+        if provider_request_id:
+            invalid_fields["provider_request_id"] = provider_request_id
+        log_event(
+            logger,
+            logging.ERROR,
+            "llm",
+            LLM_RESPONSE_INVALID,
+            "LLM response returned invalid structure",
+            **invalid_fields,
+        )
+
+    @staticmethod
+    def _log_api_call_completed(
+        call_fields: dict[str, object],
+        *,
+        attempt: int,
+        attempts: int,
+        duration_ms: int,
+        response: httpx.Response,
+        content: str,
+    ) -> None:
+        completed_fields = {
+            **call_fields,
+            "attempt": attempt,
+            "attempts": attempts,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "response_chars": len(content),
+        }
+        provider_request_id = response.headers.get("x-request-id") or None
+        if provider_request_id:
+            completed_fields["provider_request_id"] = provider_request_id
+        log_event(
+            logger,
+            logging.INFO,
+            "llm",
+            LLM_API_CALL_COMPLETED,
+            "LLM API call completed",
+            **completed_fields,
+        )
+
+    @staticmethod
+    def _log_all_api_attempts_failed(
+        call_fields: dict[str, object],
+        *,
+        attempts: int,
+        error_message: str | None,
+    ) -> None:
         log_event(
             logger,
             logging.ERROR,
             "llm",
             LLM_API_CALL_ALL_ATTEMPTS_FAILED,
             "All LLM API call attempts failed",
-            provider_host=host,
-            model=model,
+            **call_fields,
             attempts=attempts,
             error_type="all_attempts_failed",
-            error_message=last_error_text,
-            has_response_format=has_response_format,
-            message_count=message_count,
+            error_message=error_message,
         )
-        if raise_on_failure:
-            raise LLMCallFailedError(last_error_text or "LLM API call failed")
-        return None
 
     @staticmethod
     def _extract_content(result: dict) -> str | None:

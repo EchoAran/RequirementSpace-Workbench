@@ -36,4 +36,3 @@ export function GuestGuard({ children }: GuestGuardProps) {
 
   return <>{children}</>;
 }
-export default GuestGuard;

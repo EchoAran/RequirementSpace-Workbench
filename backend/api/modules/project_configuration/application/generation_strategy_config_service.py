@@ -1,8 +1,6 @@
 import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any, Dict, List
-
 from backend.database.model import ProjectGenerationStrategyConfigModel
 from backend.api.modules.project_configuration.schemas import (
     GenerationStrategyConfigResponse,
@@ -183,7 +181,48 @@ class GenerationStrategyConfigService:
         req: GenerationStrategyConfigUpdate,
         session: AsyncSession
     ) -> GenerationStrategyConfigResponse:
-        # 1. Validation Rules
+        self._validate_strategy_update(req)
+        serialized_strategies = [
+            normalize_generation_strategy(strategy.model_dump())
+            for strategy in req.strategies
+        ]
+        stmt = select(ProjectGenerationStrategyConfigModel).where(
+            ProjectGenerationStrategyConfigModel.project_id == project_id
+        )
+        res = await session.execute(stmt)
+        db_config = res.scalar_one_or_none()
+
+        if db_config:
+            db_config.enabled = req.enabled
+            db_config.candidate_count = req.candidate_count
+            db_config.strategies = serialized_strategies
+            db_config.updated_by_user_id = user_id
+        else:
+            db_config = ProjectGenerationStrategyConfigModel(
+                project_id=project_id,
+                enabled=req.enabled,
+                candidate_count=req.candidate_count,
+                strategies=serialized_strategies,
+                updated_by_user_id=user_id
+            )
+            session.add(db_config)
+
+        await session.commit()
+        await session.refresh(db_config)
+
+        strategies_list = [
+            GenerationStrategyItemSchema(**strategy)
+            for strategy in db_config.strategies
+        ]
+        return GenerationStrategyConfigResponse(
+            enabled=db_config.enabled,
+            candidate_count=db_config.candidate_count,
+            source="project",
+            strategies=strategies_list
+        )
+
+    @staticmethod
+    def _validate_strategy_update(req: GenerationStrategyConfigUpdate) -> None:
         if req.candidate_count < 1 or req.candidate_count > 5:
             raise ValueError("candidate_count_out_of_bounds")
 
@@ -199,10 +238,8 @@ class GenerationStrategyConfigService:
         if len(strategy_ids) != len(set(strategy_ids)):
             raise ValueError("duplicate_strategy_id")
 
-        # Basic label, instruction, control characters, and injection validation
         import re
         CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-        
         bypass_terms = [
             "ignore previous", "system prompt",
             "忽略以上指令", "覆盖系统指令", "忽略系统指令", "忽略原有指令", "忽略前文", "忽略先前", "覆盖之前",
@@ -228,42 +265,6 @@ class GenerationStrategyConfigService:
             lower_instruction = instruction.lower()
             if any(term in lower_instruction for term in bypass_terms) or any(term in lower_instruction for term in format_terms):
                 raise ValueError("strategy_prompt_injection_detected")
-
-        # 2. Convert strategies pydantic model to list of dicts for DB JSON storage
-        serialized_strategies = [normalize_generation_strategy(s.model_dump()) for s in req.strategies]
-
-        # 3. DB Persistence
-        stmt = select(ProjectGenerationStrategyConfigModel).where(
-            ProjectGenerationStrategyConfigModel.project_id == project_id
-        )
-        res = await session.execute(stmt)
-        db_config = res.scalar_one_or_none()
-
-        if db_config:
-            db_config.enabled = req.enabled
-            db_config.candidate_count = req.candidate_count
-            db_config.strategies = serialized_strategies
-            db_config.updated_by_user_id = user_id
-        else:
-            db_config = ProjectGenerationStrategyConfigModel(
-                project_id=project_id,
-                enabled=req.enabled,
-                candidate_count=req.candidate_count,
-                strategies=serialized_strategies,
-                updated_by_user_id=user_id
-            )
-            session.add(db_config)
-        
-        await session.commit()
-        await session.refresh(db_config)
-
-        strategies_list = [GenerationStrategyItemSchema(**s) for s in db_config.strategies]
-        return GenerationStrategyConfigResponse(
-            enabled=db_config.enabled,
-            candidate_count=db_config.candidate_count,
-            source="project",
-            strategies=strategies_list
-        )
 
     async def delete_for_project(self, project_id: int, session: AsyncSession) -> None:
         stmt = select(ProjectGenerationStrategyConfigModel).where(

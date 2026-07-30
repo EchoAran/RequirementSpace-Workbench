@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 import logging
 import time
 
-from sqlalchemy import event, inspect, text
+from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -145,10 +145,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 def run_upgrade() -> None:
-    import sqlite3
     from pathlib import Path
-    from alembic.config import Config
-    from alembic import command
 
     started = time.perf_counter()
     _log_db_event(
@@ -158,11 +155,29 @@ def run_upgrade() -> None:
         alembic_target="head",
     )
     base_dir = Path(__file__).resolve().parents[2]
-    db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./requirement_space.db").strip("'\" ")
+    db_url = _normalized_migration_url(
+        os.getenv(
+            "DATABASE_URL",
+            "sqlite+aiosqlite:///./requirement_space.db",
+        )
+    )
+    table_count = _inspect_migration_tables(db_url)
+    db_path = _sqlite_database_path(db_url, base_dir)
+    alembic_cfg = _build_alembic_config(base_dir, db_url)
+    _run_alembic_upgrade(
+        alembic_cfg,
+        db_url,
+        table_count,
+        started,
+    )
+    if db_path and db_path.exists():
+        _repair_sqlite_database(db_path)
+
+
+def _normalized_migration_url(db_url: str) -> str:
+    db_url = db_url.strip("'\" ")
     if "-pooler" in db_url:
         db_url = db_url.replace("-pooler", "")
-
-    # Strip 'sslmode' and 'channel_binding' query parameters as psycopg2 does not support them
     if "?" in db_url:
         import urllib.parse
         base_part, query_part = db_url.split("?", 1)
@@ -171,8 +186,10 @@ def run_upgrade() -> None:
         params.pop("channel_binding", None)
         new_query = urllib.parse.urlencode(params, doseq=True)
         db_url = f"{base_part}?{new_query}" if new_query else base_part
+    return db_url
 
-    table_count = None
+
+def _inspect_migration_tables(db_url: str) -> int | None:
     try:
         from sqlalchemy import create_engine, inspect
         sync_url = _sync_migration_url(db_url)
@@ -190,6 +207,7 @@ def run_upgrade() -> None:
             required_table_exists="users" in tables,
         )
         temp_engine.dispose()
+        return table_count
     except Exception as ex:
         _log_db_event(
             logging.WARNING,
@@ -199,28 +217,37 @@ def run_upgrade() -> None:
             error_type=type(ex).__name__,
             error_message=sanitize_message(str(ex)),
         )
+        return None
 
-    is_sqlite = "sqlite" in db_url
-    db_path = None
 
-    if is_sqlite:
-        if "sqlite+aiosqlite:///" in db_url:
-            db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
-            if db_path_str.startswith("/") or ":" in db_path_str:
-                db_path = Path(db_path_str)
-            else:
-                db_path = base_dir / db_path_str
-        else:
-            db_path = base_dir / "requirement_space.db"
+def _sqlite_database_path(db_url: str, base_dir):
+    if "sqlite" not in db_url:
+        return None
+    if "sqlite+aiosqlite:///" not in db_url:
+        return base_dir / "requirement_space.db"
+    from pathlib import Path
+    path_text = db_url.replace("sqlite+aiosqlite:///", "")
+    if path_text.startswith("/") or ":" in path_text:
+        return Path(path_text)
+    return base_dir / path_text
 
+
+def _build_alembic_config(base_dir, db_url: str):
+    from alembic.config import Config
     alembic_ini_path = base_dir / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("script_location", str(base_dir / "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", _sync_migration_url(db_url))
+    return alembic_cfg
 
-    alembic_url = _sync_migration_url(db_url)
 
-    alembic_cfg.set_main_option("sqlalchemy.url", alembic_url)
-
+def _run_alembic_upgrade(
+    alembic_cfg,
+    db_url: str,
+    table_count: int | None,
+    started: float,
+) -> None:
+    from alembic import command
     _log_db_event(
         logging.INFO,
         DB_MIGRATION_STARTED,
@@ -230,7 +257,6 @@ def run_upgrade() -> None:
         alembic_target="head",
         table_count=table_count,
     )
-
     try:
         command.upgrade(alembic_cfg, "head")
     except Exception as e:
@@ -256,84 +282,89 @@ def run_upgrade() -> None:
             duration_ms=int((time.perf_counter() - started) * 1000),
         )
 
-    # Only run SQLite-specific repairs if using SQLite
-    if is_sqlite and db_path and db_path.exists():
+
+def _repair_sqlite_database(db_path) -> None:
+    _repair_issue_repair_drafts_table(db_path)
+    _repair_legacy_scope_status_values(db_path)
+
+
+def _repair_issue_repair_drafts_table(db_path) -> None:
+    import sqlite3
+    _log_db_event(
+        logging.INFO,
+        DB_SQLITE_REPAIR_STARTED,
+        "SQLite repair checks started",
+        db_engine="sqlite",
+        repair="issue_repair_drafts_table",
+    )
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='issue_repair_drafts';"
+        )
+        if cursor.fetchone() is None:
+            from backend.database.model import IssueRepairDraftModel
+            from sqlalchemy import create_engine
+            sync_engine = create_engine(f"sqlite:///{db_path}")
+            IssueRepairDraftModel.__table__.create(sync_engine, checkfirst=True)
+            sync_engine.dispose()
+        cursor.close()
+        conn.close()
         _log_db_event(
             logging.INFO,
-            DB_SQLITE_REPAIR_STARTED,
-            "SQLite repair checks started",
+            DB_SQLITE_REPAIR_COMPLETED,
+            "SQLite table repair check completed",
             db_engine="sqlite",
             repair="issue_repair_drafts_table",
         )
-        # Repair case: if a migration was previously "stamp"ed without running its
-        # DDL (old behaviour), the alembic_version says "up to date" but the table
-        # is missing.  Detect and fix.
-        try:
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='issue_repair_drafts';"
-            )
-            if cursor.fetchone() is None:
-                from backend.database.model import IssueRepairDraftModel
-                from sqlalchemy import create_engine
-                sync_engine = create_engine(f"sqlite:///{db_path}")
-                IssueRepairDraftModel.__table__.create(sync_engine, checkfirst=True)
-                sync_engine.dispose()
-            cursor.close()
-            conn.close()
-            _log_db_event(
-                logging.INFO,
-                DB_SQLITE_REPAIR_COMPLETED,
-                "SQLite table repair check completed",
-                db_engine="sqlite",
-                repair="issue_repair_drafts_table",
-            )
-        except Exception as ex:
-            _log_db_event(
-                logging.WARNING,
-                DB_SQLITE_REPAIR_FAILED,
-                "SQLite table repair failed",
-                db_engine="sqlite",
-                repair="issue_repair_drafts_table",
-                error_type=type(ex).__name__,
-                error_message=sanitize_message(str(ex)),
-            )
+    except Exception as ex:
+        _log_db_event(
+            logging.WARNING,
+            DB_SQLITE_REPAIR_FAILED,
+            "SQLite table repair failed",
+            db_engine="sqlite",
+            repair="issue_repair_drafts_table",
+            error_type=type(ex).__name__,
+            error_message=sanitize_message(str(ex)),
+        )
 
-        # Data migration: Convert legacy Chinese scope status to canonical English keys
+
+def _repair_legacy_scope_status_values(db_path) -> None:
+    import sqlite3
+    _log_db_event(
+        logging.INFO,
+        DB_SQLITE_REPAIR_STARTED,
+        "SQLite data repair started",
+        db_engine="sqlite",
+        repair="legacy_scope_status_values",
+    )
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("UPDATE feature_scopes SET status = 'current' WHERE status = '本期';")
+        cursor.execute("UPDATE feature_scopes SET status = 'postponed' WHERE status = '暂缓';")
+        cursor.execute("UPDATE feature_scopes SET status = 'exclude' WHERE status = '排除';")
+        conn.commit()
+        cursor.close()
+        conn.close()
         _log_db_event(
             logging.INFO,
-            DB_SQLITE_REPAIR_STARTED,
-            "SQLite data repair started",
+            DB_SQLITE_REPAIR_COMPLETED,
+            "SQLite data repair completed",
             db_engine="sqlite",
             repair="legacy_scope_status_values",
         )
-        try:
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            cursor.execute("UPDATE feature_scopes SET status = 'current' WHERE status = '本期';")
-            cursor.execute("UPDATE feature_scopes SET status = 'postponed' WHERE status = '暂缓';")
-            cursor.execute("UPDATE feature_scopes SET status = 'exclude' WHERE status = '排除';")
-            conn.commit()
-            cursor.close()
-            conn.close()
-            _log_db_event(
-                logging.INFO,
-                DB_SQLITE_REPAIR_COMPLETED,
-                "SQLite data repair completed",
-                db_engine="sqlite",
-                repair="legacy_scope_status_values",
-            )
-        except Exception as ex:
-            _log_db_event(
-                logging.WARNING,
-                DB_SQLITE_REPAIR_FAILED,
-                "SQLite data repair failed",
-                db_engine="sqlite",
-                repair="legacy_scope_status_values",
-                error_type=type(ex).__name__,
-                error_message=sanitize_message(str(ex)),
-            )
+    except Exception as ex:
+        _log_db_event(
+            logging.WARNING,
+            DB_SQLITE_REPAIR_FAILED,
+            "SQLite data repair failed",
+            db_engine="sqlite",
+            repair="legacy_scope_status_values",
+            error_type=type(ex).__name__,
+            error_message=sanitize_message(str(ex)),
+        )
 
 
 def run_stamp_head() -> None:
@@ -434,17 +465,7 @@ async def bootstrap_db() -> None:
         )
 
 
-async def init_db() -> None:
-    """Initialize database: bootstrap from metadata if database is completely empty.
-    If database contains existing tables but lacks 'users', raise an error to prevent partial schema generation."""
-    project_columns = []
-    started = time.perf_counter()
-    _log_db_event(
-        logging.INFO,
-        DB_INIT_STARTED,
-        "Database initialization started",
-        db_engine=_db_engine_name(DATABASE_URL),
-    )
+async def _inspect_existing_schema() -> tuple[list[str], list[str]]:
     try:
         async with engine.connect() as conn:
             def inspect_db(sync_conn):
@@ -455,7 +476,7 @@ async def init_db() -> None:
                 if "projects" in tables:
                     columns = [c["name"] for c in inspector.get_columns("projects")]
                 return tables, columns
-            tables, project_columns = await conn.run_sync(inspect_db)
+            return await conn.run_sync(inspect_db)
     except Exception as e:
         _log_db_event(
             logging.WARNING,
@@ -465,30 +486,21 @@ async def init_db() -> None:
             error_type=type(e).__name__,
             error_message=sanitize_message(str(e)),
         )
-        tables = ["users"]  # Fallback to assume it's already initialized
-        project_columns = ["public_id"]
+        return ["users"], ["public_id"]
 
-    # Exclude alembic_version from checking if it exists
-    non_alembic_tables = [t for t in tables if t != "alembic_version"]
 
-    if not non_alembic_tables:
-        await bootstrap_db()
-        _log_db_event(
-            logging.INFO,
-            DB_INIT_COMPLETED,
-            "Database initialization completed",
-            db_engine=_db_engine_name(DATABASE_URL),
-            table_count=len(non_alembic_tables),
-            duration_ms=int((time.perf_counter() - started) * 1000),
-        )
-    elif "projects" in non_alembic_tables and "public_id" not in project_columns:
+def _validate_upgrade_schema(
+    tables: list[str],
+    project_columns: list[str],
+) -> None:
+    if "projects" in tables and "public_id" not in project_columns:
         _log_db_event(
             logging.ERROR,
             DB_INIT_FAILED,
             "Database initialization failed due to legacy projects schema",
             db_engine=_db_engine_name(DATABASE_URL),
             required_table="projects",
-            table_count=len(non_alembic_tables),
+            table_count=len(tables),
             error_type="LegacySchemaError",
         )
         raise ValueError(
@@ -497,15 +509,14 @@ async def init_db() -> None:
             "Please delete the database file ('requirement_space.db', 'requirement_space.db-wal', 'requirement_space.db-shm') "
             "or recreate your PostgreSQL schema, then restart the application."
         )
-    elif "users" not in non_alembic_tables:
-        # Database contains old tables, but users table is missing
+    if "users" not in tables:
         _log_db_event(
             logging.ERROR,
             DB_INIT_FAILED,
             "Database initialization failed due to missing users table",
             db_engine=_db_engine_name(DATABASE_URL),
             required_table="users",
-            table_count=len(non_alembic_tables),
+            table_count=len(tables),
             error_type="LegacySchemaError",
         )
         raise ValueError(
@@ -515,17 +526,36 @@ async def init_db() -> None:
             "Please delete the database file ('requirement_space.db', 'requirement_space.db-wal', 'requirement_space.db-shm') "
             "or recreate your PostgreSQL schema, then restart the application."
         )
+
+
+async def init_db() -> None:
+    """Initialize database: bootstrap from metadata if database is completely empty.
+    If database contains existing tables but lacks 'users', raise an error to prevent partial schema generation."""
+    started = time.perf_counter()
+    _log_db_event(
+        logging.INFO,
+        DB_INIT_STARTED,
+        "Database initialization started",
+        db_engine=_db_engine_name(DATABASE_URL),
+    )
+    tables, project_columns = await _inspect_existing_schema()
+    non_alembic_tables = [
+        table for table in tables if table != "alembic_version"
+    ]
+    if not non_alembic_tables:
+        await bootstrap_db()
     else:
+        _validate_upgrade_schema(non_alembic_tables, project_columns)
         import asyncio
         await asyncio.to_thread(run_upgrade)
-        _log_db_event(
-            logging.INFO,
-            DB_INIT_COMPLETED,
-            "Database initialization completed",
-            db_engine=_db_engine_name(DATABASE_URL),
-            table_count=len(non_alembic_tables),
-            duration_ms=int((time.perf_counter() - started) * 1000),
-        )
+    _log_db_event(
+        logging.INFO,
+        DB_INIT_COMPLETED,
+        "Database initialization completed",
+        db_engine=_db_engine_name(DATABASE_URL),
+        table_count=len(non_alembic_tables),
+        duration_ms=int((time.perf_counter() - started) * 1000),
+    )
 
 
 async def drop_db() -> None:

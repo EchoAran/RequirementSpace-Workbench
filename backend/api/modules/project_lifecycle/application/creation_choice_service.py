@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -17,7 +16,6 @@ from backend.api.modules.decision_workflow.public import (
     _build_choice_group_response,
     BaseGenerationChoiceAdapter,
     run_candidate_generation,
-    ChoiceActionResponse,
     GenerativeDraftStore,
 )
 from backend.api.modules.project_lifecycle.application.creation_service import ProjectCreationService
@@ -219,43 +217,104 @@ class ProjectCreationChoiceGroupService:
         config = self._settings.with_overrides(candidate_count)
         group_id = f"pcg_{uuid4().hex[:12]}"
 
-        # 1. Retrieve knowledge base context if workspace is active and belongs to user
-        knowledge_context = None
+        knowledge_context = await self._load_creation_knowledge_context(
+            knowledge_workspace_id=knowledge_workspace_id,
+            owner_user_id=owner_user_id,
+            user_requirements=user_requirements,
+            user_feedback=user_feedback,
+            session=session,
+        )
+        result = await self._generate_creation_candidates(
+            config=config,
+            user_requirements=user_requirements,
+            user_feedback=user_feedback,
+            knowledge_context=knowledge_context,
+            knowledge_workspace_id=knowledge_workspace_id,
+        )
+        deduped = self._deduplicate_creation_candidates(result.candidates)
+        group_status, status_detail = self._build_creation_status(
+            result,
+            deduped,
+            partial_success_min=config.partial_success_min,
+        )
+        choices = self._build_creation_choices(group_id, deduped, result.errors)
+        group_payload = self._build_creation_group_payload(
+            group_id=group_id,
+            group_status=group_status,
+            user_requirements=user_requirements,
+            result=result,
+            deduped=deduped,
+            status_detail=status_detail,
+            choices=choices,
+        )
+
+        # Save to GenerativeDraftModel
+        if session:
+
+            await GenerativeDraftStore.save_draft(
+                project_id=None,
+                draft_id=group_id,
+                draft_type=ONBOARDING_DRAFT_TYPE,
+                payload=group_payload,
+                owner_user_id=owner_user_id,
+                session=session,
+            )
+
+        return self._build_response(group_payload)
+
+    async def _load_creation_knowledge_context(
+        self,
+        *,
+        knowledge_workspace_id: str | None,
+        owner_user_id: int,
+        user_requirements: str,
+        user_feedback: str | None,
+        session: AsyncSession | None,
+    ):
         from backend.core.config import KNOWLEDGE_BASE_ENABLED
-        if knowledge_workspace_id and KNOWLEDGE_BASE_ENABLED and session:
-            from backend.database.model import KnowledgeWorkspaceModel
-            from sqlalchemy import select
-            from fastapi import HTTPException
 
-            ws_res = await session.execute(
-                select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
+        if not (knowledge_workspace_id and KNOWLEDGE_BASE_ENABLED and session):
+            return None
+
+        from fastapi import HTTPException
+        from backend.database.model import KnowledgeWorkspaceModel
+        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+
+        ws_res = await session.execute(
+            select(KnowledgeWorkspaceModel).where(
+                KnowledgeWorkspaceModel.public_id == knowledge_workspace_id
             )
-            ws = ws_res.scalar_one_or_none()
-            if not ws:
-                raise HTTPException(status_code=404, detail="workspace_not_found")
-            if ws.owner_user_id != owner_user_id:
-                raise HTTPException(status_code=403, detail="forbidden")
-            if ws.status != "active":
-                raise HTTPException(status_code=400, detail="workspace_inactive")
+        )
+        workspace = ws_res.scalar_one_or_none()
+        if not workspace:
+            raise HTTPException(status_code=404, detail="workspace_not_found")
+        if workspace.owner_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="forbidden")
+        if workspace.status != "active":
+            raise HTTPException(status_code=400, detail="workspace_inactive")
 
-            # Construct combined query for context retrieval
-            query_parts = [user_requirements]
-            if user_feedback:
-                query_parts.append(user_feedback)
-            query_parts.append("生成项目名称、项目描述、参与者、功能树、业务边界")
-            combined_query = " ".join(query_parts)
+        query_parts = [user_requirements]
+        if user_feedback:
+            query_parts.append(user_feedback)
+        query_parts.append("生成项目名称、项目描述、参与者、功能树、业务边界")
+        return await KnowledgeContextBuilder.build(
+            workspace_id=workspace.id,
+            purpose="project_creation",
+            query=" ".join(query_parts),
+            token_budget=4000,
+            session=session,
+        )
 
-            from backend.services.knowledge.context_builder import KnowledgeContextBuilder
-            knowledge_context = await KnowledgeContextBuilder.build(
-                workspace_id=ws.id,
-                purpose="project_creation",
-                query=combined_query,
-                token_budget=4000,
-                session=session
-            )
-
-        # Prepare context and run concurrent generation
-        base_ctx = CandidateContext(
+    async def _generate_creation_candidates(
+        self,
+        *,
+        config: GenerationChoiceSettings,
+        user_requirements: str,
+        user_feedback: str | None,
+        knowledge_context,
+        knowledge_workspace_id: str | None,
+    ):
+        base_context = CandidateContext(
             index=0,
             strategy="balanced",
             user_feedback=user_feedback,
@@ -271,31 +330,38 @@ class ProjectCreationChoiceGroupService:
             max_concurrency=config.max_concurrency,
             timeout_seconds=config.timeout_seconds,
             generate_one=self._adapter.generate_candidate,
-            base_context=base_ctx,
+            base_context=base_context,
         )
-
         if any(
             error.message == LLMContentLocaleMismatchError.code
             for error in result.errors
         ):
             raise LLMContentLocaleMismatchError()
+        return result
 
-        # Dedup
+    def _deduplicate_creation_candidates(
+        self,
+        candidates: list[GenerationCandidate],
+    ) -> list[GenerationCandidate]:
         deduped = []
-        for c in result.candidates:
-            if not self._adapter.is_duplicate(c, deduped):
-                deduped.append(c)
+        for candidate in candidates:
+            if not self._adapter.is_duplicate(candidate, deduped):
+                deduped.append(candidate)
+        return deduped
 
-        is_partial_failure = len(deduped) < config.partial_success_min
-        group_status = "failed" if is_partial_failure else "open"
-
-        # Build status_detail
+    @staticmethod
+    def _build_creation_status(result, deduped, *, partial_success_min: int):
+        group_status = "failed" if len(deduped) < partial_success_min else "open"
         status_detail = {}
         if result.errors:
             status_detail["errors"] = [
-                {"index": e.index, "strategy": e.strategy,
-                 "error_type": e.error_type, "message": e.message}
-                for e in result.errors
+                {
+                    "index": error.index,
+                    "strategy": error.strategy,
+                    "error_type": error.error_type,
+                    "message": error.message,
+                }
+                for error in result.errors
             ]
             status_detail["error_summary"] = (
                 f"{result.total_count} 个候选已生成，"
@@ -303,35 +369,36 @@ class ProjectCreationChoiceGroupService:
             )
         if len(deduped) > 1:
             status_detail["comparison_summary"] = " | ".join(
-                f"{c.title}: {c.comparison_summary}" for c in deduped
+                f"{candidate.title}: {candidate.comparison_summary}"
+                for candidate in deduped
             )
+        return group_status, status_detail
 
-        # Build choices list
-        choices = []
-        for i, c in enumerate(deduped):
-            choice = {
-                "id": f"pcc_{group_id}_{i}",
-                "title": c.title,
-                "rationale": c.rationale,
+    @staticmethod
+    def _build_creation_choices(group_id, candidates, errors) -> list[dict]:
+        choices = [
+            {
+                "id": f"pcc_{group_id}_{index}",
+                "title": candidate.title,
+                "rationale": candidate.rationale,
                 "status": "candidate",
                 "draft_type": "project_creation",
                 "apply_mode": "draft_payload",
-                "payload": c.payload,
-                "preview": c.preview,
-                "score": c.score,
-                  "comparison_summary": c.comparison_summary,
-                  "apply_behavior": c.apply_behavior,
-                  "apply_behavior_description": c.apply_behavior_description,
-                  "strategy_id": c.strategy_id,
-                  "strategy_label": c.strategy_label,
+                "payload": candidate.payload,
+                "preview": candidate.preview,
+                "score": candidate.score,
+                "comparison_summary": candidate.comparison_summary,
+                "apply_behavior": candidate.apply_behavior,
+                "apply_behavior_description": candidate.apply_behavior_description,
+                "strategy_id": candidate.strategy_id,
+                "strategy_label": candidate.strategy_label,
             }
-            choices.append(choice)
-
-        # Failed choices
-        for e in result.errors:
-            choices.append({
-                "id": f"pcc_{group_id}_fail_{e.index}",
-                "title": f"方案 {e.index+1} ({e.strategy})",
+            for index, candidate in enumerate(candidates)
+        ]
+        choices.extend(
+            {
+                "id": f"pcc_{group_id}_fail_{error.index}",
+                "title": f"方案 {error.index+1} ({error.strategy})",
                 "rationale": "",
                 "status": "failed",
                 "draft_type": "project_creation",
@@ -339,18 +406,36 @@ class ProjectCreationChoiceGroupService:
                 "payload": {},
                 "preview": {},
                 "score": {},
-                  "comparison_summary": "",
-                  "error": {"error_type": e.error_type, "message": e.message},
-                  "strategy_id": e.strategy,
-                  "strategy_label": e.strategy,
-            })
+                "comparison_summary": "",
+                "error": {
+                    "error_type": error.error_type,
+                    "message": error.message,
+                },
+                "strategy_id": error.strategy,
+                "strategy_label": error.strategy,
+            }
+            for error in errors
+        )
+        return choices
 
-        # Compute context_hash
+    @staticmethod
+    def _build_creation_group_payload(
+        *,
+        group_id: str,
+        group_status: str,
+        user_requirements: str,
+        result,
+        deduped,
+        status_detail: dict,
+        choices: list[dict],
+    ) -> dict:
         context_hash = hashlib.sha256(
-            json.dumps({"user_requirements": user_requirements}, sort_keys=True).encode()
+            json.dumps(
+                {"user_requirements": user_requirements},
+                sort_keys=True,
+            ).encode()
         ).hexdigest()[:16]
-
-        group_payload = {
+        return {
             "choice_group_id": group_id,
             "status": group_status,
             "draft_type": ONBOARDING_DRAFT_TYPE,
@@ -365,20 +450,6 @@ class ProjectCreationChoiceGroupService:
             "created_at": time.time(),
             "updated_at": time.time(),
         }
-
-        # Save to GenerativeDraftModel
-        if session:
-
-            await GenerativeDraftStore.save_draft(
-                project_id=None,
-                draft_id=group_id,
-                draft_type=ONBOARDING_DRAFT_TYPE,
-                payload=group_payload,
-                owner_user_id=owner_user_id,
-                session=session,
-            )
-
-        return self._build_response(group_payload)
 
     async def get_choice_group(
         self, group_id: str, owner_user_id: int, session: AsyncSession | None = None
@@ -523,18 +594,77 @@ class ProjectCreationChoiceGroupService:
         owner_user_id: int,
         session: AsyncSession | None = None,
     ) -> dict:
+        payload = await self._load_open_onboarding_choice_group(
+            group_id,
+            owner_user_id=owner_user_id,
+            session=session,
+        )
+        project_result, project_id_internal = await self._create_deferred_project(
+            payload,
+            owner_user_id=owner_user_id,
+            session=session,
+        )
+        group = await self._create_migrated_choice_group(
+            group_id,
+            payload,
+            project_id_internal=project_id_internal,
+            session=session,
+        )
+        created_choices = await self._create_migrated_choices(
+            group,
+            payload.get("choices", []),
+            session=session,
+        )
+        await self._mark_onboarding_choice_group_deferred(
+            group_id,
+            payload,
+            project_id=project_result["project_id"],
+            migrated_group_id=group.id,
+            owner_user_id=owner_user_id,
+            session=session,
+        )
 
+        migrated_group = _build_choice_group_response(
+            group,
+            created_choices,
+            project_public_id=project_result["project_id"],
+        )
+        return {
+            "project_id": project_result["project_id"],
+            "project_name": project_result["project_name"],
+            "project_description": project_result["project_description"],
+            "choice_group": migrated_group,
+            "message": "project_created_with_deferred_choice_group",
+        }
+
+    @staticmethod
+    async def _load_open_onboarding_choice_group(
+        group_id: str,
+        *,
+        owner_user_id: int,
+        session: AsyncSession | None,
+    ) -> dict:
         try:
-            payload = await GenerativeDraftStore.get_draft(group_id, owner_user_id, session)
-
+            payload = await GenerativeDraftStore.get_draft(
+                group_id,
+                owner_user_id,
+                session,
+            )
         except ValueError:
             raise ValueError("choice_group_not_found")
-
         if payload.get("draft_type") != ONBOARDING_DRAFT_TYPE:
             raise ValueError("invalid_onboarding_draft_type")
         if payload.get("status") != "open":
             raise ValueError("choice_group_not_open")
+        return payload
 
+    async def _create_deferred_project(
+        self,
+        payload: dict,
+        *,
+        owner_user_id: int,
+        session: AsyncSession | None,
+    ) -> tuple[dict, int]:
         project_result = await self._blank_project_service.create_project(
             user_requirements=payload.get("user_requirements", ""),
             project_name=None,
@@ -542,15 +672,25 @@ class ProjectCreationChoiceGroupService:
             owner_user_id=owner_user_id,
             session=session,
         )
-        project_id = project_result["project_id"]
-
-        # Resolve the internal integer id from the projects table
         from backend.database.model import ProjectModel
-        proj_stmt = select(ProjectModel.id).where(ProjectModel.public_id == project_id)
-        proj_id_internal = (await session.execute(proj_stmt)).scalar_one()
 
+        project_id = project_result["project_id"]
+        statement = select(ProjectModel.id).where(
+            ProjectModel.public_id == project_id
+        )
+        project_id_internal = (await session.execute(statement)).scalar_one()
+        return project_result, project_id_internal
+
+    @staticmethod
+    async def _create_migrated_choice_group(
+        group_id: str,
+        payload: dict,
+        *,
+        project_id_internal: int,
+        session: AsyncSession | None,
+    ) -> ChoiceGroupModel:
         group = ChoiceGroupModel(
-            project_id=proj_id_internal,
+            project_id=project_id_internal,
             status="open",
             selection_mode="single",
             generation_type="project_creation",
@@ -571,9 +711,17 @@ class ProjectCreationChoiceGroupService:
         )
         session.add(group)
         await session.flush()
+        return group
 
-        created_choices: list[ChoiceModel] = []
-        for candidate in payload.get("choices", []):
+    @staticmethod
+    async def _create_migrated_choices(
+        group: ChoiceGroupModel,
+        candidates: list[dict],
+        *,
+        session: AsyncSession | None,
+    ) -> list[ChoiceModel]:
+        choices = []
+        for candidate in candidates:
             choice = ChoiceModel(
                 choice_group_id=group.id,
                 title=candidate.get("title", ""),
@@ -585,20 +733,30 @@ class ProjectCreationChoiceGroupService:
                 draft_type=candidate.get("draft_type", "project_creation"),
                 apply_mode=candidate.get("apply_mode", "draft_payload"),
                 preview=candidate.get("preview") or {},
-                  score=candidate.get("score"),
-                  error=candidate.get("error"),
-                  strategy_id=candidate.get("strategy_id"),
-                  strategy_label=candidate.get("strategy_label"),
-              )
+                score=candidate.get("score"),
+                error=candidate.get("error"),
+                strategy_id=candidate.get("strategy_id"),
+                strategy_label=candidate.get("strategy_label"),
+            )
             session.add(choice)
-            created_choices.append(choice)
-
+            choices.append(choice)
         await session.flush()
+        return choices
 
+    @staticmethod
+    async def _mark_onboarding_choice_group_deferred(
+        group_id: str,
+        payload: dict,
+        *,
+        project_id: str,
+        migrated_group_id: int,
+        owner_user_id: int,
+        session: AsyncSession | None,
+    ) -> None:
         payload["status"] = "deferred"
         payload["updated_at"] = time.time()
         payload["deferred_project_id"] = project_id
-        payload["migrated_choice_group_id"] = group.id
+        payload["migrated_choice_group_id"] = migrated_group_id
         await GenerativeDraftStore.save_draft(
             project_id=None,
             draft_id=group_id,
@@ -607,15 +765,6 @@ class ProjectCreationChoiceGroupService:
             owner_user_id=owner_user_id,
             session=session,
         )
-
-        migrated_group = _build_choice_group_response(group, created_choices)
-        return {
-            "project_id": project_result["project_id"],
-            "project_name": project_result["project_name"],
-            "project_description": project_result["project_description"],
-            "choice_group": migrated_group,
-            "message": "project_created_with_deferred_choice_group",
-        }
 
     # ── Helpers ─────────────────────────────────────────────────
 

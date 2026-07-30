@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { Mail, Lock, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export function Login() {

@@ -6,7 +6,7 @@ Analyzes business object attributes and project flows to recommend step bindings
 import json
 from sqlalchemy import select
 
-from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult, RepairProposal
+from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult
 from backend.core.issue_resolution.ai.prompts.business_object_without_usage_prompt import (
     BUSINESS_OBJECT_WITHOUT_USAGE_SYSTEM_PROMPT,
     BUSINESS_OBJECT_WITHOUT_USAGE_USER_PROMPT_TEMPLATE,

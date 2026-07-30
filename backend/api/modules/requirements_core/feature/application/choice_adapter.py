@@ -91,22 +91,6 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def is_context_stale(self, choice, session) -> tuple[bool, str | None]:
         return False, None
-        from backend.database.model import FeatureModel
-        project_id = choice.payload.get("project_id") or choice.choice_group.project_id
-        existing = await session.execute(
-            select(FeatureModel).where(FeatureModel.project_id == project_id)
-        )
-        existing_features = existing.scalars().all()
-        # If project had no features at generation time but now has some
-        generated_features = (choice.payload or {}).get("features", [])
-        if not generated_features:
-            return False, None
-        if existing_features:
-            return True, (
-                f"项目已包含 {len(existing_features)} 项功能。"
-                "此完整树候选可能不再适用。请重新生成。"
-            )
-        return False, None
 
     @staticmethod
     def _make_comparison_summary(strategy, features):

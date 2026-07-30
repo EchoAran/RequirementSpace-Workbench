@@ -10,24 +10,16 @@ Choice group 统一候选草稿机制的核心服务层。包含：
 - GenerationChoiceApplier: 采纳时分派到具体 draft_type 的 persist 方法
 """
 import asyncio
-import hashlib
-import json
 import logging
 import os
 import time
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, ParamSpec, TypeAlias
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, TypeAlias
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.api.modules.decision_workflow.choice_group.schemas import (
-    ChoiceGroupResponse,
-    ChoiceResponse,
-    GenerationCandidateError,
-)
 from backend.api.modules.decision_workflow.ports.ports import (
     BaseGenerationChoiceAdapter,
     CandidateContext,
@@ -35,18 +27,16 @@ from backend.api.modules.decision_workflow.ports.ports import (
     CandidateError,
     CandidateRunResult,
 )
-from backend.core.ai_operation_monitor import log_ai_operation_result
-from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import (
-    CHOICE_GROUP_CREATED,
-    CHOICE_GROUP_CREATE_REQUESTED,
-    CHOICE_GROUP_GENERATION_FAILED,
     CHOICE_GROUP_REGENERATED,
 )
 from backend.database.model import ChoiceGroupModel, ChoiceModel
 
 logger = get_logger(__name__)
+
+LARGE_SCENARIO_BATCH_THRESHOLD = 25
+SCENARIO_TIMEOUT_FEATURE_BATCH_SIZE = 50
 
 
 # ═══════════════════════════════════════════════
@@ -61,7 +51,6 @@ class GenerationChoiceSettings:
     timeout_seconds: int = 120
     partial_success_min: int = 1
     enabled: bool = True
-    draft_fallback_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> "GenerationChoiceSettings":
@@ -71,7 +60,6 @@ class GenerationChoiceSettings:
             timeout_seconds=int(os.getenv("GENERATION_CHOICE_TIMEOUT_SECONDS", "120")),
             partial_success_min=max(1, int(os.getenv("GENERATION_CHOICE_PARTIAL_SUCCESS_MIN", "1"))),
             enabled=os.getenv("GENERATION_CHOICE_GROUP_ENABLED", "true").lower() == "true",
-            draft_fallback_enabled=os.getenv("GENERATION_DRAFT_FALLBACK_ENABLED", "true").lower() == "true",
         )
 
     def with_overrides(self, candidate_count: int | None = None) -> "GenerationChoiceSettings":
@@ -85,7 +73,6 @@ class GenerationChoiceSettings:
             timeout_seconds=self.timeout_seconds,
             partial_success_min=self.partial_success_min,
             enabled=self.enabled,
-            draft_fallback_enabled=self.draft_fallback_enabled,
         )
 
     def is_generation_type_enabled(self, generation_type: str) -> bool:
@@ -122,6 +109,153 @@ def _strategy_for_index(index: int) -> str:
 ProgressCallback: TypeAlias = Callable[[int, str, str], None]
 
 
+def _resolve_candidate_strategy(
+    index: int,
+    resolved_strategies: list[Any] | None,
+    base_context: CandidateContext | None,
+) -> tuple[str, str, str | None, str | None]:
+    if resolved_strategies and index < len(resolved_strategies):
+        strategy = resolved_strategies[index]
+        return (
+            strategy.id,
+            strategy.label,
+            strategy.description,
+            strategy.instruction,
+        )
+    if base_context and base_context.strategy_id:
+        return (
+            base_context.strategy_id,
+            base_context.strategy_label,
+            base_context.strategy_description,
+            base_context.strategy_instruction,
+        )
+
+    strategy_id = _strategy_for_index(index)
+    from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
+        DEFAULT_STRATEGIES,
+    )
+    default = next(
+        (item for item in DEFAULT_STRATEGIES if item["id"] == strategy_id),
+        None,
+    )
+    if default:
+        return (
+            strategy_id,
+            default["label"],
+            default.get("description"),
+            default.get("instruction"),
+        )
+    return strategy_id, strategy_id, None, None
+
+
+def _build_candidate_context(
+    index: int,
+    strategy: tuple[str, str, str | None, str | None],
+    base_context: CandidateContext | None,
+) -> CandidateContext:
+    strategy_id, label, description, instruction = strategy
+    return CandidateContext(
+        index=index,
+        strategy=strategy_id,
+        seed_hint=None,
+        user_feedback=base_context.user_feedback if base_context else None,
+        target=base_context.target if base_context else None,
+        project_id=base_context.project_id if base_context else None,
+        session=base_context.session if base_context else None,
+        strategy_id=strategy_id,
+        strategy_label=label,
+        strategy_description=description,
+        strategy_instruction=instruction,
+    )
+
+
+async def _run_candidate(
+    index: int,
+    *,
+    semaphore: asyncio.Semaphore,
+    results: dict[int, GenerationCandidate | Exception],
+    timeout_seconds: int,
+    generate_one: Callable[[CandidateContext], Awaitable[GenerationCandidate]],
+    progress_callback: ProgressCallback | None,
+    base_context: CandidateContext | None,
+    resolved_strategies: list[Any] | None,
+) -> None:
+    strategy = _resolve_candidate_strategy(
+        index,
+        resolved_strategies,
+        base_context,
+    )
+    strategy_id, strategy_label, _, _ = strategy
+    context = _build_candidate_context(index, strategy, base_context)
+    if progress_callback:
+        progress_callback(index, "start", strategy_label)
+
+    async with semaphore:
+        try:
+            candidate = await asyncio.wait_for(
+                generate_one(context),
+                timeout=timeout_seconds,
+            )
+            if candidate:
+                if not candidate.strategy_id:
+                    candidate.strategy_id = strategy_id
+                if not candidate.strategy_label:
+                    candidate.strategy_label = strategy_label
+            results[index] = candidate
+            if progress_callback:
+                progress_callback(index, "complete", candidate.title)
+        except asyncio.TimeoutError:
+            results[index] = TimeoutError(
+                f"候选 {index+1} ({strategy_label}) 生成超时 ({timeout_seconds}s)"
+            )
+            if progress_callback:
+                progress_callback(index, "fail", f"超时 ({timeout_seconds}s)")
+        except Exception as exc:
+            results[index] = exc
+            if progress_callback:
+                progress_callback(index, "fail", str(exc)[:200])
+
+
+def _collect_candidate_results(
+    count: int,
+    results: dict[int, GenerationCandidate | Exception],
+    resolved_strategies: list[Any] | None,
+) -> tuple[list[GenerationCandidate], list[CandidateError]]:
+    candidates = []
+    errors = []
+    for index in range(count):
+        result = results.get(index)
+        strategy_id = (
+            resolved_strategies[index].id
+            if resolved_strategies and index < len(resolved_strategies)
+            else _strategy_for_index(index)
+        )
+        if result is None:
+            errors.append(CandidateError(
+                index=index,
+                strategy=strategy_id,
+                error_type="unknown",
+                message="候选未完成（任务可能被取消）",
+            ))
+        elif isinstance(result, GenerationCandidate):
+            candidates.append(result)
+        elif isinstance(result, asyncio.TimeoutError):
+            errors.append(CandidateError(
+                index=index,
+                strategy=strategy_id,
+                error_type="timeout",
+                message=str(result),
+            ))
+        elif isinstance(result, Exception):
+            errors.append(CandidateError(
+                index=index,
+                strategy=strategy_id,
+                error_type="llm_error",
+                message=str(result)[:300],
+            ))
+    return candidates, errors
+
+
 # ═══════════════════════════════════════════════
 # 并发候选生成 Runner
 # ═══════════════════════════════════════════════
@@ -149,108 +283,29 @@ async def run_candidate_generation(
     返回:
         CandidateRunResult 包含成功候选和失败信息
     """
-    start = time.monotonic()
-    sem = asyncio.Semaphore(max_concurrency)
+    started = time.monotonic()
+    semaphore = asyncio.Semaphore(max_concurrency)
     results: dict[int, GenerationCandidate | Exception] = {}
-
-    async def _run_one(index: int) -> None:
-        if resolved_strategies and index < len(resolved_strategies):
-            strat_item = resolved_strategies[index]
-            strategy_id = strat_item.id
-            strategy_label = strat_item.label
-            strategy_description = strat_item.description
-            strategy_instruction = strat_item.instruction
-        elif base_context and base_context.strategy_id:
-            strategy_id = base_context.strategy_id
-            strategy_label = base_context.strategy_label
-            strategy_description = base_context.strategy_description
-            strategy_instruction = base_context.strategy_instruction
-        else:
-            strategy_id = _strategy_for_index(index)
-            from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
-                DEFAULT_STRATEGIES,
-            )
-            default_item = next((s for s in DEFAULT_STRATEGIES if s["id"] == strategy_id), None)
-            if default_item:
-                strategy_label = default_item["label"]
-                strategy_description = default_item.get("description")
-                strategy_instruction = default_item.get("instruction")
-            else:
-                strategy_label = strategy_id
-                strategy_description = None
-                strategy_instruction = None
-
-        context = CandidateContext(
-            index=index,
-            strategy=strategy_id,
-            seed_hint=None,
-            user_feedback=base_context.user_feedback if base_context else None,
-            target=base_context.target if base_context else None,
-            project_id=base_context.project_id if base_context else None,
-            session=base_context.session if base_context else None,
-            strategy_id=strategy_id,
-            strategy_label=strategy_label,
-            strategy_description=strategy_description,
-            strategy_instruction=strategy_instruction,
+    tasks = [
+        _run_candidate(
+            index,
+            semaphore=semaphore,
+            results=results,
+            timeout_seconds=timeout_seconds,
+            generate_one=generate_one,
+            progress_callback=progress_callback,
+            base_context=base_context,
+            resolved_strategies=resolved_strategies,
         )
-        if progress_callback:
-            progress_callback(index, "start", strategy_label)
-
-        async with sem:
-            try:
-                candidate = await asyncio.wait_for(
-                    generate_one(context),
-                    timeout=timeout_seconds,
-                )
-                if candidate:
-                    if not candidate.strategy_id:
-                        candidate.strategy_id = strategy_id
-                    if not candidate.strategy_label:
-                        candidate.strategy_label = strategy_label
-                results[index] = candidate
-                if progress_callback:
-                    progress_callback(index, "complete", candidate.title)
-            except asyncio.TimeoutError:
-                results[index] = TimeoutError(f"候选 {index+1} ({strategy_label}) 生成超时 ({timeout_seconds}s)")
-                if progress_callback:
-                    progress_callback(index, "fail", f"超时 ({timeout_seconds}s)")
-            except Exception as exc:
-                results[index] = exc
-                err_msg = str(exc)[:200]
-                if progress_callback:
-                    progress_callback(index, "fail", err_msg)
-
-    # 启动所有候选任务
-    tasks = [_run_one(i) for i in range(count)]
+        for index in range(count)
+    ]
     await asyncio.gather(*tasks, return_exceptions=True)
-
-    duration_ms = int((time.monotonic() - start) * 1000)
-
-    # 解析结果
-    candidates: list[GenerationCandidate] = []
-    errors: list[CandidateError] = []
-
-    for i in range(count):
-        result = results.get(i)
-        strategy_id = resolved_strategies[i].id if resolved_strategies and i < len(resolved_strategies) else _strategy_for_index(i)
-        if result is None:
-            errors.append(CandidateError(
-                index=i, strategy=strategy_id,
-                error_type="unknown", message="候选未完成（任务可能被取消）",
-            ))
-        elif isinstance(result, GenerationCandidate):
-            candidates.append(result)
-        elif isinstance(result, asyncio.TimeoutError):
-            errors.append(CandidateError(
-                index=i, strategy=strategy_id,
-                error_type="timeout", message=str(result),
-            ))
-        elif isinstance(result, Exception):
-            errors.append(CandidateError(
-                index=i, strategy=strategy_id,
-                error_type="llm_error", message=str(result)[:300],
-            ))
-
+    duration_ms = int((time.monotonic() - started) * 1000)
+    candidates, errors = _collect_candidate_results(
+        count,
+        results,
+        resolved_strategies,
+    )
     return CandidateRunResult(
         candidates=candidates,
         errors=errors,
@@ -308,7 +363,6 @@ class GenerationChoiceService:
         user_feedback: str | None = None,
         session: AsyncSession | None = None,
         progress_callback: ProgressCallback | None = None,
-        # P4 issue repair fields
         issue_code: str | None = None,
         issue_id: str | None = None,
         stage: str | None = None,
@@ -316,281 +370,33 @@ class GenerationChoiceService:
         source_id: str | None = None,
         context_hash: str | None = None,
     ) -> dict:
-        """
-        创建一个 generation choice group：
-        1. 查找 adapter
-        2. 配置覆盖
-        3. 并发生成候选
-        4. 去重
-        5. 收集失败信息
-        6. 写入 ChoiceGroupModel + ChoiceModel
-        7. 返回 ChoiceGroupResponse
-        """
-        config = self.settings.with_overrides(candidate_count)
-        log_event(
-            logger,
-            logging.INFO,
-            "domain",
-            CHOICE_GROUP_CREATE_REQUESTED,
-            "Choice group create requested",
+        """Create and persist a generation choice group."""
+        from .choice_group_creator import create_choice_group
+
+        return await create_choice_group(
+            settings=self.settings,
             project_id=project_id,
             generation_type=generation_type,
-            candidate_count=config.candidate_count,
-            issue_code=issue_code,
-            source_type=source_type,
-        )
-
-        # Phase 6: 检查该 generation_type 是否允许走 choice group
-        if not config.is_generation_type_enabled(generation_type):
-            raise ValueError(
-                f"choice_group_disabled_for_type:{generation_type} "
-                f"— set GENERATION_CHOICE_GROUP_ENABLED=true or remove "
-                f"'{generation_type}' from GENERATION_CHOICE_GROUP_DISABLED_TYPES"
-            )
-
-        adapter = get_adapter(generation_type)
-
-        # Resolve strategies
-        resolved_strategies = None
-        if project_id and session:
-            from backend.api.modules.project_configuration.public import resolve_generation_strategies
-            resolved_strategies = await resolve_generation_strategies(
-                project_id=project_id,
-                generation_type=generation_type,
-                requested_count=candidate_count,
-                session=session
-            )
-
-        batch_feature_count = 0
-        if generation_type == "scenario" and (target or {}).get("generation_mode") == "batch":
-            batch_feature_count = len((target or {}).get("feature_ids") or [])
-            if batch_feature_count > 25 and resolved_strategies:
-                resolved_strategies = resolved_strategies[:1]
-
-        run_count = len(resolved_strategies) if resolved_strategies else config.candidate_count
-        if batch_feature_count > 25:
-            run_count = 1
-        candidate_timeout = config.timeout_seconds * max(
-            1,
-            (batch_feature_count + 49) // 50,
-        )
-
-        # 并发生成候选
-        base_ctx = CandidateContext(
-            index=0,
-            strategy="balanced",
+            target=target,
+            candidate_count=candidate_count,
             user_feedback=user_feedback,
-            target=target,
-            project_id=project_id,
             session=session,
-        )
-        scenario_mode = (target or {}).get("generation_mode", "pair")
-        if generation_type == "scenario":
-            candidate_concurrency = (
-                min(2, run_count)
-                if scenario_mode in {"single", "pair"}
-                else 1
-            )
-        else:
-            candidate_concurrency = config.max_concurrency
-        result = await run_candidate_generation(
-            count=run_count,
-            max_concurrency=candidate_concurrency,
-            timeout_seconds=candidate_timeout,
-            generate_one=adapter.generate_candidate,
             progress_callback=progress_callback,
-            base_context=base_ctx,
-            resolved_strategies=resolved_strategies,
+            issue_fields={
+                "issue_code": issue_code,
+                "issue_id": issue_id,
+                "stage": stage,
+                "source_type": source_type,
+                "source_id": source_id,
+                "context_hash": context_hash,
+            },
+            get_adapter=get_adapter,
+            run_candidate_generation=run_candidate_generation,
+            build_choice_group_response=_build_choice_group_response,
+            logger=logger,
+            large_batch_threshold=LARGE_SCENARIO_BATCH_THRESHOLD,
+            timeout_feature_batch_size=SCENARIO_TIMEOUT_FEATURE_BATCH_SIZE,
         )
-
-        if any(
-            error.message == LLMContentLocaleMismatchError.code
-            for error in result.errors
-        ):
-            raise LLMContentLocaleMismatchError()
-
-        # 去重: 按生成顺序依次判断，保留先出现的
-        deduped: list[GenerationCandidate] = []
-        for c in result.candidates:
-            if not adapter.is_duplicate(c, deduped):
-                deduped.append(c)
-
-        # 判断是否达到部分成功下限
-        required_successes = 1 if batch_feature_count > 25 else config.partial_success_min
-        is_partial_failure = len(deduped) < required_successes
-        if is_partial_failure:
-            log_event(
-                logger,
-                logging.WARNING,
-                "domain",
-                CHOICE_GROUP_GENERATION_FAILED,
-                "Choice group generation failed",
-                project_id=project_id,
-                generation_type=generation_type,
-                candidate_count=result.total_count,
-                success_count=len(deduped),
-                failure_count=result.failure_count,
-                duration_ms=result.duration_ms,
-                issue_code=issue_code,
-                source_type=source_type,
-                status="failed",
-            )
-
-        # 构造 status_detail: 包含失败候选信息和跨候选差异摘要
-        status_detail = {}
-        if result.errors:
-            status_detail["errors"] = [
-                {"index": e.index, "strategy": e.strategy,
-                 "error_type": e.error_type, "message": e.message}
-                for e in result.errors
-            ]
-            status_detail["error_summary"] = (
-                f"{result.total_count} 个候选已生成，"
-                f"其中 {result.success_count} 个成功，{result.failure_count} 个失败"
-            )
-        # UX-3: 候选 comparison_summary 汇总
-        if len(deduped) > 1:
-            status_detail["comparison_summary"] = " | ".join(
-                f"{c.title}: {c.comparison_summary}" for c in deduped
-            )
-        # Phase 6: 记录耗时用于性能监控
-        status_detail["duration_ms"] = result.duration_ms
-
-        # 计算 context hash
-        if context_hash is None and session:
-            context_hash = adapter.compute_context_hash(target, session)
-
-        # 写入 choice_group (即使失败也创建，status="failed")
-        group = ChoiceGroupModel(
-            project_id=project_id,
-            status="failed" if is_partial_failure else "open",
-            selection_mode="single",
-            generation_type=generation_type,
-            target=target,
-            context_hash=context_hash,
-            candidate_count=result.total_count,
-            success_count=len(deduped),
-            failure_count=result.failure_count,
-            status_detail=status_detail if status_detail else None,
-            # P4 issue repair fields
-            issue_code=issue_code,
-            issue_id=issue_id,
-            stage=stage,
-            source_type=source_type,
-            source_id=source_id,
-        )
-        if session:
-            session.add(group)
-            await session.flush()
-
-        # 写入 choices: 成功候选写入 candidate，失败候选也写入但 status="failed" + error 信息
-        created_choices = []
-        for c in deduped:
-            choice = ChoiceModel(
-                choice_group_id=group.id,
-                title=c.title,
-                rationale=c.rationale,
-                status="candidate",
-                patch=c.patch or {},
-                payload=c.payload,
-                draft_type=c.draft_type or generation_type,
-                apply_mode=c.apply_mode,
-                preview=c.preview,
-                score=c.score if c.score else None,
-                strategy_id=c.strategy_id,
-                strategy_label=c.strategy_label,
-            )
-            if session:
-                session.add(choice)
-                created_choices.append(choice)
-
-        # 失败候选也落库，status="failed"，保留 error 信息
-        for e in result.errors:
-            strategy_label = None
-            if resolved_strategies:
-                strat_item = next((s for s in resolved_strategies if s.id == e.strategy), None)
-                if strat_item:
-                    strategy_label = strat_item.label
-            if not strategy_label:
-                from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
-                    DEFAULT_STRATEGIES,
-                )
-                default_item = next((s for s in DEFAULT_STRATEGIES if s["id"] == e.strategy), None)
-                strategy_label = default_item["label"] if default_item else e.strategy
-
-            failed_choice = ChoiceModel(
-                choice_group_id=group.id,
-                title=f"方案 {e.index+1} ({strategy_label})",
-                rationale="",
-                status="failed",
-                patch={},
-                draft_type=generation_type,
-                apply_mode="draft_payload",
-                error={"error_type": e.error_type, "message": e.message, "detail": e.detail},
-                strategy_id=e.strategy,
-                strategy_label=strategy_label,
-            )
-            if session:
-                session.add(failed_choice)
-                created_choices.append(failed_choice)
-
-        if session:
-            await session.flush()
-
-        log_ai_operation_result(
-            "generation_choice_group",
-            project_id=project_id,
-            generation_type=generation_type,
-            issue_code=issue_code,
-            duration_ms=result.duration_ms,
-            success_count=result.success_count,
-            failure_count=result.failure_count,
-            status=group.status,
-        )
-        log_event(
-            logger,
-            logging.INFO,
-            "domain",
-            CHOICE_GROUP_CREATED,
-            "Choice group created",
-            project_id=project_id,
-            choice_group_id=group.id,
-            generation_type=generation_type,
-            candidate_count=result.total_count,
-            success_count=result.success_count,
-            failure_count=result.failure_count,
-            duration_ms=result.duration_ms,
-            issue_code=issue_code,
-            source_type=source_type,
-            status=group.status,
-        )
-
-        # Phase 6: audit log
-        if session:
-            from backend.database.model import AuditLogModel
-            session.add(AuditLogModel(
-                project_id=project_id,
-                action_type="generation_choice_group_created",
-                summary=f"创建 {generation_type} 候选组 ({result.success_count}/{result.total_count})",
-                target_type="choice_group",
-                target_id=str(group.id),
-                payload={
-                    "generation_type": generation_type,
-                    "candidate_count": result.total_count,
-                    "success_count": result.success_count,
-                    "failure_count": result.failure_count,
-                    "duration_ms": result.duration_ms,
-                    "status": group.status,
-                },
-            ))
-            await session.flush()
-
-        # Get public_id of the project
-        from backend.database.model import ProjectModel
-        proj_stmt = select(ProjectModel.public_id).where(ProjectModel.id == project_id)
-        project_public_id = (await session.execute(proj_stmt)).scalar_one()
- 
-        return _build_choice_group_response(group, created_choices, project_public_id=project_public_id)
 
     async def regenerate_choice_group(
         self,
@@ -660,12 +466,49 @@ class GenerationChoiceService:
         progress_callback: ProgressCallback | None = None,
     ) -> dict:
         """重新生成单个 choice，作为新候选取代原 choice。"""
+        choice, group = await self._load_regeneratable_choice(
+            project_id,
+            choice_id,
+            session,
+        )
+        adapter = get_adapter(group.generation_type or "")
+        strategy = await self._resolve_regeneration_strategy(
+            choice,
+            group,
+            project_id=project_id,
+            session=session,
+        )
+        candidate = await self._run_choice_regeneration(
+            group,
+            adapter=adapter,
+            strategy=strategy,
+            project_id=project_id,
+            user_feedback=user_feedback,
+            progress_callback=progress_callback,
+        )
+        self._add_regenerated_choice(
+            group,
+            candidate,
+            strategy=strategy,
+            session=session,
+        )
+        group.candidate_count = (group.candidate_count or 0) + 1
+        group.success_count = (group.success_count or 0) + 1
+        await session.flush()
+        all_choices_res = await session.execute(
+            select(ChoiceModel).where(ChoiceModel.choice_group_id == group.id)
+        )
+        all_choices = list(all_choices_res.scalars().all())
+        return _build_choice_group_response(group, all_choices)
+
+    @staticmethod
+    async def _load_regeneratable_choice(project_id, choice_id, session):
         res = await session.execute(
             select(ChoiceModel)
             .where(ChoiceModel.id == choice_id)
             .options(selectinload(ChoiceModel.choice_group).selectinload(ChoiceGroupModel.project))
         )
-        choice = choice_res = res.scalar_one_or_none()
+        choice = res.scalar_one_or_none()
         if not choice:
             raise ValueError("choice_not_found")
 
@@ -674,10 +517,16 @@ class GenerationChoiceService:
             raise ValueError("choice_group_not_found")
         if group.status == "resolved":
             raise ValueError("choice_group_already_resolved")
+        return choice, group
 
-        adapter = get_adapter(group.generation_type or "")
-
-        # Resolve strategy details for the regeneration context
+    @staticmethod
+    async def _resolve_regeneration_strategy(
+        choice,
+        group,
+        *,
+        project_id: int,
+        session,
+    ) -> tuple[str, str, str | None, str | None]:
         strategy_id = choice.strategy_id or "balanced"
         strategy_label = choice.strategy_label
         strategy_description = None
@@ -688,7 +537,7 @@ class GenerationChoiceService:
             resolved_strategies = await resolve_generation_strategies(
                 project_id=project_id,
                 generation_type=group.generation_type or "",
-                session=session
+                session=session,
             )
             strat_item = next((s for s in resolved_strategies if s.id == strategy_id), None)
             if strat_item:
@@ -707,8 +556,24 @@ class GenerationChoiceService:
                 strategy_instruction = default_item.get("instruction")
             else:
                 strategy_label = strategy_id
+        return (
+            strategy_id,
+            strategy_label,
+            strategy_description,
+            strategy_instruction,
+        )
 
-        # 通过 runner 生成替代候选用统一的超时/信号量保护（单候选版）
+    async def _run_choice_regeneration(
+        self,
+        group,
+        *,
+        adapter: BaseGenerationChoiceAdapter,
+        strategy: tuple[str, str, str | None, str | None],
+        project_id: int,
+        user_feedback: str | None,
+        progress_callback: ProgressCallback | None,
+    ) -> GenerationCandidate:
+        strategy_id, label, description, instruction = strategy
         base_ctx = CandidateContext(
             index=group.candidate_count or 0,
             strategy=strategy_id,
@@ -716,9 +581,9 @@ class GenerationChoiceService:
             target=group.target,
             project_id=project_id,
             strategy_id=strategy_id,
-            strategy_label=strategy_label,
-            strategy_description=strategy_description,
-            strategy_instruction=strategy_instruction,
+            strategy_label=label,
+            strategy_description=description,
+            strategy_instruction=instruction,
         )
         result = await run_candidate_generation(
             count=1,
@@ -731,9 +596,17 @@ class GenerationChoiceService:
         if not result.candidates:
             error_msg = result.errors[0].message if result.errors else "regenerate_choice_failed"
             raise RuntimeError(f"choice_regenerate_failed: {error_msg}")
-        candidate = result.candidates[0]
+        return result.candidates[0]
 
-        # 新 choice 加入同一 group
+    @staticmethod
+    def _add_regenerated_choice(
+        group,
+        candidate: GenerationCandidate,
+        *,
+        strategy: tuple[str, str, str | None, str | None],
+        session,
+    ) -> None:
+        strategy_id, strategy_label, _, _ = strategy
         new_choice = ChoiceModel(
             choice_group_id=group.id,
             title=candidate.title,
@@ -749,20 +622,6 @@ class GenerationChoiceService:
             strategy_label=candidate.strategy_label or strategy_label,
         )
         session.add(new_choice)
-
-        # 更新 group 候选计数
-        group.candidate_count = (group.candidate_count or 0) + 1
-        group.success_count = (group.success_count or 0) + 1
-
-        await session.flush()
-
-        # 返回完整 choice group
-        all_choices_res = await session.execute(
-            select(ChoiceModel).where(ChoiceModel.choice_group_id == group.id)
-        )
-        all_choices = list(all_choices_res.scalars().all())
-
-        return _build_choice_group_response(group, all_choices)
 
 
 # ═══════════════════════════════════════════════

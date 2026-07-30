@@ -19,7 +19,6 @@ export function Home() {
     openOnboardingChoiceGroups,
     loadOpenOnboardingChoiceGroups,
     recoverOnboardingChoiceGroup,
-    discardOnboardingChoiceGroup,
   } = useWorkspaceStore();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();

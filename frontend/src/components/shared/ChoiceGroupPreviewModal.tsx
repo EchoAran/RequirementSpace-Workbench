@@ -1,16 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Check,
   RefreshCw,
   Sparkles,
   X,
   AlertTriangle,
-  Loader2,
   Trash2,
 } from 'lucide-react';
-import { ChoicePreviewRenderer, ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
+import { ChoicePreviewRenderer } from './ChoicePreviewRenderer';
 import { getFriendlyErrorMessage, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { resolveLocalizedMessage } from '@/core/localizedMessage';
 import { getChoiceGenerationStrategyLabel } from '@/core/generationStrategyPresentation';
@@ -1080,7 +1079,6 @@ export function ChoiceGroupPreviewModal({
                 draftType={draftType}
                 preview={activeChoice.preview}
                 payload={activeChoice.payload}
-                comparisonSummary={activeChoice.comparisonSummary}
               />
             )
           )}

@@ -68,31 +68,9 @@ class LocalActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                 knowledge_context=knowledge_context,
             )
         )
-
-        actor_previews_for_draft = []
-        actor_nodes = []
-
-        for index, raw_actor in enumerate(
-                actors_raw["actors"],
-                start=1,
-        ):
-            actor_number = f"A{index:03d}"
-
-            actor_previews_for_draft.append(
-                {
-                    "actor_number": actor_number,
-                    "actor_name": raw_actor["actor_name"],
-                    "actor_description": raw_actor["actor_description"],
-                }
-            )
-
-            actor_nodes.append(
-                ActorNode(
-                    actorId=index,
-                    actorName=raw_actor["actor_name"],
-                    actorDescription=raw_actor["actor_description"],
-                )
-            )
+        actor_previews_for_draft, actor_nodes = self._build_actor_previews(
+            actors_raw["actors"]
+        )
 
         features_raw = await self._features_generator.generate(
             FeaturesGeneratorInput(
@@ -102,50 +80,93 @@ class LocalActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                 knowledge_context=knowledge_context,
             )
         )
+        feature_previews_for_draft = self._build_feature_previews(
+            features_raw["features"],
+            actor_previews_for_draft,
+        )
+        actor_previews_for_response = self._build_actor_response_previews(
+            actor_previews_for_draft
+        )
+        feature_previews_for_response = self._build_feature_response_previews(
+            feature_previews_for_draft,
+            actor_previews_for_draft,
+        )
+        return (
+            actor_previews_for_draft,
+            actor_previews_for_response,
+            feature_previews_for_draft,
+            feature_previews_for_response,
+        )
 
-        id_to_actor_number = {
-            index: actor["actor_number"]
-            for index, actor in enumerate(
-                actor_previews_for_draft,
-                start=1,
-            )
-        }
-
-        raw_features = features_raw["features"]
-
-        _validate_feature_tree_by_number(raw_features)
-
-        feature_previews_for_draft = []
-
-        for raw_feature in raw_features:
-            feature_number = raw_feature["feature_number"]
-
-            feature_previews_for_draft.append(
+    @staticmethod
+    def _build_actor_previews(
+        raw_actors: list[dict],
+    ) -> tuple[list[dict], list[ActorNode]]:
+        draft_previews = []
+        actor_nodes = []
+        for index, raw_actor in enumerate(raw_actors, start=1):
+            actor_number = f"A{index:03d}"
+            draft_previews.append(
                 {
-                    "feature_number": feature_number,
-                    "feature_name": raw_feature["feature_name"],
-                    "feature_description": raw_feature["feature_description"],
-                    "actor_numbers": [
-                        id_to_actor_number[actor_id]
-                        for actor_id in raw_feature.get("actor_ids", [])
-                    ],
+                    "actor_number": actor_number,
+                    "actor_name": raw_actor["actor_name"],
+                    "actor_description": raw_actor["actor_description"],
                 }
             )
+            actor_nodes.append(
+                ActorNode(
+                    actorId=index,
+                    actorName=raw_actor["actor_name"],
+                    actorDescription=raw_actor["actor_description"],
+                )
+            )
+        return draft_previews, actor_nodes
 
-        actor_number_to_name = {
-            actor["actor_number"]: actor["actor_name"]
-            for actor in actor_previews_for_draft
+    @staticmethod
+    def _build_feature_previews(
+        raw_features: list[dict],
+        actor_previews: list[dict],
+    ) -> list[dict]:
+        _validate_feature_tree_by_number(raw_features)
+        id_to_actor_number = {
+            index: actor["actor_number"]
+            for index, actor in enumerate(actor_previews, start=1)
         }
+        return [
+            {
+                "feature_number": feature["feature_number"],
+                "feature_name": feature["feature_name"],
+                "feature_description": feature["feature_description"],
+                "actor_numbers": [
+                    id_to_actor_number[actor_id]
+                    for actor_id in feature.get("actor_ids", [])
+                ],
+            }
+            for feature in raw_features
+        ]
 
-        actor_previews_for_response = [
+    @staticmethod
+    def _build_actor_response_previews(
+        actor_previews: list[dict],
+    ) -> list[dict]:
+        return [
             {
                 "actor_name": actor["actor_name"],
                 "actor_description": actor["actor_description"],
             }
-            for actor in actor_previews_for_draft
+            for actor in actor_previews
         ]
 
-        feature_previews_for_response = [
+    @staticmethod
+    def _build_feature_response_previews(
+        feature_previews: list[dict],
+        actor_previews: list[dict],
+    ) -> list[dict]:
+        actor_number_to_name = {
+            actor["actor_number"]: actor["actor_name"]
+            for actor in actor_previews
+        }
+        return [
             {
                 "feature_number": feature["feature_number"],
                 "feature_name": feature["feature_name"],
@@ -155,15 +176,8 @@ class LocalActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                     for actor_number in feature.get("actor_numbers", [])
                 ],
             }
-            for feature in feature_previews_for_draft
+            for feature in feature_previews
         ]
-
-        return (
-            actor_previews_for_draft,
-            actor_previews_for_response,
-            feature_previews_for_draft,
-            feature_previews_for_response,
-        )
 
 
 class ProjectCreationService:
@@ -496,11 +510,7 @@ class ProjectCreationService:
         session,
     ):
         from backend.database.model import (
-            ActorModel,
-            FeatureModel,
-            FeatureRelationModel,
             ProjectModel,
-            feature_actor_table,
         )
 
         project_preview = draft["project_preview"]
@@ -549,18 +559,6 @@ class ProjectCreationService:
         session,
         replace_existing: bool,
     ) -> None:
-        from backend.database.model import (
-            ActorModel,
-            BusinessObjectModel,
-            FeatureModel,
-            FeatureRelationModel,
-            FlowModel,
-            GherkinSpecModel,
-            PrototypePreviewModel,
-            ScenarioModel,
-            feature_actor_table,
-        )
-
         project_preview = draft["project_preview"]
         project.name = project_preview["project_name"]
         project.description = project_preview["project_description"]
@@ -568,39 +566,66 @@ class ProjectCreationService:
         await session.flush()
 
         if replace_existing:
-            await session.execute(
-                delete(PrototypePreviewModel).where(
-                    PrototypePreviewModel.project_id == project.id
-                )
-            )
-            await session.execute(
-                delete(FlowModel).where(FlowModel.project_id == project.id)
-            )
-            await session.execute(
-                delete(BusinessObjectModel).where(
-                    BusinessObjectModel.project_id == project.id
-                )
-            )
-            await session.execute(
-                delete(ScenarioModel).where(ScenarioModel.project_id == project.id)
-            )
-            await session.execute(
-                delete(GherkinSpecModel).where(
-                    GherkinSpecModel.project_id == project.id
-                )
-            )
-            await session.execute(
-                delete(FeatureModel).where(FeatureModel.project_id == project.id)
-            )
-            await session.execute(
-                delete(ActorModel).where(ActorModel.project_id == project.id)
-            )
-            await session.flush()
+            await self._clear_existing_project_graph(project.id, session)
+
+        actor_number_to_model = await self._add_draft_actors(
+            project.id,
+            draft["actors"],
+            session,
+        )
+        feature_number_to_model = await self._add_draft_features(
+            project.id,
+            draft["features"],
+            session,
+        )
+        await self._add_draft_feature_actor_links(
+            draft["features"],
+            actor_number_to_model,
+            feature_number_to_model,
+            session,
+        )
+        await self._add_draft_feature_relations(
+            draft["features"],
+            feature_number_to_model,
+            session,
+        )
+
+    @staticmethod
+    async def _clear_existing_project_graph(project_id: int, session) -> None:
+        from backend.database.model import (
+            ActorModel,
+            BusinessObjectModel,
+            FeatureModel,
+            FlowModel,
+            GherkinSpecModel,
+            PrototypePreviewModel,
+            ScenarioModel,
+        )
+
+        for model in (
+            PrototypePreviewModel,
+            FlowModel,
+            BusinessObjectModel,
+            ScenarioModel,
+            GherkinSpecModel,
+            FeatureModel,
+            ActorModel,
+        ):
+            await session.execute(delete(model).where(model.project_id == project_id))
+        await session.flush()
+
+    @staticmethod
+    async def _add_draft_actors(
+        project_id: int,
+        actors: list[dict],
+        session,
+    ) -> dict:
+        from backend.database.model import ActorModel
 
         actor_number_to_model = {}
-        for actor in draft["actors"]:
+        for actor in actors:
             model = ActorModel(
-                project_id=project.id,
+                project_id=project_id,
                 name=actor["actor_name"],
                 description=actor["actor_description"],
                 confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
@@ -609,11 +634,20 @@ class ProjectCreationService:
             actor_number_to_model[actor["actor_number"]] = model
 
         await session.flush()
+        return actor_number_to_model
+
+    @staticmethod
+    async def _add_draft_features(
+        project_id: int,
+        features: list[dict],
+        session,
+    ) -> dict:
+        from backend.database.model import FeatureModel
 
         feature_number_to_model = {}
-        for feature in draft["features"]:
+        for feature in features:
             model = FeatureModel(
-                project_id=project.id,
+                project_id=project_id,
                 name=feature["feature_name"],
                 description=feature["feature_description"],
                 confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
@@ -622,9 +656,19 @@ class ProjectCreationService:
             feature_number_to_model[feature["feature_number"]] = model
 
         await session.flush()
+        return feature_number_to_model
+
+    @staticmethod
+    async def _add_draft_feature_actor_links(
+        features: list[dict],
+        actor_number_to_model: dict,
+        feature_number_to_model: dict,
+        session,
+    ) -> None:
+        from backend.database.model import feature_actor_table
 
         feature_actor_rows = []
-        for feature in draft["features"]:
+        for feature in features:
             feature_model = feature_number_to_model[feature["feature_number"]]
             for actor_number in feature.get("actor_numbers", []):
                 actor_model = actor_number_to_model[actor_number]
@@ -638,7 +682,15 @@ class ProjectCreationService:
         if feature_actor_rows:
             await session.execute(insert(feature_actor_table), feature_actor_rows)
 
-        for feature in draft["features"]:
+    @staticmethod
+    async def _add_draft_feature_relations(
+        features: list[dict],
+        feature_number_to_model: dict,
+        session,
+    ) -> None:
+        from backend.database.model import FeatureRelationModel
+
+        for feature in features:
             feature_number = feature["feature_number"]
             parent_number = _get_parent_feature_number(feature_number)
             if parent_number is None:

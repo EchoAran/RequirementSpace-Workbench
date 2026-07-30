@@ -13,7 +13,6 @@ from sqlalchemy import select
 from backend.core.issue_resolution.ai.base_ai_solver import (
     BaseIssueAISolver,
     RepairResult,
-    RepairProposal,
 )
 from backend.core.issue_resolution.ai.prompts.flow_feature_coverage_repair_prompt import (
     SYSTEM_PROMPT,

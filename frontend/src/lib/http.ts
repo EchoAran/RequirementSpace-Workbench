@@ -1,7 +1,7 @@
 import i18n from '../i18n';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL as string) || '';
-export const API_BASE_URL = rawApiUrl 
+const API_BASE_URL = rawApiUrl
   ? (rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.replace(/\/$/, '')}/api`)
   : '/api';
 
@@ -10,7 +10,7 @@ export interface RequestOptions extends RequestInit {
   timeout?: number;
 }
 
-export class HttpError extends Error {
+class HttpError extends Error {
   status: number;
   statusText: string;
   detail: any;

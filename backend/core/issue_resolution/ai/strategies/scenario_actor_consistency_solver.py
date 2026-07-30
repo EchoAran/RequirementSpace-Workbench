@@ -6,7 +6,7 @@ Recommends fixes for inconsistency between scenario actor and feature actors.
 import json
 from sqlalchemy import select
 
-from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult, RepairProposal
+from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult
 from backend.core.issue_resolution.ai.prompts.scenario_actor_consistency_repair_prompt import (
     SCENARIO_ACTOR_CONSISTENCY_SYSTEM_PROMPT,
     SCENARIO_ACTOR_CONSISTENCY_USER_PROMPT_TEMPLATE,

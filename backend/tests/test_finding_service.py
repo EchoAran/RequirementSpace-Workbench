@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select, text
 
@@ -169,6 +170,58 @@ async def test_list_findings_gate_filtering(db_session, seeded_project):
         session=db_session
     )
     assert len(enter_scope_gates) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_findings_preserves_next_action_mapping_and_filtering(
+    db_session,
+    seeded_project,
+):
+    service = FindingService()
+    service._next_suggestion_service.get_next_suggestion = AsyncMock(
+        side_effect=[
+            {
+                "suggestion": {
+                    "code": "ADD_SCENARIO",
+                    "title": "补充场景",
+                    "description": "为功能补充场景",
+                    "action": {"kind": "navigate"},
+                    "target": {"type": "feature", "id": 10},
+                    "source_type": "rule",
+                    "status": "ready",
+                }
+            },
+            {
+                "suggestion": {
+                    "code": "PREVIEW_READY",
+                    "title": "可预览",
+                    "description": "已就绪",
+                    "action": {"kind": "navigate"},
+                }
+            },
+            RuntimeError("scope suggestion failed"),
+        ]
+    )
+
+    findings = await service.list_findings(
+        project_id=seeded_project,
+        stage="all",
+        view="next_action",
+        action=None,
+        session=db_session,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].findingId == "what:ADD_SCENARIO:suggest"
+    assert findings[0].type == FindingType.NEXT_SUGGESTION
+    assert findings[0].target.targetType == "feature"
+    assert findings[0].target.targetId == 10
+    assert findings[0].metadata["source_type"] == "rule"
+    assert (
+        service._next_suggestion_service
+        .get_next_suggestion.await_count
+        == 3
+    )
 
 
 @pytest.mark.asyncio

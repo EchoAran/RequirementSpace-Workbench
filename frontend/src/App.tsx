@@ -277,50 +277,7 @@ function GlobalGenerationConflictDialog() {
 function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage: 'flow' | 'scope' }) {
   const { t } = useTranslation();
   const ir = useWorkspaceStore((s) => s.ir);
-  const setError = useWorkspaceStore((s) => s.setError);
-  const gateFindings = useWorkspaceStore((s) => s.findingsByView.gate || []);
-  const snoozedGateFindingIds = useWorkspaceStore((s) => s.snoozedGateFindingIds || {});
   const navigate = useNavigate();
-
-  const projectId = ir?.projectId;
-  const path = stage === 'flow' ? '/flow' : '/scope';
-  const action = stage === 'flow' ? 'enter_how' : 'enter_scope';
-
-  const getGateFindingContextHash = (finding: any): string => {
-    if (!finding || !finding.metadata) return '';
-    if (finding.metadata.missing_pairs) {
-      const pairs = [...finding.metadata.missing_pairs];
-      pairs.sort((a: any, b: any) => {
-        const keyA = `${a.feature_id}:${a.actor_id}`;
-        const keyB = `${b.feature_id}:${b.actor_id}`;
-        return keyA.localeCompare(keyB);
-      });
-      return JSON.stringify(pairs);
-    }
-    if (finding.metadata.missing_features) {
-      const features = [...finding.metadata.missing_features];
-      features.sort((a: any, b: any) => (a.feature_id || 0) - (b.feature_id || 0));
-      return JSON.stringify(features);
-    }
-    return '';
-  };
-
-  const activeBlockingGates = projectId
-    ? gateFindings.filter((finding) => {
-        let isBlocking = false;
-        if (action === "enter_how") {
-          isBlocking = (finding.stage === "what" && finding.blockingScope === "stage_transition");
-        } else if (action === "enter_scope") {
-          isBlocking = (finding.stage === "how" && finding.blockingScope === "stage_transition");
-        }
-        if (!isBlocking) return false;
-
-        const key = `${projectId}:${action}:${finding.findingId}`;
-        const storedHash = snoozedGateFindingIds[key];
-        if (!storedHash) return true;
-        return storedHash !== getGateFindingContextHash(finding);
-      })
-    : [];
 
   const stageProgress = useWorkspaceStore((s) => s.stageProgress);
   const isLoading = useWorkspaceStore((s) => s.isLoading);

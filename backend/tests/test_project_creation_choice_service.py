@@ -13,7 +13,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from backend.database.model import Base, ProjectModel, ActorModel, FeatureModel, GenerativeDraftModel
+from backend.database.model import (
+    ActorModel,
+    Base,
+    ChoiceGroupModel,
+    ChoiceModel,
+    FeatureModel,
+    GenerativeDraftModel,
+    ProjectModel,
+)
 from backend.api.modules.project_lifecycle.application.creation_choice_service import (
     ProjectCreationChoiceGroupService,
     ProjectCreationChoiceAdapter,
@@ -228,6 +236,59 @@ class TestProjectCreationChoiceGroupService:
         service = ProjectCreationChoiceGroupService()
         result = await service.get_choice_group("nonexistent_id", session=db_session)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_defer_choice_group_migrates_candidates_and_marks_draft_deferred(
+        self,
+        db_session,
+    ):
+        service = ProjectCreationChoiceGroupService()
+        created = await service.create_choice_group(
+            user_requirements="稍后决策的项目",
+            candidate_count=1,
+            session=db_session,
+        )
+
+        result = await service.defer_choice_group(
+            created["id"],
+            session=db_session,
+        )
+
+        assert result["message"] == "project_created_with_deferred_choice_group"
+        assert result["choice_group"]["generation_type"] == "project_creation"
+        project = (
+            await db_session.execute(
+                select(ProjectModel).where(
+                    ProjectModel.public_id == result["project_id"]
+                )
+            )
+        ).scalar_one()
+        migrated_group = (
+            await db_session.execute(
+                select(ChoiceGroupModel).where(
+                    ChoiceGroupModel.project_id == project.id
+                )
+            )
+        ).scalar_one()
+        migrated_choices = (
+            await db_session.execute(
+                select(ChoiceModel).where(
+                    ChoiceModel.choice_group_id == migrated_group.id
+                )
+            )
+        ).scalars().all()
+        assert len(migrated_choices) == len(created["choices"])
+
+        draft = (
+            await db_session.execute(
+                select(GenerativeDraftModel).where(
+                    GenerativeDraftModel.draft_id == created["id"]
+                )
+            )
+        ).scalar_one()
+        assert draft.payload["status"] == "deferred"
+        assert draft.payload["deferred_project_id"] == result["project_id"]
+        assert draft.payload["migrated_choice_group_id"] == migrated_group.id
 
 
 # ═══════════════════════════════════════════════════════════════════

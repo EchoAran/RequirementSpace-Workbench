@@ -1,0 +1,1 @@
+"""Preview convergence characterization tests."""

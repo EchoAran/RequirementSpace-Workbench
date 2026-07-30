@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
-from .ir import SplSemanticIR, SplExportWarningIR, WarningSourceIR
+from typing import Any, Dict, List, Set
+from .ir import SplSemanticIR, SplExportWarningIR, WarningSourceIR, WorkerStepIR
 
 logger = logging.getLogger(__name__)
 
@@ -20,194 +20,29 @@ class SplSemanticValidator:
         warnings: List[SplExportWarningIR] = []
         semantic_risks: List[str] = []
         is_english = ir.raw.get("export_options", {}).get("language") == "en-US"
-
         def text(zh_cn: str, en_us: str) -> str:
             return en_us if is_english else zh_cn
 
-        # 1. Gather all leaf features
-        features = ir.raw.get("features", [])
-        children_map: Set[int] = set()
-        for feat in features:
-            for child_id in feat.get("children_ids", []):
-                children_map.add(child_id)
-
-        current_leaf_ids: Set[int] = set()
-        for feat in features:
-            feat_id = feat.get("feature_id")
-            scope_obj = feat.get("scope") or {}
-            scope_status = scope_obj.get("scope_status") or "current"
-            
-            # If no children and scope is current, it's a current leaf feature
-            if feat_id not in children_map and scope_status == "current":
-                current_leaf_ids.add(feat_id)
-
-        # 2. Check which features are covered by workers
-        covered_feat_ids: Set[int] = set()
-        for worker in ir.workers.values():
-            for fid in worker.covered_feature_ids:
-                covered_feat_ids.add(fid)
-
-        missing_feat_ids = sorted(list(current_leaf_ids - covered_feat_ids))
-        for fid in missing_feat_ids:
-            feat_name = next((f.get("feature_name", "") for f in features if f.get("feature_id") == fid), "Unknown")
-            warnings.append(SplExportWarningIR(
-                code="uncovered_feature",
-                message=text(
-                    f"叶子功能 Feature_{fid} '{feat_name}' 未被任何业务流 Worker 覆盖。",
-                    f"Leaf feature Feature_{fid} '{feat_name}' is not covered by any flow worker.",
-                ),
-                source=WarningSourceIR(kind="feature", id=str(fid))
-            ))
-            semantic_risks.append(text(
-                f"功能 Feature_{fid} '{feat_name}' 未被任何业务流覆盖。",
-                f"Feature Feature_{fid} '{feat_name}' is not covered by any flow.",
-            ))
-
-        # 3. Check type references in workers
-        declared_type_names = {t.type_name for t in ir.types.values()}
-        # Enums are also declared types
-        for t in ir.types.values():
-            for f in t.fields:
-                if f.enum_candidates:
-                    # e.g. TaskStatus or TaskPriority
-                    declared_type_names.add(f.spl_type)
-
-        for worker in ir.workers.values():
-            # Check inputs
-            for inp in worker.inputs:
-                if inp not in declared_type_names:
-                    warnings.append(SplExportWarningIR(
-                        code="missing_type_ref",
-                        message=text(
-                            f"Worker '{worker.worker_name}' 引入了未声明的输入类型 '{inp}'。",
-                            f"Worker '{worker.worker_name}' references undeclared input type '{inp}'.",
-                        ),
-                        source=WarningSourceIR(kind="flow", id=str(worker.source_flow_id))
-                    ))
-                    semantic_risks.append(text(
-                        f"Worker '{worker.worker_name}' 引用了未定义的类型 '{inp}'。",
-                        f"Worker '{worker.worker_name}' references undefined type '{inp}'.",
-                    ))
-            
-            # Check outputs
-            for out in worker.outputs:
-                if out not in declared_type_names:
-                    warnings.append(SplExportWarningIR(
-                        code="missing_type_ref",
-                        message=text(
-                            f"Worker '{worker.worker_name}' 引入了未声明的输出类型 '{out}'。",
-                            f"Worker '{worker.worker_name}' references undeclared output type '{out}'.",
-                        ),
-                        source=WarningSourceIR(kind="flow", id=str(worker.source_flow_id))
-                    ))
-                    semantic_risks.append(text(
-                        f"Worker '{worker.worker_name}' 引用了未定义的类型 '{out}'。",
-                        f"Worker '{worker.worker_name}' references undefined type '{out}'.",
-                    ))
-
-        # 4. Check if all flows have corresponding workers
-        flows = ir.raw.get("flows", [])
-        flow_ids = {f.get("flow_id") for f in flows}
-        mapped_flow_ids = {w.source_flow_id for w in ir.workers.values()}
-        
-        unmapped_flow_ids = sorted(list(flow_ids - mapped_flow_ids))
-        for fid in unmapped_flow_ids:
-            flow_name = next((f.get("flow_name", "") for f in flows if f.get("flow_id") == fid), "Unknown")
-            warnings.append(SplExportWarningIR(
-                code="unmapped_flow",
-                message=text(
-                    f"业务流 Flow_{fid} '{flow_name}' 未能生成对应的 Worker。",
-                    f"Flow Flow_{fid} '{flow_name}' has no generated worker.",
-                ),
-                source=WarningSourceIR(kind="flow", id=str(fid))
-            ))
-            semantic_risks.append(text(
-                f"业务流程 Flow_{fid} '{flow_name}' 丢失，未能转换。",
-                f"Flow Flow_{fid} '{flow_name}' was not converted.",
-            ))
-
-        # 5. Check semantic identifier uniqueness
-        seen_identifiers: Dict[str, str] = {}
-        for source_key, identifier in ir.semantic_identifier_map.items():
-            if identifier in seen_identifiers:
-                prev_key = seen_identifiers[identifier]
-                warnings.append(SplExportWarningIR(
-                    code="duplicate_semantic_identifier",
-                    message=f"Duplicate semantic identifier '{identifier}' detected for '{source_key}' and '{prev_key}'.",
-                    source=WarningSourceIR(kind="project", id=ir.project_id)
-                ))
-                semantic_risks.append(text(
-                    f"重复的语义标识符 '{identifier}' 在 '{source_key}' 和 '{prev_key}' 中被同时使用。",
-                    f"Duplicate semantic identifier '{identifier}' is used by both '{source_key}' and '{prev_key}'.",
-                ))
-            else:
-                seen_identifiers[identifier] = source_key
-
-        # 6. Check unmapped AC coverage
-        all_ac_ids: Set[int] = set()
-        ac_source_feat: Dict[int, int] = {}
-        for feat in features:
-            scope_obj = feat.get("scope") or {}
-            scope_status = scope_obj.get("scope_status") or "current"
-            if scope_status == "current":
-                for scen in feat.get("scenarios", []):
-                    for ac in scen.get("acceptance_criteria", []):
-                        ac_id = ac.get("criterion_id")
-                        all_ac_ids.add(ac_id)
-                        ac_source_feat[ac_id] = feat.get("feature_id")
-
-        mapped_ac_ids: Set[int] = set()
-        for worker in ir.workers.values():
-            for scen in worker.scenarios:
-                for ac_id in scen.source_acceptance_criterion_ids:
-                    mapped_ac_ids.add(ac_id)
-
-        unmapped_ac_ids = sorted(list(all_ac_ids - mapped_ac_ids))
-        for ac_id in unmapped_ac_ids:
-            feat_id = ac_source_feat.get(ac_id, 0)
-            warnings.append(SplExportWarningIR(
-                code="uncovered_acceptance_criterion",
-                message=f"Acceptance Criterion AC_{ac_id} is not covered by any worker scenario.",
-                source=WarningSourceIR(kind="feature", id=str(feat_id))
-            ))
-            semantic_risks.append(text(
-                f"验收条件 AC_{ac_id} 未被任何 Worker 场景覆盖。",
-                f"Acceptance criterion AC_{ac_id} is not covered by any worker scenario.",
-            ))
-
-        # 7. Check judgment branching paths recursively
-        def check_steps(steps: List[WorkerStepIR], worker_name: str, flow_id: int):
-            for step in steps:
-                if step.step_type == "judgment":
-                    branch_kinds = {s.branch_kind for s in step.sub_steps}
-                    if not step.sub_steps or not ("if" in branch_kinds or "else" in branch_kinds):
-                        warnings.append(SplExportWarningIR(
-                            code="judgment_branch_unresolved",
-                            message=f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching paths defined.",
-                            source=WarningSourceIR(kind="flow", id=str(flow_id))
-                        ))
-                        semantic_risks.append(text(
-                            f"Worker '{worker_name}' 中的判断步骤 '{step.command_text}' 缺少分支控制结构路径。",
-                            f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching path.",
-                        ))
-                if step.sub_steps:
-                    check_steps(step.sub_steps, worker_name, flow_id)
-
-        for worker in ir.workers.values():
-            check_steps(worker.main_flow, worker.worker_name, worker.source_flow_id)
-
-        # Add warnings to the IR object
+        covered_feat_ids, current_leaf_ids, missing_feat_ids = self._check_feature_coverage(
+            ir, warnings, semantic_risks, text
+        )
+        self._check_type_references(ir, warnings, semantic_risks, text)
+        unmapped_flow_ids = self._check_flow_coverage(
+            ir, warnings, semantic_risks, text
+        )
+        self._check_identifier_uniqueness(ir, warnings, semantic_risks, text)
+        unmapped_ac_ids = self._check_acceptance_coverage(
+            ir, warnings, semantic_risks, text
+        )
+        self._check_judgment_paths(ir, warnings, semantic_risks, text)
         ir.warnings.extend(warnings)
-
         has_judgment_unresolved = any(w.code == "judgment_branch_unresolved" for w in warnings)
         has_duplicate_identifier = any(w.code == "duplicate_semantic_identifier" for w in warnings)
-
         coverage_passed = (len(missing_feat_ids) == 0 and 
                            len(unmapped_flow_ids) == 0 and 
                            len(unmapped_ac_ids) == 0 and
                            not has_judgment_unresolved and
                            not has_duplicate_identifier)
-
         return {
             "coverage_passed": coverage_passed,
             "covered_current_feature_ids": sorted(list(covered_feat_ids & current_leaf_ids)),
@@ -216,3 +51,164 @@ class SplSemanticValidator:
             "unmapped_acceptance_criterion_ids": unmapped_ac_ids,
             "semantic_risks": semantic_risks
         }
+
+    @staticmethod
+    def _check_feature_coverage(ir, warnings, risks, text):
+        features = ir.raw.get("features", [])
+        children = {
+            child_id
+            for feature in features
+            for child_id in feature.get("children_ids", [])
+        }
+        current = {
+            feature.get("feature_id")
+            for feature in features
+            if feature.get("feature_id") not in children
+            and ((feature.get("scope") or {}).get("scope_status") or "current") == "current"
+        }
+        covered = {
+            feature_id
+            for worker in ir.workers.values()
+            for feature_id in worker.covered_feature_ids
+        }
+        missing = sorted(current - covered)
+        for feature_id in missing:
+            name = next((f.get("feature_name", "") for f in features if f.get("feature_id") == feature_id), "Unknown")
+            warnings.append(SplExportWarningIR(
+                code="uncovered_feature",
+                message=text(
+                    f"叶子功能 Feature_{feature_id} '{name}' 未被任何业务流 Worker 覆盖。",
+                    f"Leaf feature Feature_{feature_id} '{name}' is not covered by any flow worker.",
+                ),
+                source=WarningSourceIR(kind="feature", id=str(feature_id)),
+            ))
+            risks.append(text(
+                f"功能 Feature_{feature_id} '{name}' 未被任何业务流覆盖。",
+                f"Feature Feature_{feature_id} '{name}' is not covered by any flow.",
+            ))
+        return covered, current, missing
+
+    @staticmethod
+    def _check_type_references(ir, warnings, risks, text):
+        declared = {value.type_name for value in ir.types.values()}
+        declared.update(
+            field.spl_type
+            for value in ir.types.values()
+            for field in value.fields
+            if field.enum_candidates
+        )
+        for worker in ir.workers.values():
+            for direction, refs in (("input", worker.inputs), ("output", worker.outputs)):
+                for ref in refs:
+                    if ref in declared:
+                        continue
+                    warnings.append(SplExportWarningIR(
+                        code="missing_type_ref",
+                        message=text(
+                            f"Worker '{worker.worker_name}' 引入了未声明的{'输入' if direction == 'input' else '输出'}类型 '{ref}'。",
+                            f"Worker '{worker.worker_name}' references undeclared {direction} type '{ref}'.",
+                        ),
+                        source=WarningSourceIR(kind="flow", id=str(worker.source_flow_id)),
+                    ))
+                    risks.append(text(
+                        f"Worker '{worker.worker_name}' 引用了未定义的类型 '{ref}'。",
+                        f"Worker '{worker.worker_name}' references undefined type '{ref}'.",
+                    ))
+
+    @staticmethod
+    def _check_flow_coverage(ir, warnings, risks, text):
+        flows = ir.raw.get("flows", [])
+        missing = sorted(
+            {flow.get("flow_id") for flow in flows}
+            - {worker.source_flow_id for worker in ir.workers.values()}
+        )
+        for flow_id in missing:
+            name = next((f.get("flow_name", "") for f in flows if f.get("flow_id") == flow_id), "Unknown")
+            warnings.append(SplExportWarningIR(
+                code="unmapped_flow",
+                message=text(
+                    f"业务流 Flow_{flow_id} '{name}' 未能生成对应的 Worker。",
+                    f"Flow Flow_{flow_id} '{name}' has no generated worker.",
+                ),
+                source=WarningSourceIR(kind="flow", id=str(flow_id)),
+            ))
+            risks.append(text(
+                f"业务流程 Flow_{flow_id} '{name}' 丢失，未能转换。",
+                f"Flow Flow_{flow_id} '{name}' was not converted.",
+            ))
+        return missing
+
+    @staticmethod
+    def _check_identifier_uniqueness(ir, warnings, risks, text):
+        seen = {}
+        for source_key, identifier in ir.semantic_identifier_map.items():
+            if identifier not in seen:
+                seen[identifier] = source_key
+                continue
+            previous = seen[identifier]
+            warnings.append(SplExportWarningIR(
+                code="duplicate_semantic_identifier",
+                message=f"Duplicate semantic identifier '{identifier}' detected for '{source_key}' and '{previous}'.",
+                source=WarningSourceIR(kind="project", id=ir.project_id),
+            ))
+            risks.append(text(
+                f"重复的语义标识符 '{identifier}' 在 '{source_key}' 和 '{previous}' 中被同时使用。",
+                f"Duplicate semantic identifier '{identifier}' is used by both '{source_key}' and '{previous}'.",
+            ))
+
+    @staticmethod
+    def _check_acceptance_coverage(ir, warnings, risks, text):
+        source_feature = {}
+        for feature in ir.raw.get("features", []):
+            if ((feature.get("scope") or {}).get("scope_status") or "current") != "current":
+                continue
+            for scenario in feature.get("scenarios", []):
+                for criterion in scenario.get("acceptance_criteria", []):
+                    source_feature[criterion.get("criterion_id")] = feature.get("feature_id")
+        mapped = {
+            criterion_id
+            for worker in ir.workers.values()
+            for scenario in worker.scenarios
+            for criterion_id in scenario.source_acceptance_criterion_ids
+        }
+        missing = sorted(set(source_feature) - mapped)
+        for criterion_id in missing:
+            warnings.append(SplExportWarningIR(
+                code="uncovered_acceptance_criterion",
+                message=f"Acceptance Criterion AC_{criterion_id} is not covered by any worker scenario.",
+                source=WarningSourceIR(kind="feature", id=str(source_feature.get(criterion_id, 0))),
+            ))
+            risks.append(text(
+                f"验收条件 AC_{criterion_id} 未被任何 Worker 场景覆盖。",
+                f"Acceptance criterion AC_{criterion_id} is not covered by any worker scenario.",
+            ))
+        return missing
+
+    @classmethod
+    def _check_judgment_paths(cls, ir, warnings, risks, text):
+        for worker in ir.workers.values():
+            cls._check_worker_steps(
+                worker.main_flow, worker.worker_name, worker.source_flow_id,
+                warnings, risks, text,
+            )
+
+    @classmethod
+    def _check_worker_steps(cls, steps, worker_name, flow_id, warnings, risks, text):
+        for step in steps:
+            branch_kinds = {sub.branch_kind for sub in step.sub_steps}
+            if step.step_type == "judgment" and (
+                not step.sub_steps or not ({"if", "else"} & branch_kinds)
+            ):
+                warnings.append(SplExportWarningIR(
+                    code="judgment_branch_unresolved",
+                    message=f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching paths defined.",
+                    source=WarningSourceIR(kind="flow", id=str(flow_id)),
+                ))
+                risks.append(text(
+                    f"Worker '{worker_name}' 中的判断步骤 '{step.command_text}' 缺少分支控制结构路径。",
+                    f"Judgment step '{step.command_text}' in worker '{worker_name}' has no branching path.",
+                ))
+            if step.sub_steps:
+                cls._check_worker_steps(
+                    step.sub_steps, worker_name, flow_id, warnings, risks, text
+                )

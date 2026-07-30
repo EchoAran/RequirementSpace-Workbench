@@ -8,7 +8,7 @@ import { getChoicePresentation, getChoiceTypeLabel } from '@/core/choicePresenta
 
 export function ChoiceGroupPanel({ choiceGroup, ir }: { choiceGroup: ChoiceGroup; ir: RequirementSpaceIR }) {
   const { t, i18n } = useTranslation();
-  const { addChoiceToGroup, setSelectedObject, discardChoiceGroup, regenerateChoiceGroup, acceptChoice } = useWorkspaceStore();
+  const { setSelectedObject, discardChoiceGroup, regenerateChoiceGroup, acceptChoice } = useWorkspaceStore();
   const slot = choiceGroup.slotId ? ir.slots?.[choiceGroup.slotId] : undefined;
   const isStale = (choiceGroup as any).status === 'stale';
   const generationType = (choiceGroup as any).generationType || choiceGroup.sourceType;

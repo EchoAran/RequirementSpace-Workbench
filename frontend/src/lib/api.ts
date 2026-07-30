@@ -5,7 +5,6 @@ import {
   ProjectCreationConfirmResponse,
   ProjectCreationDiscardResponse,
   ProjectCreationChoiceGroup,
-  ProjectCreationChoiceItem,
   ProjectCreationChoiceGroupDeferResponse,
   ProjectMember,
   KnowledgeWorkspace,

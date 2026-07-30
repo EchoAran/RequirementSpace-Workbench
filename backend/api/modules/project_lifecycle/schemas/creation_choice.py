@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 from backend.api.modules.decision_workflow.public import ChoiceGroupResponse
 from backend.api.modules.project_lifecycle.schemas.project import CamelModel
 

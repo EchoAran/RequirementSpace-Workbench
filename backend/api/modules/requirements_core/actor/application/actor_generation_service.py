@@ -6,7 +6,7 @@ from backend.core.generators.actors_generator import (
     ActorsGenerator,
     ActorsGeneratorInput,
 )
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 
 
 class ActorGenerationService:

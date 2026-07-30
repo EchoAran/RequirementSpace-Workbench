@@ -16,12 +16,14 @@ from backend.database.model import (
     AuditLogModel,
     ActorModel,
     FeatureModel,
+    FeatureRelationModel,
     ScenarioModel,
     ScenarioAcceptanceCriterionModel,
     BusinessObjectModel,
     BusinessObjectAttributeModel,
     FlowModel,
     FlowStepModel,
+    flow_step_next_table,
 )
 from backend.api.modules.requirements_core.ports import set_notifier
 
@@ -155,6 +157,104 @@ def test_feature_crud_contract(req_test_db):
     assert res.json()["message"] == "feature_deleted"
 
 
+@pytest.mark.asyncio
+async def test_feature_parent_and_actor_relationships_contract(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    actor_id = client.post(
+        f"/api/projects/{project_id}/actors",
+        json={"name": "Customer"},
+    ).json()["actor_id"]
+    parent_id = client.post(
+        f"/api/projects/{project_id}/features",
+        json={"name": "Checkout"},
+    ).json()["feature_id"]
+    child_ids = [
+        client.post(
+            f"/api/projects/{project_id}/features",
+            json={"name": name, "parent_id": parent_id},
+        ).json()["feature_id"]
+        for name in ("Review", "Submit")
+    ]
+
+    response = client.put(
+        f"/api/projects/{project_id}/features/{child_ids[0]}",
+        json={"actorIds": [actor_id]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["parent_id"] == parent_id
+    assert response.json()["actor_ids"] == [actor_id]
+
+    response = client.put(
+        f"/api/projects/{project_id}/features/{child_ids[0]}",
+        json={"actorIds": [actor_id + 100_000]},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_actor_reference"
+
+    response = client.put(
+        f"/api/projects/{project_id}/features/{child_ids[0]}",
+        json={"description": "Still linked"},
+    )
+    assert response.status_code == 200
+    assert response.json()["actor_ids"] == [actor_id]
+
+    async with req_test_db() as session:
+        relations = (
+            await session.execute(
+                select(FeatureRelationModel)
+                .where(
+                    FeatureRelationModel.parent_feature_id == parent_id
+                )
+                .order_by(FeatureRelationModel.position)
+            )
+        ).scalars().all()
+    assert [
+        (relation.child_feature_id, relation.position)
+        for relation in relations
+    ] == [(child_ids[0], 0), (child_ids[1], 1)]
+
+
+def test_scope_update_create_and_preserve_summaries_contract(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    feature_id = client.post(
+        f"/api/projects/{project_id}/features",
+        json={"name": "Checkout"},
+    ).json()["feature_id"]
+    endpoint = (
+        f"/api/projects/{project_id}/features/{feature_id}/scope"
+    )
+
+    response = client.put(
+        endpoint,
+        json={
+            "status": "current",
+            "reason": "Needed now",
+            "positiveSummary": "Customer value",
+            "negativeSummary": "Delivery cost",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "current"
+    assert response.json()["reason"] == "Needed now"
+    assert response.json()["positive_summary"] == "Customer value"
+    assert response.json()["negative_summary"] == "Delivery cost"
+    assert response.json()["confirmation_status"] == "ai_assumption"
+
+    response = client.put(
+        endpoint,
+        json={"status": "postponed", "reason": "Later"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "postponed"
+    assert response.json()["reason"] == "Later"
+    assert response.json()["positive_summary"] == "Customer value"
+    assert response.json()["negative_summary"] == "Delivery cost"
+
+
 def test_scenario_and_ac_crud_contract(req_test_db):
     client = TestClient(app)
     project_id = _register_login_and_create_project(client)
@@ -255,6 +355,63 @@ def test_business_object_crud_contract(req_test_db):
     assert res.json()["message"] == "business_object_deleted"
 
 
+def test_business_object_attribute_update_fields_contract(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    business_object_id = client.post(
+        f"/api/projects/{project_id}/business_objects",
+        json={"name": "Order"},
+    ).json()["business_object_id"]
+    attribute_id = client.post(
+        (
+            f"/api/projects/{project_id}/business_objects/"
+            f"{business_object_id}/attributes"
+        ),
+        json={
+            "name": "total",
+            "description": "Old description",
+            "data_type": "integer",
+            "example": "1",
+        },
+    ).json()["attribute_id"]
+
+    response = client.put(
+        (
+            f"/api/projects/{project_id}/business_objects/"
+            f"{business_object_id}/attributes/{attribute_id}"
+        ),
+        json={
+            "name": "totalAmount",
+            "description": "New description",
+            "dataType": "decimal",
+            "example": "12.50",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "attribute_id": attribute_id,
+        "business_object_id": business_object_id,
+        "name": "totalAmount",
+        "description": "New description",
+        "data_type": "decimal",
+        "example": "12.50",
+        "confirmation_status": "needs_confirmation",
+    }
+
+    response = client.put(
+        (
+            f"/api/projects/{project_id}/business_objects/"
+            f"{business_object_id}/attributes/{attribute_id}"
+        ),
+        json={"description": "Only description changes"},
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "totalAmount"
+    assert response.json()["data_type"] == "decimal"
+    assert response.json()["example"] == "12.50"
+
+
 def test_flow_crud_contract(req_test_db):
     client = TestClient(app)
     project_id = _register_login_and_create_project(client)
@@ -299,6 +456,228 @@ def test_flow_crud_contract(req_test_db):
     res = client.delete(f"/api/projects/{project_id}/flows/{flow_id}")
     assert res.status_code == 200
     assert res.json()["message"] == "flow_deleted"
+
+
+def test_flow_step_update_relationships_contract(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+
+    actor_id = client.post(
+        f"/api/projects/{project_id}/actors",
+        json={"name": "Customer"},
+    ).json()["actor_id"]
+    input_bo_id = client.post(
+        f"/api/projects/{project_id}/business_objects",
+        json={"name": "Cart"},
+    ).json()["business_object_id"]
+    output_bo_id = client.post(
+        f"/api/projects/{project_id}/business_objects",
+        json={"name": "Order"},
+    ).json()["business_object_id"]
+    flow_id = client.post(
+        f"/api/projects/{project_id}/flows",
+        json={"name": "Checkout"},
+    ).json()["flow_id"]
+    current_step_id = client.post(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps",
+        json={"name": "Review", "step_type": "systemAction"},
+    ).json()["step_id"]
+    next_step_id = client.post(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps",
+        json={"name": "Submit", "step_type": "systemAction"},
+    ).json()["step_id"]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/{current_step_id}",
+        json={
+            "stepType": "actorAction",
+            "actorIds": [actor_id],
+            "inputBusinessObjectIds": [input_bo_id],
+            "outputBusinessObjectIds": [output_bo_id],
+            "nextStepIds": [next_step_id],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["step_type"] == "actorAction"
+    assert response.json()["actor_ids"] == [actor_id]
+    assert response.json()["input_business_object_ids"] == [input_bo_id]
+    assert response.json()["output_business_object_ids"] == [output_bo_id]
+    assert response.json()["next_step_ids"] == [next_step_id]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/{current_step_id}",
+        json={"name": "Review order"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Review order"
+    assert response.json()["actor_ids"] == [actor_id]
+    assert response.json()["input_business_object_ids"] == [input_bo_id]
+    assert response.json()["output_business_object_ids"] == [output_bo_id]
+    assert response.json()["next_step_ids"] == [next_step_id]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/{current_step_id}",
+        json={"actorIds": [actor_id + 100_000]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_actor_ids"
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/{current_step_id}",
+        json={"description": "Still valid"},
+    )
+    assert response.status_code == 200
+    assert response.json()["actor_ids"] == [actor_id]
+
+
+def test_flow_update_features_contract(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    feature_id = client.post(
+        f"/api/projects/{project_id}/features",
+        json={"name": "Checkout"},
+    ).json()["feature_id"]
+    flow_id = client.post(
+        f"/api/projects/{project_id}/flows",
+        json={"name": "Purchase"},
+    ).json()["flow_id"]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}",
+        json={"featureIds": [feature_id]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["feature_ids"] == [feature_id]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}",
+        json={"featureIds": [feature_id + 100_000]},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_feature_ids"
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}",
+        json={"description": "Still linked"},
+    )
+    assert response.status_code == 200
+    assert response.json()["feature_ids"] == [feature_id]
+
+
+@pytest.mark.asyncio
+async def test_delete_flow_step_repairs_topology_and_positions(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    flow_id = client.post(
+        f"/api/projects/{project_id}/flows",
+        json={"name": "Checkout"},
+    ).json()["flow_id"]
+    successor_id = client.post(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps",
+        json={"name": "Successor", "step_type": "systemAction"},
+    ).json()["step_id"]
+    middle_id = client.post(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps",
+        json={
+            "name": "Middle",
+            "step_type": "systemAction",
+            "next_step_ids": [successor_id],
+        },
+    ).json()["step_id"]
+    predecessor_id = client.post(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps",
+        json={
+            "name": "Predecessor",
+            "step_type": "systemAction",
+            "next_step_ids": [middle_id],
+        },
+    ).json()["step_id"]
+
+    response = client.delete(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/{middle_id}"
+    )
+
+    assert response.status_code == 200
+    async with req_test_db() as session:
+        edge_rows = (
+            await session.execute(
+                select(
+                    flow_step_next_table.c.source_step_id,
+                    flow_step_next_table.c.target_step_id,
+                )
+            )
+        ).all()
+        remaining_steps = (
+            await session.execute(
+                select(FlowStepModel)
+                .where(FlowStepModel.flow_id == flow_id)
+                .order_by(FlowStepModel.position)
+            )
+        ).scalars().all()
+
+    assert edge_rows == [(predecessor_id, successor_id)]
+    assert [
+        (step.id, step.position)
+        for step in remaining_steps
+    ] == [(successor_id, 1), (predecessor_id, 2)]
+
+
+@pytest.mark.asyncio
+async def test_reorder_flow_steps_rebuilds_linear_topology(req_test_db):
+    client = TestClient(app)
+    project_id = _register_login_and_create_project(client)
+    flow_id = client.post(
+        f"/api/projects/{project_id}/flows",
+        json={"name": "Checkout"},
+    ).json()["flow_id"]
+    step_ids = [
+        client.post(
+            f"/api/projects/{project_id}/flows/{flow_id}/steps",
+            json={"name": name, "step_type": "systemAction"},
+        ).json()["step_id"]
+        for name in ("First", "Second", "Third")
+    ]
+    reordered_ids = [step_ids[2], step_ids[0], step_ids[1]]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/reorder",
+        json={"step_ids": reordered_ids},
+    )
+
+    assert response.status_code == 200
+    assert [
+        (step["step_id"], step["position"], step["next_step_ids"])
+        for step in response.json()["steps"]
+    ] == [
+        (reordered_ids[0], 1, [reordered_ids[1]]),
+        (reordered_ids[1], 2, [reordered_ids[2]]),
+        (reordered_ids[2], 3, []),
+    ]
+
+    response = client.put(
+        f"/api/projects/{project_id}/flows/{flow_id}/steps/reorder",
+        json={"step_ids": [step_ids[0], step_ids[0], step_ids[1]]},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "duplicate_step_ids"
+
+    async with req_test_db() as session:
+        edge_rows = (
+            await session.execute(
+                select(
+                    flow_step_next_table.c.source_step_id,
+                    flow_step_next_table.c.target_step_id,
+                ).order_by(flow_step_next_table.c.source_step_id)
+            )
+        ).all()
+    assert set(edge_rows) == {
+        (reordered_ids[0], reordered_ids[1]),
+        (reordered_ids[1], reordered_ids[2]),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════

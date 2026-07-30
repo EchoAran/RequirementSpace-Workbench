@@ -449,7 +449,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 
-from backend.api.dependencies.auth import get_current_user, require_admin
+from backend.api.dependencies.auth import require_admin
 from backend.api.dependencies.llm import get_llm_context
 from backend.core.llm_context import LLMRequestContext
 
@@ -460,7 +460,6 @@ async def llm_test(
 ):
     import socket
     import httpx
-    import traceback
     from urllib.parse import urlparse
 
     # Use request-scoped credentials resolved by get_llm_context

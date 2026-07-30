@@ -41,83 +41,122 @@ class GenerationDraftIssueSolver(BaseIssueSolver):
         session,
     ) -> IssueResolution:
         config = self._draft_map.get(issue_code)
-
         if config is None:
             raise ValueError("unsupported_issue_code")
 
-        # P2 Upgrade: Attempt to generate choice group if enabled
-        if issue_code in ("SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA", "LEAF_FEATURE_WITHOUT_SCOPE"):
-            from backend.core.issue_resolution.ports import get_choice_group_creator, get_choice_group_settings
-            creator = get_choice_group_creator()
-            settings = get_choice_group_settings()
-            if creator is not None and settings is not None:
-                gen_type = {
-                    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": "acceptance_criteria",
-                    "LEAF_FEATURE_WITHOUT_SCOPE": "scope",
-                }[issue_code]
+        choice_group_resolution = await self._try_create_choice_group_resolution(
+            project_id,
+            issue_code,
+            target,
+            metadata,
+            session,
+        )
+        if choice_group_resolution is not None:
+            return choice_group_resolution
 
-                # Map target
-                gen_target = {}
-                if target is not None and target.targetId is not None:
-                    try:
-                        target_id = int(target.targetId)
-                        if issue_code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
-                            gen_target = {"scenario_id": target_id}
-                        elif issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
-                            gen_target = {"feature_id": target_id}
-                    except (ValueError, TypeError):
-                        pass
+        payload = self._build_draft_payload(
+            project_id,
+            issue_code,
+            target,
+            metadata,
+        )
+        return self._build_draft_resolution(issue_code, config, payload)
 
-                try:
-                    # check if choice group is enabled for this type
-                    if settings.is_generation_type_enabled(gen_type):
-                        issue_id = metadata.get("issue_id")
-                        stage = metadata.get("stage")
-                        issue_fp = metadata.get("issue_fingerprint")
-                        context_hash = metadata.get("context_hash")
-
-                        choice_group = await creator.create_choice_group(
-                            project_id=project_id,
-                            generation_type=gen_type,
-                            target=gen_target,
-                            session=session,
-                            issue_code=issue_code,
-                            issue_id=issue_id,
-                            stage=stage,
-                            source_type="issue_repair",
-                            source_id=issue_fp,
-                            context_hash=context_hash,
-                        )
-                        # Return choice_group resolution
-                        return IssueResolution(
-                            issueCode=issue_code,
-                            resolutionType="choice_group",
-                            title="选择处理方案",
-                            description=f"AI 找到 {len(choice_group.get('choices', []))} 个可行方案，请选择。",
-                            action={
-                                "kind": "open_choice_group",
-                                "choice_group_id": choice_group["id"],
-                                "payload": {"choice_group": choice_group},
-                            },
-                        )
-                except Exception as e:
-                    # Log and fallback to old draft generation
-                    pass
-
-        payload = {
-            "project_id": project_id,
-            **metadata,
+    async def _try_create_choice_group_resolution(
+        self,
+        project_id: int,
+        issue_code: str,
+        target: IssueTarget | None,
+        metadata: dict,
+        session,
+    ) -> IssueResolution | None:
+        generation_types = {
+            "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": "acceptance_criteria",
+            "LEAF_FEATURE_WITHOUT_SCOPE": "scope",
         }
+        generation_type = generation_types.get(issue_code)
+        if generation_type is None:
+            return None
 
+        from backend.core.issue_resolution.ports import (
+            get_choice_group_creator,
+            get_choice_group_settings,
+        )
+
+        creator = get_choice_group_creator()
+        settings = get_choice_group_settings()
+        if creator is None or settings is None:
+            return None
+
+        generation_target = self._build_generation_target(issue_code, target)
+        try:
+            if not settings.is_generation_type_enabled(generation_type):
+                return None
+            choice_group = await creator.create_choice_group(
+                project_id=project_id,
+                generation_type=generation_type,
+                target=generation_target,
+                session=session,
+                issue_code=issue_code,
+                issue_id=metadata.get("issue_id"),
+                stage=metadata.get("stage"),
+                source_type="issue_repair",
+                source_id=metadata.get("issue_fingerprint"),
+                context_hash=metadata.get("context_hash"),
+            )
+            return self._build_choice_group_resolution(issue_code, choice_group)
+        except Exception:
+            # Preserve the existing compatibility fallback to draft generation.
+            return None
+
+    @staticmethod
+    def _build_generation_target(
+        issue_code: str,
+        target: IssueTarget | None,
+    ) -> dict:
+        if target is None or target.targetId is None:
+            return {}
+        try:
+            target_id = int(target.targetId)
+        except (ValueError, TypeError):
+            return {}
+        if issue_code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
+            return {"scenario_id": target_id}
+        if issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
+            return {"feature_id": target_id}
+        return {}
+
+    @staticmethod
+    def _build_choice_group_resolution(
+        issue_code: str,
+        choice_group: dict,
+    ) -> IssueResolution:
+        return IssueResolution(
+            issueCode=issue_code,
+            resolutionType="choice_group",
+            title="选择处理方案",
+            description=f"AI 找到 {len(choice_group.get('choices', []))} 个可行方案，请选择。",
+            action={
+                "kind": "open_choice_group",
+                "choice_group_id": choice_group["id"],
+                "payload": {"choice_group": choice_group},
+            },
+        )
+
+    @staticmethod
+    def _build_draft_payload(
+        project_id: int,
+        issue_code: str,
+        target: IssueTarget | None,
+        metadata: dict,
+    ) -> dict:
+        payload = {"project_id": project_id, **metadata}
         if target is not None and target.targetId is not None:
             target_id = target.targetId
-
             if issue_code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
                 payload.setdefault("scenario_id", target_id)
-
             if issue_code == "LEAF_FEATURE_WITHOUT_SCOPE":
                 payload.setdefault("feature_id", target_id)
-
             if issue_code == "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO":
                 if isinstance(target_id, str) and ":" in target_id:
                     try:
@@ -127,9 +166,15 @@ class GenerationDraftIssueSolver(BaseIssueSolver):
                     except (ValueError, TypeError):
                         pass
                 elif isinstance(target_id, int):
-                    # Fallback if target_id is just feature_id
                     payload.setdefault("feature_id", target_id)
+        return payload
 
+    @staticmethod
+    def _build_draft_resolution(
+        issue_code: str,
+        config: dict,
+        payload: dict,
+    ) -> IssueResolution:
         return IssueResolution(
             issueCode=issue_code,
             resolutionType="generation_draft",

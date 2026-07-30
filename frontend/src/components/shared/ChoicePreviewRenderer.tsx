@@ -15,13 +15,6 @@ function parseParentFeatureNumber(num?: string | null) {
   return num.split(delimiter).slice(0, -1).join(delimiter);
 }
 
-function getFeatureDepth(num?: string | null) {
-  if (!num) return 0;
-  const delimiter = num.includes('.') ? '.' : num.includes('-') ? '-' : null;
-  if (!delimiter) return 0;
-  return num.split(delimiter).length - 1;
-}
-
 function buildNestedFeatureTree(features: any[]) {
   const byNumber = new Map<string, any>();
   const roots: any[] = [];
@@ -50,7 +43,7 @@ function buildNestedFeatureTree(features: any[]) {
   return sortByNum(roots);
 }
 
-export function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
+function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
   const [isExpanded, setIsExpanded] = React.useState(true); // Default fully expanded as requested!
   const hasChildren = node.children && node.children.length > 0;
 
@@ -167,40 +160,38 @@ interface ChoicePreviewRendererProps {
   draftType?: string;
   preview?: any;
   payload?: any;
-  comparisonSummary?: string;
 }
 
 export function ChoicePreviewRenderer({
   draftType,
   preview,
   payload,
-  comparisonSummary,
 }: ChoicePreviewRendererProps) {
   switch (draftType) {
     case 'project_creation':
-      return <ProjectCreationPreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <ProjectCreationPreview preview={preview} payload={payload} />;
     case 'actor':
-      return <ActorPreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <ActorPreview preview={preview} payload={payload} />;
     case 'scenario':
-      return <ScenarioPreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <ScenarioPreview preview={preview} payload={payload} />;
     case 'acceptance_criteria':
-      return <ACPreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <ACPreview preview={preview} payload={payload} />;
     case 'feature':
-      return <FeaturePreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <FeaturePreview preview={preview} payload={payload} />;
     case 'flow':
-      return <FlowPreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <FlowPreview preview={preview} />;
     case 'scope':
-      return <ScopePreview preview={preview} payload={payload} comparisonSummary={comparisonSummary} />;
+      return <ScopePreview preview={preview} />;
     default:
-      return <GenericPreview preview={preview} comparisonSummary={comparisonSummary} />;
+      return <GenericPreview preview={preview} />;
   }
 }
 
 /* ── Project Creation Preview ─────────────────────────────── */
 
 function ProjectCreationPreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  preview, payload,
+}: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
   const project = preview || payload || {};
   const actors = asArray(payload?.actors || preview?.actors || []);
@@ -244,8 +235,8 @@ function ProjectCreationPreview({
 /* ── Actor Preview ─────────────────────────────────────────── */
 
 function ActorPreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  preview, payload,
+}: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
   const actors = preview?.actors || payload?.actors || [];
 
@@ -265,8 +256,8 @@ function ActorPreview({
 /* ── Scenario Preview ──────────────────────────────────────── */
 
 function ScenarioPreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  preview, payload,
+}: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
   const scenarios = preview?.scenarios || payload?.scenarios || [];
   const featureName = preview?.feature_name || (scenarios[0]?.feature_name) || '';
@@ -301,8 +292,8 @@ function ScenarioPreview({
 /* ── Acceptance Criteria Preview ──────────────────────────── */
 
 function ACPreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  preview, payload,
+}: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
   const criteria = preview?.criteria || payload?.acceptance_criteria || [];
   return (
@@ -333,8 +324,8 @@ function ACPreview({
 /* ── Feature Preview ───────────────────────────────────────── */
 
 function FeaturePreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+  preview, payload,
+}: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
   const features = preview?.features || payload?.features || [];
 
@@ -353,9 +344,7 @@ function FeaturePreview({
 
 /* ── Flow Preview ──────────────────────────────────────────── */
 
-function FlowPreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+function FlowPreview({ preview }: { preview?: any }) {
   const { t } = useTranslation();
   const flows = preview?.flows || [];
   const boCount = preview?.business_object_count || 0;
@@ -465,9 +454,7 @@ function FlowPreview({
 
 /* ── Scope Preview ─────────────────────────────────────────── */
 
-function ScopePreview({
-  preview, payload, comparisonSummary,
-}: { preview?: any; payload?: any; comparisonSummary?: string }) {
+function ScopePreview({ preview }: { preview?: any }) {
   const { t } = useTranslation();
   const scopes = preview?.scopes || [];
 
@@ -523,9 +510,7 @@ function ScopePreview({
 
 /* ── Generic JSON Fallback Preview ─────────────────────────── */
 
-function GenericPreview({
-  preview, comparisonSummary,
-}: { preview?: any; comparisonSummary?: string }) {
+function GenericPreview({ preview }: { preview?: any }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-4">
@@ -541,17 +526,6 @@ function GenericPreview({
 }
 
 /* ── Shared mini components ────────────────────────────────── */
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      {title && (
-        <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">{title}</h5>
-      )}
-      <div className="flex flex-wrap gap-2">{children}</div>
-    </div>
-  );
-}
 
 function Chip({ className, children }: { className?: string; children: React.ReactNode }) {
   return (

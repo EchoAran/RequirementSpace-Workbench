@@ -4,6 +4,10 @@ import { workspaceApi } from '../lib/api';
 import { Finding } from '../core/schema';
 
 const generateScenarios = useWorkspaceStore.getState().generateScenarios;
+const generateActors = useWorkspaceStore.getState().generateActors;
+const generateFeatures = useWorkspaceStore.getState().generateFeatures;
+const generateFlowsAndObjects = useWorkspaceStore.getState().generateFlowsAndObjects;
+const generateScope = useWorkspaceStore.getState().generateScope;
 
 // Mock workspaceApi
 vi.mock('../lib/api', () => ({
@@ -16,8 +20,13 @@ vi.mock('../lib/api', () => ({
     list: vi.fn().mockResolvedValue([]),
     getById: vi.fn(),
     listChoiceGroups: vi.fn().mockResolvedValue([]),
+    getProjectConfiguration: vi.fn(),
     createGenerationChoiceGroup: vi.fn(),
+    createActorGenerationDraft: vi.fn(),
+    createFeatureGenerationDraft: vi.fn(),
+    createFlowGenerationDraft: vi.fn(),
     createScenarioGenerationDraft: vi.fn(),
+    createScopeGenerationDraft: vi.fn(),
     discardChoiceGroup: vi.fn(),
     resolveIssue: vi.fn(),
   }
@@ -37,7 +46,11 @@ describe('useWorkspaceStore - Finding Integration', () => {
         health: []
       },
       ir: null,
+      generateActors,
+      generateFeatures,
+      generateFlowsAndObjects,
       generateScenarios,
+      generateScope,
     });
   });
 
@@ -948,6 +961,138 @@ describe('useWorkspaceStore - Finding Integration', () => {
     expect(useWorkspaceStore.getState().choiceGroupGenerationProgress).toBeNull();
   });
 
+  it('createGenerationChoiceGroup - records a feedback conflict without replacing the open group', async () => {
+    const existingGroup = {
+      id: '88',
+      status: 'open',
+      generationType: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      choices: [],
+    } as any;
+    useWorkspaceStore.setState({
+      backendChoiceGroups: { '88': existingGroup },
+      pendingGenerationConflict: null,
+    });
+
+    await expect(useWorkspaceStore.getState().createGenerationChoiceGroup({
+      projectId: 'project-123',
+      generationType: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      userFeedback: '补充异常场景',
+      conflictAction: 'generateScenarios',
+      conflictArgs: { featureIds: [10] },
+    })).rejects.toThrow('generation_choice_conflict_pending');
+
+    expect(useWorkspaceStore.getState().pendingGenerationConflict).toEqual({
+      action: 'generateScenarios',
+      generationType: 'scenario',
+      existingGroupId: '88',
+      existingGroupLabel: expect.any(String),
+      featureIds: [10],
+    });
+    expect(workspaceApi.discardChoiceGroup).not.toHaveBeenCalled();
+    expect(workspaceApi.createGenerationChoiceGroup).not.toHaveBeenCalled();
+  });
+
+  it('createGenerationChoiceGroup - discards a conflicting group before forced replacement', async () => {
+    const existingGroup = {
+      id: '88',
+      status: 'open',
+      generationType: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      choices: [],
+    } as any;
+    const replacement = {
+      id: '99',
+      status: 'open',
+      generationType: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      choices: [],
+    } as any;
+    vi.mocked(workspaceApi.discardChoiceGroup).mockResolvedValueOnce(undefined as any);
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockResolvedValueOnce(replacement);
+    useWorkspaceStore.setState({
+      backendChoiceGroups: { '88': existingGroup },
+      activeChoiceGroup: existingGroup,
+      pendingGenerationConflict: null,
+    });
+
+    const result = await useWorkspaceStore.getState().createGenerationChoiceGroup({
+      projectId: 'project-123',
+      generationType: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      candidateCount: 2,
+      userFeedback: '重新生成',
+      forceReplace: true,
+    });
+
+    expect(workspaceApi.discardChoiceGroup).toHaveBeenCalledWith('project-123', 88);
+    expect(workspaceApi.createGenerationChoiceGroup).toHaveBeenCalledWith({
+      project_id: 'project-123',
+      generation_type: 'scenario',
+      target: { generation_mode: 'single', feature_id: 10 },
+      candidate_count: 2,
+      user_feedback: '重新生成',
+    });
+    expect(vi.mocked(workspaceApi.discardChoiceGroup).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(workspaceApi.createGenerationChoiceGroup).mock.invocationCallOrder[0]);
+    expect(result).toBe(replacement);
+    expect(useWorkspaceStore.getState().backendChoiceGroups['88']).toBeUndefined();
+    expect(useWorkspaceStore.getState().activeChoiceGroup).toBe(replacement);
+  });
+
+  it('createGenerationChoiceGroup - loads configured progress defaults without changing the request payload', async () => {
+    let resolveRequest: (value: any) => void = () => {};
+    const projectConfiguration = {
+      generation_strategy: {
+        candidate_count: 2,
+        strategies: [
+          { enabled: true, strategy: 'balanced' },
+          { enabled: true, strategy: 'creative' },
+        ],
+      },
+    } as any;
+    vi.mocked(workspaceApi.getProjectConfiguration).mockResolvedValueOnce(projectConfiguration);
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRequest = resolve;
+      }) as any,
+    );
+    useWorkspaceStore.setState({
+      backendChoiceGroups: {},
+      projectConfiguration: null,
+      choiceGroupGenerationProgress: null,
+    });
+
+    const pending = useWorkspaceStore.getState().createGenerationChoiceGroup({
+      projectId: 'project-123',
+      generationType: 'scenario',
+    });
+    await vi.waitFor(() => {
+      expect(useWorkspaceStore.getState().choiceGroupGenerationProgress).toMatchObject({
+        totalCandidates: 2,
+        completedCandidates: 0,
+      });
+    });
+
+    expect(useWorkspaceStore.getState().projectConfiguration).toBe(projectConfiguration);
+    expect(workspaceApi.createGenerationChoiceGroup).toHaveBeenCalledWith({
+      project_id: 'project-123',
+      generation_type: 'scenario',
+      target: null,
+      candidate_count: undefined,
+      user_feedback: null,
+    });
+
+    resolveRequest({
+      id: '99',
+      status: 'open',
+      generationType: 'scenario',
+      choices: [],
+    });
+    await pending;
+  });
+
   it('19. getFriendlyErrorMessage - normalizes common LLM provider failures', () => {
     expect(getFriendlyErrorMessage('Request timed out after 100s')).toBe('store.errors.timeout');
     expect(getFriendlyErrorMessage('429 rate limit exceeded')).toBe('store.errors.quota');
@@ -1077,6 +1222,27 @@ describe('useWorkspaceStore - Finding Integration', () => {
     expect(useWorkspaceStore.getState().isGenerating).toBe(false);
   });
 
+  it.each([
+    ['actors', () => useWorkspaceStore.getState().generateActors(), workspaceApi.createActorGenerationDraft],
+    ['features', () => useWorkspaceStore.getState().generateFeatures(), workspaceApi.createFeatureGenerationDraft],
+    ['flows', () => useWorkspaceStore.getState().generateFlowsAndObjects(), workspaceApi.createFlowGenerationDraft],
+    ['scope', () => useWorkspaceStore.getState().generateScope(), workspaceApi.createScopeGenerationDraft],
+  ])('does not retry legacy %s generation after a choice request fails', async (_type, generate, legacyApi) => {
+    vi.mocked(workspaceApi.createGenerationChoiceGroup).mockRejectedValueOnce(
+      new Error('Internal Server Error')
+    );
+    useWorkspaceStore.setState({
+      ir: { projectId: 'project-123' } as any,
+      backendChoiceGroups: {},
+      error: null,
+    });
+
+    await generate();
+
+    expect(legacyApi).not.toHaveBeenCalled();
+    expect(useWorkspaceStore.getState().error).toBe('Internal Server Error');
+  });
+
   it('25. generateScenarios - uses full mode when no feature id is provided', async () => {
     vi.mocked(workspaceApi.createGenerationChoiceGroup).mockResolvedValueOnce({
       id: '100',
@@ -1097,7 +1263,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
     );
   });
 
-  it('26. generateScenarios - requests one candidate for a large batch', async () => {
+  it('26. generateScenarios - leaves large-batch candidate count to the backend', async () => {
     vi.mocked(workspaceApi.createGenerationChoiceGroup).mockResolvedValueOnce({
       id: '101',
       status: 'open',
@@ -1114,7 +1280,7 @@ describe('useWorkspaceStore - Finding Integration', () => {
     await useWorkspaceStore.getState().generateScenarios(featureIds);
 
     expect(workspaceApi.createGenerationChoiceGroup).toHaveBeenCalledWith(
-      expect.objectContaining({ candidate_count: 1 })
+      expect.objectContaining({ candidate_count: undefined })
     );
   });
 });

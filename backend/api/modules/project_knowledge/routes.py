@@ -2,7 +2,7 @@
 import uuid
 import hashlib
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,6 @@ from backend.database.database import get_session
 from backend.api.dependencies.auth import get_current_user
 from backend.database.model import (
     UserModel,
-    ProjectModel,
     KnowledgeWorkspaceModel,
     KnowledgeDocumentModel,
 )
@@ -23,7 +22,6 @@ from .dependencies import (
     require_owned_knowledge_workspace,
     require_owned_knowledge_document,
 )
-import asyncio
 from backend.services.knowledge.conversion import KnowledgeConversionService
 from .schemas import (
     KnowledgeWorkspaceResponse,

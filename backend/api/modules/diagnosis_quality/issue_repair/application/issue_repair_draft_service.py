@@ -6,19 +6,15 @@ discard -> discarded
 regenerate -> new draft (replaces old)
 """
 
-import hashlib
-import json
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from backend.api.modules.diagnosis_quality.perception.application.invalidation import (
     mark_perception_jobs_stale,
 )
 from backend.core.issue_resolution.fingerprint import (
-    build_issue_fingerprint,
     compute_context_hash,
     load_target_entity_snapshot,
 )
@@ -29,7 +25,6 @@ from backend.core.engines.patch_engine import GraphPatchEngine
 from backend.database.model import (
     AuditLogModel,
     IssueRepairDraftModel,
-    ProjectModel,
 )
 
 
@@ -126,14 +121,64 @@ class IssueRepairDraftService:
         session: AsyncSession,
     ) -> dict:
         """Confirm a repair draft: validate, apply patch, mark stale, verify issue resolved."""
-        # 1. Load draft
         draft = await self._load_draft(draft_id, session)
+        self._ensure_draft_can_be_confirmed(draft, project_id)
+
+        current_hash = await self._load_current_context_hash(
+            draft,
+            project_id,
+            session,
+        )
+        if draft.context_hash and current_hash != draft.context_hash:
+            return await self._mark_draft_stale(draft, draft_id, session)
+
+        invalid_response = await self._validate_draft_patch(
+            draft,
+            project_id,
+            draft_id,
+            session,
+        )
+        if invalid_response:
+            return invalid_response
+
+        if draft.patch:
+            await self.patch_engine.apply_patch(project_id, draft.patch, session)
+        draft.status = "applied"
+        await session.flush()
+
+        await self._invalidate_perception_jobs(draft, project_id, session)
+        issue_diff = await self._detect_issue_diff(draft, project_id, session)
+        self._record_confirmation_audit(
+            draft,
+            draft_id,
+            project_id,
+            issue_diff,
+            session,
+        )
+
+        return {
+            "message": "issue_repair_draft_applied",
+            "draft_id": draft_id,
+            "status": "applied",
+            **issue_diff,
+        }
+
+    @staticmethod
+    def _ensure_draft_can_be_confirmed(
+        draft: IssueRepairDraftModel,
+        project_id: int,
+    ) -> None:
         if draft.project_id != project_id:
             raise ValueError("draft_project_mismatch")
         if draft.status != "pending":
             raise ValueError(f"draft_status_not_pending: {draft.status}")
 
-        # 2. Recompute context hash and check staleness
+    @staticmethod
+    async def _load_current_context_hash(
+        draft: IssueRepairDraftModel,
+        project_id: int,
+        session: AsyncSession,
+    ) -> str:
         raw_target_id = draft.target.get("target_id") or draft.target.get("targetId") or 0
         try:
             parsed_target_id = int(raw_target_id) if not isinstance(raw_target_id, int) else raw_target_id
@@ -150,49 +195,59 @@ class IssueRepairDraftService:
                 "issue_code": draft.issue_code,
                 "target_type": draft.target.get("target_type") or draft.target.get("targetType") or "",
             }
-        current_hash = _compute_context_hash_from_target(project_id, snapshot)
+        return _compute_context_hash_from_target(project_id, snapshot)
 
-        if draft.context_hash and current_hash != draft.context_hash:
-            draft.status = "stale"
-            await session.flush()
-            return {
-                "message": "issue_repair_draft_stale",
-                "draft_id": draft_id,
-                "status": "stale",
-                "recommended_action": "regenerate",
-                "resolved_issue_ids": [],
-                "remaining_issue_ids": [],
-            }
-
-        # 3. Validate patch again (entities may have been deleted)
-        if draft.patch:
-            report = await self.validator.validate(
-                project_id=project_id,
-                issue_code=draft.issue_code,
-                patch=draft.patch,
-                session=session,
-            )
-            draft.validation_report = report
-            if not report.get("valid"):
-                draft.status = "invalid"
-                await session.flush()
-                return {
-                    "message": "issue_repair_draft_invalid",
-                    "draft_id": draft_id,
-                    "status": "invalid",
-                    "resolved_issue_ids": [],
-                    "remaining_issue_ids": [],
-                }
-
-        # 4. Apply patch
-        if draft.patch:
-            await self.patch_engine.apply_patch(project_id, draft.patch, session)
-
-        # 5. Mark applied
-        draft.status = "applied"
+    @staticmethod
+    async def _mark_draft_stale(
+        draft: IssueRepairDraftModel,
+        draft_id: str,
+        session: AsyncSession,
+    ) -> dict:
+        draft.status = "stale"
         await session.flush()
+        return {
+            "message": "issue_repair_draft_stale",
+            "draft_id": draft_id,
+            "status": "stale",
+            "recommended_action": "regenerate",
+            "resolved_issue_ids": [],
+            "remaining_issue_ids": [],
+        }
 
+    async def _validate_draft_patch(
+        self,
+        draft: IssueRepairDraftModel,
+        project_id: int,
+        draft_id: str,
+        session: AsyncSession,
+    ) -> dict | None:
+        if not draft.patch:
+            return None
+        report = await self.validator.validate(
+            project_id=project_id,
+            issue_code=draft.issue_code,
+            patch=draft.patch,
+            session=session,
+        )
+        draft.validation_report = report
+        if report.get("valid"):
+            return None
+        draft.status = "invalid"
+        await session.flush()
+        return {
+            "message": "issue_repair_draft_invalid",
+            "draft_id": draft_id,
+            "status": "invalid",
+            "resolved_issue_ids": [],
+            "remaining_issue_ids": [],
+        }
 
+    @staticmethod
+    async def _invalidate_perception_jobs(
+        draft: IssueRepairDraftModel,
+        project_id: int,
+        session: AsyncSession,
+    ) -> None:
         stages = {draft.stage}
         kinds = set()
         if draft.stage == "scope":
@@ -212,7 +267,12 @@ class IssueRepairDraftService:
 
         await session.flush()
 
-        # 8. Re-detect to verify issue resolved
+    @staticmethod
+    async def _detect_issue_diff(
+        draft: IssueRepairDraftModel,
+        project_id: int,
+        session: AsyncSession,
+    ) -> dict:
         resolved_ids = []
         remaining_ids = []
         new_ids = []
@@ -231,7 +291,6 @@ class IssueRepairDraftService:
             }
             _det = _det_map.get(draft.stage)
             before = set()
-            after_ids = []
             remaining_ids = []
             if _det:
                 before_issues = await _det.detect(project_id=project_id, session=session)
@@ -248,7 +307,21 @@ class IssueRepairDraftService:
                 target_remaining = [i.issueId for i in remaining if i.code == draft.issue_code]
                 is_partial = len(resolved_ids) > 0 and len(target_remaining) > 0
 
-        # Audit log (after before/after diff so variables are defined)
+        return {
+            "resolved_issue_ids": resolved_ids,
+            "remaining_issue_ids": remaining_ids,
+            "new_issue_ids": new_ids,
+            "partially_resolved": is_partial,
+        }
+
+    @staticmethod
+    def _record_confirmation_audit(
+        draft: IssueRepairDraftModel,
+        draft_id: str,
+        project_id: int,
+        issue_diff: dict,
+        session: AsyncSession,
+    ) -> None:
         session.add(AuditLogModel(
             project_id=project_id,
             action_type="issue_repair_confirmed",
@@ -262,21 +335,11 @@ class IssueRepairDraftService:
                 "solver_name": draft.repair_type,
                 "context_hash": draft.context_hash,
                 "validation_report": draft.validation_report,
-                "resolved_issue_ids": resolved_ids,
-                "new_issue_ids": new_ids,
-                "partially_resolved": is_partial,
+                "resolved_issue_ids": issue_diff["resolved_issue_ids"],
+                "new_issue_ids": issue_diff["new_issue_ids"],
+                "partially_resolved": issue_diff["partially_resolved"],
             },
         ))
-
-        return {
-            "message": "issue_repair_draft_applied",
-            "draft_id": draft_id,
-            "status": "applied",
-            "resolved_issue_ids": resolved_ids,
-            "remaining_issue_ids": remaining_ids,
-            "new_issue_ids": new_ids,
-            "partially_resolved": is_partial,
-        }
 
     async def discard_draft(
         self,

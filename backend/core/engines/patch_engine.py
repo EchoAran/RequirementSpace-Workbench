@@ -1,5 +1,4 @@
 from sqlalchemy import select, func, delete
-from sqlalchemy.orm import selectinload
 from backend.database.model import (
     ActorModel,
     FeatureModel,
@@ -43,152 +42,36 @@ class GraphPatchEngine:
                     return int(part_val)
             raise ValueError(f"Cannot resolve reference ID '{val}' for kind '{kind}'")
 
-        # 1. Execute deletions (deleteNodes)
-        for node in patch.get("deleteNodes", []):
-            kind = node.get("kind")
-            node_id_val = node.get("id") or node.get(f"{kind}Id") or node.get(f"{kind}_id")
-            if not node_id_val:
-                continue
-            
-            node_id = int(node_id_val)
-            if kind == "actor":
-                await session.execute(delete(ActorModel).where(ActorModel.id == node_id, ActorModel.project_id == project_id))
-            elif kind == "feature":
-                await self._delete_feature_recursive(node_id, session)
-            elif kind == "scenario":
-                await session.execute(delete(ScenarioModel).where(ScenarioModel.id == node_id, ScenarioModel.project_id == project_id))
-            elif kind == "business_object":
-                await session.execute(delete(BusinessObjectModel).where(BusinessObjectModel.id == node_id, BusinessObjectModel.project_id == project_id))
-            elif kind == "flow":
-                await session.execute(delete(FlowModel).where(FlowModel.id == node_id, FlowModel.project_id == project_id))
+        await self._delete_nodes(
+            project_id,
+            patch.get("deleteNodes", []),
+            session,
+        )
 
-        # 2. Execute insertions (addNodes)
-        for node in patch.get("addNodes", []):
-            kind = node.get("kind")
-            temp_id = node.get("temp_id") or node.get("tempId") or node.get("id")
+        await self._add_nodes(
+            project_id,
+            patch.get("addNodes", []),
+            temp_to_real_id,
+            resolve_id,
+            session,
+        )
 
-            if kind == "actor":
-                name = node.get("name") or node.get("actorName") or ""
-                description = node.get("description") or node.get("actorDescription") or ""
-                actor = ActorModel(
-                    project_id=project_id,
-                    name=name,
-                    description=description,
-                    confirmation_status='ai_assumption',
-                )
-                session.add(actor)
-                await session.flush()
-                if temp_id:
-                    temp_to_real_id[temp_id] = actor.id
+        await self._update_nodes(
+            project_id,
+            patch.get("updateNodes", []),
+            resolve_id,
+            session,
+        )
 
-            elif kind == "feature":
-                name = node.get("name") or node.get("featureName") or ""
-                description = node.get("description") or node.get("featureDescription") or ""
-                feature = FeatureModel(
-                    project_id=project_id,
-                    name=name,
-                    description=description,
-                    confirmation_status='ai_assumption',
-                )
-                session.add(feature)
-                await session.flush()
-                if temp_id:
-                    temp_to_real_id[temp_id] = feature.id
+        await self._add_links(
+            patch.get("addLinks", []),
+            resolve_id,
+            session,
+        )
 
-                # Parent relation handling if provided
-                parent_id_val = node.get("parent_id") or node.get("parentId")
-                if parent_id_val is not None:
-                    parent_id = resolve_id(parent_id_val, "feature")
-                    # Check position
-                    pos_result = await session.execute(
-                        select(func.max(FeatureRelationModel.position)).where(
-                            FeatureRelationModel.parent_feature_id == parent_id
-                        )
-                    )
-                    max_pos = pos_result.scalar()
-                    position = 0 if max_pos is None else max_pos + 1
-
-                    relation = FeatureRelationModel(
-                        parent_feature_id=parent_id,
-                        child_feature_id=feature.id,
-                        position=position,
-                    )
-                    session.add(relation)
-                    await session.flush()
-
-            elif kind == "scenario":
-                name = node.get("name") or node.get("scenarioName") or ""
-                content = node.get("content") or node.get("scenarioContent") or ""
-                
-                feature_id_val = node.get("feature_id") or node.get("featureId")
-                actor_id_val = node.get("actor_id") or node.get("actorId")
-                
-                if feature_id_val is None or actor_id_val is None:
-                    raise ValueError("Scenario node insertion requires feature_id and actor_id")
-                
-                feature_id = resolve_id(feature_id_val, "feature")
-                actor_id = resolve_id(actor_id_val, "actor")
-
-                scenario = ScenarioModel(
-                    project_id=project_id,
-                    feature_id=feature_id,
-                    actor_id=actor_id,
-                    name=name,
-                    content=content,
-                    confirmation_status='ai_assumption',
-                )
-                session.add(scenario)
-                await session.flush()
-                if temp_id:
-                    temp_to_real_id[temp_id] = scenario.id
-
-            elif kind == "business_object":
-                name = node.get("name") or node.get("businessObjectName") or node.get("boName") or ""
-                description = node.get("description") or node.get("businessObjectDescription") or node.get("boDescription") or ""
-                bo = BusinessObjectModel(
-                    project_id=project_id,
-                    name=name,
-                    description=description,
-                    confirmation_status='ai_assumption',
-                )
-                session.add(bo)
-                await session.flush()
-                if temp_id:
-                    temp_to_real_id[temp_id] = bo.id
-
-            elif kind == "flow":
-                name = node.get("name") or node.get("flowName") or ""
-                description = node.get("description") or node.get("flowDescription") or ""
-                flow = FlowModel(
-                    project_id=project_id,
-                    name=name,
-                    description=description,
-                    confirmation_status='ai_assumption',
-                )
-                session.add(flow)
-                await session.flush()
-                if temp_id:
-                    temp_to_real_id[temp_id] = flow.id
-
-            elif kind == "business_object_attribute":
-                bo_id = resolve_id(
-                    node.get("business_object_id") or node.get("businessObjectId"),
-                    "business_object",
-                )
-                name = node.get("name", "")
-                if not name:
-                    raise ValueError("business_object_attribute requires name")
-                attr = BusinessObjectAttributeModel(
-                    business_object_id=bo_id,
-                    name=name,
-                    description=node.get("description", ""),
-                    data_type=node.get("data_type") or node.get("type") or "string",
-                    example=node.get("example", ""),
-                )
-                session.add(attr)
-
-        # 3. Execute updates (updateNodes)
-        for node in patch.get("updateNodes", []):
+    @staticmethod
+    async def _update_nodes(project_id: int, nodes: list, resolve_id, session) -> None:
+        for node in nodes:
             kind = node.get("kind")
             node_id_val = node.get("id") or node.get(f"{kind}Id") or node.get(f"{kind}_id")
             if not node_id_val:
@@ -248,7 +131,6 @@ class GraphPatchEngine:
                         flow.description = node.get("description") or node.get("flowDescription")
 
             elif kind == "scope":
-                from backend.database.model import FeatureModel
                 res = await session.execute(
                     select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
                     .where(ScopeModel.id == node_id, FeatureModel.project_id == project_id)
@@ -262,27 +144,281 @@ class GraphPatchEngine:
                     elif "scopeStatus" in node or "scope_status" in node:
                         scope.status = node.get("scopeStatus") or node.get("scope_status")
 
-        # 4. Establish relation links (addLinks)
-        for link in patch.get("addLinks", []):
-            source_id = link.get("sourceId") or link.get("source_id") or link.get("source")
-            target_id = link.get("targetId") or link.get("target_id") or link.get("target")
-            link_type = link.get("type") or link.get("relationType") or link.get("relation_type")
+    async def _add_nodes(
+        self,
+        project_id: int,
+        nodes: list,
+        temp_to_real_id: dict,
+        resolve_id,
+        session,
+    ) -> None:
+        for node in nodes:
+            kind = node.get("kind")
+            temp_id = node.get("temp_id") or node.get("tempId") or node.get("id")
+            if kind == "actor":
+                await self._add_actor(
+                    project_id, node, temp_id, temp_to_real_id, session
+                )
+            elif kind == "feature":
+                await self._add_feature(
+                    project_id,
+                    node,
+                    temp_id,
+                    temp_to_real_id,
+                    resolve_id,
+                    session,
+                )
+            elif kind == "scenario":
+                await self._add_scenario(
+                    project_id,
+                    node,
+                    temp_id,
+                    temp_to_real_id,
+                    resolve_id,
+                    session,
+                )
+            elif kind == "business_object":
+                await self._add_business_object(
+                    project_id, node, temp_id, temp_to_real_id, session
+                )
+            elif kind == "flow":
+                await self._add_flow(
+                    project_id, node, temp_id, temp_to_real_id, session
+                )
+            elif kind == "business_object_attribute":
+                await self._add_business_object_attribute(
+                    node,
+                    resolve_id,
+                    session,
+                )
 
+    @staticmethod
+    async def _add_actor(
+        project_id: int,
+        node: dict,
+        temp_id,
+        temp_to_real_id: dict,
+        session,
+    ) -> None:
+        actor = ActorModel(
+            project_id=project_id,
+            name=node.get("name") or node.get("actorName") or "",
+            description=node.get("description") or node.get("actorDescription") or "",
+            confirmation_status="ai_assumption",
+        )
+        session.add(actor)
+        await session.flush()
+        if temp_id:
+            temp_to_real_id[temp_id] = actor.id
+
+    @staticmethod
+    async def _add_feature(
+        project_id: int,
+        node: dict,
+        temp_id,
+        temp_to_real_id: dict,
+        resolve_id,
+        session,
+    ) -> None:
+        feature = FeatureModel(
+            project_id=project_id,
+            name=node.get("name") or node.get("featureName") or "",
+            description=node.get("description") or node.get("featureDescription") or "",
+            confirmation_status="ai_assumption",
+        )
+        session.add(feature)
+        await session.flush()
+        if temp_id:
+            temp_to_real_id[temp_id] = feature.id
+
+        parent_id_val = node.get("parent_id") or node.get("parentId")
+        if parent_id_val is None:
+            return
+        parent_id = resolve_id(parent_id_val, "feature")
+        position_result = await session.execute(
+            select(func.max(FeatureRelationModel.position)).where(
+                FeatureRelationModel.parent_feature_id == parent_id
+            )
+        )
+        max_position = position_result.scalar()
+        relation = FeatureRelationModel(
+            parent_feature_id=parent_id,
+            child_feature_id=feature.id,
+            position=0 if max_position is None else max_position + 1,
+        )
+        session.add(relation)
+        await session.flush()
+
+    @staticmethod
+    async def _add_scenario(
+        project_id: int,
+        node: dict,
+        temp_id,
+        temp_to_real_id: dict,
+        resolve_id,
+        session,
+    ) -> None:
+        feature_id_val = node.get("feature_id") or node.get("featureId")
+        actor_id_val = node.get("actor_id") or node.get("actorId")
+        if feature_id_val is None or actor_id_val is None:
+            raise ValueError(
+                "Scenario node insertion requires feature_id and actor_id"
+            )
+        scenario = ScenarioModel(
+            project_id=project_id,
+            feature_id=resolve_id(feature_id_val, "feature"),
+            actor_id=resolve_id(actor_id_val, "actor"),
+            name=node.get("name") or node.get("scenarioName") or "",
+            content=node.get("content") or node.get("scenarioContent") or "",
+            confirmation_status="ai_assumption",
+        )
+        session.add(scenario)
+        await session.flush()
+        if temp_id:
+            temp_to_real_id[temp_id] = scenario.id
+
+    @staticmethod
+    async def _add_business_object(
+        project_id: int,
+        node: dict,
+        temp_id,
+        temp_to_real_id: dict,
+        session,
+    ) -> None:
+        business_object = BusinessObjectModel(
+            project_id=project_id,
+            name=(
+                node.get("name")
+                or node.get("businessObjectName")
+                or node.get("boName")
+                or ""
+            ),
+            description=(
+                node.get("description")
+                or node.get("businessObjectDescription")
+                or node.get("boDescription")
+                or ""
+            ),
+            confirmation_status="ai_assumption",
+        )
+        session.add(business_object)
+        await session.flush()
+        if temp_id:
+            temp_to_real_id[temp_id] = business_object.id
+
+    @staticmethod
+    async def _add_flow(
+        project_id: int,
+        node: dict,
+        temp_id,
+        temp_to_real_id: dict,
+        session,
+    ) -> None:
+        flow = FlowModel(
+            project_id=project_id,
+            name=node.get("name") or node.get("flowName") or "",
+            description=node.get("description") or node.get("flowDescription") or "",
+            confirmation_status="ai_assumption",
+        )
+        session.add(flow)
+        await session.flush()
+        if temp_id:
+            temp_to_real_id[temp_id] = flow.id
+
+    @staticmethod
+    async def _add_business_object_attribute(
+        node: dict,
+        resolve_id,
+        session,
+    ) -> None:
+        business_object_id = resolve_id(
+            node.get("business_object_id") or node.get("businessObjectId"),
+            "business_object",
+        )
+        name = node.get("name", "")
+        if not name:
+            raise ValueError("business_object_attribute requires name")
+        session.add(
+            BusinessObjectAttributeModel(
+                business_object_id=business_object_id,
+                name=name,
+                description=node.get("description", ""),
+                data_type=node.get("data_type") or node.get("type") or "string",
+                example=node.get("example", ""),
+            )
+        )
+
+    async def _delete_nodes(self, project_id: int, nodes: list, session) -> None:
+        for node in nodes:
+            kind = node.get("kind")
+            node_id_val = (
+                node.get("id")
+                or node.get(f"{kind}Id")
+                or node.get(f"{kind}_id")
+            )
+            if not node_id_val:
+                continue
+
+            node_id = int(node_id_val)
+            if kind == "actor":
+                await session.execute(
+                    delete(ActorModel).where(
+                        ActorModel.id == node_id,
+                        ActorModel.project_id == project_id,
+                    )
+                )
+            elif kind == "feature":
+                await self._delete_feature_recursive(node_id, session)
+            elif kind == "scenario":
+                await session.execute(
+                    delete(ScenarioModel).where(
+                        ScenarioModel.id == node_id,
+                        ScenarioModel.project_id == project_id,
+                    )
+                )
+            elif kind == "business_object":
+                await session.execute(
+                    delete(BusinessObjectModel).where(
+                        BusinessObjectModel.id == node_id,
+                        BusinessObjectModel.project_id == project_id,
+                    )
+                )
+            elif kind == "flow":
+                await session.execute(
+                    delete(FlowModel).where(
+                        FlowModel.id == node_id,
+                        FlowModel.project_id == project_id,
+                    )
+                )
+
+    @staticmethod
+    async def _add_links(links: list, resolve_id, session) -> None:
+        for link in links:
+            source_id = (
+                link.get("sourceId")
+                or link.get("source_id")
+                or link.get("source")
+            )
+            target_id = (
+                link.get("targetId")
+                or link.get("target_id")
+                or link.get("target")
+            )
+            link_type = (
+                link.get("type")
+                or link.get("relationType")
+                or link.get("relation_type")
+            )
             if not source_id or not target_id:
                 continue
 
-            if link_type == "feature_actor_relation" or link_type == "feature_actor":
-                # Typically source is feature, target is actor (or vice versa)
-                # Parse to check prefix or assume first is feature and second is actor
+            if link_type in ("feature_actor_relation", "feature_actor"):
                 if "actor" in str(source_id) or "feature" in str(target_id):
-                    # Swapped
                     feature_id = resolve_id(target_id, "feature")
                     actor_id = resolve_id(source_id, "actor")
                 else:
                     feature_id = resolve_id(source_id, "feature")
                     actor_id = resolve_id(target_id, "actor")
-
-                # Verify relationship does not already exist
                 check = await session.execute(
                     select(feature_actor_table).where(
                         feature_actor_table.c.feature_id == feature_id,
@@ -291,19 +427,18 @@ class GraphPatchEngine:
                 )
                 if not check.first():
                     await session.execute(
-                        feature_actor_table.insert().values(feature_id=feature_id, actor_id=actor_id)
+                        feature_actor_table.insert().values(
+                            feature_id=feature_id,
+                            actor_id=actor_id,
+                        )
                     )
-
-            elif link_type == "flow_feature_relation" or link_type == "flow_feature":
+            elif link_type in ("flow_feature_relation", "flow_feature"):
                 if "feature" in str(source_id) or "flow" in str(target_id):
-                    # Swapped
                     flow_id = resolve_id(target_id, "flow")
                     feature_id = resolve_id(source_id, "feature")
                 else:
                     flow_id = resolve_id(source_id, "flow")
                     feature_id = resolve_id(target_id, "feature")
-
-                # Verify relationship does not already exist
                 check = await session.execute(
                     select(flow_feature_table).where(
                         flow_feature_table.c.flow_id == flow_id,
@@ -312,7 +447,10 @@ class GraphPatchEngine:
                 )
                 if not check.first():
                     await session.execute(
-                        flow_feature_table.insert().values(flow_id=flow_id, feature_id=feature_id)
+                        flow_feature_table.insert().values(
+                            flow_id=flow_id,
+                            feature_id=feature_id,
+                        )
                     )
 
     async def _delete_feature_recursive(self, feature_id: int, session) -> None:

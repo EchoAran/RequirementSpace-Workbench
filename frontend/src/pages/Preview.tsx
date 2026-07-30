@@ -26,8 +26,6 @@ import {
   buildProjectRoute,
   buildRolePages,
   buildStepDetail,
-  buildSystemProjection,
-  projectionPath,
 } from '@/core/selectors';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
@@ -577,8 +575,6 @@ export function Preview() {
   }, [activeRole, spaceToUse]);
 
   const unresolvedIssues = issues.filter((finding: any) => (finding.status || 'open') === 'open');
-  const system = useMemo(() => buildSystemProjection(spaceToUse as any), [spaceToUse]);
-  
   const rolePrototypePages = useMemo(() => {
     if (!prototype?.pages?.length || !activeRole) return [];
     return prototype.pages.filter((page) => String(page.roleId) === String(activeRole.id));

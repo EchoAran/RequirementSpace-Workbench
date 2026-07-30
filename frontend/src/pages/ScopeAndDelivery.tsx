@@ -5,17 +5,12 @@ import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { ImpactPreview, ImpactGroup } from '@/components/shared/ImpactPreview';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { workspaceApi } from '@/lib/api';
-import { Sparkles, Check, X, RefreshCw, CheckSquare } from 'lucide-react';
+import { Sparkles, RefreshCw, CheckSquare } from 'lucide-react';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
-import { getScopeStatusText } from '@/core/presentationLabels';
-import { 
-  useWorkspaceStore, 
-  selectScopeItems,
-} from '@/store/useWorkspaceStore';
+import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 
-import { buildProjectRoute, getStageIssues, groupScopeItems } from '@/core/selectors';
-import { findingTargetIds } from '@/core/findingPresentation';
+import { buildProjectRoute, groupScopeItems } from '@/core/selectors';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 
@@ -31,17 +26,14 @@ export function ScopeAndDelivery() {
   const navigate = useNavigate();
   const location = useLocation();
   const { 
-    selectedObject, highlightTarget, setHighlightTarget,
-    setSelectedObject, ir, updateScope, addFeature,
+    selectedObject, highlightTarget,
+    setSelectedObject, ir, updateScope,
     generateScope, confirmScope, discardDraft, regenerateScope,
     activeDraft, activeDraftType, isGenerating, isLoading,
-    setPendingManualAction, resetKano, runDiagnosis,
+    resetKano,
     confirmRepairDraft, discardRepairDraft, regenerateRepairDraft,
-    executeFindingIssueResolution, expandSlot, updateIssueAttributes, clearPerceptionSlot,
     activeChoiceGroup, isGeneratingChoices, choiceGroupGenerationProgress, acceptChoice, discardChoiceGroup
   } = useWorkspaceStore();
-  
-  const [scopeFeedback, setScopeFeedback] = useState('');
 
   // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
   useEffect(() => {
@@ -68,34 +60,6 @@ export function ScopeAndDelivery() {
   }, [location.search]);
 
 
-  const handleManualAction = (slot: any) => {
-    if (slot.kind === 'generative_perception_slot') {
-      void clearPerceptionSlot();
-      return;
-    }
-
-    const targetId = slot.targetId || slot.actions?.manual?.targetId;
-    const targetRoute = slot.actions?.manual?.targetRoute;
-    if (targetId) {
-      const targetKey = targetId.toString();
-      setHighlightTarget(targetKey);
-      const feature = ir?.features?.find((item: any) => item.featureId === targetId);
-      setSelectedObject(feature || null);
-    }
-    if (targetRoute && targetRoute !== '/scope') {
-      navigate(buildProjectRoute(ir?.projectId, targetRoute));
-    }
-  };
-
-  const handleAIAction = async (slot: any) => {
-    const kind = slot.kind;
-    if (kind === 'missing_scope_decision' || kind === 'missing_kano_analysis' || kind === 'kano_failed_retry') {
-      await generateScope();
-    }
-  };
-  
-  const scopeItems = useWorkspaceStore(selectScopeItems);
-  const scopeIssues = getStageIssues(ir, 'scope');
   const [impactGroups, setImpactGroups] = useState<ImpactGroup[]>([]);
   const [pendingMove, setPendingMove] = useState<{ itemId: string; targetKey: string } | null>(null);
   const [pendingMoveLabel, setPendingMoveLabel] = useState<string | null>(null);
@@ -211,24 +175,6 @@ export function ScopeAndDelivery() {
     return groups;
   };
 
-  const createScopeItem = async (columnKey: string) => {
-    const scopeStatus = columnKey;
-    const tempName = `${t('scope.manualFeaturePlaceholder')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    // Add feature node (default to '本期' containing empty scope)
-    await addFeature(tempName, t('scope.manualFeatureDesc'), null);
-    
-    // Find the feature by name in state and update its scope status if not 'current'
-    const space = useWorkspaceStore.getState().ir;
-    const created = space?.features.find(f => f.featureName === tempName);
-    if (created) {
-      if (scopeStatus !== 'current') {
-        await updateScope(created.featureId, { scopeStatus: scopeStatus as any });
-      }
-      setSelectedObject(buildScopeSelectionObject(created));
-    }
-  };
-
   const previewScopeMove = async (itemId: string, targetKey: string) => {
     if (!ir?.projectId) return;
     const sourceItem = [...inScope, ...deferred, ...excluded, ...undecided].find((item: any) => item.id === itemId);
@@ -267,113 +213,12 @@ export function ScopeAndDelivery() {
 
   const isWorking = isGenerating || isLoading;
 
-  const handleIssueClick = (issue: any) => {
-    setSelectedObject(issue);
-    const targetId = findingTargetIds(issue)[0];
-    if (targetId) {
-      setHighlightTarget(targetId);
-    }
-  };
-
-  const openIssueFlow = async (issue: any) => {
-    const slotId = await executeFindingIssueResolution(issue.findingId);
-    if (slotId) {
-      await expandSlot(slotId);
-    }
-  };
-
   return (
     <div className="flex-1 flex w-full relative">
       <div className="flex-1 p-6 pb-24 overflow-y-auto">
         <div className="max-w-[1200px] mx-auto space-y-8 animate-in fade-in">
           
           <StageGuidanceBanner stage="scope" />
-
-          {/* AI Scope Draft Preview Banner */}
-          {false && activeDraft && activeDraftType === 'scope' && (
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200/80 shadow-md animate-in slide-in-from-top-4 duration-500 space-y-4">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2 flex-1 mr-4">
-                  <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
-                    <Sparkles className="w-5 h-5 animate-pulse" />
-                  </span>
-                  <div className="flex-1 space-y-2">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900">{t('scope.board.kanoGeneratedTitle')}</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">{t('scope.board.kanoGeneratedDesc')}</p>
-                    </div>
-                    <div className="flex gap-2 items-center max-w-md">
-                      <input
-                        type="text"
-                        value={scopeFeedback}
-                        onChange={(e) => setScopeFeedback(e.target.value)}
-                        placeholder={t('scope.board.feedbackPlaceholder')}
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
-                        disabled={isWorking}
-                      />
-                      <button
-                        onClick={async () => {
-                          await regenerateScope(scopeFeedback || undefined);
-                          setScopeFeedback('');
-                        }}
-                        disabled={isWorking}
-                        className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3 h-3 text-indigo-500 ${isWorking ? 'animate-spin' : ''}`} />
-                        {t('scope.board.regenerateBtn')}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={confirmScope}
-                    disabled={isWorking}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    {t('onboarding.kbAdoptButton')}
-                  </button>
-                  <button
-                    onClick={discardDraft}
-                    disabled={isWorking}
-                    className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    {t('scope.modal.discard')}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
-                {activeDraft.scopes?.map((sc: any, idx: number) => {
-                  const scopeStatusText = getScopeStatusText(sc.scope_status);
-                  return (
-                  <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <h4 className="font-bold text-slate-800 text-xs">{sc.feature_name}</h4>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          sc.scope_status === 'current' || sc.scope_status === 'in_scope'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                            : sc.scope_status === 'postponed' || sc.scope_status === 'deferred'
-                            ? 'bg-sky-50 text-sky-700 border border-sky-100'
-                            : 'bg-rose-50 text-rose-700 border border-rose-100'
-                        }`}>{scopeStatusText}</span>
-                      </div>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-3">{sc.reason}</p>
-                    </div>
-                    {sc.positive_summary && (
-                      <div className="text-[10px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 font-medium">
-                {sc.positive_summary}
-                      </div>
-                    )}
-                  </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           <section className="bg-white rounded-3xl p-8 border border-slate-200 shadow-md">
              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
@@ -444,7 +289,6 @@ export function ScopeAndDelivery() {
                   columnKey="undecided"
                   title={t('scope.columns.undecided')}
                   items={undecided}
-                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
@@ -454,34 +298,28 @@ export function ScopeAndDelivery() {
                   columnKey="current"
                   title={t('scope.columns.current')}
                   items={inScope}
-                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
-                  onAddItem={createScopeItem}
                 />
                 <RangeKanbanColumn 
                   columnKey="postponed"
                   title={t('scope.columns.postponed')}
                   items={deferred}
-                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
-                  onAddItem={createScopeItem}
                 />
                 <RangeKanbanColumn 
                   columnKey="exclude"
                   title={t('scope.columns.exclude')}
                   items={excluded}
-                  moveTargets={SCOPE_COLUMNS.filter(c => c.key !== 'undecided').map((column) => ({ key: column.key, label: column.label, danger: column.key === 'exclude' }))}
                   highlightTarget={highlightTarget}
                   selectedTarget={selectedObject?.id?.toString()}
                   onItemClick={(item) => setSelectedObject(buildScopeSelectionObject(item))}
                   onMoveItem={previewScopeMove}
-                  onAddItem={createScopeItem}
                 />
              </div>
           </section>

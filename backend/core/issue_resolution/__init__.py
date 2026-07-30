@@ -16,16 +16,8 @@
   issue_capabilities → issue_resolution
 """
 
-from backend.core.issue_resolution.base_solver import BaseIssueSolver
 from backend.core.issue_resolution.registry import IssueSolverRegistry
-from backend.core.issue_resolution.generation_draft_solver import (
-    GenerationDraftIssueSolver,
-)
-from backend.core.issue_resolution.open_panel_solver import OpenPanelIssueSolver
 
 __all__ = [
-    "BaseIssueSolver",
-    "GenerationDraftIssueSolver",
     "IssueSolverRegistry",
-    "OpenPanelIssueSolver",
 ]

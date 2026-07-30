@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, CheckCircle2, AlertTriangle, MessageSquare, ShieldAlert } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { getScopeStatusText } from '@/core/presentationLabels';

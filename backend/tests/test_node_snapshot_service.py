@@ -1,8 +1,23 @@
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from backend.database.model import Base, ActorModel, ProjectModel
+from backend.database.model import (
+    Base,
+    ActorModel,
+    BusinessObjectAttributeModel,
+    BusinessObjectModel,
+    CollaborationTaskModel,
+    FeatureModel,
+    FeatureRelationModel,
+    FlowModel,
+    FlowStepModel,
+    ProjectModel,
+    ScenarioAcceptanceCriterionModel,
+    ScenarioModel,
+    ScopeModel,
+)
 from backend.api.modules.collaboration.application.node_snapshot_service import NodeSnapshotService
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -79,6 +94,262 @@ async def test_node_snapshot_semantic_hashing(test_db):
 
 
 @pytest.mark.asyncio
+async def test_build_snapshot_preserves_each_node_kind_shape():
+    service = NodeSnapshotService()
+    session = AsyncMock()
+    actor = ActorModel(
+        id=1,
+        project_id=1,
+        name="Actor",
+        description="Actor description",
+    )
+    parent = FeatureModel(
+        id=2,
+        project_id=1,
+        name="Parent",
+        description="Parent description",
+    )
+    feature = FeatureModel(
+        id=3,
+        project_id=1,
+        name="Feature",
+        description="Feature description",
+        actors=[actor],
+    )
+    feature.parent_relation = FeatureRelationModel(
+        parent_feature_id=parent.id,
+        child_feature_id=feature.id,
+        position=1,
+    )
+    scenario = ScenarioModel(
+        id=4,
+        project_id=1,
+        feature_id=feature.id,
+        actor_id=actor.id,
+        name="Scenario",
+        content="Given input",
+    )
+    criterion = ScenarioAcceptanceCriterionModel(
+        id=5,
+        scenario_id=scenario.id,
+        position=1,
+        content="Then output",
+    )
+    attribute = BusinessObjectAttributeModel(
+        id=6,
+        business_object_id=7,
+        name="Code",
+        description="Object code",
+        data_type="string",
+        example="A-1",
+    )
+    business_object = BusinessObjectModel(
+        id=7,
+        project_id=1,
+        name="Object",
+        description="Object description",
+        attributes=[attribute],
+    )
+    flow_step = FlowStepModel(
+        id=8,
+        flow_id=9,
+        position=1,
+        name="Step",
+        description="Step description",
+        step_type="task",
+        actors=[actor],
+        input_business_objects=[business_object],
+        output_business_objects=[business_object],
+    )
+    flow = FlowModel(
+        id=9,
+        project_id=1,
+        name="Flow",
+        description="Flow description",
+        steps=[flow_step],
+    )
+    scope = ScopeModel(
+        id=10,
+        feature_id=feature.id,
+        status="CURRENT",
+        positive_summary="Included",
+        negative_summary=None,
+        reason="Core",
+        kano_category="M",
+    )
+
+    snapshots = {
+        kind: await service.build_snapshot(session, kind, node)
+        for kind, node in (
+            ("actor", actor),
+            ("feature", feature),
+            ("scenario", scenario),
+            ("acceptance_criterion", criterion),
+            ("business_object", business_object),
+            ("flow", flow),
+            ("flow_step", flow_step),
+            ("scope", scope),
+            ("business_object_attribute", attribute),
+        )
+    }
+
+    assert snapshots == {
+        "actor": {
+            "name": "Actor",
+            "description": "Actor description",
+        },
+        "feature": {
+            "name": "Feature",
+            "description": "Feature description",
+            "parent_id": 2,
+            "actor_ids": [1],
+        },
+        "scenario": {
+            "name": "Scenario",
+            "content": "Given input",
+            "feature_id": 3,
+            "actor_id": 1,
+        },
+        "acceptance_criterion": {
+            "content": "Then output",
+            "position": 1,
+            "scenario_id": 4,
+        },
+        "business_object": {
+            "name": "Object",
+            "description": "Object description",
+            "attributes": [
+                {
+                    "name": "Code",
+                    "description": "Object code",
+                    "data_type": "string",
+                    "example": "A-1",
+                }
+            ],
+        },
+        "flow": {
+            "name": "Flow",
+            "description": "Flow description",
+            "steps": [
+                {
+                    "position": 1,
+                    "name": "Step",
+                    "description": "Step description",
+                    "step_type": "task",
+                }
+            ],
+        },
+        "flow_step": {
+            "name": "Step",
+            "description": "Step description",
+            "position": 1,
+            "step_type": "task",
+            "flow_id": 9,
+            "actor_ids": [1],
+            "input_business_object_ids": [7],
+            "output_business_object_ids": [7],
+        },
+        "scope": {
+            "feature_id": 3,
+            "status": "CURRENT",
+            "positive_summary": "Included",
+            "negative_summary": "",
+            "reason": "Core",
+            "kano_category": "M",
+        },
+        "business_object_attribute": {
+            "name": "Code",
+            "description": "Object code",
+            "data_type": "string",
+            "example": "A-1",
+        },
+    }
+    session.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_supersede_tasks_preserves_single_and_batch_behavior():
+    service = NodeSnapshotService()
+    service.get_snapshot_and_hash = AsyncMock(
+        return_value={"hash": "new-hash"}
+    )
+    unchanged_single_task = CollaborationTaskModel(
+        id=20,
+        project_id=1,
+        task_type="confirm_node",
+        target_type="actor",
+        target_id="1",
+        title="Unchanged",
+        status="open",
+        content_hash="new-hash",
+        assigned_to_user_id=2,
+        created_by_user_id=1,
+    )
+    stale_single_task = CollaborationTaskModel(
+        id=21,
+        project_id=1,
+        task_type="confirm_node",
+        target_type="actor",
+        target_id="1",
+        title="Stale",
+        status="open",
+        content_hash="old-hash",
+        assigned_to_user_id=2,
+        created_by_user_id=1,
+    )
+    stale_batch_task = CollaborationTaskModel(
+        id=22,
+        project_id=1,
+        task_type="confirm_nodes",
+        target_type="batch",
+        target_id="batch",
+        title="Batch",
+        status="open",
+        content_hash="batch-hash",
+        targets=[
+            {
+                "node_kind": "actor",
+                "node_id": 1,
+                "hash": "old-hash",
+            }
+        ],
+        assigned_to_user_id=2,
+        created_by_user_id=1,
+    )
+
+    def result_for(tasks):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = tasks
+        return result
+
+    session = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            result_for([unchanged_single_task, stale_single_task]),
+            result_for([stale_batch_task]),
+        ]
+    )
+    node = ActorModel(
+        id=1,
+        project_id=1,
+        name="Actor",
+        description="Updated",
+    )
+
+    await service.supersede_tasks_on_node_update(
+        session,
+        "ACTOR",
+        node,
+    )
+
+    assert unchanged_single_task.status == "open"
+    assert stale_single_task.status == "superseded"
+    assert stale_batch_task.status == "superseded"
+    assert session.execute.await_count == 2
+    assert session.add.call_count == 4
+
+
+@pytest.mark.asyncio
 async def test_node_optimistic_locking(test_db):
     service = NodeSnapshotService()
     from datetime import datetime, timedelta
@@ -119,4 +390,3 @@ async def test_node_optimistic_locking(test_db):
         assert exc_info.value.status_code == 409
         assert exc_info.value.detail["message"] == "node_content_changed"
         assert exc_info.value.detail["current_snapshot"]["name"] == "Locking Actor"
-

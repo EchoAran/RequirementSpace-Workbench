@@ -110,6 +110,136 @@ class PerceptionJobExecutor:
             if context_token is not None:
                 current_llm_context.reset(context_token)
 
+    @staticmethod
+    def _log_job_completed(job, start_time: float) -> None:
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            PERCEPTION_JOB_COMPLETED,
+            "Perception job completed",
+            project_id=job.project_id,
+            stage=job.stage,
+            target_type=job.target_type,
+            target_id=job.target_id,
+            perception_kind=job.perception_kind,
+            status=job.status,
+            duration_ms=int((time.perf_counter() - start_time) * 1000),
+        )
+
+    @staticmethod
+    async def _mark_job_stale(job, session, start_time: float) -> None:
+        job.status = PerceptionJobStatus.STALE.value
+        await session.commit()
+        PerceptionJobExecutor._log_job_completed(job, start_time)
+
+    async def _mark_job_empty(
+        self,
+        job,
+        session,
+        start_time: float,
+    ) -> None:
+        job.status = PerceptionJobStatus.DONE_EMPTY.value
+        job.result_slot_payload = None
+        await self._delete_slot_for_job(
+            project_id=job.project_id,
+            job_id=job.id,
+            session=session,
+        )
+        await session.commit()
+        self._log_job_completed(job, start_time)
+
+    @staticmethod
+    async def _write_perception_slot(
+        job,
+        result_kind: PerceptionKindType,
+        description: str,
+        session,
+    ) -> None:
+        from backend.database.model import ProjectModel, PerceptionSlotModel
+
+        result = await session.execute(
+            select(ProjectModel)
+            .where(ProjectModel.id == job.project_id)
+            .options(selectinload(ProjectModel.perception_slot))
+        )
+        project = result.scalar_one_or_none()
+        if not project:
+            return
+        if project.perception_slot:
+            await session.delete(project.perception_slot)
+        session.add(
+            PerceptionSlotModel(
+                id=job.id,
+                project_id=job.project_id,
+                perception_kind=result_kind.value,
+                description=description,
+            )
+        )
+
+    async def _mark_job_with_slot(
+        self,
+        job,
+        raw,
+        description: str,
+        session,
+        start_time: float,
+    ) -> None:
+        result_kind_code = self._resolve_result_perception_kind(
+            job.perception_kind,
+            raw,
+        )
+        result_kind = PerceptionKindType[result_kind_code]
+        job.status = PerceptionJobStatus.DONE_WITH_SLOT.value
+        job.result_slot_payload = {
+            "perception_slot_id": job.id,
+            "perception_kind": result_kind.value,
+            "perception_kind_code": result_kind_code,
+            "perception_description": description,
+        }
+        await self._write_perception_slot(
+            job,
+            result_kind,
+            description,
+            session,
+        )
+        await session.commit()
+        self._log_job_completed(job, start_time)
+
+    async def _handle_job_failure(
+        self,
+        job_id: int,
+        error: Exception,
+        session,
+        start_time: float,
+    ) -> None:
+        await session.rollback()
+        job = await self._load_job_with_retry(
+            job_id=job_id,
+            session=session,
+        )
+        if job is None:
+            return
+        job.status = PerceptionJobStatus.FAILED.value
+        job.error_message = f"{type(error).__name__}: {error}"
+        await session.commit()
+        log_event(
+            logger,
+            logging.ERROR,
+            "domain",
+            PERCEPTION_JOB_FAILED,
+            "Perception job failed",
+            project_id=job.project_id,
+            stage=job.stage,
+            target_type=job.target_type,
+            target_id=job.target_id,
+            perception_kind=job.perception_kind,
+            status=job.status,
+            error_type=type(error).__name__,
+            error_message=sanitize_message(str(error)),
+            duration_ms=int((time.perf_counter() - start_time) * 1000),
+        )
+
     async def _run_perception_job(self, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
             job = await self._load_job_with_retry(
@@ -146,21 +276,10 @@ class PerceptionJobExecutor:
                 )
 
                 if current_hash != job.context_hash:
-                    job.status = PerceptionJobStatus.STALE.value
-                    await session.commit()
-                    log_event(
-                        logger,
-                        logging.INFO,
-                        "domain",
-                        PERCEPTION_JOB_COMPLETED,
-                        "Perception job completed",
-                        project_id=job.project_id,
-                        stage=job.stage,
-                        target_type=job.target_type,
-                        target_id=job.target_id,
-                        perception_kind=job.perception_kind,
-                        status=job.status,
-                        duration_ms=int((time.perf_counter() - start_time) * 1000),
+                    await self._mark_job_stale(
+                        job,
+                        session,
+                        start_time,
                     )
                     return
 
@@ -173,105 +292,27 @@ class PerceptionJobExecutor:
                 description = self._normalize_perception_description(raw)
 
                 if description is None:
-                    job.status = PerceptionJobStatus.DONE_EMPTY.value
-                    job.result_slot_payload = None
-                    await self._delete_slot_for_job(
-                        project_id=job.project_id,
-                        job_id=job.id,
-                        session=session,
-                    )
-                    await session.commit()
-                    log_event(
-                        logger,
-                        logging.INFO,
-                        "domain",
-                        PERCEPTION_JOB_COMPLETED,
-                        "Perception job completed",
-                        project_id=job.project_id,
-                        stage=job.stage,
-                        target_type=job.target_type,
-                        target_id=job.target_id,
-                        perception_kind=job.perception_kind,
-                        status=job.status,
-                        duration_ms=int((time.perf_counter() - start_time) * 1000),
+                    await self._mark_job_empty(
+                        job,
+                        session,
+                        start_time,
                     )
                     return
 
-                result_kind_code = self._resolve_result_perception_kind(
-                    job.perception_kind,
+                await self._mark_job_with_slot(
+                    job,
                     raw,
-                )
-                result_kind = PerceptionKindType[result_kind_code]
-
-                job.status = PerceptionJobStatus.DONE_WITH_SLOT.value
-                job.result_slot_payload = {
-                    "perception_slot_id": job.id,
-                    "perception_kind": result_kind.value,
-                    "perception_kind_code": result_kind_code,
-                    "perception_description": description,
-                }
-
-                from backend.database.model import ProjectModel, PerceptionSlotModel
-                project_res = await session.execute(
-                    select(ProjectModel)
-                    .where(ProjectModel.id == job.project_id)
-                    .options(selectinload(ProjectModel.perception_slot))
-                )
-                project = project_res.scalar_one_or_none()
-                if project:
-                    if project.perception_slot:
-                        await session.delete(project.perception_slot)
-                    slot_model = PerceptionSlotModel(
-                        id=job.id,
-                        project_id=job.project_id,
-                        perception_kind=result_kind.value,
-                        description=description
-                    )
-                    session.add(slot_model)
-
-                await session.commit()
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "domain",
-                    PERCEPTION_JOB_COMPLETED,
-                    "Perception job completed",
-                    project_id=job.project_id,
-                    stage=job.stage,
-                    target_type=job.target_type,
-                    target_id=job.target_id,
-                    perception_kind=job.perception_kind,
-                    status=job.status,
-                    duration_ms=int((time.perf_counter() - start_time) * 1000),
+                    description,
+                    session,
+                    start_time,
                 )
 
             except Exception as error:
-                await session.rollback()
-                job = await self._load_job_with_retry(
-                    job_id=job_id,
-                    session=session,
-                )
-                if job is None:
-                    return
-
-                job.status = PerceptionJobStatus.FAILED.value
-                job.error_message = f"{type(error).__name__}: {error}"
-                await session.commit()
-                log_event(
-                    logger,
-                    logging.ERROR,
-                    "domain",
-                    PERCEPTION_JOB_FAILED,
-                    "Perception job failed",
-                    project_id=job.project_id,
-                    stage=job.stage,
-                    target_type=job.target_type,
-                    target_id=job.target_id,
-                    perception_kind=job.perception_kind,
-                    status=job.status,
-                    error_type=type(error).__name__,
-                    error_message=sanitize_message(str(error)),
-                    duration_ms=int((time.perf_counter() - start_time) * 1000),
+                await self._handle_job_failure(
+                    job_id,
+                    error,
+                    session,
+                    start_time,
                 )
 
     @staticmethod

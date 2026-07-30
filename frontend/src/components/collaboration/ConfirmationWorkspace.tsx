@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
-  CheckCircle2, 
   AlertCircle, 
   User, 
   Inbox, 
@@ -16,8 +15,7 @@ import {
   ChevronDown,
   Calendar,
   MessageSquare,
-  Search,
-  Check
+  Search
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -53,8 +51,6 @@ export function ConfirmationWorkspace() {
   const loadProjectTasks = useWorkspaceStore((state) => state.loadProjectTasks);
   const loadConfirmationSummary = useWorkspaceStore((state) => state.loadConfirmationSummary);
   const createBatchConfirmTask = useWorkspaceStore((state) => state.createBatchConfirmTask);
-  const cancelTaskAction = useWorkspaceStore((state) => state.cancelTask);
-
   // Component local states
   const [activeTab, setActiveTab] = useState<'assumptions' | 'tasks'>('assumptions');
   const [taskFilter, setTaskFilter] = useState<'all' | 'assigned_to_me' | 'created_by_me' | 'rejected'>('all');

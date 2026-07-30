@@ -4,7 +4,7 @@ import zhCN from './locales/zh-CN.json';
 import enUS from './locales/en-US.json';
 
 export const DEFAULT_UI_LOCALE = 'zh-CN' as const;
-export const UI_LOCALES = ['zh-CN', 'en-US'] as const;
+const UI_LOCALES = ['zh-CN', 'en-US'] as const;
 export type UiLocale = typeof UI_LOCALES[number];
 
 export function normalizeUiLocale(value: unknown): UiLocale {

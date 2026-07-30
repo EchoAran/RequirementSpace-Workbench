@@ -54,7 +54,18 @@ class ProjectInterviewService:
             response_format={"type": "json_object"},
             protected_inputs=collect_protected_texts(messages),
         )
+        return self._parse_interview_response(
+            response,
+            start_time,
+            len(messages),
+        )
 
+    @staticmethod
+    def _parse_interview_response(
+        response: str | None,
+        start_time: float,
+        message_count: int,
+    ) -> dict:
         if not response:
             log_event(
                 logger,
@@ -64,7 +75,7 @@ class ProjectInterviewService:
                 "Project interview completion failed",
                 error_type="empty_llm_response",
                 duration_ms=int((time.perf_counter() - start_time) * 1000),
-                message_count=len(messages),
+                message_count=message_count,
             )
             return {
                 "reply": localized_message("project_interview_busy"),
@@ -84,7 +95,7 @@ class ProjectInterviewService:
                 error_type="invalid_json_response",
                 response_length=len(response),
                 duration_ms=int((time.perf_counter() - start_time) * 1000),
-                message_count=len(messages),
+                message_count=message_count,
             )
             return {
                 "reply": response or localized_message("project_interview_continue"),
@@ -100,7 +111,7 @@ class ProjectInterviewService:
             PROJECT_INTERVIEW_MESSAGE_PROCESSED,
             "Project interview message processed",
             duration_ms=int((time.perf_counter() - start_time) * 1000),
-            message_count=len(messages),
+            message_count=message_count,
             is_ready=is_ready,
         )
         return {

@@ -7,7 +7,7 @@ from backend.core.generators.features_generator import (
     FeaturesGenerator,
     FeaturesGeneratorInput,
 )
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.schemas import ActorNode
 
 
@@ -308,109 +308,133 @@ class FeatureGenerationService:
 
         return actor_ids
 
+    @staticmethod
+    async def _load_project_for_feature_persistence(
+        session,
+        project_id: int,
+    ):
+        from backend.database.model import FeatureModel, ProjectModel
+
+        result = await session.execute(
+            select(ProjectModel).where(ProjectModel.id == project_id)
+        )
+        project = result.scalar_one_or_none()
+        if project is None:
+            raise ValueError("project_not_found")
+        existing_result = await session.execute(
+            select(FeatureModel.id).where(
+                FeatureModel.project_id == project_id
+            )
+        )
+        if existing_result.first() is not None:
+            raise ValueError("features_already_exist")
+        return project
+
+    @staticmethod
+    async def _create_feature_models(
+        session,
+        project_id: int,
+        features: list[dict],
+    ) -> dict:
+        from backend.database.model import FeatureModel
+
+        models_by_number = {}
+        for feature in features:
+            model = FeatureModel(
+                project_id=project_id,
+                name=feature["feature_name"],
+                description=feature["feature_description"],
+                confirmation_status="ai_assumption",
+            )
+            session.add(model)
+            models_by_number[feature["feature_number"]] = model
+        await session.flush()
+        return models_by_number
+
+    @staticmethod
+    async def _write_feature_actor_links(
+        session,
+        features: list[dict],
+        models_by_number: dict,
+    ) -> None:
+        from backend.database.model import feature_actor_table
+
+        rows = [
+            {
+                "feature_id": models_by_number[
+                    feature["feature_number"]
+                ].id,
+                "actor_id": actor_id,
+            }
+            for feature in features
+            for actor_id in feature.get("actor_ids", [])
+        ]
+        if rows:
+            await session.execute(insert(feature_actor_table), rows)
+
+    def _update_project_from_root(
+        self,
+        project,
+        features: list[dict],
+    ) -> None:
+        root = self._find_root_feature(features)
+        if not project.name.strip():
+            project.name = root["feature_name"]
+        if not project.description.strip():
+            project.description = root["feature_description"]
+
+    def _add_feature_relations(
+        self,
+        session,
+        features: list[dict],
+        models_by_number: dict,
+    ) -> None:
+        from backend.database.model import FeatureRelationModel
+
+        for feature in features:
+            feature_number = feature["feature_number"]
+            parent_number = self._get_parent_feature_number(feature_number)
+            if parent_number is None:
+                continue
+            session.add(
+                FeatureRelationModel(
+                    parent_feature_id=models_by_number[parent_number].id,
+                    child_feature_id=models_by_number[feature_number].id,
+                    position=self._get_feature_position(feature_number),
+                )
+            )
+
     async def _persist_feature_generation_draft(
         self,
         draft: dict,
         session,
     ) -> dict:
-        from backend.database.model import (
-            FeatureModel,
-            FeatureRelationModel,
-            ProjectModel,
-            feature_actor_table,
-        )
-
         project_id = draft["project_id"]
-
-        project_result = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
+        features = draft["features"]
+        project = await self._load_project_for_feature_persistence(
+            session,
+            project_id,
         )
-        project = project_result.scalar_one_or_none()
-
-        if project is None:
-            raise ValueError("project_not_found")
-
-        existing_feature_result = await session.execute(
-            select(FeatureModel.id).where(
-                FeatureModel.project_id == project_id,
-            )
+        models_by_number = await self._create_feature_models(
+            session,
+            project_id,
+            features,
         )
-
-        if existing_feature_result.first() is not None:
-            raise ValueError("features_already_exist")
-
-        feature_number_to_model = {}
-
-        for feature in draft["features"]:
-            model = FeatureModel(
-                project_id=project_id,
-                name=feature["feature_name"],
-                description=feature["feature_description"],
-                confirmation_status='ai_assumption',
-            )
-
-            session.add(model)
-            feature_number_to_model[feature["feature_number"]] = model
-
+        await self._write_feature_actor_links(
+            session,
+            features,
+            models_by_number,
+        )
+        self._update_project_from_root(project, features)
+        self._add_feature_relations(
+            session,
+            features,
+            models_by_number,
+        )
         await session.flush()
-
-        feature_actor_rows = []
-
-        for feature in draft["features"]:
-            feature_model = feature_number_to_model[
-                feature["feature_number"]
-            ]
-
-            for actor_id in feature.get("actor_ids", []):
-                feature_actor_rows.append(
-                    {
-                        "feature_id": feature_model.id,
-                        "actor_id": actor_id,
-                    }
-                )
-
-        if feature_actor_rows:
-            await session.execute(
-                insert(feature_actor_table),
-                feature_actor_rows,
-            )
-
-        root_feature = self._find_root_feature(draft["features"])
-
-        if not project.name.strip():
-            project.name = root_feature["feature_name"]
-
-        if not project.description.strip():
-            project.description = root_feature["feature_description"]
-
-        for feature in draft["features"]:
-            feature_number = feature["feature_number"]
-
-            parent_number = self._get_parent_feature_number(
-                feature_number
-            )
-
-            if parent_number is None:
-                continue
-
-            parent_model = feature_number_to_model[parent_number]
-            child_model = feature_number_to_model[feature_number]
-
-            relation = FeatureRelationModel(
-                parent_feature_id=parent_model.id,
-                child_feature_id=child_model.id,
-                position=self._get_feature_position(feature_number),
-            )
-
-            session.add(relation)
-
-        await session.flush()
-
         return {
             "project_id": project_id,
-            "feature_count": len(draft["features"]),
+            "feature_count": len(features),
             "message": "features_created",
         }
 

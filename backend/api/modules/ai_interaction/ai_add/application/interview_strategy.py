@@ -124,7 +124,7 @@ class BaseInterviewStrategy(ABC):
                 # Validate and parse known_facts / missing_facts
                 known_facts = parsed.get("known_facts", [])
                 missing_facts = parsed.get("missing_facts", [])
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to parse LLM interview response")
                 # Fallback in case of parse error: use the raw response as message
                 assistant_message = response

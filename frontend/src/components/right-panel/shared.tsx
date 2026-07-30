@@ -3,7 +3,6 @@ import React from 'react';
 import {
   GraphPatch,
   ImpactPreview,
-  LinkType,
   RequirementLink,
   RequirementSpaceIR,
 } from '@/core/schema';

@@ -7,8 +7,10 @@ from backend.core.issue_resolution.generation_draft_solver import (
 from backend.core.issue_resolution.open_panel_solver import (
     OpenPanelIssueSolver,
 )
-from backend.core.issue_capabilities import KNOWN_ISSUE_CODES
+from backend.core.issue_capabilities import KNOWN_ISSUE_CODES as KNOWN_ISSUE_CODES
 from backend.schemas import IssueResolution, IssueTarget
+
+__all__ = ["IssueSolverRegistry", "KNOWN_ISSUE_CODES"]
 
 
 class IssueSolverRegistry:

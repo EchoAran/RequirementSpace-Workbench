@@ -1,7 +1,7 @@
 import { FileText, Database, User, Activity, Layout } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ObjectType = 'goal' | 'actor' | 'flow' | 'data' | 'page' | 'task';
+type ObjectType = 'goal' | 'actor' | 'flow' | 'data' | 'page' | 'task';
 
 interface ObjectLinkChipsProps {
   objects: { id: string; name: string; type: ObjectType }[];

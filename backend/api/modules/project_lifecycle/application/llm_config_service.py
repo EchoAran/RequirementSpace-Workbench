@@ -1,7 +1,5 @@
-import time
 import httpx
 import logging
-from urllib.parse import urlparse
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -172,15 +170,10 @@ class ProjectLLMConfigService:
             "temperature": 0.0,
         }
         url = f"{api_url}/v1/chat/completions"
-        host = urlparse(api_url).netloc
-
-        start_time = time.time()
         try:
             async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
                 response = await client.post(url, json=payload, headers=headers)
             status_code = response.status_code
-            duration = time.time() - start_time
-
             if status_code != 200:
                 return ProjectLLMConfigTestResponse(
                     success=False,
@@ -204,9 +197,7 @@ class ProjectLLMConfigService:
                 error_type="llm_config_test_failed",
                 error_detail="Request timed out",
             )
-        except Exception as exc:
-            from backend.api.modules.auth_account.public import sanitize_secrets
-            err_msg = sanitize_secrets(str(exc), api_key)
+        except Exception:
             return ProjectLLMConfigTestResponse(
                 success=False,
                 error_type="llm_config_test_failed",

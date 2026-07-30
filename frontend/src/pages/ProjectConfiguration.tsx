@@ -11,7 +11,6 @@ import {
 } from '@/core/generationStrategyPresentation';
 import { 
   Database, 
-  Cpu, 
   Sliders, 
   Globe, 
   Key, 
@@ -63,7 +62,6 @@ export function ProjectConfiguration() {
     retryProjectDocument,
     toggleDocumentAI,
     projectConfiguration,
-    isLoadingProjectConfiguration,
     isSavingGenerationStrategies,
     fetchProjectConfiguration,
     updateProjectGenerationStrategies,

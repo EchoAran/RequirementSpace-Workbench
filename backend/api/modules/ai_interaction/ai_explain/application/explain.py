@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import logging
 import time
-from sqlalchemy import select
-
 from backend.api.modules.ai_interaction.ai_explain.application.context import (
     NODE_LOADERS,
     _load_projection_context,
@@ -49,40 +47,12 @@ class AIExplainService:
         if project is None:
             raise ValueError("project_not_found")
 
-        scope_kind = scope.get("kind", "")
-        context_text = ""
-        scope_label = ""
-        objects_loaded: list[str] = []
-
         from backend.core.prompt_resolver import resolve_prompt, get_content_locale
         locale = get_content_locale()
-
-        if scope_kind == "node":
-            target_type = scope.get("target_type", "")
-            target_id = scope.get("target_id")
-            if not target_type or not target_id:
-                raise ValueError("invalid_node_scope")
-            loader = NODE_LOADERS.get(target_type)
-            if loader is None:
-                raise ValueError(f"unsupported_target_type: {target_type}")
-            context_text, objects_loaded = await loader(project_id, target_id, db_session)
-            scope_label = await self._get_node_label(target_type, target_id, db_session)
-
-        elif scope_kind == "projection":
-            stage = scope.get("stage", "what")
-            context_text, objects_loaded = await _load_projection_context(project_id, stage, db_session)
-            scope_label = localized_message("ai_explain_stage", stage=stage)
-
-        elif scope_kind == "workspace":
-            context_text, objects_loaded = await _load_workspace_context(project_id, db_session)
-            scope_label = localized_message("ai_explain_workspace")
-
-        else:
-            raise ValueError(f"unsupported_scope_kind: {scope_kind}")
-
+        scope_kind, context_text, scope_label, objects_loaded = (
+            await self._load_scope_context(project_id, scope, db_session)
+        )
         context_text = localize_ai_explain_context(context_text, locale)
-
-        # Build system prompt
         raw_prompt = resolve_prompt("explain", locale)
         default_reqs = localized_message("ai_explain_no_requirements")
         system_prompt = raw_prompt.format(
@@ -91,10 +61,95 @@ class AIExplainService:
             scope_label=scope_label,
             context_text=context_text
         )
+        answer = await self._call_explain_llm(
+            project,
+            scope,
+            question,
+            system_prompt=system_prompt,
+            context_text=context_text,
+            project_id=project_id,
+            started=start_time,
+        )
 
+        log_event(
+            logger,
+            logging.INFO,
+            "domain",
+            AI_EXPLAIN_COMPLETED,
+            "AI explain completed",
+            project_id=project_id,
+            target_type=scope.get("target_type"),
+            target_id=scope.get("target_id"),
+            duration_ms=int((time.perf_counter() - start_time) * 1000),
+            scope_kind=scope_kind,
+            object_count=len(objects_loaded),
+        )
+
+        return {
+            "answer": answer or "抱歉，我暂时无法回答这个问题。",
+            "context_summary": {
+                "scope_label": scope_label,
+                "objects_loaded": objects_loaded,
+            },
+        }
+
+    async def _load_scope_context(
+        self,
+        project_id: int,
+        scope: dict,
+        db_session,
+    ) -> tuple[str, str, str, list[str]]:
+        scope_kind = scope.get("kind", "")
+        if scope_kind == "node":
+            target_type = scope.get("target_type", "")
+            target_id = scope.get("target_id")
+            if not target_type or not target_id:
+                raise ValueError("invalid_node_scope")
+            loader = NODE_LOADERS.get(target_type)
+            if loader is None:
+                raise ValueError(f"unsupported_target_type: {target_type}")
+            context_text, objects_loaded = await loader(
+                project_id,
+                target_id,
+                db_session,
+            )
+            scope_label = await self._get_node_label(
+                target_type,
+                target_id,
+                db_session,
+            )
+        elif scope_kind == "projection":
+            stage = scope.get("stage", "what")
+            context_text, objects_loaded = await _load_projection_context(
+                project_id,
+                stage,
+                db_session,
+            )
+            scope_label = localized_message("ai_explain_stage", stage=stage)
+        elif scope_kind == "workspace":
+            context_text, objects_loaded = await _load_workspace_context(
+                project_id,
+                db_session,
+            )
+            scope_label = localized_message("ai_explain_workspace")
+        else:
+            raise ValueError(f"unsupported_scope_kind: {scope_kind}")
+        return scope_kind, context_text, scope_label, objects_loaded
+
+    async def _call_explain_llm(
+        self,
+        project,
+        scope: dict,
+        question: str,
+        *,
+        system_prompt: str,
+        context_text: str,
+        project_id: int,
+        started: float,
+    ):
         llm = self._get_llm_handler()
         try:
-            answer = await llm.call_chat(
+            return await llm.call_chat(
                 [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": question},
@@ -118,31 +173,9 @@ class AIExplainService:
                 target_id=scope.get("target_id"),
                 error_type=type(exc).__name__,
                 error_message=sanitize_message(str(exc)),
-                duration_ms=int((time.perf_counter() - start_time) * 1000),
+                duration_ms=int((time.perf_counter() - started) * 1000),
             )
             raise
-
-        log_event(
-            logger,
-            logging.INFO,
-            "domain",
-            AI_EXPLAIN_COMPLETED,
-            "AI explain completed",
-            project_id=project_id,
-            target_type=scope.get("target_type"),
-            target_id=scope.get("target_id"),
-            duration_ms=int((time.perf_counter() - start_time) * 1000),
-            scope_kind=scope_kind,
-            object_count=len(objects_loaded),
-        )
-
-        return {
-            "answer": answer or "抱歉，我暂时无法回答这个问题。",
-            "context_summary": {
-                "scope_label": scope_label,
-                "objects_loaded": objects_loaded,
-            },
-        }
 
     # ------------------------------------------------------------------
     # Internal helpers

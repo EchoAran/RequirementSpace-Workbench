@@ -21,9 +21,8 @@ from backend.database.model import (
     BusinessObjectAttributeModel,
     FlowModel,
     FlowStepModel,
-    AuditLogModel,
 )
-from backend.api.modules.project_lifecycle.ports import ConfirmationStatusEnum
+from backend.api.modules.project_lifecycle.public import ConfirmationStatusEnum
 from backend.api.dependencies.actor_context import get_actor_context
 from backend.core.actor_context import ActorContext
 from backend.services.audit_service import AuditService
@@ -198,7 +197,7 @@ async def _write_audit_log(
                 session=session,
                 project_id=project_id,
                 action_type="task_superseded",
-                summary=f"任务已冲销: 节点状态直接更新为 confirmed (直接确认)",
+                summary="任务已冲销: 节点状态直接更新为 confirmed (直接确认)",
                 target_type="task",
                 target_id=task.id,
                 task_id=task.id,

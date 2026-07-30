@@ -10,7 +10,7 @@ import { NodePanel } from '../right-panel/NodePanel';
 import { PanelShell, Section, TextField, SelectField, ActionRow, ActionButton } from '../right-panel/shared';
 import { SlotPanel } from '../right-panel/SlotPanel';
 import { StatusBadge } from './StatusBadge';
-import { ChevronLeft, ChevronRight, UserCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserCheck, AlertTriangle } from 'lucide-react';
 import { normalizeScopeStatus } from '@/core/selectors';
 import { GherkinVisualRenderer, GherkinVisualEditor } from './GherkinVisualizer';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -401,7 +401,7 @@ function ConfirmationStatusSection({
 }
 
 // 0. Dedicated Project Panel
-function ProjectObjectPanel({ selectedObject }: { selectedObject: any }) {
+function ProjectObjectPanel() {
   const { t } = useTranslation();
   const ir = useWorkspaceStore((state) => state.ir);
   const updateProject = useWorkspaceStore((state) => state.updateProject);
@@ -533,13 +533,6 @@ function FeatureObjectPanel({ selectedObject }: { selectedObject: any }) {
     if (!ir || !ir.features) return [];
     return ir.features.filter((f: any) => f.parentId === selectedObject.featureId);
   }, [ir, selectedObject.featureId]);
-
-  // Find associated actors
-  const associatedActors = useMemo(() => {
-    if (!ir || !ir.actors) return [];
-    const actorIds = selectedObject.actorIds || [];
-    return actorIds.map((aid: number) => ir.actors.find((a: any) => a.actorId === aid)).filter(Boolean);
-  }, [ir, selectedObject.actorIds]);
 
   return (
     <PanelShell title={featName} subtitle={t('rightPanel.coreFeatureNode')}>
@@ -1345,7 +1338,7 @@ export function RightObjectPanel() {
     );
 
     if (kind === 'project') {
-      return <ProjectObjectPanel selectedObject={selectedObject} />;
+      return <ProjectObjectPanel />;
     }
     if (kind === 'actor') {
       return <ActorObjectPanel selectedObject={selectedObject} />;

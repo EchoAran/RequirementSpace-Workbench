@@ -110,7 +110,7 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             if bo.get("id"):
                 bo_model = await session.get(BusinessObjectModel, bo["id"])
                 if not bo_model:
-                    return True, f"业务对象已被删除，此候选可能不适用"
+                    return True, "业务对象已被删除，此候选可能不适用"
         return False, None
 
     @staticmethod

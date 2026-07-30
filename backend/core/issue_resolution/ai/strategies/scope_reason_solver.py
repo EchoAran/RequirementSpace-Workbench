@@ -5,7 +5,7 @@ Generates a reason text for a scope decision that has no rationale.
 
 from sqlalchemy import select
 
-from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult
+from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver
 from backend.core.issue_resolution.ai.prompts.scope_reason_repair_prompt import (
     SCOPE_REASON_SYSTEM_PROMPT,
     SCOPE_REASON_USER_PROMPT_TEMPLATE,
@@ -50,7 +50,6 @@ class ScopeReasonSolver(BaseIssueAISolver):
         # Load scope (ScopeModel has no project_id — join through FeatureModel)
         scope = None
         if target_id:
-            from backend.database.model import FeatureModel
             res = await session.execute(
                 select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
                 .where(ScopeModel.id == target_id, FeatureModel.project_id == project_id)

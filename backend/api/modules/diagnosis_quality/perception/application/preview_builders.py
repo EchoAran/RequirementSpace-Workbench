@@ -558,6 +558,74 @@ class PerceptionPreviewBuilder:
         }
 
     @staticmethod
+    def _build_flow_step_preview(
+        step: dict,
+        actor_names: dict[int, str],
+        business_object_names: dict[int, str],
+        step_names: dict[str, str],
+    ) -> dict:
+        return {
+            "step_number": step["step_number"],
+            "step_name": step["step_name"],
+            "step_description": step["step_description"],
+            "step_type": step["step_type"],
+            "actor_names": [
+                actor_names[actor_id]
+                for actor_id in step.get("actor_ids", [])
+            ],
+            "input_business_object_names": [
+                business_object_names[business_object_id]
+                for business_object_id in step.get(
+                    "input_business_object_ids",
+                    [],
+                )
+            ],
+            "output_business_object_names": [
+                business_object_names[business_object_id]
+                for business_object_id in step.get(
+                    "output_business_object_ids",
+                    [],
+                )
+            ],
+            "next_step_names": [
+                step_names[step_number]
+                for step_number in step.get("next_steps", [])
+            ],
+            "next_steps": step.get("next_steps", []),
+        }
+
+    @staticmethod
+    def _build_flow_preview(
+        flow: dict,
+        actor_names: dict[int, str],
+        feature_names: dict[int, str],
+        business_object_names: dict[int, str],
+    ) -> dict:
+        steps = flow.get("flow_steps", [])
+        step_names = {
+            step["step_number"]: step["step_name"]
+            for step in steps
+        }
+        return {
+            "flow_name": flow["flow_name"],
+            "flow_description": flow["flow_description"],
+            "feature_ids": flow.get("feature_ids", []),
+            "feature_names": [
+                feature_names[feature_id]
+                for feature_id in flow.get("feature_ids", [])
+            ],
+            "flow_steps": [
+                PerceptionPreviewBuilder._build_flow_step_preview(
+                    step,
+                    actor_names,
+                    business_object_names,
+                    step_names,
+                )
+                for step in steps
+            ],
+        }
+
+    @staticmethod
     def _build_flow_response_payload(
         draft_payload: dict,
         context: IssueProjectContext,
@@ -581,60 +649,15 @@ class PerceptionPreviewBuilder:
                 "business_object_name"
             ]
 
-        flows_preview = []
-
-        for flow in draft_payload["flows"]:
-            step_name_map = {
-                step["step_number"]: step["step_name"]
-                for step in flow.get("flow_steps", [])
-            }
-            flow_steps_preview = []
-
-            for step in flow.get("flow_steps", []):
-                flow_steps_preview.append(
-                    {
-                        "step_number": step["step_number"],
-                        "step_name": step["step_name"],
-                        "step_description": step["step_description"],
-                        "step_type": step["step_type"],
-                        "actor_names": [
-                            actor_name_map[actor_id]
-                            for actor_id in step.get("actor_ids", [])
-                        ],
-                        "input_business_object_names": [
-                            business_object_name_map[business_object_id]
-                            for business_object_id in step.get(
-                                "input_business_object_ids",
-                                [],
-                            )
-                        ],
-                        "output_business_object_names": [
-                            business_object_name_map[business_object_id]
-                            for business_object_id in step.get(
-                                "output_business_object_ids",
-                                [],
-                            )
-                        ],
-                        "next_step_names": [
-                            step_name_map[step_number]
-                            for step_number in step.get("next_steps", [])
-                        ],
-                        "next_steps": step.get("next_steps", []),
-                    }
-                )
-
-            flows_preview.append(
-                {
-                    "flow_name": flow["flow_name"],
-                    "flow_description": flow["flow_description"],
-                    "feature_ids": flow.get("feature_ids", []),
-                    "feature_names": [
-                        feature_name_map[feature_id]
-                        for feature_id in flow.get("feature_ids", [])
-                    ],
-                    "flow_steps": flow_steps_preview,
-                }
+        flows_preview = [
+            PerceptionPreviewBuilder._build_flow_preview(
+                flow,
+                actor_name_map,
+                feature_name_map,
+                business_object_name_map,
             )
+            for flow in draft_payload["flows"]
+        ]
 
         return {
             **PerceptionPreviewBuilder._build_response_payload(

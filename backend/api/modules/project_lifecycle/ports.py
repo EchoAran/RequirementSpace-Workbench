@@ -1,8 +1,4 @@
 from abc import ABC, abstractmethod
-from backend.api.base_schema import CamelModel
-
-from backend.api.modules.project_lifecycle.schemas.project import ConfirmationStatusEnum
-
 
 class ActorFeaturePreviewGeneratorPort(ABC):
     """Port defining the boundary for generating actor and feature tree previews.
@@ -50,4 +46,3 @@ def get_project_service():
 def set_project_service(service) -> None:
     global _project_service
     _project_service = service
-

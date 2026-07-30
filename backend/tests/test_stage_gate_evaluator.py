@@ -20,6 +20,7 @@ from backend.database.model import (
     ProjectModel,
     ScenarioAcceptanceCriterionModel,
     ScenarioModel,
+    ScopeModel,
     feature_actor_table,
 )
 
@@ -174,3 +175,63 @@ async def test_stage_gate_evaluator_requires_flow_steps_for_how(gate_test_sessio
 
     gates = await evaluator.evaluate_gates(project.id, gate_test_session)
     assert gates["how"] is True
+
+
+@pytest.mark.asyncio
+async def test_stage_gate_evaluator_preserves_missing_project_result(
+    gate_test_session,
+):
+    evaluator = _evaluator_without_detector_findings()
+
+    gates = await evaluator.evaluate_gates(999999, gate_test_session)
+
+    assert gates == {"what": False, "how": False, "scope": False}
+    evaluator.what_detector.detect.assert_not_awaited()
+    evaluator.how_detector.detect.assert_not_awaited()
+    evaluator.scope_detector.detect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stage_gate_evaluator_preserves_full_gate_progression(
+    gate_test_session,
+):
+    project = await _create_project(gate_test_session, "Scope Gate")
+    _, feature = await _complete_what(gate_test_session, project.id)
+    flow = FlowModel(
+        project_id=project.id,
+        name="Inbound registration flow",
+        description="Register inbound stock",
+    )
+    gate_test_session.add(flow)
+    await gate_test_session.flush()
+    gate_test_session.add(
+        FlowStepModel(
+            flow_id=flow.id,
+            position=1,
+            name="Record inbound stock",
+            description="Clerk records the arrived stock",
+            step_type="task",
+        )
+    )
+    project.kano_status = "generated"
+    await gate_test_session.flush()
+    evaluator = _evaluator_without_detector_findings()
+
+    assert await evaluator.evaluate_gates(
+        project.id,
+        gate_test_session,
+    ) == {"what": True, "how": True, "scope": False}
+
+    gate_test_session.add(
+        ScopeModel(
+            feature_id=feature.id,
+            status="CURRENT",
+            reason="Core capability",
+        )
+    )
+    await gate_test_session.flush()
+
+    assert await evaluator.evaluate_gates(
+        project.id,
+        gate_test_session,
+    ) == {"what": True, "how": True, "scope": True}

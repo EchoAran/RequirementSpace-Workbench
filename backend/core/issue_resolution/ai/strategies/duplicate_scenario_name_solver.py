@@ -6,7 +6,7 @@ Recommends unique names for scenarios with duplicate names under the same featur
 import json
 from sqlalchemy import select
 
-from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult, RepairProposal
+from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver
 from backend.core.issue_resolution.ai.prompts.duplicate_scenario_name_repair_prompt import (
     DUPLICATE_SCENARIO_NAME_SYSTEM_PROMPT,
     DUPLICATE_SCENARIO_NAME_USER_PROMPT_TEMPLATE,

@@ -2,8 +2,6 @@ import asyncio
 import os
 from uuid import uuid4
 
-from sqlalchemy import select
-
 from backend.api.modules.requirements_core.scenario.application.acceptance_criteria_generation_service import (
     AcceptanceCriteriaGenerationService,
 )
@@ -11,8 +9,9 @@ from backend.core.generators.scenarios_generator import (
     ScenariosGenerator,
     ScenariosGeneratorInput,
 )
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
+from .scenario_generation_context import load_scenario_generation_context
 
 
 class ScenarioGenerationService:
@@ -303,186 +302,12 @@ class ScenarioGenerationService:
         generation_mode: str,
         session,
     ):
-        from backend.database.model import (
-            ActorModel,
-            FeatureModel,
-            FeatureRelationModel,
-            ProjectModel,
-            feature_actor_table,
-        )
-
-        project_result = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
-        )
-        project = project_result.scalar_one_or_none()
-
-        if project is None:
-            raise ValueError("project_not_found")
-
-        actor_result = await session.execute(
-            select(ActorModel).where(
-                ActorModel.project_id == project_id,
-            )
-        )
-        actor_models = actor_result.scalars().all()
-
-        if not actor_models:
-            raise ValueError("empty_actors")
-
-        feature_result = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id,
-            )
-        )
-        feature_models = feature_result.scalars().all()
-
-        if not feature_models:
-            raise ValueError("empty_features")
-
-        feature_id_set = {
-            feature.id
-            for feature in feature_models
-        }
-
-        relation_result = await session.execute(
-            select(FeatureRelationModel).where(
-                FeatureRelationModel.parent_feature_id.in_(
-                    feature_id_set
-                )
-            )
-        )
-        relation_models = relation_result.scalars().all()
-
-        feature_actor_result = await session.execute(
-            select(
-                feature_actor_table.c.feature_id,
-                feature_actor_table.c.actor_id,
-            ).where(
-                feature_actor_table.c.feature_id.in_(
-                    feature_id_set
-                )
-            )
-        )
-        feature_actor_rows = feature_actor_result.all()
-
-        children_map: dict[int, list[int]] = {}
-        parent_map: dict[int, int] = {}
-
-        for relation in relation_models:
-            children_map.setdefault(
-                relation.parent_feature_id,
-                [],
-            ).append(relation.child_feature_id)
-
-            parent_map[
-                relation.child_feature_id
-            ] = relation.parent_feature_id
-
-        actor_ids_map: dict[int, list[int]] = {}
-
-        for current_feature_id, current_actor_id in feature_actor_rows:
-            actor_ids_map.setdefault(
-                current_feature_id,
-                [],
-            ).append(current_actor_id)
-
-        actor_node_map = {
-            actor.id: ActorNode(
-                actorId=actor.id,
-                actorName=actor.name,
-                actorDescription=actor.description,
-            )
-            for actor in actor_models
-        }
-
-        feature_node_map = {
-            feature.id: FeatureNode(
-                featureId=feature.id,
-                featureName=feature.name,
-                featureDescription=feature.description,
-                actorIds=actor_ids_map.get(feature.id, []),
-                parentId=parent_map.get(feature.id),
-                childrenIds=children_map.get(feature.id, []),
-            )
-            for feature in feature_models
-        }
-
-        leaf_feature_nodes = [
-            feature
-            for feature in feature_node_map.values()
-            if len(feature.childrenIds) == 0
-        ]
-
-        if not leaf_feature_nodes:
-            raise ValueError("empty_leaf_features")
-
-        if generation_mode in {
-            "single",
-            "pair",
-        }:
-            if feature_id is None:
-                raise ValueError("feature_id_required")
-
-            target_feature = feature_node_map.get(feature_id)
-
-            if target_feature is None:
-                raise ValueError("feature_not_found")
-
-            if len(target_feature.childrenIds) != 0:
-                raise ValueError("feature_is_not_leaf")
-
-            target_features = [target_feature]
-
-        else:
-            target_features = leaf_feature_nodes
-
-        target_pairs: list[tuple[int, int]] = []
-
-        for feature in target_features:
-            if not feature.actorIds:
-                raise ValueError("leaf_feature_without_actor")
-
-            for current_actor_id in feature.actorIds:
-                if current_actor_id not in actor_node_map:
-                    raise ValueError("invalid_feature_actor_reference")
-
-                target_pairs.append(
-                    (
-                        feature.featureId,
-                        current_actor_id,
-                    )
-                )
-
-        if generation_mode == "pair":
-            if actor_id is None:
-                raise ValueError("actor_id_required")
-
-            if actor_id not in actor_node_map:
-                raise ValueError("actor_not_found")
-
-            if (
-                feature_id,
-                actor_id,
-            ) not in target_pairs:
-                raise ValueError("invalid_feature_actor_reference")
-
-            target_pairs = [
-                (
-                    feature_id,
-                    actor_id,
-                )
-            ]
-
-        if not target_pairs:
-            raise ValueError("empty_generation_targets")
-
-        return (
-            project.user_requirements,
-            actor_node_map,
-            feature_node_map,
-            target_pairs,
+        return await load_scenario_generation_context(
+            project_id,
+            feature_id,
+            actor_id,
+            generation_mode,
+            session,
         )
 
     async def _generate_scenarios_concurrently(

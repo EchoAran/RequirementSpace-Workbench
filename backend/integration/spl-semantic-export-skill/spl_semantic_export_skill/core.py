@@ -8,7 +8,7 @@ from contextvars import copy_context
 from typing import Any, Callable, Dict, List, Optional
 from .schema import SplExportInputDict, SplExportOutputDict
 from .ir import SplSemanticIR, TypeIR, TypeFieldIR, WorkerIR, WorkerStepIR, ScenarioIR, SplExportWarningIR, WarningSourceIR, TraceLinkIR
-from .renderer import SplSemanticRenderer, escape_string
+from .renderer import SplSemanticRenderer
 from .validators import SplSemanticValidator
 from .prompts import TYPE_NORMALIZATION_PROMPT, FLOW_TO_WORKER_PROMPT, AC_TO_SCENARIO_PROMPT, COVERAGE_REVIEW_PROMPT
 
@@ -285,100 +285,127 @@ class SplSemanticExportSkill:
         flow_name = flow.get("flow_name", "")
         flow_desc = flow.get("flow_description", "")
         covered_features = flow.get("feature_ids", [])
-        
-        steps_str = []
+        prompt = self._build_flow_worker_prompt(flow, actors_mapping, ir)
+
+        try:
+            res = await ask_fn(prompt)
+            worker = self._build_worker_from_response(
+                flow_id,
+                flow_desc,
+                covered_features,
+                res,
+            )
+            self._register_flow_worker(ir, flow_id, worker)
+        except Exception as e:
+            logger.warning(f"Failed to map Flow {flow_id} via LLM, falling back: {e}")
+            worker = self._build_fallback_worker(
+                flow,
+                flow_id,
+                flow_desc,
+                covered_features,
+            )
+            self._register_flow_worker(ir, flow_id, worker)
+            self._append_flow_fallback_warning(ir, flow_id, flow_name)
+
+    @staticmethod
+    def _build_flow_worker_prompt(flow: dict, actors_mapping: dict, ir: SplSemanticIR) -> str:
+        steps = []
         for step in sorted(flow.get("flow_steps", []), key=lambda s: s.get("position", 0)):
             actor_names = [actors_mapping.get(f"Actor_{a}", "Unknown") for a in step.get("actor_ids", [])]
-            input_names = [ir.bo_id_to_type_name.get(str(bi), "Unknown") for bi in step.get("input_business_object_ids", [])]
-            output_names = [ir.bo_id_to_type_name.get(str(bo), "Unknown") for bo in step.get("output_business_object_ids", [])]
-            
-            steps_str.append(
+            input_names = [ir.bo_id_to_type_name.get(str(value), "Unknown") for value in step.get("input_business_object_ids", [])]
+            output_names = [ir.bo_id_to_type_name.get(str(value), "Unknown") for value in step.get("output_business_object_ids", [])]
+            steps.append(
                 f"Step {step.get('position')}: {step.get('step_name')} (desc: {step.get('step_description')}, "
                 f"type: {step.get('step_type')}, actors: {actor_names}, inputs: {input_names}, outputs: {output_names})"
             )
-
-        prompt = FLOW_TO_WORKER_PROMPT.format(
-            flow_name=flow_name,
-            flow_description=flow_desc,
-            flow_steps="\n".join(steps_str),
+        return FLOW_TO_WORKER_PROMPT.format(
+            flow_name=flow.get("flow_name", ""),
+            flow_description=flow.get("flow_description", ""),
+            flow_steps="\n".join(steps),
             types_mapping=ir.bo_id_to_type_name,
             actors_mapping=actors_mapping,
             output_language=_output_language(ir.raw),
         )
 
-        try:
-            res = await ask_fn(prompt)
-            worker_name = res.get("worker_name", f"Flow_{flow_id}")
-            worker_name = re.sub(r'[^a-zA-Z0-9]', '', worker_name)
-            if not worker_name:
-                worker_name = f"Flow_{flow_id}"
-            
-            def parse_step_node(s: dict) -> WorkerStepIR:
-                return WorkerStepIR(
-                    source_step_id=s.get("source_step_id"),
-                    step_type=s.get("step_type", "systemAction"),
-                    command_text=s.get("command_text", ""),
-                    input_refs=s.get("input_refs", []),
-                    output_refs=s.get("output_refs", []),
-                    decision_condition=s.get("decision_condition"),
-                    branch_kind=s.get("branch_kind", "sequential"),
-                    sub_steps=[parse_step_node(sub) for sub in s.get("sub_steps", [])]
-                )
+    @staticmethod
+    def _parse_worker_step(step: dict) -> WorkerStepIR:
+        return WorkerStepIR(
+            source_step_id=step.get("source_step_id"),
+            step_type=step.get("step_type", "systemAction"),
+            command_text=step.get("command_text", ""),
+            input_refs=step.get("input_refs", []),
+            output_refs=step.get("output_refs", []),
+            decision_condition=step.get("decision_condition"),
+            branch_kind=step.get("branch_kind", "sequential"),
+            sub_steps=[
+                SplSemanticExportSkill._parse_worker_step(sub)
+                for sub in step.get("sub_steps", [])
+            ],
+        )
 
-            main_flow_ir = [parse_step_node(s) for s in res.get("main_flow_steps", [])]
-            
-            worker_ir = WorkerIR(
-                worker_id=flow_id,
-                worker_name=worker_name,
-                description=res.get("description", flow_desc),
-                source_flow_id=flow_id,
-                covered_feature_ids=covered_features,
-                actors=res.get("actors", []),
-                inputs=res.get("inputs", []),
-                outputs=res.get("outputs", []),
-                main_flow=main_flow_ir
-            )
-            
-            ir.workers[str(flow_id)] = worker_ir
-            ir.semantic_identifier_map[f"flow:{flow_id}"] = worker_name
-            ir.trace_links.append(TraceLinkIR(spl_ref=worker_name, source_kind="flow", source_id=str(flow_id)))
+    @classmethod
+    def _build_worker_from_response(cls, flow_id, flow_desc, covered_features, response) -> WorkerIR:
+        worker_name = re.sub(
+            r"[^a-zA-Z0-9]",
+            "",
+            response.get("worker_name", f"Flow_{flow_id}"),
+        ) or f"Flow_{flow_id}"
+        return WorkerIR(
+            worker_id=flow_id,
+            worker_name=worker_name,
+            description=response.get("description", flow_desc),
+            source_flow_id=flow_id,
+            covered_feature_ids=covered_features,
+            actors=response.get("actors", []),
+            inputs=response.get("inputs", []),
+            outputs=response.get("outputs", []),
+            main_flow=[
+                cls._parse_worker_step(step)
+                for step in response.get("main_flow_steps", [])
+            ],
+        )
 
-        except Exception as e:
-            logger.warning(f"Failed to map Flow {flow_id} via LLM, falling back: {e}")
-            safe_worker_name = f"Worker_Flow_{flow_id}"
-            steps_ir = []
-            for step in sorted(flow.get("flow_steps", []), key=lambda s: s.get("position", 0)):
-                step_type = step.get("step_type", "systemAction")
-                judgment_suffix = " (judgment)" if step_type == "judgment" else ""
-                cmd_text = f"SystemAction: {step.get('step_name')}{judgment_suffix} ({step.get('step_description')})"
-                
-                steps_ir.append(WorkerStepIR(
-                    source_step_id=step.get("step_id"),
-                    step_type="systemAction",
-                    command_text=cmd_text,
-                    branch_kind="sequential"
-                ))
-            
-            worker_ir = WorkerIR(
-                worker_id=flow_id,
-                worker_name=safe_worker_name,
-                description=flow_desc,
-                source_flow_id=flow_id,
-                covered_feature_ids=covered_features,
-                main_flow=steps_ir
-            )
-            ir.workers[str(flow_id)] = worker_ir
-            ir.semantic_identifier_map[f"flow:{flow_id}"] = safe_worker_name
-            ir.trace_links.append(TraceLinkIR(spl_ref=safe_worker_name, source_kind="flow", source_id=str(flow_id)))
-            ir.warnings.append(SplExportWarningIR(
-                code="flow_worker_fallback",
-                message=_localized(
-                    ir.raw,
-                    f"业务流 Flow_{flow_id} '{flow_name}' 语义 Worker 转换失败，降级为普通顺序结构。",
-                    f"Flow Flow_{flow_id} '{flow_name}' could not be converted to a semantic worker and was reduced to a sequential structure.",
-                ),
-                source=WarningSourceIR(kind="flow", id=str(flow_id))
+    @staticmethod
+    def _build_fallback_worker(flow, flow_id, flow_desc, covered_features) -> WorkerIR:
+        steps = []
+        for step in sorted(flow.get("flow_steps", []), key=lambda s: s.get("position", 0)):
+            suffix = " (judgment)" if step.get("step_type", "systemAction") == "judgment" else ""
+            steps.append(WorkerStepIR(
+                source_step_id=step.get("step_id"),
+                step_type="systemAction",
+                command_text=f"SystemAction: {step.get('step_name')}{suffix} ({step.get('step_description')})",
+                branch_kind="sequential",
             ))
+        return WorkerIR(
+            worker_id=flow_id,
+            worker_name=f"Worker_Flow_{flow_id}",
+            description=flow_desc,
+            source_flow_id=flow_id,
+            covered_feature_ids=covered_features,
+            main_flow=steps,
+        )
+
+    @staticmethod
+    def _register_flow_worker(ir, flow_id, worker) -> None:
+        ir.workers[str(flow_id)] = worker
+        ir.semantic_identifier_map[f"flow:{flow_id}"] = worker.worker_name
+        ir.trace_links.append(TraceLinkIR(
+            spl_ref=worker.worker_name,
+            source_kind="flow",
+            source_id=str(flow_id),
+        ))
+
+    @staticmethod
+    def _append_flow_fallback_warning(ir, flow_id, flow_name) -> None:
+        ir.warnings.append(SplExportWarningIR(
+            code="flow_worker_fallback",
+            message=_localized(
+                ir.raw,
+                f"业务流 Flow_{flow_id} '{flow_name}' 语义 Worker 转换失败，降级为普通顺序结构。",
+                f"Flow Flow_{flow_id} '{flow_name}' could not be converted to a semantic worker and was reduced to a sequential structure.",
+            ),
+            source=WarningSourceIR(kind="flow", id=str(flow_id)),
+        ))
 
     async def _extract_scenarios_async(self, payload: SplExportInputDict, ir: SplSemanticIR, ask_fn: Callable[[str], Any]) -> None:
         features = payload.get("features", [])

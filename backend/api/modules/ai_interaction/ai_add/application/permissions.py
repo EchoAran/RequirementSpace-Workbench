@@ -5,8 +5,6 @@ Fields not in this list will be rejected at validation time even if the LLM
 outputs them.
 """
 
-from backend.core.rules import EDITABLE_FIELDS
-
 # Human-readable reasons for non-editable fields (for LLM rationale guidance)
 NON_EDITABLE_REASONS: dict[str, dict[str, str]] = {
     "actor": {

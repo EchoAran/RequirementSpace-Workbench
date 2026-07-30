@@ -54,85 +54,140 @@ async def load_target_entity_snapshot(
     - For scenario: name, feature_id, actor_id
     - etc.
     """
-    from backend.database.model import (
-        ActorModel,
-        FeatureModel,
-        ScenarioModel,
-        BusinessObjectModel,
-        FlowModel,
-        ScopeModel,
-        feature_actor_table,
-    )
-
     base = {"project_id": project_id, "target_type": target_type, "target_id": target_id}
-
-    if target_type == "scope":
-        from backend.database.model import FeatureModel
-        res = await session.execute(
-            select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
-            .where(ScopeModel.id == target_id, FeatureModel.project_id == project_id)
-        )
-        scope = res.scalar_one_or_none()
-        if scope:
-            base["reason"] = scope.reason
-            base["status"] = scope.status
-        return base
-
-    if target_type == "feature":
-        res = await session.execute(
-            select(FeatureModel).where(FeatureModel.id == target_id, FeatureModel.project_id == project_id)
-        )
-        feature = res.scalar_one_or_none()
-        if feature:
-            base["name"] = feature.name
-            base["description"] = feature.description
-            actor_res = await session.execute(
-                select(feature_actor_table.c.actor_id).where(
-                    feature_actor_table.c.feature_id == feature.id
-                )
-            )
-            base["actor_ids"] = [row[0] for row in actor_res.fetchall()]
-        return base
-
-    if target_type == "actor":
-        res = await session.execute(
-            select(ActorModel).where(ActorModel.id == target_id, ActorModel.project_id == project_id)
-        )
-        actor = res.scalar_one_or_none()
-        if actor:
-            base["name"] = actor.name
-            base["description"] = actor.description
-        return base
-
-    if target_type == "scenario":
-        res = await session.execute(
-            select(ScenarioModel).where(ScenarioModel.id == target_id, ScenarioModel.project_id == project_id)
-        )
-        scenario = res.scalar_one_or_none()
-        if scenario:
-            base["name"] = scenario.name
-            base["feature_id"] = scenario.feature_id
-            base["actor_id"] = scenario.actor_id
-        return base
-
-    if target_type == "business_object":
-        res = await session.execute(
-            select(BusinessObjectModel).where(BusinessObjectModel.id == target_id, BusinessObjectModel.project_id == project_id)
-        )
-        bo = res.scalar_one_or_none()
-        if bo:
-            base["name"] = bo.name
-        return base
-
-    if target_type == "flow":
-        res = await session.execute(
-            select(FlowModel).where(FlowModel.id == target_id, FlowModel.project_id == project_id)
-        )
-        flow = res.scalar_one_or_none()
-        if flow:
-            base["name"] = flow.name
-            base["description"] = flow.description
-        return base
-
-    # Fallback: return whatever we have
+    loader = {
+        "scope": _load_scope_snapshot,
+        "feature": _load_feature_snapshot,
+        "actor": _load_actor_snapshot,
+        "scenario": _load_scenario_snapshot,
+        "business_object": _load_business_object_snapshot,
+        "flow": _load_flow_snapshot,
+    }.get(target_type)
+    if loader is not None:
+        await loader(project_id, target_id, base, session)
     return base
+
+
+async def _load_scope_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import FeatureModel, ScopeModel
+
+    result = await session.execute(
+        select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
+        .where(ScopeModel.id == target_id, FeatureModel.project_id == project_id)
+    )
+    scope = result.scalar_one_or_none()
+    if scope:
+        snapshot["reason"] = scope.reason
+        snapshot["status"] = scope.status
+
+
+async def _load_feature_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import FeatureModel, feature_actor_table
+
+    result = await session.execute(
+        select(FeatureModel).where(
+            FeatureModel.id == target_id,
+            FeatureModel.project_id == project_id,
+        )
+    )
+    feature = result.scalar_one_or_none()
+    if not feature:
+        return
+    snapshot["name"] = feature.name
+    snapshot["description"] = feature.description
+    actor_result = await session.execute(
+        select(feature_actor_table.c.actor_id).where(
+            feature_actor_table.c.feature_id == feature.id
+        )
+    )
+    snapshot["actor_ids"] = [row[0] for row in actor_result.fetchall()]
+
+
+async def _load_actor_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import ActorModel
+
+    result = await session.execute(
+        select(ActorModel).where(
+            ActorModel.id == target_id,
+            ActorModel.project_id == project_id,
+        )
+    )
+    actor = result.scalar_one_or_none()
+    if actor:
+        snapshot["name"] = actor.name
+        snapshot["description"] = actor.description
+
+
+async def _load_scenario_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import ScenarioModel
+
+    result = await session.execute(
+        select(ScenarioModel).where(
+            ScenarioModel.id == target_id,
+            ScenarioModel.project_id == project_id,
+        )
+    )
+    scenario = result.scalar_one_or_none()
+    if scenario:
+        snapshot["name"] = scenario.name
+        snapshot["feature_id"] = scenario.feature_id
+        snapshot["actor_id"] = scenario.actor_id
+
+
+async def _load_business_object_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import BusinessObjectModel
+
+    result = await session.execute(
+        select(BusinessObjectModel).where(
+            BusinessObjectModel.id == target_id,
+            BusinessObjectModel.project_id == project_id,
+        )
+    )
+    business_object = result.scalar_one_or_none()
+    if business_object:
+        snapshot["name"] = business_object.name
+
+
+async def _load_flow_snapshot(
+    project_id: int,
+    target_id: int,
+    snapshot: dict,
+    session,
+) -> None:
+    from backend.database.model import FlowModel
+
+    result = await session.execute(
+        select(FlowModel).where(
+            FlowModel.id == target_id,
+            FlowModel.project_id == project_id,
+        )
+    )
+    flow = result.scalar_one_or_none()
+    if flow:
+        snapshot["name"] = flow.name
+        snapshot["description"] = flow.description

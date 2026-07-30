@@ -1,8 +1,6 @@
-from backend.core.notifier import (
-    RequirementsChangedNotifier,
-    get_notifier,
-    set_notifier,
-)
+from backend.core.notifier import get_notifier, set_notifier
+
+__all__ = ["get_notifier", "set_notifier"]
 
 
 _feature_generation_service = None
@@ -79,5 +77,3 @@ def get_acceptance_criteria_generation_service():
 def set_acceptance_criteria_generation_service(service) -> None:
     global _acceptance_criteria_generation_service
     _acceptance_criteria_generation_service = service
-
-

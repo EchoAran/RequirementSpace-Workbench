@@ -15,6 +15,115 @@ from backend.schemas import (
     ScenarioNode,
 )
 
+PROTOTYPE_CSS = """
+:root {
+  color: #172026;
+  background: #f4f7fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.prototype-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 250px 1fr;
+}
+.sidebar {
+  background: #13202f;
+  color: white;
+  padding: 24px;
+}
+.brand {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 32px;
+}
+.role-label, .eyebrow {
+  color: #72d8c8;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.sidebar h1 {
+  font-size: 26px;
+  line-height: 1.15;
+}
+.sidebar p {
+  color: rgba(255,255,255,.72);
+  line-height: 1.6;
+}
+.workspace {
+  padding: 32px;
+  display: grid;
+  gap: 20px;
+}
+.hero h2 {
+  margin: 6px 0 10px;
+  font-size: 34px;
+}
+.hero p, li {
+  color: #506175;
+  line-height: 1.55;
+}
+.surface, .panel {
+  background: white;
+  border: 1px solid #dce5ef;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(22, 34, 51, .06);
+}
+.surface { padding: 18px; }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #edf2f7;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  font-weight: 800;
+}
+button {
+  border: 0;
+  border-radius: 8px;
+  background: #25b7a0;
+  color: white;
+  padding: 9px 14px;
+  font-weight: 800;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+label {
+  display: grid;
+  gap: 6px;
+  color: #607083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.wide { grid-column: 1 / -1; }
+input, select, textarea {
+  width: 100%;
+  border: 1px solid #dce5ef;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+textarea { min-height: 84px; resize: vertical; }
+.panel { padding: 18px; }
+.panel h3 { margin: 0 0 10px; }
+.panel ul { padding-left: 18px; margin-bottom: 0; }
+.split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 760px) {
+  .prototype-shell { grid-template-columns: 1fr; }
+  .split, .form-grid { grid-template-columns: 1fr; }
+}
+"""
+
 
 @dataclass
 class PrototypeGeneratorInput(GenerateInput):
@@ -136,114 +245,7 @@ class PrototypeGenerator(BaseGenerator[PrototypeGeneratorInput]):
   </body>
 </html>"""
 
-        css = """
-:root {
-  color: #172026;
-  background: #f4f7fb;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-* { box-sizing: border-box; }
-body { margin: 0; }
-.prototype-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 250px 1fr;
-}
-.sidebar {
-  background: #13202f;
-  color: white;
-  padding: 24px;
-}
-.brand {
-  font-size: 15px;
-  font-weight: 800;
-  margin-bottom: 32px;
-}
-.role-label, .eyebrow {
-  color: #72d8c8;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: .08em;
-}
-.sidebar h1 {
-  font-size: 26px;
-  line-height: 1.15;
-}
-.sidebar p {
-  color: rgba(255,255,255,.72);
-  line-height: 1.6;
-}
-.workspace {
-  padding: 32px;
-  display: grid;
-  gap: 20px;
-}
-.hero h2 {
-  margin: 6px 0 10px;
-  font-size: 34px;
-}
-.hero p, li {
-  color: #506175;
-  line-height: 1.55;
-}
-.surface, .panel {
-  background: white;
-  border: 1px solid #dce5ef;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(22, 34, 51, .06);
-}
-.surface { padding: 18px; }
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #edf2f7;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  font-weight: 800;
-}
-button {
-  border: 0;
-  border-radius: 8px;
-  background: #25b7a0;
-  color: white;
-  padding: 9px 14px;
-  font-weight: 800;
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-label {
-  display: grid;
-  gap: 6px;
-  color: #607083;
-  font-size: 12px;
-  font-weight: 800;
-}
-.wide { grid-column: 1 / -1; }
-input, select, textarea {
-  width: 100%;
-  border: 1px solid #dce5ef;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font: inherit;
-}
-textarea { min-height: 84px; resize: vertical; }
-.panel { padding: 18px; }
-.panel h3 { margin: 0 0 10px; }
-.panel ul { padding-left: 18px; margin-bottom: 0; }
-.split {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (max-width: 760px) {
-  .prototype-shell { grid-template-columns: 1fr; }
-  .split, .form-grid { grid-template-columns: 1fr; }
-}
-"""
+        css = PROTOTYPE_CSS
 
         javascript = f"""
 document.querySelectorAll('button').forEach((button) => {{

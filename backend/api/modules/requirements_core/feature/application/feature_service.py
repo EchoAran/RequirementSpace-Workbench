@@ -1,20 +1,28 @@
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.database.model import (
     FeatureModel,
     FeatureRelationModel,
-    ActorModel,
-    AuditLogModel,
     ConfirmationStatus,
 )
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.feature.schemas import (
     FeatureCreateRequest,
     FeatureUpdateRequest,
     FeatureResponse,
+)
+from .feature_writer import (
+    apply_feature_updates,
+    build_feature_update_diff,
+    capture_feature_state,
+    create_feature_parent_relation,
+    ensure_parent_feature_exists,
+    load_feature_for_update,
+    serialize_created_feature,
+    serialize_feature,
 )
 
 
@@ -57,16 +65,11 @@ class FeatureService:
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
     ) -> FeatureResponse:
-        # If parent_id is provided, verify parent exists
-        if req.parent_id is not None:
-            parent_result = await session.execute(
-                select(FeatureModel).where(
-                    FeatureModel.project_id == project_id,
-                    FeatureModel.id == req.parent_id,
-                )
-            )
-            if parent_result.scalar_one_or_none() is None:
-                raise ValueError("parent_feature_not_found")
+        await ensure_parent_feature_exists(
+            session,
+            project_id,
+            req.parent_id,
+        )
 
         feature = FeatureModel(
             project_id=project_id,
@@ -77,23 +80,11 @@ class FeatureService:
         session.add(feature)
         await session.flush()
 
-        # Insert relation if parent is provided
-        if req.parent_id is not None:
-            pos_result = await session.execute(
-                select(func.max(FeatureRelationModel.position)).where(
-                    FeatureRelationModel.parent_feature_id == req.parent_id
-                )
-            )
-            max_pos = pos_result.scalar()
-            position = 0 if max_pos is None else max_pos + 1
-
-            relation = FeatureRelationModel(
-                parent_feature_id=req.parent_id,
-                child_feature_id=feature.id,
-                position=position,
-            )
-            session.add(relation)
-            await session.flush()
+        await create_feature_parent_relation(
+            session,
+            req.parent_id,
+            feature.id,
+        )
 
         # 审计日志: 新增功能
         await audit_service.record(
@@ -118,31 +109,7 @@ class FeatureService:
             session=session,
         )
 
-        # Reload with relations to build Response
-        reload_result = await session.execute(
-            select(FeatureModel)
-            .where(FeatureModel.id == feature.id)
-            .options(
-                selectinload(FeatureModel.actors),
-                selectinload(FeatureModel.parent_relation),
-                selectinload(FeatureModel.child_relations),
-            )
-        )
-        loaded = reload_result.scalar_one()
-
-        return FeatureResponse(
-            feature_id=loaded.id,
-            name=loaded.name,
-            description=loaded.description,
-            parent_id=(
-                loaded.parent_relation.parent_feature_id
-                if loaded.parent_relation
-                else None
-            ),
-            child_ids=[rel.child_feature_id for rel in loaded.child_relations],
-            actor_ids=[actor.id for actor in loaded.actors],
-            confirmation_status=loaded.confirmation_status,
-        )
+        return serialize_created_feature(feature, req.parent_id)
 
     async def update_feature(
         self,
@@ -151,61 +118,27 @@ class FeatureService:
         req: FeatureUpdateRequest,
         session,
     ) -> FeatureResponse:
-        result = await session.execute(
-            select(FeatureModel)
-            .where(
-                FeatureModel.project_id == project_id,
-                FeatureModel.id == feature_id,
-            )
-            .options(
-                selectinload(FeatureModel.actors),
-                selectinload(FeatureModel.parent_relation),
-                selectinload(FeatureModel.child_relations),
-            )
+        feature = await load_feature_for_update(
+            session,
+            project_id,
+            feature_id,
         )
-        feature = result.scalar_one_or_none()
-
-        if feature is None:
-            raise ValueError("feature_not_found")
 
         from backend.api.modules.collaboration.application.task_service import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "feature", feature, req.last_seen_updated_at)
 
-        old_name = feature.name
-        old_description = feature.description
-        old_actor_ids = [actor.id for actor in feature.actors]
-
-        if req.name is not None:
-            feature.name = req.name
-        if req.description is not None:
-            feature.description = req.description
-
-        if req.actor_ids is not None:
-            if req.actor_ids:
-                actors_result = await session.execute(
-                    select(ActorModel).where(
-                        ActorModel.project_id == project_id,
-                        ActorModel.id.in_(req.actor_ids),
-                    )
-                )
-                actor_models = actors_result.scalars().all()
-                if len(actor_models) != len(req.actor_ids):
-                    raise ValueError("invalid_actor_reference")
-                feature.actors = actor_models
-            else:
-                feature.actors = []
+        before = capture_feature_state(feature)
+        await apply_feature_updates(
+            session,
+            project_id,
+            feature,
+            req,
+        )
 
         await session.flush()
 
         # 审计日志: 更新功能
-        diff = {}
-        if old_name != feature.name:
-            diff["name"] = {"before": old_name, "after": feature.name}
-        if old_description != feature.description:
-            diff["description"] = {"before": old_description, "after": feature.description}
-        new_actor_ids = [actor.id for actor in feature.actors]
-        if old_actor_ids != new_actor_ids:
-            diff["actor_ids"] = {"before": old_actor_ids, "after": new_actor_ids}
+        diff = build_feature_update_diff(before, feature)
 
         await audit_service.record(
             session=session,
@@ -232,19 +165,7 @@ class FeatureService:
         from backend.api.modules.collaboration.application.task_service import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "feature", feature)
 
-        return FeatureResponse(
-            feature_id=feature.id,
-            name=feature.name,
-            description=feature.description,
-            parent_id=(
-                feature.parent_relation.parent_feature_id
-                if feature.parent_relation
-                else None
-            ),
-            child_ids=[rel.child_feature_id for rel in feature.child_relations],
-            actor_ids=[actor.id for actor in feature.actors],
-            confirmation_status=feature.confirmation_status,
-        )
+        return serialize_feature(feature)
 
     async def delete_feature(
         self,

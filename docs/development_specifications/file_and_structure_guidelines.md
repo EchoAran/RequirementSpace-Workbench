@@ -155,3 +155,41 @@ backend/api/modules/
 ```
 
 新增后端业务能力应优先归入上述模块；只有出现稳定的新业务边界时，才新增同级领域模块。
+
+## 9. 应用层能力子包基线
+
+当同一 `application` 目录内出现三个以上围绕同一用例协作的实现文件时，
+应建立能力子包，并由子包 `__init__.py` 暴露稳定入口。当前基线包括：
+
+```text
+preview_convergence/application/
+  shadow_commit/
+  shadow_patch/
+  shadow_snapshot/
+
+collaboration/application/
+  task_decision/
+
+requirements_core/flow/application/
+  generation/
+  steps/
+
+project_lifecycle/application/
+  project_detail/
+  stage_progress/
+
+core/detectors/
+  issue_context/
+
+tests/characterization/
+  collaboration/
+  core/
+  decision_workflow/
+  diagnosis_quality/
+  preview_convergence/
+  project_lifecycle/
+  requirements_core/
+```
+
+上层服务应从能力子包入口导入，不直接依赖其内部 writer、loader 或 mapper；
+仅能力子包内部允许使用具体实现模块。单个独立辅助文件不强制建立只有一层包装的目录。

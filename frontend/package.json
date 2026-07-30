@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc -p tsconfig.app.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -17,11 +17,10 @@
     "clsx": "^2.1.1",
     "i18next": "^26.3.6",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-i18next": "^17.0.9",
-    "react-router-dom": "^7.15.0",
+    "react-router-dom": "^7.18.0",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.13"
   },
@@ -30,12 +29,10 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "autoprefixer": "^10.4.21",
     "happy-dom": "^20.10.2",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3",
+    "vite": "^6.4.3",
     "vitest": "^4.1.8"
   }
 }

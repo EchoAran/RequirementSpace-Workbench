@@ -13,10 +13,8 @@ for structured draft generation, backed by CRUD services for confirmation.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
-from uuid import uuid4
 
 from zoneinfo import ZoneInfo
 
@@ -27,8 +25,6 @@ BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
 def _beijing_now() -> datetime:
     return datetime.now(BEIJING_TZ)
-
-from sqlalchemy import select
 
 from backend.api.modules.ai_interaction.ai_add.application.interview_strategy import (
     InterviewStrategyRegistry,

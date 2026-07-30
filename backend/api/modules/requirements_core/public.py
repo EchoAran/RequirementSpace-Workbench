@@ -10,7 +10,6 @@ from backend.api.modules.requirements_core.scenario.application.acceptance_crite
 from backend.api.modules.requirements_core.flow.application.flow_service import FlowService
 from backend.api.modules.requirements_core.flow.application.flow_generation_service import FlowGenerationService
 from backend.api.modules.requirements_core.flow.schemas import FlowCreateRequest, FlowUpdateRequest
-from backend.api.modules.requirements_core.scope.application.scope_service import ScopeService
 from backend.api.modules.requirements_core.scope.application.scope_generation_service import ScopeGenerationService
 from backend.api.modules.requirements_core.business_object.application.business_object_service import BusinessObjectService
 from backend.api.modules.requirements_core.business_object.schemas import (
@@ -42,9 +41,7 @@ from backend.api.modules.requirements_core.scenario.application.ac_choice_adapte
 from backend.api.modules.requirements_core.flow.application.choice_adapter import FlowGenerationChoiceAdapter
 from backend.api.modules.requirements_core.scope.application.choice_adapter import ScopeGenerationChoiceAdapter
 from backend.api.modules.requirements_core.ports import (
-    RequirementsChangedNotifier,
     get_notifier,
-    set_notifier,
 )
 
 __all__ = [
@@ -63,7 +60,6 @@ __all__ = [
     "FlowGenerationService",
     "FlowCreateRequest",
     "FlowUpdateRequest",
-    "ScopeService",
     "ScopeGenerationService",
     "BusinessObjectService",
     "BusinessObjectCreateRequest",
@@ -85,9 +81,7 @@ __all__ = [
     "ACCreateRequest",
     "ACUpdateRequest",
     "ACResponse",
-    "RequirementsChangedNotifier",
     "get_notifier",
-    "set_notifier",
     "ActorGenerationChoiceAdapter",
     "FeatureGenerationChoiceAdapter",
     "ScenarioGenerationChoiceAdapter",
@@ -95,5 +89,4 @@ __all__ = [
     "FlowGenerationChoiceAdapter",
     "ScopeGenerationChoiceAdapter",
 ]
-
 

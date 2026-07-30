@@ -75,37 +75,11 @@ class AIAddDraftHandler:
 
     async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
         """Generate an add-mode draft (original Phase 2 logic)."""
-        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
-
         generator_ctx_keys = self._generator_ctx_keys(ai_session.target_type)
         project_context = await self._service._load_context(
             ai_session.project_id, generator_ctx_keys, db_session,
         )
-
-        # Build query for references retrieval
-        query_parts = [ai_session.target_type]
-        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
-            known_facts = ai_session.summary_payload.get("known_facts")
-            if known_facts:
-                query_parts.append(str(known_facts))
-        if ai_session.anchor_payload:
-            query_parts.append(str(ai_session.anchor_payload))
-        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
-            chat_history = ai_session.summary_payload.get("chat_history", [])
-            for msg in reversed(chat_history):
-                if msg.get("role") == "user":
-                    query_parts.append(msg.get("content"))
-                    break
-        combined_query = " ".join(query_parts)
-
-        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
-        knowledge_context = await KnowledgeContextBuilder.build(
-            project_id=ai_session.project_id,
-            purpose="ai_add_generation",
-            query=combined_query,
-            token_budget=5000,
-            session=db_session,
-        )
+        knowledge_context = await self._build_knowledge_context(ai_session, db_session)
 
         from backend.core.generators.single_object import SingleObjectGeneratorInput
         gen_input = SingleObjectGeneratorInput(
@@ -116,22 +90,7 @@ class AIAddDraftHandler:
         )
 
         generator = self._service._get_generator(ai_session.target_type)
-        try:
-            raw_result = await generator.generate(gen_input)
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            log_event(
-                logger,
-                logging.WARNING,
-                "domain",
-                AI_ADD_LLM_PARSE_FAILED,
-                "AI add LLM parse failed",
-                project_id=ai_session.project_id,
-                session_id=ai_session.id,
-                target_type=ai_session.target_type,
-                error_type=type(exc).__name__,
-                error_message=sanitize_message(str(exc)),
-            )
-            raise ValueError("generator_output_parse_failed") from exc
+        raw_result = await self._generate_or_raise(ai_session, generator, gen_input)
 
         from backend.core.issue_resolution.fingerprint import compute_context_hash
         context_hash = compute_context_hash(project_context)
@@ -139,11 +98,11 @@ class AIAddDraftHandler:
         validated = self._validate_generated_object(ai_session.target_type, raw_result, project_context)
         preview = self._build_preview(ai_session.target_type, validated)
 
-        draft_id = uuid4().hex
-        await GenerativeDraftStore.save_draft(
-            project_id=ai_session.project_id, draft_id=draft_id,
-            draft_type=f"single_{ai_session.target_type}",
-            payload={
+        return await self._save_generated_draft(
+            ai_session,
+            project.public_id,
+            owner_user_id,
+            {
                 "project_id": ai_session.project_id,
                 "session_id": ai_session.id,
                 "target_type": ai_session.target_type,
@@ -153,52 +112,16 @@ class AIAddDraftHandler:
                 "rationale": raw_result.get("rationale", ""),
                 "context_hash": context_hash,
             },
-            owner_user_id=owner_user_id,
-            session=db_session,
+            preview,
+            f"AI 生成了建议: 创建 {ai_session.target_type}",
+            context_hash,
+            db_session,
         )
-
-        # Record audit log
-        from backend.services.audit_service import AuditService
-        audit_service = AuditService()
-        await audit_service.record(
-            session=db_session,
-            project_id=ai_session.project_id,
-            action_type="ai_draft_generated",
-            summary=f"AI 生成了建议: 创建 {ai_session.target_type}",
-            target_type="draft",
-            target_id=draft_id,
-            payload={
-                "target_type": ai_session.target_type,
-                "context_hash": context_hash,
-            }
-        )
-
-        ai_session.status = "draft_created"
-        await db_session.flush()
-
-        log_event(
-            logger,
-            logging.INFO,
-            "domain",
-            AI_ADD_DRAFT_CREATED,
-            "AI add draft created",
-            project_id=ai_session.project_id,
-            session_id=ai_session.id,
-            draft_id=draft_id,
-            target_type=ai_session.target_type,
-        )
-
-        return {
-            "draft_id": draft_id, "project_id": project.public_id,
-            "target_type": ai_session.target_type, "preview": preview,
-            "message": "draft_created",
-        }
 
     async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
         """Generate an edit-mode draft: load original object, call EditGenerator, validate diff."""
-        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         from backend.core.generators.single_object.base_edit_generator import EditGeneratorInput
-        from backend.api.modules.ai_interaction.ai_add.application.permissions import EDITABLE_FIELDS
+        from backend.core.rules import EDITABLE_FIELDS
 
         # Extract base target_type (strip "edit_" prefix)
         base_type = ai_session.target_type.replace("edit_", "", 1)
@@ -214,31 +137,7 @@ class AIAddDraftHandler:
         )
 
         editable = EDITABLE_FIELDS.get(base_type, [])
-
-        # Build query for references retrieval
-        query_parts = [ai_session.target_type]
-        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
-            known_facts = ai_session.summary_payload.get("known_facts")
-            if known_facts:
-                query_parts.append(str(known_facts))
-        if ai_session.anchor_payload:
-            query_parts.append(str(ai_session.anchor_payload))
-        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
-            chat_history = ai_session.summary_payload.get("chat_history", [])
-            for msg in reversed(chat_history):
-                if msg.get("role") == "user":
-                    query_parts.append(msg.get("content"))
-                    break
-        combined_query = " ".join(query_parts)
-
-        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
-        knowledge_context = await KnowledgeContextBuilder.build(
-            project_id=ai_session.project_id,
-            purpose="ai_add_generation",
-            query=combined_query,
-            token_budget=5000,
-            session=db_session,
-        )
+        knowledge_context = await self._build_knowledge_context(ai_session, db_session)
 
         gen_input = EditGeneratorInput(
             user_requirements=project.user_requirements,
@@ -251,22 +150,7 @@ class AIAddDraftHandler:
         )
 
         generator = self._service._get_generator(ai_session.target_type)
-        try:
-            raw_result = await generator.generate(gen_input)
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            log_event(
-                logger,
-                logging.WARNING,
-                "domain",
-                AI_ADD_LLM_PARSE_FAILED,
-                "AI add LLM parse failed",
-                project_id=ai_session.project_id,
-                session_id=ai_session.id,
-                target_type=ai_session.target_type,
-                error_type=type(exc).__name__,
-                error_message=sanitize_message(str(exc)),
-            )
-            raise ValueError("generator_output_parse_failed") from exc
+        raw_result = await self._generate_or_raise(ai_session, generator, gen_input)
 
         # Validate edit diff
         self._validate_edit_diff(base_type, raw_result.get("diff", {}))
@@ -282,11 +166,11 @@ class AIAddDraftHandler:
         from backend.core.issue_resolution.fingerprint import compute_context_hash
         context_hash = compute_context_hash(project_context)
 
-        draft_id = uuid4().hex
-        await GenerativeDraftStore.save_draft(
-            project_id=ai_session.project_id, draft_id=draft_id,
-            draft_type=f"single_{ai_session.target_type}",
-            payload={
+        return await self._save_generated_draft(
+            ai_session,
+            project.public_id,
+            owner_user_id,
+            {
                 "project_id": ai_session.project_id,
                 "session_id": ai_session.id,
                 "target_type": ai_session.target_type,
@@ -297,29 +181,93 @@ class AIAddDraftHandler:
                 "rationale": rationale,
                 "context_hash": context_hash,
             },
-            owner_user_id=owner_user_id,
+            preview,
+            f"AI 生成了建议: 修改 {base_type}",
+            context_hash,
+            db_session,
+        )
+
+    @staticmethod
+    async def _build_knowledge_context(ai_session, db_session):
+        query_parts = [ai_session.target_type]
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            known_facts = ai_session.summary_payload.get("known_facts")
+            if known_facts:
+                query_parts.append(str(known_facts))
+        if ai_session.anchor_payload:
+            query_parts.append(str(ai_session.anchor_payload))
+        if ai_session.summary_payload and isinstance(ai_session.summary_payload, dict):
+            chat_history = ai_session.summary_payload.get("chat_history", [])
+            for msg in reversed(chat_history):
+                if msg.get("role") == "user":
+                    query_parts.append(msg.get("content"))
+                    break
+
+        from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+        return await KnowledgeContextBuilder.build(
+            project_id=ai_session.project_id,
+            purpose="ai_add_generation",
+            query=" ".join(query_parts),
+            token_budget=5000,
             session=db_session,
         )
 
-        # Record audit log
+    @staticmethod
+    async def _generate_or_raise(ai_session, generator, gen_input):
+        try:
+            return await generator.generate(gen_input)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "domain",
+                AI_ADD_LLM_PARSE_FAILED,
+                "AI add LLM parse failed",
+                project_id=ai_session.project_id,
+                session_id=ai_session.id,
+                target_type=ai_session.target_type,
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc)),
+            )
+            raise ValueError("generator_output_parse_failed") from exc
+
+    @staticmethod
+    async def _save_generated_draft(
+        ai_session,
+        project_public_id,
+        owner_user_id,
+        payload,
+        preview,
+        audit_summary,
+        context_hash,
+        db_session,
+    ) -> dict:
+        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         from backend.services.audit_service import AuditService
-        audit_service = AuditService()
-        await audit_service.record(
+
+        draft_id = uuid4().hex
+        await GenerativeDraftStore.save_draft(
+            project_id=ai_session.project_id,
+            draft_id=draft_id,
+            draft_type=f"single_{ai_session.target_type}",
+            payload=payload,
+            owner_user_id=owner_user_id,
+            session=db_session,
+        )
+        await AuditService().record(
             session=db_session,
             project_id=ai_session.project_id,
             action_type="ai_draft_generated",
-            summary=f"AI 生成了建议: 修改 {ai_session.target_type.replace('edit_', '', 1)}",
+            summary=audit_summary,
             target_type="draft",
             target_id=draft_id,
             payload={
                 "target_type": ai_session.target_type,
                 "context_hash": context_hash,
-            }
+            },
         )
-
         ai_session.status = "draft_created"
         await db_session.flush()
-
         log_event(
             logger,
             logging.INFO,
@@ -331,10 +279,11 @@ class AIAddDraftHandler:
             draft_id=draft_id,
             target_type=ai_session.target_type,
         )
-
         return {
-            "draft_id": draft_id, "project_id": project.public_id,
-            "target_type": ai_session.target_type, "preview": preview,
+            "draft_id": draft_id,
+            "project_id": project_public_id,
+            "target_type": ai_session.target_type,
+            "preview": preview,
             "message": "draft_created",
         }
 
@@ -350,120 +299,21 @@ class AIAddDraftHandler:
         if not project_id:
             raise ValueError("invalid_draft_payload")
 
-        # Context hash conflict validation
-        stored_hash = draft.get("context_hash")
-        if stored_hash:
-            generator_ctx_keys = self._generator_ctx_keys(target_type)
-            project_context = await self._service._load_context(
-                project_id, generator_ctx_keys, db_session,
-            )
-            from backend.core.issue_resolution.fingerprint import compute_context_hash
-            current_hash = compute_context_hash(project_context)
-            if current_hash != stored_hash:
-                # Close the AI session
-                if session_id:
-                    ai_session = await self._get_session_or_raise(session_id, db_session)
-                    ai_session.status = "conflict"
-                    ai_session.closed_at = _beijing_now()
-                    await db_session.flush()
-
-                # Create collaboration task
-                from backend.database.model import CollaborationTaskModel
-                task = CollaborationTaskModel(
-                    project_id=project_id,
-                    task_type="resolve_conflict",
-                    title="collaboration.taskTitles.resolveConflict",
-                    description="collaboration.taskDescriptions.resolveConflict",
-                    status="open",
-                    priority="normal",
-                    created_by_user_id=owner_user_id,
-                    assigned_to_user_id=owner_user_id,
-                    payload={
-                        "stale_ai_result": draft.get("generated_object") or draft.get("diff") or {},
-                        "current_snapshot": project_context,
-                        "original_context_hash": stored_hash,
-                        "current_context_hash": current_hash,
-                        "target_type": target_type,
-                        "draft_id": draft_id
-                    }
-                )
-                db_session.add(task)
-                
-                # Write audit log for conflict
-                from backend.services.audit_service import AuditService
-                audit_service = AuditService()
-                await audit_service.record(
-                    session=db_session,
-                    project_id=project_id,
-                    action_type="ai_draft_conflict_detected",
-                    summary=f"检测到 AI 回写冲突: {target_type}",
-                    target_type="draft",
-                    target_id=draft_id,
-                    payload={
-                        "target_type": target_type,
-                        "original_context_hash": stored_hash,
-                        "current_context_hash": current_hash
-                    }
-                )
-
-                # Create notification for recipient
-                from backend.database.model import NotificationModel
-                notif = NotificationModel(
-                    recipient_user_id=owner_user_id,
-                    project_id=project_id,
-                    task_id=None,
-                    event_type="conflict_detected",
-                    title="collaboration.notifications.conflictDetected.title",
-                    body="collaboration.notifications.conflictDetected.body"
-                )
-                db_session.add(notif)
-                await db_session.flush()
-
-                # Delete the stale draft
-                await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
-                
-                await db_session.commit()
-
-                from fastapi import HTTPException
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "message": "ai_draft_conflict_detected",
-                        "task_id": task.id
-                    }
-                )
-
-        if target_type.startswith("edit_"):
-            created_id = await self._confirm_edit_draft(draft, db_session)
-        else:
-            generated = draft.get("generated_object", {})
-            await self._pre_confirm_validation(target_type, generated, project_id, db_session)
-            created_id = await self._persist_generated_object(
-                target_type, generated, project_id, db_session,
-            )
-
-        # Record audit log for successful application of draft
-        from backend.services.audit_service import AuditService
-        audit_service = AuditService()
-        await audit_service.record(
-            session=db_session,
-            project_id=project_id,
-            action_type="ai_draft_applied_by_user",
-            summary=f"采纳 AI 建议: {target_type}",
-            target_type=target_type.replace("edit_", "", 1),
-            target_id=created_id,
-            payload={
-                "draft_id": draft_id,
-                "target_type": target_type
-            }
+        await self._raise_if_draft_context_conflicts(
+            draft_id,
+            draft,
+            owner_user_id,
+            db_session,
         )
-
-        # Update session status
-        if session_id:
-            ai_session = await self._get_session_or_raise(session_id, db_session)
-            ai_session.status = "confirmed"
-            ai_session.closed_at = _beijing_now()
-            await db_session.flush()
+        created_id = await self._apply_confirmed_draft(draft, db_session)
+        await self._record_draft_application(
+            draft_id,
+            target_type,
+            project_id,
+            created_id,
+            db_session,
+        )
+        await self._close_confirmed_session(session_id, db_session)
 
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
 
@@ -477,6 +327,161 @@ class AIAddDraftHandler:
             "message": "confirmed",
             "created_object_id": created_id,
         }
+
+    async def _raise_if_draft_context_conflicts(
+        self,
+        draft_id,
+        draft,
+        owner_user_id,
+        db_session,
+    ) -> None:
+        stored_hash = draft.get("context_hash")
+        if not stored_hash:
+            return
+        target_type = draft.get("target_type", "")
+        project_context = await self._service._load_context(
+            draft.get("project_id"),
+            self._generator_ctx_keys(target_type),
+            db_session,
+        )
+        from backend.core.issue_resolution.fingerprint import compute_context_hash
+
+        current_hash = compute_context_hash(project_context)
+        if current_hash != stored_hash:
+            await self._handle_draft_context_conflict(
+                draft_id,
+                draft,
+                project_context,
+                stored_hash,
+                current_hash,
+                owner_user_id,
+                db_session,
+            )
+
+    async def _handle_draft_context_conflict(
+        self,
+        draft_id,
+        draft,
+        project_context,
+        stored_hash,
+        current_hash,
+        owner_user_id,
+        db_session,
+    ) -> None:
+        from backend.api.modules.decision_workflow.public import GenerativeDraftStore
+        from backend.database.model import CollaborationTaskModel, NotificationModel
+        from backend.services.audit_service import AuditService
+        from fastapi import HTTPException
+
+        project_id = draft.get("project_id")
+        target_type = draft.get("target_type", "")
+        session_id = draft.get("session_id")
+        if session_id:
+            ai_session = await self._get_session_or_raise(session_id, db_session)
+            ai_session.status = "conflict"
+            ai_session.closed_at = _beijing_now()
+            await db_session.flush()
+
+        task = CollaborationTaskModel(
+            project_id=project_id,
+            task_type="resolve_conflict",
+            title="collaboration.taskTitles.resolveConflict",
+            description="collaboration.taskDescriptions.resolveConflict",
+            status="open",
+            priority="normal",
+            created_by_user_id=owner_user_id,
+            assigned_to_user_id=owner_user_id,
+            payload={
+                "stale_ai_result": draft.get("generated_object") or draft.get("diff") or {},
+                "current_snapshot": project_context,
+                "original_context_hash": stored_hash,
+                "current_context_hash": current_hash,
+                "target_type": target_type,
+                "draft_id": draft_id,
+            },
+        )
+        db_session.add(task)
+        await AuditService().record(
+            session=db_session,
+            project_id=project_id,
+            action_type="ai_draft_conflict_detected",
+            summary=f"检测到 AI 回写冲突: {target_type}",
+            target_type="draft",
+            target_id=draft_id,
+            payload={
+                "target_type": target_type,
+                "original_context_hash": stored_hash,
+                "current_context_hash": current_hash,
+            },
+        )
+        db_session.add(NotificationModel(
+            recipient_user_id=owner_user_id,
+            project_id=project_id,
+            task_id=None,
+            event_type="conflict_detected",
+            title="collaboration.notifications.conflictDetected.title",
+            body="collaboration.notifications.conflictDetected.body",
+        ))
+        await db_session.flush()
+        await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, db_session)
+        await db_session.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "ai_draft_conflict_detected",
+                "task_id": task.id,
+            },
+        )
+
+    async def _apply_confirmed_draft(self, draft, db_session):
+        target_type = draft.get("target_type", "")
+        project_id = draft.get("project_id")
+        if target_type.startswith("edit_"):
+            return await self._confirm_edit_draft(draft, db_session)
+        generated = draft.get("generated_object", {})
+        await self._pre_confirm_validation(
+            target_type,
+            generated,
+            project_id,
+            db_session,
+        )
+        return await self._persist_generated_object(
+            target_type,
+            generated,
+            project_id,
+            db_session,
+        )
+
+    @staticmethod
+    async def _record_draft_application(
+        draft_id,
+        target_type,
+        project_id,
+        created_id,
+        db_session,
+    ) -> None:
+        from backend.services.audit_service import AuditService
+
+        await AuditService().record(
+            session=db_session,
+            project_id=project_id,
+            action_type="ai_draft_applied_by_user",
+            summary=f"采纳 AI 建议: {target_type}",
+            target_type=target_type.replace("edit_", "", 1),
+            target_id=created_id,
+            payload={
+                "draft_id": draft_id,
+                "target_type": target_type,
+            },
+        )
+
+    async def _close_confirmed_session(self, session_id, db_session) -> None:
+        if not session_id:
+            return
+        ai_session = await self._get_session_or_raise(session_id, db_session)
+        ai_session.status = "confirmed"
+        ai_session.closed_at = _beijing_now()
+        await db_session.flush()
 
     async def discard_draft(self, draft_id: str, db_session, owner_user_id: int) -> dict:
         """Discard a draft without persisting."""
@@ -530,89 +535,124 @@ class AIAddDraftHandler:
     ) -> dict:
         """Validate the generator output and return a cleaned/normalized dict."""
         if target_type == "actor":
-            actor = raw.get("actor", {})
-            name = (actor.get("name") or "").strip()
-            if not name:
-                raise ValueError("empty_actor_name")
-            existing = {a.get("name", "").strip() for a in project_context.get("actors", [])}
-            if name in existing:
-                raise ValueError("duplicate_actor_name")
-            return {
-                "name": name,
-                "description": (actor.get("description") or "").strip(),
-            }
+            return AIAddDraftHandler._validate_generated_actor(
+                raw,
+                project_context,
+            )
+        if target_type in ("feature_leaf", "feature_branch"):
+            return AIAddDraftHandler._validate_generated_feature(
+                raw,
+                project_context,
+            )
+        if target_type == "flow":
+            return AIAddDraftHandler._validate_generated_flow(
+                raw,
+                project_context,
+            )
+        if target_type == "business_object":
+            return AIAddDraftHandler._validate_generated_business_object(
+                raw,
+                project_context,
+            )
+        raise ValueError(f"unsupported_target_type: {target_type}")
 
-        elif target_type in ("feature_leaf", "feature_branch"):
-            feature = raw.get("feature", {})
-            name = (feature.get("name") or "").strip()
-            if not name:
-                raise ValueError("empty_feature_name")
-            feature_kind = (feature.get("feature_kind") or "").strip()
-            if feature_kind not in ("leaf", "branch"):
-                raise ValueError("invalid_feature_kind")
-            actor_ids = feature.get("actor_ids", []) or []
-            valid_ids = {a.get("id") for a in project_context.get("actors", [])}
-            for aid in actor_ids:
-                if aid not in valid_ids:
-                    raise ValueError(f"invalid_actor_reference: {aid}")
-            return {
-                "name": name,
-                "description": (feature.get("description") or "").strip(),
-                "parent_id": feature.get("parent_id"),
-                "actor_ids": actor_ids,
-                "feature_kind": feature_kind,
-            }
+    @staticmethod
+    def _validate_generated_actor(raw: dict, project_context: dict) -> dict:
+        actor = raw.get("actor", {})
+        name = (actor.get("name") or "").strip()
+        if not name:
+            raise ValueError("empty_actor_name")
+        existing = {
+            item.get("name", "").strip()
+            for item in project_context.get("actors", [])
+        }
+        if name in existing:
+            raise ValueError("duplicate_actor_name")
+        return {
+            "name": name,
+            "description": (actor.get("description") or "").strip(),
+        }
 
-        elif target_type == "flow":
-            flow = raw.get("flow", {})
-            name = (flow.get("name") or "").strip()
-            if not name:
-                raise ValueError("empty_flow_name")
-            feature_ids = flow.get("feature_ids", []) or []
-            if not feature_ids:
-                raise ValueError("empty_flow_feature_ids")
-            valid_ids = {f.get("id") for f in project_context.get("features", [])}
-            for fid in feature_ids:
-                if fid not in valid_ids:
-                    raise ValueError(f"invalid_feature_reference: {fid}")
-            return {
-                "name": name,
-                "description": (flow.get("description") or "").strip(),
-                "feature_ids": feature_ids,
-            }
+    @staticmethod
+    def _validate_generated_feature(raw: dict, project_context: dict) -> dict:
+        feature = raw.get("feature", {})
+        name = (feature.get("name") or "").strip()
+        if not name:
+            raise ValueError("empty_feature_name")
+        feature_kind = (feature.get("feature_kind") or "").strip()
+        if feature_kind not in ("leaf", "branch"):
+            raise ValueError("invalid_feature_kind")
+        actor_ids = feature.get("actor_ids", []) or []
+        valid_ids = {
+            actor.get("id")
+            for actor in project_context.get("actors", [])
+        }
+        for actor_id in actor_ids:
+            if actor_id not in valid_ids:
+                raise ValueError(f"invalid_actor_reference: {actor_id}")
+        return {
+            "name": name,
+            "description": (feature.get("description") or "").strip(),
+            "parent_id": feature.get("parent_id"),
+            "actor_ids": actor_ids,
+            "feature_kind": feature_kind,
+        }
 
-        elif target_type == "business_object":
-            bo = raw.get("business_object", {})
-            name = (bo.get("name") or "").strip()
-            if not name:
-                raise ValueError("empty_business_object_name")
-            existing = {b.get("name", "").strip() for b in project_context.get("business_objects", [])}
-            if name in existing:
-                raise ValueError("duplicate_business_object_name")
-            attrs = bo.get("attributes", []) or []
-            cleaned_attrs = []
-            seen_attr_names = set()
-            for attr in attrs:
-                aname = (attr.get("name") or "").strip()
-                if not aname:
-                    continue
-                if aname in seen_attr_names:
-                    continue
-                seen_attr_names.add(aname)
-                cleaned_attrs.append({
-                    "name": aname,
-                    "description": (attr.get("description") or "").strip(),
-                    "data_type": (attr.get("data_type") or "").strip(),
-                    "example": (attr.get("example") or "").strip(),
-                })
-            return {
-                "name": name,
-                "description": (bo.get("description") or "").strip(),
-                "attributes": cleaned_attrs,
-            }
+    @staticmethod
+    def _validate_generated_flow(raw: dict, project_context: dict) -> dict:
+        flow = raw.get("flow", {})
+        name = (flow.get("name") or "").strip()
+        if not name:
+            raise ValueError("empty_flow_name")
+        feature_ids = flow.get("feature_ids", []) or []
+        if not feature_ids:
+            raise ValueError("empty_flow_feature_ids")
+        valid_ids = {
+            feature.get("id")
+            for feature in project_context.get("features", [])
+        }
+        for feature_id in feature_ids:
+            if feature_id not in valid_ids:
+                raise ValueError(f"invalid_feature_reference: {feature_id}")
+        return {
+            "name": name,
+            "description": (flow.get("description") or "").strip(),
+            "feature_ids": feature_ids,
+        }
 
-        else:
-            raise ValueError(f"unsupported_target_type: {target_type}")
+    @staticmethod
+    def _validate_generated_business_object(
+        raw: dict,
+        project_context: dict,
+    ) -> dict:
+        business_object = raw.get("business_object", {})
+        name = (business_object.get("name") or "").strip()
+        if not name:
+            raise ValueError("empty_business_object_name")
+        existing = {
+            item.get("name", "").strip()
+            for item in project_context.get("business_objects", [])
+        }
+        if name in existing:
+            raise ValueError("duplicate_business_object_name")
+        attributes = []
+        seen_names = set()
+        for attribute in business_object.get("attributes", []) or []:
+            attribute_name = (attribute.get("name") or "").strip()
+            if not attribute_name or attribute_name in seen_names:
+                continue
+            seen_names.add(attribute_name)
+            attributes.append({
+                "name": attribute_name,
+                "description": (attribute.get("description") or "").strip(),
+                "data_type": (attribute.get("data_type") or "").strip(),
+                "example": (attribute.get("example") or "").strip(),
+            })
+        return {
+            "name": name,
+            "description": (business_object.get("description") or "").strip(),
+            "attributes": attributes,
+        }
 
     @staticmethod
     def _build_preview(target_type: str, validated: dict) -> dict:
@@ -777,7 +817,7 @@ class AIAddDraftHandler:
     @staticmethod
     def _validate_edit_diff(base_type: str, diff: dict) -> None:
         """Validate that all diff fields are within EDITABLE_FIELDS."""
-        from backend.api.modules.ai_interaction.ai_add.application.permissions import EDITABLE_FIELDS
+        from backend.core.rules import EDITABLE_FIELDS
 
         if not diff:
             raise ValueError("edit_diff_empty")
@@ -792,7 +832,7 @@ class AIAddDraftHandler:
 
     async def _confirm_edit_draft(self, draft: dict, db_session) -> int | None:
         """Confirm an edit draft: re-validate, apply diff via update CRUD."""
-        from backend.api.modules.ai_interaction.ai_add.application.permissions import EDITABLE_FIELDS
+        from backend.core.rules import EDITABLE_FIELDS
 
         target_type = draft.get("target_type", "")
         base_type = target_type.replace("edit_", "", 1)

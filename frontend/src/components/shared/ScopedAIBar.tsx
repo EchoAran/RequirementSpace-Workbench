@@ -12,10 +12,9 @@ import { useLocation } from 'react-router-dom';
 import { ProjectionKind } from '@/core/schema';
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import {
-  Sparkles, Minus, Send, Loader2, Bot, User, RotateCcw, Check, X, FileText,
+  Sparkles, Minus, Send, Loader2, Bot, User, RotateCcw, Check, FileText,
 } from 'lucide-react';
 import { workspaceApi } from '@/lib/api';
-import { cn } from '@/lib/utils';
 
 type AIScope =
   | { kind: 'workspace'; label: string }

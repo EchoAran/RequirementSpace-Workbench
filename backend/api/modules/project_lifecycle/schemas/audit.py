@@ -1,7 +1,7 @@
 from pydantic import Field
 from datetime import datetime
 from typing import Optional
-from backend.api.base_schema import CamelModel, DraftRegenerateRequest
+from backend.api.base_schema import CamelModel
 
 
 class AuditLogResponse(CamelModel):
@@ -34,5 +34,4 @@ class UserRequirementsRefineRequest(CamelModel):
 class UserRequirementsResponse(CamelModel):
     project_id: str
     user_requirements: str
-
 

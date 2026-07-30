@@ -7,9 +7,6 @@ from backend.schemas import (
     Finding,
     FindingType,
     BlockingScope,
-    IssueStage,
-    IssueSeverity,
-    IssueTarget,
 )
 from backend.core.findings.what_finding_policy import WhatFindingPolicy
 from backend.core.findings.how_finding_policy import HowFindingPolicy
@@ -24,6 +21,13 @@ from backend.core.logging.events import (
     FINDING_DETECTION_STARTED,
 )
 from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import NextSuggestionService
+from .finding_list_helpers import (
+    build_next_suggestion_finding,
+    filter_gates_by_action,
+    normalize_finding_filters,
+    policy_stages,
+    suggestion_stages,
+)
 
 logger = get_logger(__name__)
 
@@ -46,75 +50,19 @@ class FindingService:
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
     ) -> list[Finding]:
-        # Normalize stage
-        stage_clean = (stage or "all").strip().lower()
-        if stage_clean not in {"what", "how", "scope", "preview", "all"}:
-            raise ValueError("invalid_stage")
+        stage_clean, view_clean = normalize_finding_filters(
+            stage,
+            view,
+        )
 
-        # Normalize view
-        view_clean = (view or "issues").strip().lower()
-        if view_clean not in {"issues", "next_action", "gate", "health"}:
-            raise ValueError("invalid_view")
-
-        # 1. Fetch structural findings if view requires them
         findings: list[Finding] = []
         if view_clean in {"issues", "gate", "health"}:
-            stages_to_run = []
-            if stage_clean == "all":
-                stages_to_run = ["what", "how", "scope"]
-            elif stage_clean in self._policies:
-                stages_to_run = [stage_clean]
-
-            for s in stages_to_run:
-                policy = self._policies[s]
-                policy_start = time.perf_counter()
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "domain",
-                    FINDING_DETECTION_STARTED,
-                    "Finding detection started",
-                    project_id=project_id,
-                    stage=s,
-                    view=view_clean,
-                )
-                try:
-                    s_findings = await policy.get_findings(project_id, session)
-                    findings.extend(s_findings)
-                except Exception as e:
-                    log_event(
-                        logger,
-                        logging.WARNING,
-                        "domain",
-                        FINDING_DETECTION_FAILED,
-                        "Finding detection failed",
-                        project_id=project_id,
-                        stage=s,
-                        view=view_clean,
-                        error_type=type(e).__name__,
-                        error_message=sanitize_message(str(e)),
-                        duration_ms=int((time.perf_counter() - policy_start) * 1000),
-                    )
-                else:
-                    log_event(
-                        logger,
-                        logging.INFO,
-                        "domain",
-                        FINDING_DETECTION_COMPLETED,
-                        "Finding detection completed",
-                        project_id=project_id,
-                        stage=s,
-                        view=view_clean,
-                        finding_count=len(s_findings),
-                        duration_ms=int((time.perf_counter() - policy_start) * 1000),
-                    )
-
-            # Apply overrides filter (ignored or resolved findings)
-            overrides = await self._load_overrides(project_id, session)
-            findings = [
-                f for f in findings
-                if f.findingId not in overrides
-            ]
+            findings = await self._collect_structural_findings(
+                project_id,
+                stage_clean,
+                view_clean,
+                session,
+            )
 
         # 2. Process views
         if view_clean == "issues":
@@ -130,47 +78,14 @@ class FindingService:
         elif view_clean == "gate":
             gate_findings = [f for f in findings if f.type == FindingType.GATE_CONDITION or f.blockingScope != BlockingScope.NONE]
             self._attach_capability(gate_findings)
-            if not action:
-                return gate_findings
-
-            action_clean = action.strip().lower()
-            filtered_gates = []
-            for gf in gate_findings:
-                is_blocking = False
-                if action_clean == "enter_how":
-                    is_blocking = (gf.stage == IssueStage.WHAT and gf.blockingScope == BlockingScope.STAGE_TRANSITION)
-                elif action_clean == "enter_scope":
-                    is_blocking = (gf.stage == IssueStage.HOW and gf.blockingScope == BlockingScope.STAGE_TRANSITION)
-                elif action_clean == "generate_preview":
-                    is_blocking = (gf.blockingScope == BlockingScope.PREVIEW or (gf.stage == IssueStage.SCOPE and gf.blockingScope == BlockingScope.STAGE_TRANSITION))
-                elif action_clean == "export":
-                    is_blocking = (gf.blockingScope == BlockingScope.EXPORT)
-                elif action_clean == "save_checkpoint":
-                    is_blocking = (gf.blockingScope == BlockingScope.CHECKPOINT)
-
-                if is_blocking:
-                    filtered_gates.append(gf)
-            return filtered_gates
+            return filter_gates_by_action(gate_findings, action)
 
         elif view_clean == "next_action":
-            # Call next suggestion service
-            stages_to_suggest = []
-            if stage_clean == "all":
-                # Check which stages are visible/unlocked
-                from backend.database.model import ProjectModel
-                proj_result = await session.execute(
-                    select(ProjectModel.unlocked_stages).where(ProjectModel.id == project_id)
-                )
-                unlocked_text = proj_result.scalar_one_or_none() or ""
-                unlocked = {item.strip() for item in unlocked_text.split(",") if item.strip()}
-
-                stages_to_suggest.append("what")
-                if "what" in unlocked:
-                    stages_to_suggest.append("how")
-                if "how" in unlocked:
-                    stages_to_suggest.append("scope")
-            elif stage_clean in {"what", "how", "scope"}:
-                stages_to_suggest = [stage_clean]
+            stages_to_suggest = await suggestion_stages(
+                project_id,
+                stage_clean,
+                session,
+            )
 
             next_findings = []
             for s in stages_to_suggest:
@@ -183,35 +98,9 @@ class FindingService:
                         public_project_id=public_project_id,
                     )
                     sugg = res.get("suggestion")
-                    if sugg and sugg.get("code") not in {"PREVIEW_READY", "STAGE_LOCKED"}:
-                        target_dict = sugg.get("target")
-                        target_node = None
-                        if target_dict:
-                            target_node = IssueTarget(
-                                targetType=target_dict.get("type", "project"),
-                                targetId=target_dict.get("id"),
-                            )
-
-                        next_findings.append(
-                            Finding(
-                                findingId=f"{s}:{sugg['code']}:suggest",
-                                type=FindingType.NEXT_SUGGESTION,
-                                stage=IssueStage(s),
-                                code=sugg["code"],
-                                severity=IssueSeverity.INFO,
-                                title=sugg["title"],
-                                description=sugg["description"],
-                                target=target_node,
-                                blockingScope=BlockingScope.NONE,
-                                actionCode=sugg["action"].get("kind") or "navigate",
-                                metadata={
-                                    "action": sugg.get("action") or {},
-                                    "target": sugg.get("target"),
-                                    "source_type": sugg.get("source_type"),
-                                    "status": sugg.get("status"),
-                                },
-                            )
-                        )
+                    finding = build_next_suggestion_finding(s, sugg)
+                    if finding:
+                        next_findings.append(finding)
                 except Exception as e:
                     logger.exception(f"Error loading next suggestions for stage {s}: {e}")
 
@@ -219,6 +108,71 @@ class FindingService:
             return next_findings
 
         return []
+
+    async def _collect_structural_findings(
+        self,
+        project_id: int,
+        stage: str,
+        view: str,
+        session,
+    ) -> list[Finding]:
+        findings: list[Finding] = []
+        for current_stage in policy_stages(stage, self._policies):
+            policy = self._policies[current_stage]
+            policy_start = time.perf_counter()
+            log_event(
+                logger,
+                logging.INFO,
+                "domain",
+                FINDING_DETECTION_STARTED,
+                "Finding detection started",
+                project_id=project_id,
+                stage=current_stage,
+                view=view,
+            )
+            try:
+                stage_findings = await policy.get_findings(
+                    project_id,
+                    session,
+                )
+                findings.extend(stage_findings)
+            except Exception as error:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "domain",
+                    FINDING_DETECTION_FAILED,
+                    "Finding detection failed",
+                    project_id=project_id,
+                    stage=current_stage,
+                    view=view,
+                    error_type=type(error).__name__,
+                    error_message=sanitize_message(str(error)),
+                    duration_ms=int(
+                        (time.perf_counter() - policy_start) * 1000
+                    ),
+                )
+            else:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "domain",
+                    FINDING_DETECTION_COMPLETED,
+                    "Finding detection completed",
+                    project_id=project_id,
+                    stage=current_stage,
+                    view=view,
+                    finding_count=len(stage_findings),
+                    duration_ms=int(
+                        (time.perf_counter() - policy_start) * 1000
+                    ),
+                )
+        overrides = await self._load_overrides(project_id, session)
+        return [
+            finding
+            for finding in findings
+            if finding.findingId not in overrides
+        ]
 
     async def set_finding_status(
         self,

@@ -61,16 +61,37 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                 knowledge_context=knowledge_context,
             )
         )
+        actor_drafts, actor_nodes = self._build_actor_previews(
+            actors_raw["actors"]
+        )
+        raw_features = await self._generate_feature_tree(
+            user_requirements=user_requirements,
+            user_feedback=user_feedback,
+            knowledge_context=knowledge_context,
+            actor_nodes=actor_nodes,
+        )
+        feature_drafts = self._build_feature_drafts(
+            raw_features,
+            actor_drafts,
+        )
+        actor_responses, feature_responses = self._build_preview_responses(
+            actor_drafts,
+            feature_drafts,
+        )
+        return actor_drafts, actor_responses, feature_drafts, feature_responses
 
-        actor_previews_for_draft = []
+    @staticmethod
+    def _build_actor_previews(
+        raw_actors: list[dict],
+    ) -> tuple[list[dict], list[ActorNode]]:
+        actor_previews = []
         actor_nodes = []
-
         for index, raw_actor in enumerate(
-            actors_raw["actors"],
+            raw_actors,
             start=1,
         ):
             actor_number = f"A{index:03d}"
-            actor_previews_for_draft.append(
+            actor_previews.append(
                 {
                     "actor_number": actor_number,
                     "actor_name": raw_actor["actor_name"],
@@ -84,7 +105,16 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                     actorDescription=raw_actor["actor_description"],
                 )
             )
+        return actor_previews, actor_nodes
 
+    async def _generate_feature_tree(
+        self,
+        *,
+        user_requirements: str,
+        user_feedback: str | None,
+        knowledge_context: str | None,
+        actor_nodes: list[ActorNode],
+    ) -> list[dict]:
         requirement_text = user_requirements
         if knowledge_context:
             requirement_text = f"{requirement_text}\n\n{knowledge_context}"
@@ -108,20 +138,24 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
             raw_feature_tree=raw_feature_tree,
             actors=actor_nodes,
         )
-
         _validate_feature_tree_by_number(raw_features)
+        return raw_features
 
+    @staticmethod
+    def _build_feature_drafts(
+        raw_features: list[dict],
+        actor_previews: list[dict],
+    ) -> list[dict]:
         id_to_actor_number = {
             index: actor["actor_number"]
             for index, actor in enumerate(
-                actor_previews_for_draft,
+                actor_previews,
                 start=1,
             )
         }
-
-        feature_previews_for_draft = []
+        feature_previews = []
         for raw_feature in raw_features:
-            feature_previews_for_draft.append(
+            feature_previews.append(
                 {
                     "feature_number": raw_feature["feature_number"],
                     "feature_name": raw_feature["feature_name"],
@@ -133,21 +167,25 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                     ],
                 }
             )
+        return feature_previews
 
+    @staticmethod
+    def _build_preview_responses(
+        actor_previews: list[dict],
+        feature_previews: list[dict],
+    ) -> tuple[list[dict], list[dict]]:
         actor_number_to_name = {
             actor["actor_number"]: actor["actor_name"]
-            for actor in actor_previews_for_draft
+            for actor in actor_previews
         }
-
-        actor_previews_for_response = [
+        actor_responses = [
             {
                 "actor_name": actor["actor_name"],
                 "actor_description": actor["actor_description"],
             }
-            for actor in actor_previews_for_draft
+            for actor in actor_previews
         ]
-
-        feature_previews_for_response = [
+        feature_responses = [
             {
                 "feature_number": feature["feature_number"],
                 "feature_name": feature["feature_name"],
@@ -157,13 +195,7 @@ class SkillBackedActorFeaturePreviewGenerator(ActorFeaturePreviewGeneratorPort):
                     for actor_number in feature.get("actor_numbers", [])
                 ],
             }
-            for feature in feature_previews_for_draft
+            for feature in feature_previews
         ]
-
-        return (
-            actor_previews_for_draft,
-            actor_previews_for_response,
-            feature_previews_for_draft,
-            feature_previews_for_response,
-        )
+        return actor_responses, feature_responses
 

@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, Folder } from 'lucide-react';
-import { buildProjectRoute, buildStepDetail, buildSystemProjection, getStageIssues, projectionPath } from '@/core/selectors';
+import { buildProjectRoute, buildStepDetail, buildSystemProjection } from '@/core/selectors';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
 import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
@@ -13,7 +13,6 @@ import {
   useWorkspaceStore,
   selectSelectedObject,
 } from '@/store/useWorkspaceStore';
-import { findingProjection, findingTargetIds } from '@/core/findingPresentation';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import type { ActorNode, BusinessObjectNode, FeatureNode } from '@/core/schema';
 
@@ -42,7 +41,7 @@ const computeStepPositions = (steps: any[]) => {
   const colOccupancy: Record<number, number> = {};
 
   while (queue.length > 0) {
-    const { stepId, col, row } = queue.shift()!;
+    const { stepId, col } = queue.shift()!;
     if (visited.has(stepId)) continue;
     visited.add(stepId);
 
@@ -103,13 +102,8 @@ export function HowItWorks() {
   const navigate = useNavigate();
   const location = useLocation();
   const {
-    highlightTarget,
     setSelectedObject,
     setHighlightTarget,
-    executeFindingIssueResolution,
-    expandSlot,
-    updateIssueAttributes,
-    openSlot,
     generateFlowsAndObjects,
     regenerateFlowsAndObjects,
     confirmFlowsAndObjects,
@@ -122,13 +116,11 @@ export function HowItWorks() {
     deleteBusinessObject,
     boDeletionError,
     setBoDeletionError,
-    setPendingManualAction,
     addFlow,
     deleteFlow,
     addFlowStep,
     deleteFlowStep,
     runDiagnosis,
-    triggerGateCheck,
     requestStageTransition,
     confirmRepairDraft,
     discardRepairDraft,
@@ -138,7 +130,6 @@ export function HowItWorks() {
     choiceGroupGenerationProgress,
     acceptChoice,
     discardChoiceGroup,
-    clearPerceptionSlot,
   } = useWorkspaceStore();
 
   const [flowFeedback, setFlowFeedback] = useState('');
@@ -170,45 +161,6 @@ export function HowItWorks() {
       }
     }, 200);
   }, [location.search]);
-
-  const handleManualAction = (slot: any) => {
-    if (slot.kind === 'generative_perception_slot') {
-      void clearPerceptionSlot();
-      return;
-    }
-
-    if (slot.kind === 'stage_gate_transition_confirm') {
-      setIsTransitionModalOpen(true);
-      return;
-    }
-
-    const targetId = slot.targetId || slot.actions?.manual?.targetId;
-    const targetRoute = slot.actions?.manual?.targetRoute;
-    if (targetId) {
-      const targetKey = targetId.toString();
-      setHighlightTarget(targetKey);
-      const bo = ir?.businessObjects?.find((item: any) => item.businessObjectId === targetId);
-      const flow = ir?.flows?.find((item: any) => item.flowId === targetId);
-      const step = ir?.flows?.flatMap((flowItem: any) => flowItem.flowSteps || []).find((item: any) => item.stepId === targetId);
-      setSelectedObject(bo || flow || step || null);
-    }
-    if (targetRoute && targetRoute !== '/flow') {
-      navigate(buildProjectRoute(ir?.projectId, targetRoute));
-    }
-  };
-
-  const handleAIAction = async (slot: any) => {
-    const kind = slot.kind;
-    if (kind === 'stage_gate_transition_confirm') {
-      await runDiagnosis();
-    } else if (kind === 'how_onboarding' || kind === 'missing_flow') {
-      await generateFlowsAndObjects();
-    } else {
-      if (slot.id) {
-        await expandSlot(slot.id);
-      }
-    }
-  };
 
   const ir = useWorkspaceStore(state => state.ir);
   const hasFlowsOrBusinessObjects = (ir?.flows || []).length > 0 || (ir?.businessObjects || []).length > 0;
@@ -425,28 +377,7 @@ export function HowItWorks() {
     );
   }
 
-  const howIssues = getStageIssues(ir, 'how');
   const businessObjects = ir?.businessObjects || [];
-
-  const openIssueFlow = async (issueId: string) => {
-    const slotId = await executeFindingIssueResolution(issueId);
-    if (slotId) {
-      await expandSlot(slotId);
-    }
-  };
-
-  const jumpToProjection = (projection: any) => {
-    return navigate(buildProjectRoute(ir?.projectId, projectionPath(projection)));
-  };
-
-  const handleIssueClick = (issue: any) => {
-    setSelectedObject(issue as any);
-    const targetId = findingTargetIds(issue)[0];
-    if (targetId) {
-      setHighlightTarget(targetId);
-    }
-    jumpToProjection(findingProjection(issue));
-  };
 
   return (
     <div className="flex-1 flex w-full relative">

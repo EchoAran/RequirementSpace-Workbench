@@ -7,11 +7,14 @@ from backend.core.generators.acceptance_criteria_generator import (
     AcceptanceCriteriaGenerator,
     AcceptanceCriteriaGeneratorInput,
 )
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.schemas import (
     ActorNode,
     FeatureNode,
     ScenarioNode,
+)
+from .acceptance_criteria_generation_context import (
+    load_acceptance_criteria_generation_context,
 )
 
 
@@ -283,138 +286,50 @@ class AcceptanceCriteriaGenerationService:
         dict[int, FeatureNode],
         list[ScenarioNode],
     ]:
-        from backend.database.model import (
-            ActorModel,
-            FeatureModel,
-            ProjectModel,
-            ScenarioAcceptanceCriterionModel,
-            ScenarioModel,
+        return await load_acceptance_criteria_generation_context(
+            project_id,
+            scenario_ids,
+            session,
         )
 
-        project_result = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
-        )
-        project = project_result.scalar_one_or_none()
+    @staticmethod
+    def _group_scenarios_by_pair(
+        scenario_nodes: list[ScenarioNode],
+    ) -> dict[tuple[int, int], list[ScenarioNode]]:
+        scenarios_by_pair = {}
+        for scenario in scenario_nodes:
+            scenarios_by_pair.setdefault(
+                (scenario.featureId, scenario.actorId),
+                [],
+            ).append(scenario)
+        return scenarios_by_pair
 
-        if project is None:
-            raise ValueError("project_not_found")
-
-        scenario_statement = select(ScenarioModel).where(
-            ScenarioModel.project_id == project_id,
-        )
-
-        if scenario_ids is not None:
-            scenario_id_set = set(scenario_ids)
-
-            if not scenario_id_set:
-                raise ValueError("empty_scenarios")
-
-            if len(scenario_id_set) != len(scenario_ids):
-                raise ValueError("duplicate_scenario_id")
-
-            scenario_statement = scenario_statement.where(
-                ScenarioModel.id.in_(scenario_id_set)
-            )
-
-        scenario_result = await session.execute(scenario_statement)
-        scenario_models = scenario_result.scalars().all()
-
-        if not scenario_models:
-            if scenario_ids is None:
-                raise ValueError("no_scenarios_found")
-            raise ValueError("scenario_not_found")
-
-        if scenario_ids is not None and len(scenario_models) != len(
-            scenario_ids
-        ):
-            raise ValueError("scenario_not_found")
-
-        scenario_model_ids = [
-            scenario.id
-            for scenario in scenario_models
-        ]
-
-        existing_criteria_result = await session.execute(
-            select(ScenarioAcceptanceCriterionModel).where(
-                ScenarioAcceptanceCriterionModel.scenario_id.in_(
-                    scenario_model_ids
+    async def _generate_acceptance_criteria_for_pair(
+        self,
+        *,
+        user_requirements: str,
+        actor: ActorNode,
+        feature: FeatureNode,
+        scenarios: list[ScenarioNode],
+        user_feedback: str | None,
+        semaphore: asyncio.Semaphore,
+    ) -> list[dict]:
+        async with semaphore:
+            raw = await self._acceptance_criteria_generator.generate(
+                AcceptanceCriteriaGeneratorInput(
+                    user_requirements=user_requirements,
+                    actor=actor,
+                    feature=feature,
+                    scenarios=scenarios,
+                    user_feedback=user_feedback,
                 )
             )
-        )
-        existing_criteria_models = existing_criteria_result.scalars().all()
-
-        if existing_criteria_models:
-            raise ValueError("acceptance_criteria_already_exist")
-
-        actor_id_set = {
-            scenario.actor_id
-            for scenario in scenario_models
-        }
-        feature_id_set = {
-            scenario.feature_id
-            for scenario in scenario_models
-        }
-
-        actor_result = await session.execute(
-            select(ActorModel).where(
-                ActorModel.id.in_(actor_id_set),
-                ActorModel.project_id == project_id,
-            )
-        )
-        actor_models = actor_result.scalars().all()
-
-        feature_result = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.id.in_(feature_id_set),
-                FeatureModel.project_id == project_id,
-            )
-        )
-        feature_models = feature_result.scalars().all()
-
-        actor_node_map = {
-            actor.id: ActorNode(
-                actorId=actor.id,
-                actorName=actor.name,
-                actorDescription=actor.description,
-            )
-            for actor in actor_models
-        }
-
-        feature_node_map = {
-            feature.id: FeatureNode(
-                featureId=feature.id,
-                featureName=feature.name,
-                featureDescription=feature.description,
-            )
-            for feature in feature_models
-        }
-
-        if set(actor_node_map) != actor_id_set:
-            raise ValueError("invalid_scenario_actor_reference")
-
-        if set(feature_node_map) != feature_id_set:
-            raise ValueError("invalid_scenario_feature_reference")
-
-        scenario_nodes = [
-            ScenarioNode(
-                scenarioId=scenario.id,
-                scenarioName=scenario.name,
-                scenarioContent=scenario.content,
-                featureId=scenario.feature_id,
-                actorId=scenario.actor_id,
-                acceptanceCriteria=[],
-            )
-            for scenario in scenario_models
-        ]
-
-        return (
-            project.user_requirements,
-            actor_node_map,
-            feature_node_map,
-            scenario_nodes,
-        )
+        if not isinstance(raw, dict):
+            raise ValueError("invalid_acceptance_criteria_payload")
+        items = raw.get("scenario_acceptance_criteria", [])
+        if not isinstance(items, list):
+            raise ValueError("invalid_acceptance_criteria_payload")
+        return items
 
     async def _generate_acceptance_criteria_concurrently(
         self,
@@ -433,57 +348,21 @@ class AcceptanceCriteriaGenerationService:
                 asyncio.Semaphore(concurrency),
             )
 
-        scenarios_by_pair: dict[tuple[int, int], list[ScenarioNode]] = {}
-
-        for scenario in scenario_nodes:
-            scenarios_by_pair.setdefault(
-                (
-                    scenario.featureId,
-                    scenario.actorId,
-                ),
-                [],
-            ).append(scenario)
-
+        scenarios_by_pair = self._group_scenarios_by_pair(scenario_nodes)
         target_scenario_id_set = {
             scenario.scenarioId
             for scenario in scenario_nodes
         }
 
-        async def generate_one(
-            feature_id: int,
-            actor_id: int,
-            scenarios: list[ScenarioNode],
-        ) -> list[dict]:
-            async with semaphore:
-                raw = await self._acceptance_criteria_generator.generate(
-                    AcceptanceCriteriaGeneratorInput(
-                        user_requirements=user_requirements,
-                        actor=actor_node_map[actor_id],
-                        feature=feature_node_map[feature_id],
-                        scenarios=scenarios,
-                        user_feedback=user_feedback,
-                    )
-                )
-
-                if not isinstance(raw, dict):
-                    raise ValueError("invalid_acceptance_criteria_payload")
-
-                scenario_acceptance_criteria = raw.get(
-                    "scenario_acceptance_criteria",
-                    [],
-                )
-
-                if not isinstance(scenario_acceptance_criteria, list):
-                    raise ValueError("invalid_acceptance_criteria_payload")
-
-                return scenario_acceptance_criteria
-
         nested_results = await asyncio.gather(
             *[
-                generate_one(
-                    feature_id=feature_id,
-                    actor_id=actor_id,
+                self._generate_acceptance_criteria_for_pair(
+                    user_requirements=user_requirements,
+                    actor=actor_node_map[actor_id],
+                    feature=feature_node_map[feature_id],
                     scenarios=scenarios,
+                    user_feedback=user_feedback,
+                    semaphore=semaphore,
                 )
                 for (
                     feature_id,

@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any
-
 from backend.api.dependencies.auth import get_current_user
 from backend.database.database import get_session
 from backend.database.model import UserModel, ProjectModel

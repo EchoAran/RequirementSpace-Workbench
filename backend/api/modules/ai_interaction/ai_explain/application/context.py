@@ -12,7 +12,6 @@ section headers, indented lists, and no JSON.
 from __future__ import annotations
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 
 def _format_entity(label: str, items: list[dict], template: str = "{name}") -> str:
@@ -26,6 +25,24 @@ def _format_entity(label: str, items: list[dict], template: str = "{name}") -> s
     for item in items:
         lines.append(template.format(**item))
     return "\n".join(lines)
+
+
+def _append_named_entities(
+    parts: list[str],
+    loaded: list[str],
+    label: str,
+    entities: list,
+    loaded_kind: str | None,
+) -> None:
+    text = _format_entity(
+        label,
+        [{"name": entity.name, "id": entity.id} for entity in entities],
+        "- {name} (ID:{id})",
+    )
+    if text:
+        parts.append(text)
+    if loaded_kind:
+        loaded.extend(f"{loaded_kind}:{entity.id}" for entity in entities)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +107,6 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
 
     loaded = [f"feature:{target_id}"]
     # A feature is a "branch" (module) if it has children, otherwise "leaf" (point)
-    from backend.database.model import FeatureRelationModel
     child_rel = await session.execute(
         select(FeatureRelationModel)
         .where(FeatureRelationModel.parent_feature_id == target_id)
@@ -116,15 +132,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
         .join(FeatureRelationModel, FeatureModel.id == FeatureRelationModel.child_feature_id)
         .where(FeatureRelationModel.parent_feature_id == target_id)
     )).scalars().all()
-    child_text = _format_entity(
-        "子功能",
-        [{"name": c.name, "id": c.id} for c in children],
-        "- {name} (ID:{id})",
-    )
-    if child_text:
-        parts.append(child_text)
-    for c in children:
-        loaded.append(f"feature:{c.id}")
+    _append_named_entities(parts, loaded, "子功能", children, "feature")
 
     # Associated actors
     stmt = (
@@ -133,15 +141,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
         .where(feature_actor_table.c.feature_id == target_id)
     )
     actors = (await session.execute(stmt)).scalars().all()
-    actor_text = _format_entity(
-        "关联参与者",
-        [{"name": a.name, "id": a.id} for a in actors],
-        "- {name} (ID:{id})",
-    )
-    if actor_text:
-        parts.append(actor_text)
-    for a in actors:
-        loaded.append(f"actor:{a.id}")
+    _append_named_entities(parts, loaded, "关联参与者", actors, "actor")
 
     # Associated flows
     stmt = (
@@ -150,13 +150,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
         .where(flow_feature_table.c.feature_id == target_id)
     )
     flows = (await session.execute(stmt)).scalars().all()
-    flow_text = _format_entity(
-        "关联流程",
-        [{"name": f.name, "id": f.id} for f in flows],
-        "- {name} (ID:{id})",
-    )
-    if flow_text:
-        parts.append(flow_text)
+    _append_named_entities(parts, loaded, "关联流程", flows, None)
 
     return "\n\n".join(parts), loaded
 
@@ -253,6 +247,67 @@ NODE_LOADERS: dict[str, callable] = {
 # Projection and workspace loaders
 # ---------------------------------------------------------------------------
 
+async def _append_project_entities(
+    project_id: int,
+    session,
+    *,
+    model,
+    label: str,
+    loaded_kind: str,
+    parts: list[str],
+    loaded: list[str],
+) -> list:
+    result = await session.execute(
+        select(model).where(model.project_id == project_id)
+    )
+    entities = result.scalars().all()
+    _append_named_entities(
+        parts,
+        loaded,
+        label,
+        entities,
+        loaded_kind,
+    )
+    return entities
+
+
+async def _append_scope_projection_details(
+    features: list,
+    session,
+    *,
+    parts: list[str],
+    loaded: list[str],
+) -> None:
+    from backend.database.model import ScopeModel
+
+    scope_result = await session.execute(
+        select(ScopeModel).where(
+            ScopeModel.feature_id.in_([feature.id for feature in features])
+        )
+    )
+    scopes = scope_result.scalars().all()
+    if not scopes:
+        return
+
+    features_by_id = {feature.id: feature for feature in features}
+    scope_lines = ["=== Kano 分析与范围决策（每个功能的分类与理由） ==="]
+    for scope in scopes:
+        feature = features_by_id.get(scope.feature_id)
+        feature_name = feature.name if feature else f"ID:{scope.feature_id}"
+        line = f"- {feature_name}: 状态={scope.status}"
+        if scope.kano_category_name:
+            line += f", Kano={scope.kano_category_name}"
+        if scope.reason:
+            line += f", 理由={scope.reason[:200]}"
+        if scope.positive_summary:
+            line += f"\n  正面论证: {scope.positive_summary[:200]}"
+        if scope.negative_summary:
+            line += f"\n  反面论证: {scope.negative_summary[:200]}"
+        scope_lines.append(line)
+    parts.append("\n".join(scope_lines))
+    loaded.extend(f"scope:{scope.id}" for scope in scopes)
+
+
 async def _load_projection_context(
     project_id: int, stage: str, session,
 ) -> tuple[str, list[str]]:
@@ -266,99 +321,62 @@ async def _load_projection_context(
     required = loaders_map.get(stage, ["features"])
     loaded = []
 
-    # Inline context loading (reuses the same pattern as AIAddSessionService)
     from backend.database.model import (
-        ProjectModel, ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
+        ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
     )
 
     parts = []
     if "actors" in required:
-        result = await session.execute(
-            select(ActorModel).where(ActorModel.project_id == project_id)
+        await _append_project_entities(
+            project_id,
+            session,
+            model=ActorModel,
+            label="参与者",
+            loaded_kind="actor",
+            parts=parts,
+            loaded=loaded,
         )
-        actors = result.scalars().all()
-        actor_text = _format_entity(
-            "参与者",
-            [{"name": a.name, "id": a.id} for a in actors],
-            "- {name} (ID:{id})",
-        )
-        if actor_text:
-            parts.append(actor_text)
-        for a in actors:
-            loaded.append(f"actor:{a.id}")
 
+    features = []
     if "features" in required:
-        result = await session.execute(
-            select(FeatureModel).where(FeatureModel.project_id == project_id)
+        features = await _append_project_entities(
+            project_id,
+            session,
+            model=FeatureModel,
+            label="功能",
+            loaded_kind="feature",
+            parts=parts,
+            loaded=loaded,
         )
-        features = result.scalars().all()
-        feat_text = _format_entity(
-            "功能",
-            [{"name": f.name, "id": f.id} for f in features],
-            "- {name} (ID:{id})",
-        )
-        if feat_text:
-            parts.append(feat_text)
-        for f in features:
-            loaded.append(f"feature:{f.id}")
-
-        # For scope stage, also load Kano analysis data
         if stage == "scope":
-            from backend.database.model import ScopeModel
-            scope_result = await session.execute(
-                select(ScopeModel).where(
-                    ScopeModel.feature_id.in_([f.id for f in features])
-                )
+            await _append_scope_projection_details(
+                features,
+                session,
+                parts=parts,
+                loaded=loaded,
             )
-            scopes = scope_result.scalars().all()
-            if scopes:
-                scope_lines = ["=== Kano 分析与范围决策（每个功能的分类与理由） ==="]
-                for s in scopes:
-                    feat = next((f for f in features if f.id == s.feature_id), None)
-                    feat_name = feat.name if feat else f"ID:{s.feature_id}"
-                    line = f"- {feat_name}: 状态={s.status}"
-                    if s.kano_category_name:
-                        line += f", Kano={s.kano_category_name}"
-                    if s.reason:
-                        line += f", 理由={s.reason[:200]}"
-                    if s.positive_summary:
-                        line += f"\n  正面论证: {s.positive_summary[:200]}"
-                    if s.negative_summary:
-                        line += f"\n  反面论证: {s.negative_summary[:200]}"
-                    scope_lines.append(line)
-                parts.append("\n".join(scope_lines))
-                for s in scopes:
-                    loaded.append(f"scope:{s.id}")
 
     if "flows" in required:
-        result = await session.execute(
-            select(FlowModel).where(FlowModel.project_id == project_id)
+        await _append_project_entities(
+            project_id,
+            session,
+            model=FlowModel,
+            label="流程",
+            loaded_kind="flow",
+            parts=parts,
+            loaded=loaded,
         )
-        flows = result.scalars().all()
-        flow_text = _format_entity(
-            "流程",
-            [{"name": f.name, "id": f.id} for f in flows],
-            "- {name} (ID:{id})",
-        )
-        if flow_text:
-            parts.append(flow_text)
-        for f in flows:
-            loaded.append(f"flow:{f.id}")
 
     if "business_objects" in required:
-        result = await session.execute(
-            select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
+        await _append_project_entities(
+            project_id,
+            session,
+            model=BusinessObjectModel,
+            label="业务数据对象",
+            loaded_kind="business_object",
+            parts=parts,
+            loaded=loaded,
         )
-        bos = result.scalars().all()
-        bo_text = _format_entity(
-            "业务数据对象",
-            [{"name": b.name, "id": b.id} for b in bos],
-            "- {name} (ID:{id})",
-        )
-        if bo_text:
-            parts.append(bo_text)
-        for b in bos:
-            loaded.append(f"business_object:{b.id}")
 
     return "\n\n".join(parts), loaded
 
@@ -390,63 +408,46 @@ async def _load_workspace_context(project_id: int, session) -> tuple[str, list[s
     loaded = []
 
     if total > 50:
-        # Summary mode: list names for actors, count-only for others
-        actor_names = [a.name for a in actor_count]
-        name_preview = ", ".join(actor_names[:5])
-        if len(actor_names) > 5:
-            name_preview += "..."
-
-        parts = [
-            f"=== 项目总览：{project_name} ===",
-            f"参与者：{len(actor_count)}个（{name_preview}）",
-            f"功能：{len(feature_count)}个",
-            f"流程：{len(flow_count)}个",
-            f"业务数据对象：{len(bo_count)}个",
-            "",
-            "如需详细信息，请选择更具体的范围或在问题中指定对象名称。",
-        ]
+        parts = _build_workspace_summary(
+            project_name,
+            actor_count,
+            feature_count,
+            flow_count,
+            bo_count,
+        )
     else:
-        # Full detail mode
         parts = [f"=== 项目：{project_name} ==="]
-
-        if actor_count:
-            a_text = _format_entity(
-                "参与者",
-                [{"name": a.name, "id": a.id} for a in actor_count],
-                "- {name} (ID:{id})",
-            )
-            if a_text:
-                parts.append(a_text)
-            loaded.extend(f"actor:{a.id}" for a in actor_count)
-
-        if feature_count:
-            f_text = _format_entity(
-                "功能",
-                [{"name": f.name, "id": f.id} for f in feature_count],
-                "- {name} (ID:{id})",
-            )
-            if f_text:
-                parts.append(f_text)
-            loaded.extend(f"feature:{f.id}" for f in feature_count)
-
-        if flow_count:
-            fl_text = _format_entity(
-                "流程",
-                [{"name": f.name, "id": f.id} for f in flow_count],
-                "- {name} (ID:{id})",
-            )
-            if fl_text:
-                parts.append(fl_text)
-            loaded.extend(f"flow:{f.id}" for f in flow_count)
-
-        if bo_count:
-            b_text = _format_entity(
-                "业务数据对象",
-                [{"name": b.name, "id": b.id} for b in bo_count],
-                "- {name} (ID:{id})",
-            )
-            if b_text:
-                parts.append(b_text)
-            loaded.extend(f"business_object:{b.id}" for b in bo_count)
+        _append_named_entities(parts, loaded, "参与者", actor_count, "actor")
+        _append_named_entities(parts, loaded, "功能", feature_count, "feature")
+        _append_named_entities(parts, loaded, "流程", flow_count, "flow")
+        _append_named_entities(
+            parts,
+            loaded,
+            "业务数据对象",
+            bo_count,
+            "business_object",
+        )
 
     return "\n\n".join(parts), loaded
+
+
+def _build_workspace_summary(
+    project_name: str,
+    actors: list,
+    features: list,
+    flows: list,
+    business_objects: list,
+) -> list[str]:
+    actor_names = [actor.name for actor in actors]
+    name_preview = ", ".join(actor_names[:5])
+    if len(actor_names) > 5:
+        name_preview += "..."
+    return [
+        f"=== 项目总览：{project_name} ===",
+        f"参与者：{len(actors)}个（{name_preview}）",
+        f"功能：{len(features)}个",
+        f"流程：{len(flows)}个",
+        f"业务数据对象：{len(business_objects)}个",
+        "",
+        "如需详细信息，请选择更具体的范围或在问题中指定对象名称。",
+    ]

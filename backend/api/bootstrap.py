@@ -35,15 +35,6 @@ logger = logging.getLogger(__name__)
 
 class BootstrapRegistry:
     def __init__(self):
-        self.actor_generation_service = None
-        self.flow_generation_service = None
-        self.project_creation_service = None
-        self.feature_generation_service = None
-        self.scenario_generation_service = None
-        self.acceptance_criteria_generation_service = None
-        self.scope_generation_service = None
-        self.prototype_generation_service = None
-        self.project_service = None
         self.generation_backend = None
 
 
@@ -57,8 +48,12 @@ def bootstrap_services():
     
     generation_backend = os.environ.get(
         "REQUIREMENTSPACE_GENERATION_BACKEND",
-        "legacy",
+        "skill",
     ).strip().lower()
+    if generation_backend not in {"skill", "legacy"}:
+        raise ValueError(
+            "REQUIREMENTSPACE_GENERATION_BACKEND must be 'skill' or 'legacy'"
+        )
     
     logger.info("Initializing services with backend mode: %s", generation_backend)
     
@@ -117,16 +112,6 @@ def bootstrap_services():
     set_project_creation_service(proj_creation)
     set_project_service(project_srv)
     
-    # Store instances in registry for legacy shims
-    registry.actor_generation_service = actor_gen
-    registry.flow_generation_service = flow_gen
-    registry.project_creation_service = proj_creation
-    registry.feature_generation_service = feat_gen
-    registry.scenario_generation_service = scen_gen
-    registry.acceptance_criteria_generation_service = ac_gen
-    registry.scope_generation_service = scope_gen
-    registry.prototype_generation_service = proto_gen
-    registry.project_service = project_srv
     registry.generation_backend = generation_backend
 
     return registry
@@ -151,4 +136,3 @@ def register_choice_adapters(registry):
     registry.register("flow", FlowGenerationChoiceAdapter)
     registry.register("scope", ScopeGenerationChoiceAdapter)
     registry.register("project_creation", ProjectCreationChoiceAdapter)
-

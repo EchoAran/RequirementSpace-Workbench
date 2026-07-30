@@ -7,8 +7,6 @@ pattern with JSON output validation and fallback to manual_action.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
-
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.localized_messages import localized_message
 from backend.services.llm_handler_service import LLMHandler

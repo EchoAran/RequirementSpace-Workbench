@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export interface GherkinClause {
+interface GherkinClause {
   keyword: 'Given' | 'When' | 'Then' | 'And' | 'But';
   content: string;
 }
 
-export interface GherkinParsed {
+interface GherkinParsed {
   clauses: GherkinClause[];
   examples?: { headers: string[]; rows: string[][] };
   boundary?: string;
@@ -15,7 +15,7 @@ export interface GherkinParsed {
 }
 
 // Robust parser for Gherkin and custom annotations
-export function parseGherkin(text: string): GherkinParsed {
+function parseGherkin(text: string): GherkinParsed {
   if (!text) {
     return { clauses: [] };
   }
@@ -102,7 +102,7 @@ export function parseGherkin(text: string): GherkinParsed {
 }
 
 // Stringbuilder back to Gherkin syntax
-export function stringifyGherkin(
+function stringifyGherkin(
   clauses: GherkinClause[],
   boundary?: string,
   examples?: { headers: string[]; rows: string[][] }
@@ -123,7 +123,7 @@ export function stringifyGherkin(
 }
 
 // Highlight variables like @variable and <parameter>
-export function renderHighlightedText(content: string) {
+function renderHighlightedText(content: string) {
   if (!content) return '';
   const regex = /(<[^>]+>|@[a-zA-Z0-9_.-]+)/g;
   const parts = content.split(regex);

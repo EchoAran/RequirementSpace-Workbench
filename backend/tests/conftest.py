@@ -191,28 +191,3 @@ def reset_context_vars_before_each_test():
     from backend.core.llm_context import current_llm_context, is_web_request_ctx
     current_llm_context.set(None)
     is_web_request_ctx.set(False)
-
-
-# Let's not define a descriptor but just wrap the root logger's handlers list object.
-import logging
-root = logging.getLogger()
-class TrackedList(list):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    def append(self, item):
-        import sys, traceback
-        print(f"TRACK_LIST: append({item})", file=sys.stderr)
-        traceback.print_stack(file=sys.stderr)
-        super().append(item)
-    def remove(self, item):
-        import sys, traceback
-        print(f"TRACK_LIST: remove({item})", file=sys.stderr)
-        traceback.print_stack(file=sys.stderr)
-        super().remove(item)
-    def clear(self):
-        import sys, traceback
-        print("TRACK_LIST: clear()", file=sys.stderr)
-        traceback.print_stack(file=sys.stderr)
-        super().clear()
-
-root.handlers = TrackedList(root.handlers)

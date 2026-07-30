@@ -1,4 +1,3 @@
-import asyncio
 from fastapi import BackgroundTasks
 from sqlalchemy import select
 
@@ -6,7 +5,6 @@ from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
     load_issue_project_context,
 )
-from backend.database.database import AsyncSessionLocal
 from backend.schemas import (
     NextSuggestion,
     PerceptionJobStatus,
@@ -135,6 +133,188 @@ class PerceptionJobService:
     # Compatibility Shims & Internal Delegation
     # ------------------------------------------------------------------
 
+    @staticmethod
+    async def _load_matching_job(
+        session,
+        *,
+        project_id: int,
+        stage: str,
+        perception_kind: str,
+        target_type: str,
+        target_id: str,
+        context_hash: str,
+    ):
+        from backend.database.model import PerceptionJobModel
+
+        result = await session.execute(
+            select(PerceptionJobModel).where(
+                PerceptionJobModel.project_id == project_id,
+                PerceptionJobModel.stage == stage,
+                PerceptionJobModel.perception_kind == perception_kind,
+                PerceptionJobModel.target_type == target_type,
+                PerceptionJobModel.target_id == target_id,
+                PerceptionJobModel.context_hash == context_hash,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _activate_and_schedule_job(
+        self,
+        job,
+        background_tasks: BackgroundTasks,
+        session,
+        *,
+        clear_result: bool,
+    ) -> None:
+        job.status = PerceptionJobStatus.RUNNING.value
+        if clear_result:
+            job.result_slot_payload = None
+            job.error_message = ""
+        await session.flush()
+        await self._schedule_perception_job(
+            background_tasks=background_tasks,
+            session=session,
+            job_id=job.id,
+        )
+
+    async def _create_perception_job(
+        self,
+        *,
+        project_id: int,
+        stage: str,
+        perception_kind: str,
+        target_type: str,
+        target_id: str,
+        context_hash: str,
+        session,
+        background_tasks: BackgroundTasks | None,
+    ):
+        from backend.database.model import PerceptionJobModel
+
+        try:
+            async with session.begin_nested():
+                job = PerceptionJobModel(
+                    project_id=project_id,
+                    stage=stage,
+                    perception_kind=perception_kind,
+                    target_type=target_type,
+                    target_id=target_id,
+                    context_hash=context_hash,
+                    status=(
+                        PerceptionJobStatus.RUNNING.value
+                        if background_tasks is not None
+                        else PerceptionJobStatus.NOT_STARTED.value
+                    ),
+                )
+                session.add(job)
+                await session.flush()
+                return job
+        except Exception:
+            job = await self._load_matching_job(
+                session,
+                project_id=project_id,
+                stage=stage,
+                perception_kind=perception_kind,
+                target_type=target_type,
+                target_id=target_id,
+                context_hash=context_hash,
+            )
+            if job is None:
+                raise
+            return job
+
+    async def _resolve_missing_job(
+        self,
+        *,
+        project_id: int,
+        stage: str,
+        perception_kind: str,
+        target_type: str,
+        target_id: str,
+        context_hash: str,
+        session,
+        background_tasks: BackgroundTasks | None,
+    ) -> NextSuggestion:
+        active_job = await self._load_active_stage_job(
+            project_id=project_id,
+            stage=stage,
+            session=session,
+        )
+        if active_job is not None:
+            if (
+                active_job.status
+                == PerceptionJobStatus.NOT_STARTED.value
+                and background_tasks is not None
+            ):
+                await self._activate_and_schedule_job(
+                    active_job,
+                    background_tasks,
+                    session,
+                    clear_result=False,
+                )
+            return self._build_running_suggestion(active_job)
+        job = await self._create_perception_job(
+            project_id=project_id,
+            stage=stage,
+            perception_kind=perception_kind,
+            target_type=target_type,
+            target_id=target_id,
+            context_hash=context_hash,
+            session=session,
+            background_tasks=background_tasks,
+        )
+        if (
+            background_tasks is not None
+            and job.status == PerceptionJobStatus.RUNNING.value
+        ):
+            await self._schedule_perception_job(
+                background_tasks=background_tasks,
+                session=session,
+                job_id=job.id,
+            )
+        return self._build_running_suggestion(job)
+
+    async def _resolve_existing_job(
+        self,
+        job,
+        *,
+        project_id: int,
+        session,
+        background_tasks: BackgroundTasks | None,
+        public_project_id: str | None,
+    ) -> NextSuggestion | None:
+        if job.status == PerceptionJobStatus.DONE_EMPTY.value:
+            return None
+        if job.status == PerceptionJobStatus.DONE_WITH_SLOT.value:
+            return self._build_slot_suggestion(
+                project_id=project_id,
+                job=job,
+                public_project_id=public_project_id,
+            )
+        if job.status == PerceptionJobStatus.FAILED.value:
+            return self._build_failed_suggestion(job)
+        if job.status == PerceptionJobStatus.STALE.value:
+            if background_tasks is None:
+                return None
+            await self._activate_and_schedule_job(
+                job,
+                background_tasks,
+                session,
+                clear_result=True,
+            )
+            return self._build_running_suggestion(job)
+        if (
+            job.status == PerceptionJobStatus.NOT_STARTED.value
+            and background_tasks is not None
+        ):
+            await self._activate_and_schedule_job(
+                job,
+                background_tasks,
+                session,
+                clear_result=True,
+            )
+        return self._build_running_suggestion(job)
+
     async def _get_perception_suggestion(
         self,
         project_id: int,
@@ -148,8 +328,6 @@ class PerceptionJobService:
         background_tasks: BackgroundTasks | None,
         public_project_id: str | None = None,
     ) -> NextSuggestion | None:
-        from backend.database.model import PerceptionJobModel
-
         await self._mark_stale_jobs(
             project_id=project_id,
             stage=stage,
@@ -160,126 +338,34 @@ class PerceptionJobService:
             session=session,
         )
 
-        job_result = await session.execute(
-            select(PerceptionJobModel).where(
-                PerceptionJobModel.project_id == project_id,
-                PerceptionJobModel.stage == stage,
-                PerceptionJobModel.perception_kind == perception_kind,
-                PerceptionJobModel.target_type == target_type,
-                PerceptionJobModel.target_id == target_id,
-                PerceptionJobModel.context_hash == context_hash,
-            )
+        job = await self._load_matching_job(
+            session,
+            project_id=project_id,
+            stage=stage,
+            perception_kind=perception_kind,
+            target_type=target_type,
+            target_id=target_id,
+            context_hash=context_hash,
         )
-        job = job_result.scalar_one_or_none()
 
         if job is None:
-            active_job = await self._load_active_stage_job(
+            return await self._resolve_missing_job(
                 project_id=project_id,
                 stage=stage,
+                perception_kind=perception_kind,
+                target_type=target_type,
+                target_id=target_id,
+                context_hash=context_hash,
                 session=session,
-            )
-
-            if active_job is not None:
-                if (
-                    active_job.status == PerceptionJobStatus.NOT_STARTED.value
-                    and background_tasks is not None
-                ):
-                    active_job.status = PerceptionJobStatus.RUNNING.value
-                    await session.flush()
-                    await self._schedule_perception_job(
-                        background_tasks=background_tasks,
-                        session=session,
-                        job_id=active_job.id,
-                    )
-
-                return self._build_running_suggestion(active_job)
-
-            try:
-                async with session.begin_nested():
-                    job = PerceptionJobModel(
-                        project_id=project_id,
-                        stage=stage,
-                        perception_kind=perception_kind,
-                        target_type=target_type,
-                        target_id=target_id,
-                        context_hash=context_hash,
-                        status=(
-                            PerceptionJobStatus.RUNNING.value
-                            if background_tasks is not None
-                            else PerceptionJobStatus.NOT_STARTED.value
-                        ),
-                    )
-                    session.add(job)
-                    await session.flush()
-            except Exception:
-                job_result = await session.execute(
-                    select(PerceptionJobModel).where(
-                        PerceptionJobModel.project_id == project_id,
-                        PerceptionJobModel.stage == stage,
-                        PerceptionJobModel.perception_kind == perception_kind,
-                        PerceptionJobModel.target_type == target_type,
-                        PerceptionJobModel.target_id == target_id,
-                        PerceptionJobModel.context_hash == context_hash,
-                    )
-                )
-                job = job_result.scalar_one_or_none()
-                if job is None:
-                    raise
-
-            if (
-                background_tasks is not None
-                and job.status == PerceptionJobStatus.RUNNING.value
-            ):
-                await self._schedule_perception_job(
-                    background_tasks=background_tasks,
-                    session=session,
-                    job_id=job.id,
-                )
-
-            return self._build_running_suggestion(job)
-
-        if job.status == PerceptionJobStatus.DONE_EMPTY.value:
-            return None
-
-        if job.status == PerceptionJobStatus.DONE_WITH_SLOT.value:
-            return self._build_slot_suggestion(
-                project_id=project_id,
-                job=job,
-                public_project_id=public_project_id,
-            )
-
-        if job.status == PerceptionJobStatus.FAILED.value:
-            return self._build_failed_suggestion(job)
-
-        if job.status == PerceptionJobStatus.STALE.value:
-            if background_tasks is not None:
-                job.status = PerceptionJobStatus.RUNNING.value
-                job.result_slot_payload = None
-                job.error_message = ""
-                await session.flush()
-                await self._schedule_perception_job(
-                    background_tasks=background_tasks,
-                    session=session,
-                    job_id=job.id,
-                )
-                return self._build_running_suggestion(job)
-            return None
-
-        if (
-            job.status == PerceptionJobStatus.NOT_STARTED.value
-            and background_tasks is not None
-        ):
-            job.status = PerceptionJobStatus.RUNNING.value
-            job.result_slot_payload = None
-            job.error_message = ""
-            await session.flush()
-            await self._schedule_perception_job(
                 background_tasks=background_tasks,
-                session=session,
-                job_id=job.id,
             )
-
-        return self._build_running_suggestion(job)
+        return await self._resolve_existing_job(
+            job,
+            project_id=project_id,
+            session=session,
+            background_tasks=background_tasks,
+            public_project_id=public_project_id,
+        )
 
     async def _schedule_perception_job(
         self,

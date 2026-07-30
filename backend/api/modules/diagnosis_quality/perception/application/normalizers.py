@@ -254,6 +254,104 @@ class PerceptionDraftNormalizer:
         }
 
     @classmethod
+    def _normalize_flow_step_numbers(
+        cls,
+        raw_steps: list[dict],
+    ) -> tuple[list[dict], dict[object, str], set[str]]:
+        aliases = {}
+        used_numbers = set()
+        normalized_steps = []
+        for index, step in enumerate(raw_steps, start=1):
+            if not isinstance(step, dict):
+                raise ValueError("invalid_flow_step_payload")
+            raw_number = step.get("step_number")
+            number = cls.normalize_step_number(raw_number, index)
+            if number in used_numbers:
+                number = cls.next_available_step_number(
+                    index,
+                    used_numbers,
+                )
+            used_numbers.add(number)
+            for alias in {
+                raw_number,
+                "" if raw_number is None else str(raw_number),
+                number,
+            }:
+                if alias != "":
+                    aliases[alias] = number
+            normalized_steps.append({**step, "step_number": number})
+        return normalized_steps, aliases, used_numbers
+
+    @classmethod
+    def _normalize_flow_step_references(
+        cls,
+        step: dict,
+        business_object_ref_map: dict[object, int],
+        step_aliases: dict[object, str],
+        step_numbers: set[str],
+    ) -> None:
+        step["step_type"] = cls.normalize_step_type(step.get("step_type"))
+        step["actor_ids"] = cls.dedupe_int_values(
+            step.get("actor_ids", [])
+        )
+        step["input_business_object_ids"] = (
+            cls.dedupe_business_object_refs(
+                cls.coerce_list(
+                    step.get("input_business_object_ids", [])
+                )
+                + cls.coerce_list(
+                    step.get("input_business_object_numbers", [])
+                ),
+                business_object_ref_map,
+            )
+        )
+        step["output_business_object_ids"] = (
+            cls.dedupe_business_object_refs(
+                cls.coerce_list(
+                    step.get("output_business_object_ids", [])
+                )
+                + cls.coerce_list(
+                    step.get("output_business_object_numbers", [])
+                ),
+                business_object_ref_map,
+            )
+        )
+        step["next_steps"] = cls.normalize_next_steps(
+            step.get("next_steps", []),
+            step_aliases,
+            step_numbers,
+        )
+
+    @classmethod
+    def _normalize_filled_flow(
+        cls,
+        flow: dict,
+        business_object_ref_map: dict[object, int],
+    ) -> dict:
+        if not isinstance(flow, dict):
+            raise ValueError("invalid_flow_payload")
+        raw_steps = flow.get("flow_steps", [])
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise ValueError("empty_flow_steps")
+        steps, aliases, step_numbers = cls._normalize_flow_step_numbers(
+            raw_steps
+        )
+        for step in steps:
+            cls._normalize_flow_step_references(
+                step,
+                business_object_ref_map,
+                aliases,
+                step_numbers,
+            )
+        return {
+            **flow,
+            "feature_ids": cls.dedupe_int_values(
+                flow.get("feature_ids", [])
+            ),
+            "flow_steps": steps,
+        }
+
+    @classmethod
     def normalize_filled_flows(
         cls,
         raw_flows: list[dict],
@@ -262,100 +360,13 @@ class PerceptionDraftNormalizer:
         if not isinstance(raw_flows, list) or not raw_flows:
             raise ValueError("empty_flows")
 
-        flows = []
-
-        for flow in raw_flows:
-            if not isinstance(flow, dict):
-                raise ValueError("invalid_flow_payload")
-
-            raw_steps = flow.get("flow_steps", [])
-
-            if not isinstance(raw_steps, list) or not raw_steps:
-                raise ValueError("empty_flow_steps")
-
-            step_aliases: dict[object, str] = {}
-            used_step_numbers: set[str] = set()
-            normalized_steps = []
-
-            for index, step in enumerate(raw_steps, start=1):
-                if not isinstance(step, dict):
-                    raise ValueError("invalid_flow_step_payload")
-
-                raw_step_number = step.get("step_number")
-                step_number = cls.normalize_step_number(
-                    raw_step_number,
-                    index,
-                )
-
-                if step_number in used_step_numbers:
-                    step_number = cls.next_available_step_number(
-                        index,
-                        used_step_numbers,
-                    )
-
-                used_step_numbers.add(step_number)
-
-                for alias in {
-                    raw_step_number,
-                    "" if raw_step_number is None else str(raw_step_number),
-                    step_number,
-                }:
-                    if alias != "":
-                        step_aliases[alias] = step_number
-
-                normalized_steps.append(
-                    {
-                        **step,
-                        "step_number": step_number,
-                    }
-                )
-
-            for step in normalized_steps:
-                step["step_type"] = cls.normalize_step_type(
-                    step.get("step_type")
-                )
-                step["actor_ids"] = cls.dedupe_int_values(
-                    step.get("actor_ids", [])
-                )
-                step["input_business_object_ids"] = (
-                    cls.dedupe_business_object_refs(
-                        cls.coerce_list(
-                            step.get("input_business_object_ids", [])
-                        )
-                        + cls.coerce_list(
-                            step.get("input_business_object_numbers", [])
-                        ),
-                        business_object_ref_map,
-                    )
-                )
-                step["output_business_object_ids"] = (
-                    cls.dedupe_business_object_refs(
-                        cls.coerce_list(
-                            step.get("output_business_object_ids", [])
-                        )
-                        + cls.coerce_list(
-                            step.get("output_business_object_numbers", [])
-                        ),
-                        business_object_ref_map,
-                    )
-                )
-                step["next_steps"] = cls.normalize_next_steps(
-                    step.get("next_steps", []),
-                    step_aliases,
-                    used_step_numbers,
-                )
-
-            flows.append(
-                {
-                    **flow,
-                    "feature_ids": cls.dedupe_int_values(
-                        flow.get("feature_ids", [])
-                    ),
-                    "flow_steps": normalized_steps,
-                }
+        return [
+            cls._normalize_filled_flow(
+                flow,
+                business_object_ref_map,
             )
-
-        return flows
+            for flow in raw_flows
+        ]
 
     @classmethod
     def normalize_step_number(
@@ -498,6 +509,86 @@ class PerceptionDraftNormalizer:
 
         return result
 
+    @staticmethod
+    def _build_business_object_reference_map(
+        existing_business_object_ids: set[int],
+    ) -> dict[object, int]:
+        reference_map = {}
+        for business_object_id in existing_business_object_ids:
+            reference_map[business_object_id] = business_object_id
+            reference_map[str(business_object_id)] = business_object_id
+        return reference_map
+
+    @staticmethod
+    def _normalize_business_object_id(
+        reference,
+        seen_ids: set[int],
+        next_temporary_id: int,
+    ) -> tuple[int, int]:
+        try:
+            business_object_id = int(reference)
+        except (TypeError, ValueError):
+            while next_temporary_id in seen_ids:
+                next_temporary_id -= 1
+            business_object_id = next_temporary_id
+            next_temporary_id -= 1
+        if business_object_id in seen_ids:
+            raise ValueError("duplicate_business_object_id")
+        seen_ids.add(business_object_id)
+        return business_object_id, next_temporary_id
+
+    @staticmethod
+    def _register_business_object_references(
+        reference_map: dict[object, int],
+        item: dict,
+        reference,
+        business_object_id: int,
+    ) -> None:
+        reference_map[reference] = business_object_id
+        reference_map[str(reference)] = business_object_id
+        number = item.get("business_object_number")
+        if number is not None:
+            reference_map[number] = business_object_id
+            reference_map[str(number)] = business_object_id
+
+    @staticmethod
+    def _normalize_business_object_attributes(item: dict) -> list[dict]:
+        payload = item.get("business_object_attributes", [])
+        if payload is None:
+            payload = []
+        if not isinstance(payload, list):
+            raise ValueError("invalid_business_object_payload")
+        attributes = []
+        for attribute in payload:
+            if not isinstance(attribute, dict):
+                raise ValueError("invalid_business_object_payload")
+            name = attribute.get("business_object_attribute_name", "")
+            description = attribute.get(
+                "business_object_attribute_description",
+                "",
+            )
+            data_type = attribute.get(
+                "business_object_attribute_type",
+                "",
+            )
+            example = attribute.get(
+                "business_object_attribute_example",
+                "",
+            )
+            if not name or not description or not data_type:
+                raise ValueError("invalid_business_object_payload")
+            attributes.append(
+                {
+                    "business_object_attribute_name": name,
+                    "business_object_attribute_description": description,
+                    "business_object_attribute_type": data_type,
+                    "business_object_attribute_example": (
+                        "" if example is None else str(example)
+                    ),
+                }
+            )
+        return attributes
+
     @classmethod
     def normalize_filled_business_objects(
         cls,
@@ -506,147 +597,118 @@ class PerceptionDraftNormalizer:
     ) -> tuple[list[dict], dict[object, int]]:
         if not isinstance(raw_items, list):
             raise ValueError("invalid_business_object_payload")
-
-        existing_business_object_ids = {
+        existing_ids = {
             item.businessObjectId
             for item in business_object_nodes
         }
-        business_object_ref_map: dict[object, int] = {}
-
-        for business_object_id in existing_business_object_ids:
-            business_object_ref_map[business_object_id] = business_object_id
-            business_object_ref_map[str(business_object_id)] = (
-                business_object_id
-            )
-
-        seen_business_object_ids = set()
+        reference_map = cls._build_business_object_reference_map(
+            existing_ids
+        )
+        seen_ids = set()
         business_objects = []
-        next_temporary_business_object_id = -1
-
+        next_temporary_id = -1
         for item in raw_items:
             if not isinstance(item, dict):
                 raise ValueError("invalid_business_object_payload")
-
-            business_object_ref = (
+            reference = (
                 item.get("business_object_id")
                 if item.get("business_object_id") is not None
                 else item.get("business_object_number")
             )
-
-            if business_object_ref is None:
+            if reference is None:
                 raise ValueError("invalid_business_object_payload")
-
-            try:
-                business_object_id = int(business_object_ref)
-            except (TypeError, ValueError):
-                while (
-                    next_temporary_business_object_id
-                    in seen_business_object_ids
-                ):
-                    next_temporary_business_object_id -= 1
-
-                business_object_id = next_temporary_business_object_id
-                next_temporary_business_object_id -= 1
-
-            if business_object_id in seen_business_object_ids:
-                raise ValueError("duplicate_business_object_id")
-
-            seen_business_object_ids.add(business_object_id)
-            business_object_ref_map[business_object_ref] = business_object_id
-            business_object_ref_map[str(business_object_ref)] = (
-                business_object_id
-            )
-
-            business_object_number = item.get("business_object_number")
-
-            if business_object_number is not None:
-                business_object_ref_map[business_object_number] = (
-                    business_object_id
+            business_object_id, next_temporary_id = (
+                cls._normalize_business_object_id(
+                    reference,
+                    seen_ids,
+                    next_temporary_id,
                 )
-                business_object_ref_map[str(business_object_number)] = (
-                    business_object_id
-                )
-
-            business_object_name = item.get("business_object_name", "")
-            business_object_description = item.get(
-                "business_object_description",
-                "",
             )
-
-            if not business_object_name or not business_object_description:
+            cls._register_business_object_references(
+                reference_map,
+                item,
+                reference,
+                business_object_id,
+            )
+            name = item.get("business_object_name", "")
+            description = item.get("business_object_description", "")
+            if not name or not description:
                 raise ValueError("invalid_business_object_payload")
-
-            attributes = []
-
-            attributes_payload = item.get(
-                "business_object_attributes",
-                [],
-            )
-
-            if attributes_payload is None:
-                attributes_payload = []
-
-            if not isinstance(attributes_payload, list):
-                raise ValueError("invalid_business_object_payload")
-
-            for attribute in attributes_payload:
-                if not isinstance(attribute, dict):
-                    raise ValueError("invalid_business_object_payload")
-
-                attribute_name = attribute.get(
-                    "business_object_attribute_name",
-                    "",
-                )
-                attribute_description = attribute.get(
-                    "business_object_attribute_description",
-                    "",
-                )
-                attribute_type = attribute.get(
-                    "business_object_attribute_type",
-                    "",
-                )
-                attribute_example = attribute.get(
-                    "business_object_attribute_example",
-                    "",
-                )
-
-                if (
-                    not attribute_name
-                    or not attribute_description
-                    or not attribute_type
-                ):
-                    raise ValueError("invalid_business_object_payload")
-
-                attributes.append(
-                    {
-                        "business_object_attribute_name": attribute_name,
-                        "business_object_attribute_description": (
-                            attribute_description
-                        ),
-                        "business_object_attribute_type": attribute_type,
-                        "business_object_attribute_example": (
-                            ""
-                            if attribute_example is None
-                            else str(attribute_example)
-                        ),
-                    }
-                )
-
             business_objects.append(
                 {
                     "business_object_id": business_object_id,
-                    "business_object_name": business_object_name,
-                    "business_object_description": (
-                        business_object_description
+                    "business_object_name": name,
+                    "business_object_description": description,
+                    "is_existing": business_object_id in existing_ids,
+                    "business_object_attributes": (
+                        cls._normalize_business_object_attributes(item)
                     ),
-                    "is_existing": (
-                        business_object_id in existing_business_object_ids
-                    ),
-                    "business_object_attributes": attributes,
                 }
             )
+        return business_objects, reference_map
 
-        return business_objects, business_object_ref_map
+    @classmethod
+    def _validate_filled_flow_header(
+        cls,
+        flow: dict,
+        feature_ids: set[int],
+    ) -> tuple[list[dict], set[str]]:
+        if not isinstance(flow, dict):
+            raise ValueError("invalid_flow_payload")
+        if not flow.get("flow_name") or not flow.get("flow_description"):
+            raise ValueError("invalid_flow_payload")
+        referenced_feature_ids = flow.get("feature_ids", [])
+        if not referenced_feature_ids:
+            raise ValueError("invalid_feature_reference")
+        for feature_id in referenced_feature_ids:
+            if feature_id not in feature_ids:
+                raise ValueError("invalid_feature_reference")
+        steps = flow.get("flow_steps", [])
+        if not steps:
+            raise ValueError("empty_flow_steps")
+        step_numbers = [step.get("step_number") for step in steps]
+        step_number_set = set(step_numbers)
+        if len(step_number_set) != len(step_numbers):
+            raise ValueError("duplicate_step_number")
+        for number in step_numbers:
+            if (
+                not isinstance(number, str)
+                or cls._step_number_pattern.match(number) is None
+            ):
+                raise ValueError("invalid_step_number_format")
+        return steps, step_number_set
+
+    @classmethod
+    def _validate_filled_flow_step(
+        cls,
+        step: dict,
+        *,
+        actor_ids: set[int],
+        business_object_ids: set[int],
+        step_numbers: set[str],
+    ) -> None:
+        if step.get("step_type") not in cls._valid_step_types:
+            raise ValueError("invalid_step_type")
+        if not step.get("step_name") or not step.get("step_description"):
+            raise ValueError("invalid_flow_step_payload")
+        for actor_id in step.get("actor_ids", []):
+            if actor_id not in actor_ids:
+                raise ValueError("invalid_actor_reference")
+        for business_object_id in step.get(
+            "input_business_object_ids",
+            [],
+        ):
+            if business_object_id not in business_object_ids:
+                raise ValueError("invalid_business_object_reference")
+        for business_object_id in step.get(
+            "output_business_object_ids",
+            [],
+        ):
+            if business_object_id not in business_object_ids:
+                raise ValueError("invalid_business_object_reference")
+        for next_step_number in step.get("next_steps", []):
+            if next_step_number not in step_numbers:
+                raise ValueError("invalid_next_step_reference")
 
     @classmethod
     def validate_filled_flows(
@@ -673,77 +735,14 @@ class PerceptionDraftNormalizer:
         }
 
         for flow in flows:
-            if not isinstance(flow, dict):
-                raise ValueError("invalid_flow_payload")
-
-            if not flow.get("flow_name") or not flow.get(
-                "flow_description"
-            ):
-                raise ValueError("invalid_flow_payload")
-
-            feature_ids = flow.get("feature_ids", [])
-
-            if not feature_ids:
-                raise ValueError("invalid_feature_reference")
-
-            for feature_id in feature_ids:
-                if feature_id not in feature_id_set:
-                    raise ValueError("invalid_feature_reference")
-
-            flow_steps = flow.get("flow_steps", [])
-
-            if not flow_steps:
-                raise ValueError("empty_flow_steps")
-
-            step_numbers = [
-                step.get("step_number")
-                for step in flow_steps
-            ]
-            step_number_set = set(step_numbers)
-
-            if len(step_number_set) != len(step_numbers):
-                raise ValueError("duplicate_step_number")
-
-            for step_number in step_numbers:
-                if (
-                    not isinstance(step_number, str)
-                    or cls._step_number_pattern.match(step_number) is None
-                ):
-                    raise ValueError("invalid_step_number_format")
-
+            flow_steps, step_numbers = cls._validate_filled_flow_header(
+                flow,
+                feature_id_set,
+            )
             for step in flow_steps:
-                step_type = step.get("step_type")
-
-                if step_type not in cls._valid_step_types:
-                    raise ValueError("invalid_step_type")
-
-                if not step.get("step_name") or not step.get(
-                    "step_description"
-                ):
-                    raise ValueError("invalid_flow_step_payload")
-
-                for actor_id in step.get("actor_ids", []):
-                    if actor_id not in actor_id_set:
-                        raise ValueError("invalid_actor_reference")
-
-                for business_object_id in step.get(
-                    "input_business_object_ids",
-                    [],
-                ):
-                    if business_object_id not in business_object_id_set:
-                        raise ValueError(
-                            "invalid_business_object_reference"
-                        )
-
-                for business_object_id in step.get(
-                    "output_business_object_ids",
-                    [],
-                ):
-                    if business_object_id not in business_object_id_set:
-                        raise ValueError(
-                            "invalid_business_object_reference"
-                        )
-
-                for next_step_number in step.get("next_steps", []):
-                    if next_step_number not in step_number_set:
-                        raise ValueError("invalid_next_step_reference")
+                cls._validate_filled_flow_step(
+                    step,
+                    actor_ids=actor_id_set,
+                    business_object_ids=business_object_id_set,
+                    step_numbers=step_numbers,
+                )

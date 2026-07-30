@@ -102,18 +102,6 @@ class GenerationChoiceGroupCreateRequest(CamelModel):
     )
 
 
-class GenerationCandidateError(CamelModel):
-    """单个候选失败的信息。"""
-    index: int
-    strategy: str
-    error_type: str = Field(
-        ...,
-        description="timeout | llm_error | validation_error | unknown",
-    )
-    message: str = Field(..., description="用户可读的错误摘要")
-    detail: str | None = Field(default=None, description="调试用完整错误")
-
-
 class GenerationAcceptRequest(CamelModel):
     """采纳 generation choice 的请求，支持强制采纳 stale choice。"""
     force: bool = Field(

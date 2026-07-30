@@ -26,15 +26,13 @@ interface ColumnProps {
   columnKey: string;
   title: string;
   items: DragItem[];
-  moveTargets: Array<{ key: string; label: string; danger?: boolean }>;
   highlightTarget?: string | null;
   selectedTarget?: string | null;
   onItemClick: (item: DragItem) => void;
   onMoveItem: (itemId: string, targetKey: string) => void;
-  onAddItem?: (columnKey: string) => void;
 }
 
-export function RangeKanbanColumn({ columnKey, title, items, moveTargets, highlightTarget, selectedTarget, onItemClick, onMoveItem, onAddItem }: ColumnProps) {
+export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, selectedTarget, onItemClick, onMoveItem }: ColumnProps) {
   const { t } = useTranslation();
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeKanoItem, setActiveKanoItem] = useState<DragItem | null>(null);

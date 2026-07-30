@@ -160,7 +160,7 @@ def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
         feedback += "Follow this strategy while preserving the original requirements, project context, and output-format constraints."
         return feedback
 
-    feedback = f"本候选方案的生成策略：\n"
+    feedback = "本候选方案的生成策略：\n"
     feedback += f"- 策略名称：{label}\n"
     if desc:
         feedback += f"- 策略说明：{desc}\n"
@@ -168,7 +168,6 @@ def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
         feedback += f"- 生成侧重点：{instruction}\n"
     
     feedback += f"\n当前任务：{task_label}。\n"
-    feedback += f"请在满足原始需求、项目上下文和输出格式约束的前提下，按上述策略生成本候选。"
+    feedback += "请在满足原始需求、项目上下文和输出格式约束的前提下，按上述策略生成本候选。"
     return feedback
-
 

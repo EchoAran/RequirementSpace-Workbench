@@ -2,16 +2,17 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from backend.api.modules.requirements_core.ports import get_notifier
+from backend.core.notifier import get_notifier
 from backend.core.generators.scopes_generator import (
     ScopesGenerator,
     ScopesGeneratorInput,
 )
-from backend.schemas import FeatureNode, ScopeNode, ScopeStatus
+from backend.schemas import FeatureNode, ScopeStatus
 from backend.services.binary_conversion_service import (
     BinaryConversionError,
     BinaryConversionService,
 )
+from .scope_generation_context import load_scope_generation_context
 
 
 class ScopeGenerationService:
@@ -296,151 +297,7 @@ class ScopeGenerationService:
         project_id: int,
         session,
     ) -> tuple[str, list[FeatureNode], list[FeatureNode]]:
-        from backend.database.model import (
-            FeatureModel,
-            FeatureRelationModel,
-            ProjectModel,
-            ScopeModel,
-            feature_actor_table,
-        )
-
-        project_result = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
-        )
-        project = project_result.scalar_one_or_none()
-
-        if project is None:
-            raise ValueError("project_not_found")
-
-        feature_result = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id,
-            )
-        )
-        feature_models = feature_result.scalars().all()
-
-        if not feature_models:
-            raise ValueError("empty_features")
-
-        feature_id_set = {
-            feature.id
-            for feature in feature_models
-        }
-
-        relation_result = await session.execute(
-            select(FeatureRelationModel).where(
-                FeatureRelationModel.parent_feature_id.in_(
-                    feature_id_set
-                )
-            )
-        )
-        relation_models = relation_result.scalars().all()
-
-        feature_actor_result = await session.execute(
-            select(
-                feature_actor_table.c.feature_id,
-                feature_actor_table.c.actor_id,
-            ).where(
-                feature_actor_table.c.feature_id.in_(
-                    feature_id_set
-                )
-            )
-        )
-        feature_actor_rows = feature_actor_result.all()
-
-        scope_result = await session.execute(
-            select(ScopeModel).where(
-                ScopeModel.feature_id.in_(feature_id_set)
-            )
-        )
-        scope_models = scope_result.scalars().all()
-
-        children_map: dict[int, list[int]] = {}
-        parent_map: dict[int, int] = {}
-
-        for relation in relation_models:
-            children_map.setdefault(
-                relation.parent_feature_id,
-                [],
-            ).append(relation.child_feature_id)
-
-            parent_map[
-                relation.child_feature_id
-            ] = relation.parent_feature_id
-
-        actor_ids_map: dict[int, list[int]] = {}
-
-        for feature_id, actor_id in feature_actor_rows:
-            actor_ids_map.setdefault(
-                feature_id,
-                [],
-            ).append(actor_id)
-
-        scope_node_map = {}
-
-        for scope in scope_models:
-            status_str = scope.status.upper()
-            if status_str in ScopeStatus.__members__:
-                scope_status = ScopeStatus[status_str]
-            else:
-                try:
-                    scope_status = ScopeStatus(scope.status.lower())
-                except ValueError:
-                    continue
-
-            scope_node_map[scope.feature_id] = ScopeNode(
-                scopeId=scope.id,
-                scopeStatus=scope_status,
-                reason=scope.reason,
-                positiveSummary=scope.positive_summary or None,
-                negativeSummary=scope.negative_summary or None,
-                positivePictureBase64=(
-                    BinaryConversionService.bytes_to_base64(
-                        scope.positive_picture
-                    )
-                    if scope.positive_picture is not None
-                    else None
-                ),
-                negativePictureBase64=(
-                    BinaryConversionService.bytes_to_base64(
-                        scope.negative_picture
-                    )
-                    if scope.negative_picture is not None
-                    else None
-                ),
-                kanoCategory=scope.kano_category,
-                kanoCategoryName=scope.kano_category_name,
-            )
-
-        feature_nodes = [
-            FeatureNode(
-                featureId=feature.id,
-                featureName=feature.name,
-                featureDescription=feature.description,
-                actorIds=actor_ids_map.get(feature.id, []),
-                parentId=parent_map.get(feature.id),
-                childrenIds=children_map.get(feature.id, []),
-                scope=scope_node_map.get(feature.id),
-            )
-            for feature in feature_models
-        ]
-
-        leaf_feature_nodes = [
-            feature
-            for feature in feature_nodes
-            if len(feature.childrenIds) == 0
-        ]
-
-        if not leaf_feature_nodes:
-            raise ValueError("empty_leaf_features")
-
-        return (
-            project.user_requirements,
-            feature_nodes,
-            leaf_feature_nodes,
-        )
+        return await load_scope_generation_context(project_id, session)
 
     def _normalize_generated_scopes(
         self,

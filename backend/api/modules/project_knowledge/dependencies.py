@@ -12,7 +12,6 @@ from backend.database.model import (
 )
 from backend.api.dependencies.project_access import (
     require_project_member,
-    require_project_role,
 )
 
 async def require_owned_knowledge_workspace(

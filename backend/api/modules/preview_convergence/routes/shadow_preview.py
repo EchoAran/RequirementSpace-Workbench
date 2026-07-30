@@ -77,6 +77,99 @@ def _build_draft_response(
     )
 
 
+def _unready_gate_names(gates: dict) -> list[str]:
+    return [
+        stage
+        for stage in ("what", "how", "scope")
+        if not gates[stage]
+    ]
+
+
+async def _get_or_generate_real_preview(project_id: int, session):
+    service = get_prototype_generation_service()
+    preview = await service.get_latest_preview(
+        project_id=project_id,
+        session=session,
+        raise_if_missing=False,
+    )
+    if preview is None:
+        preview = await service.start_generation(
+            project_id=project_id,
+            force_regenerate=True,
+        )
+    return preview
+
+
+async def _find_matching_shadow_draft(
+    session,
+    *,
+    project_id: int,
+    snapshot_hash: str,
+):
+    result = await session.execute(
+        select(PreviewShadowDraftModel)
+        .where(
+            PreviewShadowDraftModel.project_id == project_id,
+            PreviewShadowDraftModel.status.in_(["generating", "ready"]),
+            PreviewShadowDraftModel.base_snapshot_hash == snapshot_hash,
+        )
+        .order_by(PreviewShadowDraftModel.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _mark_active_shadow_drafts_stale(session, project_id: int) -> None:
+    result = await session.execute(
+        select(PreviewShadowDraftModel).where(
+            PreviewShadowDraftModel.project_id == project_id,
+            PreviewShadowDraftModel.status.in_(["generating", "ready"]),
+        )
+    )
+    for draft in result.scalars().all():
+        draft.status = "stale"
+        draft.error_message = "stale_by_new_snapshot"
+    await session.flush()
+
+
+async def _create_shadow_draft(
+    session,
+    *,
+    project_id: int,
+    snapshot_hash: str,
+    base_snapshot: dict,
+) -> PreviewShadowDraftModel:
+    draft = PreviewShadowDraftModel(
+        project_id=project_id,
+        draft_id=f"draft_{uuid.uuid4().hex[:12]}",
+        status="generating",
+        source="shadow_project",
+        base_snapshot_hash=snapshot_hash,
+        base_snapshot_json=base_snapshot,
+    )
+    session.add(draft)
+    await session.commit()
+    return draft
+
+
+def _start_shadow_convergence(
+    project_id: int,
+    draft_id: str,
+    llm_ctx: LLMRequestContext,
+) -> None:
+    asyncio.create_task(
+        convergence_service.converge_shadow_snapshot_task(
+            project_id,
+            draft_id,
+            api_url=llm_ctx.api_url,
+            api_key=llm_ctx.api_key,
+            model_name=llm_ctx.model_name,
+            content_locale=llm_ctx.content_locale,
+            content_locale_source=llm_ctx.content_locale_source,
+        )
+    )
+
+
 @router.post("", response_model=PreviewShadowDraftResponse)
 async def prepare_shadow_draft(
     project_id: str,
@@ -93,19 +186,11 @@ async def prepare_shadow_draft(
     all_passed = gates["what"] and gates["how"] and gates["scope"]
 
     if all_passed:
-        # Converged: return real prototype
         try:
-            preview = await get_prototype_generation_service().get_latest_preview(
-                project_id=owned_project.id,
-                session=session,
-                raise_if_missing=False,
+            preview = await _get_or_generate_real_preview(
+                owned_project.id,
+                session,
             )
-            if preview is None:
-                # Fallback: if no real preview exists, generate one automatically
-                preview = await get_prototype_generation_service().start_generation(
-                    project_id=owned_project.id,
-                    force_regenerate=True,
-                )
             return PreviewShadowDraftResponse(
                 source="real_project",
                 status=preview.status,
@@ -116,74 +201,25 @@ async def prepare_shadow_draft(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to generate real preview: {str(e)}")
 
-    # Unconverged: shadow mode
-    unready_gates = []
-    if not gates["what"]:
-        unready_gates.append("what")
-    if not gates["how"]:
-        unready_gates.append("how")
-    if not gates["scope"]:
-        unready_gates.append("scope")
-
-    # Build base snapshot
+    unready_gates = _unready_gate_names(gates)
     base_snapshot = await build_project_snapshot(owned_project.id, session)
     current_hash = calculate_stable_snapshot_hash(base_snapshot)
-
-    # 2. Check for duplicate active draft
-    existing_res = await session.execute(
-        select(PreviewShadowDraftModel)
-        .where(
-            PreviewShadowDraftModel.project_id == owned_project.id,
-            PreviewShadowDraftModel.status.in_(["generating", "ready"]),
-            PreviewShadowDraftModel.base_snapshot_hash == current_hash,
-        )
-        .order_by(PreviewShadowDraftModel.created_at.desc())
-        .limit(1)
+    existing_draft = await _find_matching_shadow_draft(
+        session,
+        project_id=owned_project.id,
+        snapshot_hash=current_hash,
     )
-    existing_draft = existing_res.scalar_one_or_none()
-    
     if existing_draft is not None:
         return _build_draft_response(existing_draft, unready_gates)
 
-    # 3. Mark all previous active drafts for this project as stale
-    stale_drafts_res = await session.execute(
-        select(PreviewShadowDraftModel).where(
-            PreviewShadowDraftModel.project_id == owned_project.id,
-            PreviewShadowDraftModel.status.in_(["generating", "ready"]),
-        )
-    )
-    stale_drafts = stale_drafts_res.scalars().all()
-    for sd in stale_drafts:
-        sd.status = "stale"
-        sd.error_message = "stale_by_new_snapshot"
-    await session.flush()
-
-    # 4. Create new shadow draft
-    draft_id = f"draft_{uuid.uuid4().hex[:12]}"
-    new_draft = PreviewShadowDraftModel(
+    await _mark_active_shadow_drafts_stale(session, owned_project.id)
+    new_draft = await _create_shadow_draft(
+        session,
         project_id=owned_project.id,
-        draft_id=draft_id,
-        status="generating",
-        source="shadow_project",
-        base_snapshot_hash=current_hash,
-        base_snapshot_json=base_snapshot,
+        snapshot_hash=current_hash,
+        base_snapshot=base_snapshot,
     )
-    session.add(new_draft)
-    await session.commit()  # Commit transaction so background task sees the record
-
-    # 5. Spawn background convergence task
-    asyncio.create_task(
-        convergence_service.converge_shadow_snapshot_task(
-            owned_project.id,
-            draft_id,
-            api_url=llm_ctx.api_url,
-            api_key=llm_ctx.api_key,
-            model_name=llm_ctx.model_name,
-            content_locale=llm_ctx.content_locale,
-            content_locale_source=llm_ctx.content_locale_source,
-        )
-    )
-
+    _start_shadow_convergence(owned_project.id, new_draft.draft_id, llm_ctx)
     return _build_draft_response(new_draft, unready_gates)
 
 

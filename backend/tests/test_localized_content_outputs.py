@@ -86,3 +86,95 @@ async def test_markdown_headings_follow_english_content_locale():
     assert "Project information" in markdown
     assert "No actor data." in markdown
     assert not CJK.search(markdown)
+
+
+@pytest.mark.asyncio
+async def test_markdown_preserves_nested_requirement_content():
+    actor = SimpleNamespace(
+        actor_id=1,
+        actor_name="Clerk",
+        actor_description="Handles orders",
+    )
+    criterion = SimpleNamespace(
+        criterion_content="Order is saved",
+    )
+    scenario = SimpleNamespace(
+        scenario_name="Create order",
+        scenario_content="Given a valid request",
+        acceptance_criteria=[criterion],
+    )
+    parent_feature = SimpleNamespace(
+        feature_id=10,
+        parent_id=None,
+        feature_name="Order management",
+        feature_description="Manage orders",
+        scope=SimpleNamespace(scope_status="current"),
+        scenarios=[],
+    )
+    child_feature = SimpleNamespace(
+        feature_id=11,
+        parent_id=10,
+        feature_name="Create order",
+        feature_description="Create a new order",
+        scope=None,
+        scenarios=[scenario],
+    )
+    attribute = SimpleNamespace(
+        business_object_attribute_name="Order number",
+        business_object_attribute_description="Unique identifier",
+        business_object_attribute_type="string",
+        business_object_attribute_example="SO-1",
+    )
+    business_object = SimpleNamespace(
+        business_object_id=20,
+        business_object_name="Order",
+        business_object_description="Order data",
+        business_object_attributes=[attribute],
+    )
+    step = SimpleNamespace(
+        step_name="Save order",
+        step_type="task",
+        step_description="Persist order data",
+        actor_ids=[1],
+        input_business_object_ids=[20],
+        output_business_object_ids=[20],
+    )
+    flow = SimpleNamespace(
+        flow_name="Order flow",
+        flow_description="Create an order",
+        flow_steps=[step],
+    )
+    detail = SimpleNamespace(
+        project_name="Orders",
+        project_description="Order project",
+        user_requirements="Create orders",
+        actors=[actor],
+        features=[parent_feature, child_feature],
+        business_objects=[business_object],
+        flows=[flow],
+    )
+    service = ProjectService()
+    service.get_project_detail = AsyncMock(return_value=detail)
+    token = _english_context()
+    try:
+        with patch.object(
+            FindingService,
+            "list_findings",
+            new=AsyncMock(return_value=[]),
+        ):
+            markdown = await service.export_project_markdown(
+                1,
+                AsyncMock(),
+            )
+    finally:
+        current_llm_context.reset(token)
+
+    for expected in (
+        "- **Order management**: Manage orders [Scope: Current]",
+        "  - **Create order**: Create a new order",
+        "Order is saved",
+        "| Order number | Unique identifier | string | SO-1 |",
+        "Clerk",
+        "Order",
+    ):
+        assert expected in markdown

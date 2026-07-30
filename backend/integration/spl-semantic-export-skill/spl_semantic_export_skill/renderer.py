@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
-from .ir import SplSemanticIR, WorkerStepIR, TypeIR
+from typing import Any, List
+from .ir import SplSemanticIR, WorkerStepIR
 
 
 def escape_string(text: Any) -> str:
@@ -32,184 +32,138 @@ class SplSemanticRenderer:
         safe_project_id = re.sub(r'[^a-zA-Z0-9]', '', ir.project_id)[:8]
         if not safe_project_id:
             safe_project_id = "project"
-
-        lines = []
-        lines.append(f"[DEFINE_AGENT: Agent_{safe_project_id} \"RequirementSpace SPL semantic export for {escape_string(ir.project_name)}\"]")
-        
-        # 1. PERSONA
+        lines = [
+            f"[DEFINE_AGENT: Agent_{safe_project_id} \"RequirementSpace SPL semantic export for {escape_string(ir.project_name)}\"]"
+        ]
         lines.append("[DEFINE_PERSONA:]")
         lines.append(f"ROLE: {escape_string(ir.persona_role)}")
         lines.append(f"DOMAIN: {escape_string(ir.persona_domain)}")
         lines.append("[END_PERSONA]")
         lines.append("")
-
-        # 2. AUDIENCE
-        lines.append("[DEFINE_AUDIENCE:]")
-        for actor_id, desc in sorted(ir.audiences.items()):
-            lines.append(f"Actor_{actor_id}: \"{escape_string(desc)}\"")
-        lines.append("[END_AUDIENCE]")
-        lines.append("")
-
-        # 3. CONCEPTS
-        lines.append("[DEFINE_CONCEPTS:]")
-        for concept_name, concept_desc in sorted(ir.concepts.items()):
-            lines.append(f"{concept_name}: \"{escape_string(concept_desc)}\"")
-        lines.append("[END_CONCEPTS]")
-        lines.append("")
-
-        # 4. CONSTRAINTS
+        self._append_mapping_section(
+            lines, "AUDIENCE", ir.audiences,
+            lambda key, value: f"Actor_{key}: \"{escape_string(value)}\"",
+        )
+        self._append_mapping_section(
+            lines, "CONCEPTS", ir.concepts,
+            lambda key, value: f"{key}: \"{escape_string(value)}\"",
+        )
         lines.append("[DEFINE_CONSTRAINTS:]")
         for constraint in ir.constraints:
             lines.append(f"DeliveryScope: \"{escape_string(constraint)}\"")
         lines.append("[END_CONSTRAINTS]")
         lines.append("")
-
-        # 5. TYPES (Include custom Enums first)
-        lines.append("[DEFINE_TYPES:]")
-        
-        # Find all custom enums
-        enum_definitions = []
-        enum_types_seen = set()
-        for t in ir.types.values():
-            for f in t.fields:
-                if f.enum_candidates and f.spl_type not in enum_types_seen:
-                    enum_types_seen.add(f.spl_type)
-                    candidates_str = ", ".join(f.enum_candidates)
-                    enum_definitions.append(f"{f.spl_type} = [{candidates_str}]")
-        
-        for enum_def in sorted(enum_definitions):
-            lines.append(enum_def)
-        if enum_definitions:
-            lines.append("")  # Spacer between enums and structs
-
-        # Render structured types
-        for t in ir.types.values():
-            lines.append(f"\"BusinessObject {t.type_name} (from BO_{t.source_bo_id})\"")
-            lines.append(f"{t.type_name} = {{")
-            
-            field_lines = []
-            for f in t.fields:
-                desc_part = f"\"Description: {escape_string(f.description)}. Example: {escape_string(f.example)}\" " if f.description or f.example else ""
-                field_lines.append(f"  {desc_part}{f.name}: {f.spl_type}")
-            
-            lines.append(",\n".join(field_lines))
-            lines.append("}")
-        lines.append("[END_TYPES]")
-        lines.append("")
-
-        # 6. VARIABLES
-        lines.append("[DEFINE_VARIABLES:]")
-        for var_name, var_val in sorted(ir.variables.items()):
-            lines.append(f"\"Feature: {escape_string(var_name)}\"")
-            lines.append(f"{var_val.get('id_str', 'Feature')}: text = \"{escape_string(var_val.get('desc', ''))}\"")
-        lines.append("[END_VARIABLES]")
-        lines.append("")
-
-        # 7. WORKERS
+        self._append_types(lines, ir)
+        self._append_variables(lines, ir)
         for worker in ir.workers.values():
-            lines.append(f"[DEFINE_WORKER: {worker.worker_name}]")
-            lines.append(f"  \"Description: {escape_string(worker.description)} (from Flow_{worker.source_flow_id})\"")
-            
-            # Inputs
-            lines.append("  [INPUTS]")
-            if worker.inputs:
-                for inp in sorted(worker.inputs):
-                    lines.append(f"    <REF> {inp} </REF>")
-            else:
-                lines.append("    # None")
-            lines.append("  [END_INPUTS]")
-            
-            # Outputs
-            lines.append("  [OUTPUTS]")
-            if worker.outputs:
-                for out in sorted(worker.outputs):
-                    lines.append(f"    <REF> {out} </REF>")
-            else:
-                lines.append("    # None")
-            lines.append("  [END_OUTPUTS]")
-            
-            # Main flow with recursive step rendering
-            lines.append("  [MAIN_FLOW]")
-            
-            cmd_counter = 1
-            decision_counter = 1
-
-            def render_step_list(steps: List[WorkerStepIR], level: int) -> List[str]:
-                nonlocal cmd_counter, decision_counter
-                step_lines = []
-                indent = "  " * level
-                
-                # Check if it has a sequential block wrapper
-                has_sequential = False
-                for step in steps:
-                    if step.branch_kind == "sequential":
-                        has_sequential = True
-                        break
-                
-                if has_sequential:
-                    step_lines.append(f"{indent}[SEQUENTIAL_BLOCK]")
-                    level += 1
-                    indent = "  " * level
-
-                for step in steps:
-                    if step.step_type == "judgment":
-                        # Render Decision IF/ELSE block
-                        cond = escape_string(step.decision_condition or "condition")
-                        step_lines.append(f"{indent}DECISION-{decision_counter} [IF {cond}]")
-                        decision_counter += 1
-                        
-                        # Find positive and negative branches
-                        if_steps = [s for s in step.sub_steps if s.branch_kind == "if"]
-                        else_steps = [s for s in step.sub_steps if s.branch_kind == "else"]
-                        
-                        # Render if path
-                        step_lines.extend(render_step_list(if_steps, level + 1))
-                        
-                        # Render else path
-                        if else_steps:
-                            step_lines.append(f"{indent}[ELSE]")
-                            step_lines.extend(render_step_list(else_steps, level + 1))
-                            
-                        step_lines.append(f"{indent}END_IF")
-                    else:
-                        # Render normal command step
-                        step_lines.append(f"{indent}COMMAND-{cmd_counter} [COMMAND {escape_string(step.command_text)}]")
-                        cmd_counter += 1
-                
-                if has_sequential:
-                    level -= 1
-                    indent = "  " * level
-                    step_lines.append(f"{indent}[END_SEQUENTIAL_BLOCK]")
-                    
-                return step_lines
-
-            flow_lines = render_step_list(worker.main_flow, 2)
-            lines.extend(flow_lines)
-            
-            lines.append("  [END_MAIN_FLOW]")
-
-            # Scenarios Gherkin
-            lines.append("  [SCENARIOS]")
-            if worker.scenarios:
-                for scen in worker.scenarios:
-                    lines.append("    <EXPECTED-WORKER-BEHAVIOR-GHERKIN>")
-                    lines.append("    {")
-                    lines.append(f"      Feature: Feature_{scen.source_scenario_id}")
-                    lines.append(f"      Scenario: \"{escape_string(scen.scenario_name)}\"")
-                    for g in scen.given:
-                        lines.append(f"        Given {escape_string(g)}")
-                    for w in scen.when:
-                        lines.append(f"        When {escape_string(w)}")
-                    for t in scen.then:
-                        lines.append(f"        Then {escape_string(t)}")
-                    lines.append("    }")
-                    lines.append("    </EXPECTED-WORKER-BEHAVIOR-GHERKIN>")
-            else:
-                lines.append("    # None")
-            lines.append("  [END_SCENARIOS]")
-
-            lines.append("[END_WORKER]")
-            lines.append("")
-
+            self._append_worker(lines, worker)
         lines.append("[END_AGENT]")
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _append_mapping_section(lines, name, values, formatter) -> None:
+        lines.append(f"[DEFINE_{name}:]")
+        for key, value in sorted(values.items()):
+            lines.append(formatter(key, value))
+        lines.append(f"[END_{name}]")
+        lines.append("")
+
+    @staticmethod
+    def _append_types(lines, ir) -> None:
+        lines.append("[DEFINE_TYPES:]")
+        seen = set()
+        enums = []
+        for value in ir.types.values():
+            for field in value.fields:
+                if field.enum_candidates and field.spl_type not in seen:
+                    seen.add(field.spl_type)
+                    enums.append(f"{field.spl_type} = [{', '.join(field.enum_candidates)}]")
+        lines.extend(sorted(enums))
+        if enums:
+            lines.append("")
+        for value in ir.types.values():
+            lines.append(f"\"BusinessObject {value.type_name} (from BO_{value.source_bo_id})\"")
+            lines.append(f"{value.type_name} = {{")
+            fields = []
+            for field in value.fields:
+                desc = f"\"Description: {escape_string(field.description)}. Example: {escape_string(field.example)}\" " if field.description or field.example else ""
+                fields.append(f"  {desc}{field.name}: {field.spl_type}")
+            lines.append(",\n".join(fields))
+            lines.append("}")
+        lines.extend(["[END_TYPES]", ""])
+
+    @staticmethod
+    def _append_variables(lines, ir) -> None:
+        lines.append("[DEFINE_VARIABLES:]")
+        for name, value in sorted(ir.variables.items()):
+            lines.append(f"\"Feature: {escape_string(name)}\"")
+            lines.append(f"{value.get('id_str', 'Feature')}: text = \"{escape_string(value.get('desc', ''))}\"")
+        lines.extend(["[END_VARIABLES]", ""])
+
+    @classmethod
+    def _append_worker(cls, lines, worker) -> None:
+        lines.append(f"[DEFINE_WORKER: {worker.worker_name}]")
+        lines.append(f"  \"Description: {escape_string(worker.description)} (from Flow_{worker.source_flow_id})\"")
+        cls._append_refs(lines, "INPUTS", worker.inputs)
+        cls._append_refs(lines, "OUTPUTS", worker.outputs)
+        lines.append("  [MAIN_FLOW]")
+        lines.extend(cls._render_step_list(worker.main_flow, 2, [1, 1]))
+        lines.append("  [END_MAIN_FLOW]")
+        cls._append_scenarios(lines, worker.scenarios)
+        lines.extend(["[END_WORKER]", ""])
+
+    @staticmethod
+    def _append_refs(lines, name, refs) -> None:
+        lines.append(f"  [{name}]")
+        if refs:
+            lines.extend(f"    <REF> {ref} </REF>" for ref in sorted(refs))
+        else:
+            lines.append("    # None")
+        lines.append(f"  [END_{name}]")
+
+    @classmethod
+    def _render_step_list(cls, steps: List[WorkerStepIR], level: int, counters) -> List[str]:
+        result = []
+        indent = "  " * level
+        sequential = any(step.branch_kind == "sequential" for step in steps)
+        if sequential:
+            result.append(f"{indent}[SEQUENTIAL_BLOCK]")
+            level += 1
+            indent = "  " * level
+        for step in steps:
+            if step.step_type == "judgment":
+                result.append(f"{indent}DECISION-{counters[1]} [IF {escape_string(step.decision_condition or 'condition')}]")
+                counters[1] += 1
+                result.extend(cls._render_step_list(
+                    [sub for sub in step.sub_steps if sub.branch_kind == "if"],
+                    level + 1, counters,
+                ))
+                else_steps = [sub for sub in step.sub_steps if sub.branch_kind == "else"]
+                if else_steps:
+                    result.append(f"{indent}[ELSE]")
+                    result.extend(cls._render_step_list(else_steps, level + 1, counters))
+                result.append(f"{indent}END_IF")
+            else:
+                result.append(f"{indent}COMMAND-{counters[0]} [COMMAND {escape_string(step.command_text)}]")
+                counters[0] += 1
+        if sequential:
+            result.append(f"{'  ' * (level - 1)}[END_SEQUENTIAL_BLOCK]")
+        return result
+
+    @staticmethod
+    def _append_scenarios(lines, scenarios) -> None:
+        lines.append("  [SCENARIOS]")
+        if not scenarios:
+            lines.append("    # None")
+        for scenario in scenarios:
+            lines.extend([
+                "    <EXPECTED-WORKER-BEHAVIOR-GHERKIN>",
+                "    {",
+                f"      Feature: Feature_{scenario.source_scenario_id}",
+                f"      Scenario: \"{escape_string(scenario.scenario_name)}\"",
+            ])
+            lines.extend(f"        Given {escape_string(value)}" for value in scenario.given)
+            lines.extend(f"        When {escape_string(value)}" for value in scenario.when)
+            lines.extend(f"        Then {escape_string(value)}" for value in scenario.then)
+            lines.extend(["    }", "    </EXPECTED-WORKER-BEHAVIOR-GHERKIN>"])
+        lines.append("  [END_SCENARIOS]")

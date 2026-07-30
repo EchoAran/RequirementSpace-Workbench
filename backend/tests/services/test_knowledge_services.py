@@ -2,6 +2,7 @@
 import os
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -13,6 +14,7 @@ from backend.services.knowledge.tokenizer import tokenize_for_search
 from backend.services.knowledge.chunking import chunk_markdown, KnowledgeChunkingService
 from backend.services.knowledge.retrieval import KnowledgeRetrievalService, extract_phrases
 from backend.services.knowledge.context_builder import KnowledgeContextBuilder
+from backend.services.knowledge.conversion import KnowledgeConversionService
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -94,6 +96,73 @@ Another section.
     assert "This is paragraph two" in chunks[1]["text"]
     assert chunks[2]["heading_path"] == "Title 2"
     assert "Another section" in chunks[2]["text"]
+
+
+@pytest.mark.asyncio
+async def test_convert_document_preserves_ready_file_and_chunking(
+    knowledge_test_db,
+    tmp_path,
+    monkeypatch,
+):
+    workspace = KnowledgeWorkspaceModel(
+        owner_user_id=1,
+        scope="project_creation",
+        status="active",
+    )
+    source_path = tmp_path / "source.txt"
+    source_path.write_text("Title\n\n\n\nBody", encoding="utf-8")
+    async with knowledge_test_db() as session:
+        session.add(workspace)
+        await session.flush()
+        document = KnowledgeDocumentModel(
+            workspace_id=workspace.id,
+            owner_user_id=1,
+            original_filename="source.txt",
+            content_type="text/plain",
+            file_size=source_path.stat().st_size,
+            sha256="conversion-test",
+            storage_path=str(source_path),
+            status="pending",
+            ai_enabled=True,
+        )
+        session.add(document)
+        await session.commit()
+        document_id = document.id
+        document_public_id = document.public_id
+
+    import backend.core.config as config_module
+
+    monkeypatch.setattr(config_module, "KNOWLEDGE_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        KnowledgeConversionService,
+        "_run_markitdown",
+        staticmethod(lambda path: "Title\n\n\n\nBody"),
+    )
+    chunk_document = AsyncMock()
+    monkeypatch.setattr(
+        KnowledgeChunkingService,
+        "chunk_document",
+        chunk_document,
+    )
+
+    await KnowledgeConversionService.convert_document(
+        document_id,
+        bind=knowledge_test_db.kw["bind"],
+    )
+
+    async with knowledge_test_db() as session:
+        converted = await session.get(KnowledgeDocumentModel, document_id)
+        assert converted.status == "ready"
+        assert converted.error_message is None
+        assert converted.markdown_path == str(
+            tmp_path / f"{document_public_id}.md"
+        )
+    output = (tmp_path / f"{document_public_id}.md").read_text(encoding="utf-8")
+    assert "original_filename: source.txt" in output
+    assert "converted_at:" in output
+    assert output.endswith("Title\n\nBody")
+    chunk_document.assert_awaited_once()
+    assert chunk_document.await_args.kwargs["document_id"] == document_id
 
 
 @pytest.mark.asyncio

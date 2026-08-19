@@ -1,4 +1,4 @@
-﻿"""
+"""
 Draft handler for managing AI-powered generative drafts.
 """
 
@@ -287,7 +287,7 @@ class AIAddDraftHandler:
             "message": "draft_created",
         }
 
-    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int) -> dict:
+    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int | None = None) -> dict:
         """Confirm a draft — dispatches to add or edit path based on target_type."""
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
 
@@ -305,7 +305,7 @@ class AIAddDraftHandler:
             owner_user_id,
             db_session,
         )
-        created_id = await self._apply_confirmed_draft(draft, db_session)
+        created_id = await self._apply_confirmed_draft(draft, db_session, workspace_id=workspace_id)
         await self._record_draft_application(
             draft_id,
             target_type,
@@ -433,7 +433,7 @@ class AIAddDraftHandler:
             },
         )
 
-    async def _apply_confirmed_draft(self, draft, db_session):
+    async def _apply_confirmed_draft(self, draft, db_session, workspace_id: int | None = None):
         target_type = draft.get("target_type", "")
         project_id = draft.get("project_id")
         if target_type.startswith("edit_"):
@@ -450,6 +450,7 @@ class AIAddDraftHandler:
             generated,
             project_id,
             db_session,
+            workspace_id=workspace_id,
         )
 
     @staticmethod
@@ -918,7 +919,7 @@ class AIAddDraftHandler:
                     raise ValueError(f"invalid_feature_reference: {missing}")
 
     async def _persist_generated_object(
-        self, target_type: str, generated: dict, project_id: int, db_session,
+        self, target_type: str, generated: dict, project_id: int, db_session, workspace_id: int | None = None,
     ) -> int | None:
         """Persist the generated object via the appropriate CRUD service."""
         from backend.api.modules.requirements_core.public import (
@@ -934,7 +935,7 @@ class AIAddDraftHandler:
             from backend.api.modules.requirements_core.public import ActorService
             svc = ActorService()
             req = ActorCreateRequest(name=generated["name"], description=generated.get("description", ""))
-            result = await svc.create_actor(project_id, req, db_session, confirmation_status='ai_assumption')
+            result = await svc.create_actor(project_id, req, db_session, confirmation_status='ai_assumption', workspace_id=workspace_id)
             return result.actor_id
 
         elif target_type in ("feature_leaf", "feature_branch"):
@@ -945,11 +946,11 @@ class AIAddDraftHandler:
                 description=generated.get("description", ""),
                 parent_id=generated.get("parent_id"),
             )
-            result = await svc.create_feature(project_id, req, db_session, confirmation_status='ai_assumption')
+            result = await svc.create_feature(project_id, req, db_session, confirmation_status='ai_assumption', workspace_id=workspace_id)
             actor_ids = generated.get("actor_ids", [])
             if actor_ids:
                 update_req = FeatureUpdateRequest(actor_ids=actor_ids)
-                await svc.update_feature(project_id, result.feature_id, update_req, db_session)
+                await svc.update_feature(project_id, result.feature_id, update_req, db_session, workspace_id=workspace_id)
             return result.feature_id
 
         elif target_type == "flow":
@@ -960,14 +961,14 @@ class AIAddDraftHandler:
                 description=generated.get("description", ""),
                 feature_ids=generated.get("feature_ids", []),
             )
-            result = await svc.create_flow(project_id, req, db_session, confirmation_status='ai_assumption')
+            result = await svc.create_flow(project_id, req, db_session, confirmation_status='ai_assumption', workspace_id=workspace_id)
             return result.flow_id
 
         elif target_type == "business_object":
             from backend.api.modules.requirements_core.public import BusinessObjectService
             svc = BusinessObjectService()
             req = BOCreateRequest(name=generated["name"], description=generated.get("description", ""))
-            bo_result = await svc.create_bo(project_id, req, db_session, confirmation_status='ai_assumption')
+            bo_result = await svc.create_business_object(project_id, req, db_session, confirmation_status='ai_assumption', workspace_id=workspace_id)
             for attr in generated.get("attributes", []):
                 attr_req = BOAttributeCreateRequest(
                     name=attr["name"],
@@ -975,7 +976,7 @@ class AIAddDraftHandler:
                     data_type=attr.get("data_type", "string"),
                     example=attr.get("example", ""),
                 )
-                await svc.create_bo_attribute(project_id, bo_result.business_object_id, attr_req, db_session)
+                await svc.create_business_object_attribute(project_id, bo_result.business_object_id, attr_req, db_session)
             return bo_result.business_object_id
 
         return None

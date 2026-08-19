@@ -1,48 +1,198 @@
 {
-  "pageHealth": { "notStarted": "未开始", "ready": "已就绪", "needsAttention": "待处理", "pendingCheck": "待检查", "readyToAdvance": "可进入下一阶段", "waitingPrerequisite": "待前置就绪", "completeWhat": "需先补齐 What 阶段的所有核心建模规则", "completeWhatAndHow": "需先补齐 What 和 How 阶段的核心规则", "shadowPreviewAvailable": "影子预览可用", "pendingDecision": "待决策", "converged": "已收敛" },
-  "http": { "timeoutStatus": "请求超时", "timeoutMessage": "请求超时，后台任务执行时间过长，请稍后重试。", "networkStatus": "网络错误", "networkMessage": "网络连接失败，请检查服务是否正常启动。" },
+  "pageHealth": {
+    "notStarted": "未开始",
+    "ready": "已就绪",
+    "needsAttention": "待处理",
+    "pendingCheck": "待检查",
+    "readyToAdvance": "可进入下一阶段",
+    "waitingPrerequisite": "待前置就绪",
+    "completeWhat": "需先补齐 What 阶段的所有核心建模规则",
+    "completeWhatAndHow": "需先补齐 What 和 How 阶段的核心规则",
+    "shadowPreviewAvailable": "影子预览可用",
+    "pendingDecision": "待决策",
+    "converged": "已收敛"
+  },
+  "http": {
+    "timeoutStatus": "请求超时",
+    "timeoutMessage": "请求超时，后台任务执行时间过长，请稍后重试。",
+    "networkStatus": "网络错误",
+    "networkMessage": "网络连接失败，请检查服务是否正常启动。"
+  },
   "findingText": {
-    "ACTOR_WITHOUT_FEATURE": { "title": "角色未关联功能", "description": "该角色尚未关联任何功能。" },
-    "LEAF_FEATURE_WITHOUT_ACTOR": { "title": "叶子功能缺少参与者", "description": "该叶子功能尚未关联参与者。" },
-    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": { "title": "功能与参与者组合缺少场景", "description": "该功能与参与者组合尚无对应场景。" },
-    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS": { "title": "场景参与者关联不一致", "description": "场景参与者尚未关联到对应功能。" },
-    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": { "title": "场景缺少验收标准", "description": "该场景尚无验收标准。" },
-    "DUPLICATE_SCENARIO_NAME": { "title": "场景名称重复", "description": "同一功能与参与者下存在重复场景名称。" },
-    "LEAF_FEATURE_WITHOUT_FLOW": { "title": "叶子功能缺少流程覆盖", "description": "该叶子功能尚未被流程覆盖。" },
-    "FLOW_WITHOUT_FEATURE": { "title": "流程未关联功能", "description": "该流程尚未关联任何功能。" },
-    "FLOW_WITHOUT_STEPS": { "title": "流程缺少步骤", "description": "该流程尚无步骤。" },
-    "ACTOR_ACTION_STEP_WITHOUT_ACTOR": { "title": "用户动作缺少参与者", "description": "该用户动作步骤尚未关联参与者。" },
-    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": { "title": "判断步骤分支不足", "description": "该判断步骤至少需要两个后继分支。" },
-    "UNREACHABLE_FLOW_STEP": { "title": "流程步骤不可达", "description": "该步骤无法从第一个步骤到达。" },
-    "BUSINESS_OBJECT_WITHOUT_USAGE": { "title": "业务对象未被使用", "description": "该业务对象尚未被任何流程步骤使用。" },
-    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES": { "title": "业务对象缺少属性", "description": "该业务对象尚无属性。" },
-    "LEAF_FEATURE_WITHOUT_SCOPE": { "title": "叶子功能缺少范围结论", "description": "该叶子功能尚无范围结论。" },
-    "SCOPE_WITHOUT_REASON": { "title": "范围结论缺少理由", "description": "该范围结论需要补充理由。" },
-    "GENERATE_ACTORS": { "title": "生成参与者", "description": "建议先生成项目参与者。" },
-    "GENERATE_FEATURES": { "title": "生成功能", "description": "建议基于参与者生成功能树。" },
-    "BIND_ACTORS_TO_FEATURE": { "title": "绑定功能执行角色", "description": "请为每个叶子功能绑定执行角色。" },
-    "GENERATE_SCENARIOS": { "title": "生成场景", "description": "请为项目功能和参与者生成场景。" },
-    "GENERATE_ACCEPTANCE_CRITERIA": { "title": "生成验收标准", "description": "请为成功场景补充验收标准。" },
-    "ENTER_HOW": { "title": "进入 How 阶段", "description": "What 阶段基础已就绪，可以继续流程建模。" },
-    "GENERATE_FLOWS_AND_BUSINESS_OBJECTS": { "title": "生成流程与业务对象", "description": "请生成业务流程及其关联业务对象。" },
-    "COMPLETE_FLOW_STEPS": { "title": "补全流程步骤", "description": "请补全项目流程中缺少的步骤。" },
-    "ENTER_SCOPE": { "title": "进入 Scope 阶段", "description": "流程基础已就绪，可以继续范围决策。" },
-    "GENERATE_SCOPE": { "title": "生成范围决策", "description": "请为叶子功能生成范围与 Kano 建议。" },
-    "ENTER_PREVIEW": { "title": "进入预览", "description": "项目已可进行预览与导出检查。" },
-    "PREVIEW_READY": { "title": "查看预览", "description": "当前项目已进入预览阶段。" },
-    "STAGE_LOCKED": { "title": "阶段尚未解锁", "description": "请先完成并确认上一阶段，再进入当前阶段。" },
-    "PERCEPTION_RUNNING": { "title": "AI 分析运行中", "description": "AI 正在分析该阶段，请稍后查看。" },
-    "PERCEPTION_FAILED": { "title": "AI 分析失败", "description": "阶段分析失败，请重新诊断。" }
+    "ACTOR_WITHOUT_FEATURE": {
+      "title": "角色未关联功能",
+      "description": "该角色尚未关联任何功能。"
+    },
+    "LEAF_FEATURE_WITHOUT_ACTOR": {
+      "title": "叶子功能缺少参与者",
+      "description": "该叶子功能尚未关联参与者。"
+    },
+    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": {
+      "title": "功能与参与者组合缺少场景",
+      "description": "该功能与参与者组合尚无对应场景。"
+    },
+    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS": {
+      "title": "场景参与者关联不一致",
+      "description": "场景参与者尚未关联到对应功能。"
+    },
+    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": {
+      "title": "场景缺少验收标准",
+      "description": "该场景尚无验收标准。"
+    },
+    "DUPLICATE_SCENARIO_NAME": {
+      "title": "场景名称重复",
+      "description": "同一功能与参与者下存在重复场景名称。"
+    },
+    "LEAF_FEATURE_WITHOUT_FLOW": {
+      "title": "叶子功能缺少流程覆盖",
+      "description": "该叶子功能尚未被流程覆盖。"
+    },
+    "FLOW_WITHOUT_FEATURE": {
+      "title": "流程未关联功能",
+      "description": "该流程尚未关联任何功能。"
+    },
+    "FLOW_WITHOUT_STEPS": {
+      "title": "流程缺少步骤",
+      "description": "该流程尚无步骤。"
+    },
+    "ACTOR_ACTION_STEP_WITHOUT_ACTOR": {
+      "title": "用户动作缺少参与者",
+      "description": "该用户动作步骤尚未关联参与者。"
+    },
+    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": {
+      "title": "判断步骤分支不足",
+      "description": "该判断步骤至少需要两个后继分支。"
+    },
+    "UNREACHABLE_FLOW_STEP": {
+      "title": "流程步骤不可达",
+      "description": "该步骤无法从第一个步骤到达。"
+    },
+    "BUSINESS_OBJECT_WITHOUT_USAGE": {
+      "title": "业务对象未被使用",
+      "description": "该业务对象尚未被任何流程步骤使用。"
+    },
+    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES": {
+      "title": "业务对象缺少属性",
+      "description": "该业务对象尚无属性。"
+    },
+    "LEAF_FEATURE_WITHOUT_SCOPE": {
+      "title": "叶子功能缺少范围结论",
+      "description": "该叶子功能尚无范围结论。"
+    },
+    "SCOPE_WITHOUT_REASON": {
+      "title": "范围结论缺少理由",
+      "description": "该范围结论需要补充理由。"
+    },
+    "GENERATE_ACTORS": {
+      "title": "生成参与者",
+      "description": "建议先生成项目参与者。"
+    },
+    "GENERATE_FEATURES": {
+      "title": "生成功能",
+      "description": "建议基于参与者生成功能树。"
+    },
+    "BIND_ACTORS_TO_FEATURE": {
+      "title": "绑定功能执行角色",
+      "description": "请为每个叶子功能绑定执行角色。"
+    },
+    "GENERATE_SCENARIOS": {
+      "title": "生成场景",
+      "description": "请为项目功能和参与者生成场景。"
+    },
+    "GENERATE_ACCEPTANCE_CRITERIA": {
+      "title": "生成验收标准",
+      "description": "请为成功场景补充验收标准。"
+    },
+    "ENTER_HOW": {
+      "title": "进入 How 阶段",
+      "description": "What 阶段基础已就绪，可以继续流程建模。"
+    },
+    "GENERATE_FLOWS_AND_BUSINESS_OBJECTS": {
+      "title": "生成流程与业务对象",
+      "description": "请生成业务流程及其关联业务对象。"
+    },
+    "COMPLETE_FLOW_STEPS": {
+      "title": "补全流程步骤",
+      "description": "请补全项目流程中缺少的步骤。"
+    },
+    "ENTER_SCOPE": {
+      "title": "进入 Scope 阶段",
+      "description": "流程基础已就绪，可以继续范围决策。"
+    },
+    "GENERATE_SCOPE": {
+      "title": "生成范围决策",
+      "description": "请为叶子功能生成范围与 Kano 建议。"
+    },
+    "ENTER_PREVIEW": {
+      "title": "进入预览",
+      "description": "项目已可进行预览与导出检查。"
+    },
+    "PREVIEW_READY": {
+      "title": "查看预览",
+      "description": "当前项目已进入预览阶段。"
+    },
+    "STAGE_LOCKED": {
+      "title": "阶段尚未解锁",
+      "description": "请先完成并确认上一阶段，再进入当前阶段。"
+    },
+    "PERCEPTION_RUNNING": {
+      "title": "AI 分析运行中",
+      "description": "AI 正在分析该阶段，请稍后查看。"
+    },
+    "PERCEPTION_FAILED": {
+      "title": "AI 分析失败",
+      "description": "阶段分析失败，请重新诊断。"
+    }
   },
   "stageProgress": {
-    "status": { "ready": "阶段已完成", "locked": "尚未解锁", "analysis_running": "AI 分析运行中", "analyzing": "AI 分析运行中", "blocked": "存在阻塞问题", "ready_to_advance": "可进入下一阶段", "unlocked_not_started": "已解锁，尚未开始", "in_progress": "阶段进行中", "not_started": "尚未开始" },
-    "actions": { "request_transition": "申请进入下一阶段", "open_gate_findings": "查看阻塞问题", "wait": "查看分析进度", "navigate": "前往该阶段", "none": "" },
-    "checks": { "missing_actors": "项目尚未有参与者。", "missing_leaf_features": "项目尚未有叶子功能。", "leaf_feature_without_actor": "部分叶子功能未绑定参与者。", "leaf_feature_without_scenario": "部分叶子功能缺少场景。", "missing_acceptance_criteria": "部分场景缺少验收标准。", "missing_flows": "项目尚未有流程。", "flows_without_steps": "部分流程缺少步骤。", "invalid_step_actor": "部分流程步骤关联了无效角色。", "invalid_step_business_object": "部分流程步骤关联了无效业务对象。", "missing_object_attributes": "业务对象尚未定义属性。", "missing_scope_decision": "部分叶子功能缺少范围决策。", "kano_not_ready": "Kano 分析尚未完成。" }
+    "status": {
+      "ready": "阶段已完成",
+      "locked": "尚未解锁",
+      "analysis_running": "AI 分析运行中",
+      "analyzing": "AI 分析运行中",
+      "blocked": "存在阻塞问题",
+      "ready_to_advance": "可进入下一阶段",
+      "unlocked_not_started": "已解锁，尚未开始",
+      "in_progress": "阶段进行中",
+      "not_started": "尚未开始"
+    },
+    "actions": {
+      "request_transition": "申请进入下一阶段",
+      "open_gate_findings": "查看阻塞问题",
+      "wait": "查看分析进度",
+      "navigate": "前往该阶段",
+      "none": ""
+    },
+    "checks": {
+      "missing_actors": "项目尚未有参与者。",
+      "missing_leaf_features": "项目尚未有叶子功能。",
+      "leaf_feature_without_actor": "部分叶子功能未绑定参与者。",
+      "leaf_feature_without_scenario": "部分叶子功能缺少场景。",
+      "missing_acceptance_criteria": "部分场景缺少验收标准。",
+      "missing_flows": "项目尚未有流程。",
+      "flows_without_steps": "部分流程缺少步骤。",
+      "invalid_step_actor": "部分流程步骤关联了无效角色。",
+      "invalid_step_business_object": "部分流程步骤关联了无效业务对象。",
+      "missing_object_attributes": "业务对象尚未定义属性。",
+      "missing_scope_decision": "部分叶子功能缺少范围决策。",
+      "kano_not_ready": "Kano 分析尚未完成。"
+    }
   },
-  "status": { "archived": "已归档", "candidate": "候选", "rejected": "已拒绝", "selected": "已选中" },
+  "status": {
+    "archived": "已归档",
+    "candidate": "候选",
+    "rejected": "已拒绝",
+    "selected": "已选中"
+  },
   "selectors": {
     "system": "系统",
-    "readiness": { "goal": "系统目标就绪", "role": "执行角色覆盖", "system": "业务流程闭环", "data": "业务对象建模", "ui": "验收场景覆盖" },
+    "readiness": {
+      "goal": "系统目标就绪",
+      "role": "执行角色覆盖",
+      "system": "业务流程闭环",
+      "data": "业务对象建模",
+      "ui": "验收场景覆盖"
+    },
     "stepDetail": {
       "businessFlowRule": "满足业务主流程条件限制",
       "flowIntegrityRule": "AI 流程流转完整性保障",
@@ -51,7 +201,9 @@
       "entryPage": "扫码录入页面"
     },
     "ungroupedModule": "未分组模块",
-    "scope": { "pendingDecision": "交付范围决策待确认" },
+    "scope": {
+      "pendingDecision": "交付范围决策待确认"
+    },
     "rolePage": {
       "name": "【{{featureName}}】操作界面",
       "description": "提供给 {{actorName}} 用于执行 {{featureName}} 的交互界面。",
@@ -131,7 +283,8 @@
       "what": "What (要做什么)",
       "how": "How (怎么运作)"
     },
-    "backToProjectOverview": "返回项目概览"
+    "backToProjectOverview": "返回项目概览",
+    "repo": "版本控制"
   },
   "topbar": {
     "subtitle": {
@@ -139,7 +292,8 @@
       "what": "目标、能力、任务、角色收敛",
       "flow": "流程、规则、异常、状态变化",
       "scope": "范围边界与生成条件",
-      "preview": "验证与生成前检查"
+      "preview": "验证与生成前检查",
+      "repo": "仓库与版本历史"
     },
     "projectMembers": "项目成员管理",
     "accountSettings": "账户与 LLM 设置",
@@ -173,17 +327,50 @@
       "resolveConflict": "AI 生成建议后项目上下文发生了变化，请手动处理冲突。"
     },
     "notifications": {
-      "singleTaskAssigned": { "title": "收到新的确认任务指派", "body": "您收到了一项新的确认任务。" },
-      "batchTaskAssigned": { "title": "收到新的批量确认指派", "body": "您收到了一项新的批量确认任务。" },
-      "singleTaskApproved": { "title": "确认任务已通过", "body": "您指派的确认任务已通过。" },
-      "singleTaskRejected": { "title": "确认任务已驳回", "body": "您指派的确认任务已驳回。" },
-      "batchTaskApproved": { "title": "批量确认任务已通过", "body": "您指派的批量确认任务已通过。" },
-      "batchTaskRejected": { "title": "批量确认任务已驳回", "body": "您指派的批量确认任务已驳回。" },
-      "conflictTaskApproved": { "title": "冲突处理任务已采纳", "body": "冲突或草稿处理建议已采纳。" },
-      "conflictTaskRejected": { "title": "冲突处理任务已丢弃", "body": "冲突或草稿处理建议已丢弃。" },
-      "singleTaskSuperseded": { "title": "确认指派任务已失效", "body": "相关节点内容更新后，该确认任务已失效。" },
-      "batchTaskSuperseded": { "title": "批量确认指派已失效", "body": "关联节点内容更新后，该批量确认任务已失效。" },
-      "conflictDetected": { "title": "检测到 AI 写入冲突", "body": "AI 建议存在写入冲突，已转为冲突处理任务。" }
+      "singleTaskAssigned": {
+        "title": "收到新的确认任务指派",
+        "body": "您收到了一项新的确认任务。"
+      },
+      "batchTaskAssigned": {
+        "title": "收到新的批量确认指派",
+        "body": "您收到了一项新的批量确认任务。"
+      },
+      "singleTaskApproved": {
+        "title": "确认任务已通过",
+        "body": "您指派的确认任务已通过。"
+      },
+      "singleTaskRejected": {
+        "title": "确认任务已驳回",
+        "body": "您指派的确认任务已驳回。"
+      },
+      "batchTaskApproved": {
+        "title": "批量确认任务已通过",
+        "body": "您指派的批量确认任务已通过。"
+      },
+      "batchTaskRejected": {
+        "title": "批量确认任务已驳回",
+        "body": "您指派的批量确认任务已驳回。"
+      },
+      "conflictTaskApproved": {
+        "title": "冲突处理任务已采纳",
+        "body": "冲突或草稿处理建议已采纳。"
+      },
+      "conflictTaskRejected": {
+        "title": "冲突处理任务已丢弃",
+        "body": "冲突或草稿处理建议已丢弃。"
+      },
+      "singleTaskSuperseded": {
+        "title": "确认指派任务已失效",
+        "body": "相关节点内容更新后，该确认任务已失效。"
+      },
+      "batchTaskSuperseded": {
+        "title": "批量确认指派已失效",
+        "body": "关联节点内容更新后，该批量确认任务已失效。"
+      },
+      "conflictDetected": {
+        "title": "检测到 AI 写入冲突",
+        "body": "AI 建议存在写入冲突，已转为冲突处理任务。"
+      }
     }
   },
   "settings": {
@@ -191,8 +378,83 @@
     "subtitle": "AI 功能的数据通道与认证参数",
     "personalTab": "个人 LLM 配置",
     "projectTab": "项目配置索引",
-    "account": { "personalConfigurationDescription": "普通用户需提供 OpenAI-compatible 协议的 AI 连接地址及 API Key 才可执行智能推演；个人凭证会加密保存且不会共享。", "apiKey": "认证密钥 (API Key)", "apiKeyUnchanged": "未更改（请输入新 Key 替换）", "apiKeyPlaceholder": "请输入 API Key", "saveConfiguration": "保存配置", "projectIndexDescription": "项目级配置按项目维护。这里提供可管理项目的配置总览；策略、知识库和项目 LLM 请在对应项目配置页编辑。", "loadingProjectIndex": "正在拉取项目配置总览...", "noManageableProjects": "暂无可管理项目。", "currentProject": "当前项目", "noProjectDescription": "暂无项目说明", "openConfiguration": "打开配置", "generationStrategy": "AI 生成策略", "projectCustom": "项目自定义", "systemDefault": "系统默认", "strategySummary": "{{candidates}} 个候选 · {{enabled}} 个启用策略", "viewStrategy": "查看策略", "projectKnowledge": "项目知识库", "disabled": "已关闭", "enabled": "已开启", "knowledgeSummary": "{{documents}} 个文档 · {{aiEnabled}} 个可用于 AI", "knowledgeProcessingSummary": "{{processing}} 处理中 · {{failed}} 失败", "viewKnowledge": "查看知识库", "projectLlm": "项目 LLM", "projectConfigured": "项目已配置", "projectNotConfigured": "项目未配置", "projectModel": "项目模型", "fallbackTo": "回退到{{source}}", "personalConfiguration": "个人配置", "systemConfiguration": "系统配置", "effectiveModel": "生效模型：{{model}}", "viewProjectLlm": "查看项目 LLM", "testPassed": "测试通过", "testFailed": "测试失败",
-      "fetchFailed": "获取配置信息失败", "fieldsRequired": "配置字段不能为空", "projectSaved": "项目连接配置已成功保存", "projectSaveFailed": "保存项目连接配置失败", "clearProjectConfirm": "确定要清除项目 LLM 配置吗？清除后将恢复使用个人配置或系统配置。", "projectCleared": "项目连接配置已成功清除", "projectClearFailed": "清除项目连接配置失败", "completeConfigurationFirst": "请完整填写连接配置后再测试", "projectConnectionSucceeded": "连接成功！项目的 LLM 连接一切正常。", "connectionFailed": "连接失败：{{error}}", "upstreamUnavailable": "无法成功调用上游模型，请检查服务配置。", "networkError": "网络错误：{{error}}", "urlUnavailable": "连接失败，请检查 URL 可访问性。", "completePersonalConfigurationFirst": "请完整填写连接配置（API 根地址、API Key 和模型名称）后再测试", "personalConnectionSucceeded": "连接成功！您的 LLM 连接一切正常。", "personalSaved": "连接配置已成功保存", "personalSaveFailed": "保存连接配置失败", "clearPersonalConfirm": "确定要清除您的个人 LLM 配置吗？清除后您将无法进行 AI 场景生成，必须重新配置。", "personalCleared": "配置已成功清除", "personalClearFailed": "清除配置失败", "backHome": "返回首页", "navigationTitle": "账户设置与 LLM 配置", "pageTitle": "账户与服务配置", "pageDescription": "配置您的用户属性及大语言模型 API 连接以解锁智能推演。", "adminCannotConfigure": "管理员不可配置个人配置", "personalInfo": "个人基本信息", "personalInfoDescription": "当前登录账户的身份信息", "email": "邮箱地址", "role": "账户角色", "adminUser": "管理员用户", "standardUser": "普通用户", "loadingConfiguration": "正在拉取配置详情...", "serverConfigurationTitle": "已挂载服务端共享 LLM 配置", "serverConfigurationDescription": "系统将读取服务器环境配置中的共享大语言模型 API 资源，管理员无需在此配置个人 API 信息。", "serverConnectionStatus": "服务端连接状态：{{status}}", "ready": "已就绪", "notReady": "未就绪（请检查服务端 env）", "testConnection": "测试连通性", "apiBaseUrl": "API 根地址", "modelName": "模型名称", "apiKeyCiphertext": "API Key 密文", "editConfiguration": "修改配置", "clearConfiguration": "清除配置"
+    "account": {
+      "personalConfigurationDescription": "普通用户需提供 OpenAI-compatible 协议的 AI 连接地址及 API Key 才可执行智能推演；个人凭证会加密保存且不会共享。",
+      "apiKey": "认证密钥 (API Key)",
+      "apiKeyUnchanged": "未更改（请输入新 Key 替换）",
+      "apiKeyPlaceholder": "请输入 API Key",
+      "saveConfiguration": "保存配置",
+      "projectIndexDescription": "项目级配置按项目维护。这里提供可管理项目的配置总览；策略、知识库和项目 LLM 请在对应项目配置页编辑。",
+      "loadingProjectIndex": "正在拉取项目配置总览...",
+      "noManageableProjects": "暂无可管理项目。",
+      "currentProject": "当前项目",
+      "noProjectDescription": "暂无项目说明",
+      "openConfiguration": "打开配置",
+      "generationStrategy": "AI 生成策略",
+      "projectCustom": "项目自定义",
+      "systemDefault": "系统默认",
+      "strategySummary": "{{candidates}} 个候选 · {{enabled}} 个启用策略",
+      "viewStrategy": "查看策略",
+      "projectKnowledge": "项目知识库",
+      "disabled": "已关闭",
+      "enabled": "已开启",
+      "knowledgeSummary": "{{documents}} 个文档 · {{aiEnabled}} 个可用于 AI",
+      "knowledgeProcessingSummary": "{{processing}} 处理中 · {{failed}} 失败",
+      "viewKnowledge": "查看知识库",
+      "projectLlm": "项目 LLM",
+      "projectConfigured": "项目已配置",
+      "projectNotConfigured": "项目未配置",
+      "projectModel": "项目模型",
+      "fallbackTo": "回退到{{source}}",
+      "personalConfiguration": "个人配置",
+      "systemConfiguration": "系统配置",
+      "effectiveModel": "生效模型：{{model}}",
+      "viewProjectLlm": "查看项目 LLM",
+      "testPassed": "测试通过",
+      "testFailed": "测试失败",
+      "fetchFailed": "获取配置信息失败",
+      "fieldsRequired": "配置字段不能为空",
+      "projectSaved": "项目连接配置已成功保存",
+      "projectSaveFailed": "保存项目连接配置失败",
+      "clearProjectConfirm": "确定要清除项目 LLM 配置吗？清除后将恢复使用个人配置或系统配置。",
+      "projectCleared": "项目连接配置已成功清除",
+      "projectClearFailed": "清除项目连接配置失败",
+      "completeConfigurationFirst": "请完整填写连接配置后再测试",
+      "projectConnectionSucceeded": "连接成功！项目的 LLM 连接一切正常。",
+      "connectionFailed": "连接失败：{{error}}",
+      "upstreamUnavailable": "无法成功调用上游模型，请检查服务配置。",
+      "networkError": "网络错误：{{error}}",
+      "urlUnavailable": "连接失败，请检查 URL 可访问性。",
+      "completePersonalConfigurationFirst": "请完整填写连接配置（API 根地址、API Key 和模型名称）后再测试",
+      "personalConnectionSucceeded": "连接成功！您的 LLM 连接一切正常。",
+      "personalSaved": "连接配置已成功保存",
+      "personalSaveFailed": "保存连接配置失败",
+      "clearPersonalConfirm": "确定要清除您的个人 LLM 配置吗？清除后您将无法进行 AI 场景生成，必须重新配置。",
+      "personalCleared": "配置已成功清除",
+      "personalClearFailed": "清除配置失败",
+      "backHome": "返回首页",
+      "navigationTitle": "账户设置与 LLM 配置",
+      "pageTitle": "账户与服务配置",
+      "pageDescription": "配置您的用户属性及大语言模型 API 连接以解锁智能推演。",
+      "adminCannotConfigure": "管理员不可配置个人配置",
+      "personalInfo": "个人基本信息",
+      "personalInfoDescription": "当前登录账户的身份信息",
+      "email": "邮箱地址",
+      "role": "账户角色",
+      "adminUser": "管理员用户",
+      "standardUser": "普通用户",
+      "loadingConfiguration": "正在拉取配置详情...",
+      "serverConfigurationTitle": "已挂载服务端共享 LLM 配置",
+      "serverConfigurationDescription": "系统将读取服务器环境配置中的共享大语言模型 API 资源，管理员无需在此配置个人 API 信息。",
+      "serverConnectionStatus": "服务端连接状态：{{status}}",
+      "ready": "已就绪",
+      "notReady": "未就绪（请检查服务端 env）",
+      "testConnection": "测试连通性",
+      "apiBaseUrl": "API 根地址",
+      "modelName": "模型名称",
+      "apiKeyCiphertext": "API Key 密文",
+      "editConfiguration": "修改配置",
+      "clearConfiguration": "清除配置"
     },
     "interfaceLanguage": {
       "title": "界面语言 / Interface Language",
@@ -277,11 +539,31 @@
       "builtinBadge": "系统默认",
       "customBadge": "自定义",
       "builtin": {
-        "balanced": { "label": "均衡版", "description": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。", "instruction": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。覆盖核心业务角色、主流程、关键异常和必要验收条件，避免过度拆分、重复角色和低价值边界场景。" },
-        "comprehensive": { "label": "全面版", "description": "尽可能完整覆盖主路径、异常路径、边界条件和验收条件。", "instruction": "尽可能完整覆盖主路径、异常路径、边界条件、权限约束和验收条件。可以比均衡版更细，但不得编造与需求明显无关的内容。" },
-        "minimal": { "label": "精简版", "description": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。", "instruction": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。只覆盖最核心角色、主流程和必须验收条件，避免引入暂不必要的扩展场景、复杂权限和过细边界。" },
-        "risk_averse": { "label": "风控版", "description": "重点识别权限、数据一致性、异常处理和合规风险。", "instruction": "重点识别权限、数据一致性、异常处理、审计追踪和合规风险。生成方案时应补充关键风险场景、失败兜底、边界校验和验收条件，但不要脱离当前需求编造无关流程。" },
-        "workflow_first": { "label": "流程优先版", "description": "优先围绕端到端业务流程、状态流转和协作节点组织方案。", "instruction": "优先围绕端到端业务流程、状态流转、协作节点和前后置条件组织方案。生成内容应突出流程顺序、触发条件、角色交接和完成标准，避免只罗列静态功能点。" }
+        "balanced": {
+          "label": "均衡版",
+          "description": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。",
+          "instruction": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。覆盖核心业务角色、主流程、关键异常和必要验收条件，避免过度拆分、重复角色和低价值边界场景。"
+        },
+        "comprehensive": {
+          "label": "全面版",
+          "description": "尽可能完整覆盖主路径、异常路径、边界条件和验收条件。",
+          "instruction": "尽可能完整覆盖主路径、异常路径、边界条件、权限约束和验收条件。可以比均衡版更细，但不得编造与需求明显无关的内容。"
+        },
+        "minimal": {
+          "label": "精简版",
+          "description": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。",
+          "instruction": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。只覆盖最核心角色、主流程和必须验收条件，避免引入暂不必要的扩展场景、复杂权限和过细边界。"
+        },
+        "risk_averse": {
+          "label": "风控版",
+          "description": "重点识别权限、数据一致性、异常处理和合规风险。",
+          "instruction": "重点识别权限、数据一致性、异常处理、审计追踪和合规风险。生成方案时应补充关键风险场景、失败兜底、边界校验和验收条件，但不要脱离当前需求编造无关流程。"
+        },
+        "workflow_first": {
+          "label": "流程优先版",
+          "description": "优先围绕端到端业务流程、状态流转和协作节点组织方案。",
+          "instruction": "优先围绕端到端业务流程、状态流转、协作节点和前后置条件组织方案。生成内容应突出流程顺序、触发条件、角色交接和完成标准，避免只罗列静态功能点。"
+        }
       },
       "promptLabelColon": "Prompt 指令：",
       "editStrategyTooltip": "编辑策略",
@@ -457,7 +739,15 @@
       "title": "方案决策：方案组 #{{id}}",
       "descriptionWithType": "AI 已生成 {{count}} 个{{type}}候选方案，点击查看差异后再决定是否采纳。",
       "description": "AI 已生成 {{count}} 个候选方案，点击查看差异后再决定是否采纳。",
-      "types": { "actor": "参与者", "scenario": "场景", "feature": "功能树", "flow": "流程", "scope": "范围分析", "acceptanceCriteria": "验收标准", "projectCreation": "项目草稿" }
+      "types": {
+        "actor": "参与者",
+        "scenario": "场景",
+        "feature": "功能树",
+        "flow": "流程",
+        "scope": "范围分析",
+        "acceptanceCriteria": "验收标准",
+        "projectCreation": "项目草稿"
+      }
     },
     "continueProcessing": "继续处理",
     "projections": {
@@ -996,7 +1286,20 @@
       "unresolvedIssues": "发现未闭环的系统设计 Issue ({{count}} 项)",
       "unresolvedIssuesDescription": "工作区目前包含未决的业务冲突或流程空白，建议在最终导出产品规格说明前返回相关阶段修复这些问题。",
       "reviewingFlow": "正在审阅业务流时序：{{name}}",
-      "overlayFailed": "智能推演异常断裂", "overlaySucceeded": "影子原型推演成功", "overlayShadowGenerating": "AI 正在补齐规约并生成影子预览", "stepWhat": "步骤一：What 阶段智能推演（角色与功能补齐）", "stepHow": "步骤二：How 阶段智能推演（流程图与数据实体）", "stepScope": "步骤三：Scope 阶段智能评估（Kano 商业划分）", "stepAssembly": "步骤四：影子沙盒装配与高保真界面原型生成", "interactiveGenerating": "正在生成交互式预览原型", "interactiveGeneratingDescription": "当前规约已满足预览生成条件，系统不会额外提示阶段缺口。", "tracebackTitle": "后端感知推演异常日志 Traceback", "unknownPerceptionError": "未知异常，请检查后端感知层 PerceptionJob 日志。", "closeAndReset": "关闭并重置影子方案", "needsCompletion": "待完善", "completeNow": "立即前往完善"
+      "overlayFailed": "智能推演异常断裂",
+      "overlaySucceeded": "影子原型推演成功",
+      "overlayShadowGenerating": "AI 正在补齐规约并生成影子预览",
+      "stepWhat": "步骤一：What 阶段智能推演（角色与功能补齐）",
+      "stepHow": "步骤二：How 阶段智能推演（流程图与数据实体）",
+      "stepScope": "步骤三：Scope 阶段智能评估（Kano 商业划分）",
+      "stepAssembly": "步骤四：影子沙盒装配与高保真界面原型生成",
+      "interactiveGenerating": "正在生成交互式预览原型",
+      "interactiveGeneratingDescription": "当前规约已满足预览生成条件，系统不会额外提示阶段缺口。",
+      "tracebackTitle": "后端感知推演异常日志 Traceback",
+      "unknownPerceptionError": "未知异常，请检查后端感知层 PerceptionJob 日志。",
+      "closeAndReset": "关闭并重置影子方案",
+      "needsCompletion": "待完善",
+      "completeNow": "立即前往完善"
     },
     "shadowDiagTitle": "异常诊断中"
   },
@@ -1098,8 +1401,23 @@
     "choices": "候选方案",
     "choiceGroup": "方案组",
     "choiceGroupTitle": "方案组 #{{id}}",
-    "choiceGroupStatus": { "open": "待决策", "resolved": "已解决", "discarded": "已丢弃", "stale": "已过期" },
-    "slotDetail": { "slot": "槽位", "context": "上下文", "ownerNode": "所属节点：{{name}}", "expectedKinds": "预期类型：{{kinds}}", "notSpecified": "未指定", "openChoiceGroup": "打开方案组", "noChoiceGroup": "尚无方案组", "expand": "展开槽位", "ignore": "忽略槽位" },
+    "choiceGroupStatus": {
+      "open": "待决策",
+      "resolved": "已解决",
+      "discarded": "已丢弃",
+      "stale": "已过期"
+    },
+    "slotDetail": {
+      "slot": "槽位",
+      "context": "上下文",
+      "ownerNode": "所属节点：{{name}}",
+      "expectedKinds": "预期类型：{{kinds}}",
+      "notSpecified": "未指定",
+      "openChoiceGroup": "打开方案组",
+      "noChoiceGroup": "尚无方案组",
+      "expand": "展开槽位",
+      "ignore": "忽略槽位"
+    },
     "ignoreIssue": "忽略 Issue",
     "staleChoiceTitle": "项目上下文已变化",
     "staleChoiceSubtitle": "此候选可能不适用当前项目状态",
@@ -1117,7 +1435,6 @@
     "project": "项目设置",
     "node": "节点",
     "unknownNode": "未知节点",
-    "issue": "问题",
     "description": "说明描述",
     "unresolvedIssues": "待处理缺陷",
     "nodeKind": "节点类型",
@@ -1929,7 +2246,75 @@
     "boundaryRulesPlaceholder": "说明任何边界规则判定条件"
   },
   "stageGuidanceSlots": {
-    "whatOnboarding": { "description": "欢迎进入要做什么阶段，请先创建系统参与者与核心功能能力。", "manual": "开始创建", "ai": "AI 生成角色与能力" }, "howOnboarding": { "description": "欢迎进入怎么运作阶段，请为系统核心能力设计第一个业务主流程。", "manual": "手动创建流程", "ai": "AI 一键生成流程" }, "generative": { "description": "建议补充以下内容：{{description}}", "manual": "手动补充", "ai": "AI 智能填槽" }, "missingActor": { "description": "当前还没有系统参与者角色，请先补充角色定义。", "manual": "添加角色", "ai": "AI 生成角色" }, "missingFeature": { "description": "当前还没有核心能力结点，请先梳理业务功能树。", "manual": "添加功能", "ai": "AI 推演功能树" }, "missingFeatureActor": { "description": "存在功能结点尚未绑定执行角色，请补充角色关联。", "manual": "去绑定角色" }, "missingScenario": { "description": "部分叶子业务结点还没有成功典型场景，请补充对应的 User Story。", "manual": "添加场景", "ai": "AI 生成场景" }, "missingAcceptanceCriteria": { "description": "存在典型验收场景缺少验收标准（AC），请补充可验证的完成条件。", "manual": "完善 AC", "ai": "AI 补齐标准" }, "missingFlow": { "description": "当前缺少核心业务主流程，请补充代表系统流转的业务流程模型。", "manual": "创建业务流程", "ai": "AI 一键生成流程" }, "invalidFlowTopology": { "description": "检测到业务流程步骤尚未编排完整，或步骤顺序链路存在问题，请检查拓扑结构。", "manual": "编排步骤" }, "missingBusinessObjectAttribute": { "description": "存在数据实体尚未定义业务字段属性，请补充数据模型。", "manual": "定义字段" }, "missingScopeDecision": { "description": "部分业务叶子功能尚未制定交付计划，请完成范围划分。", "ai": "AI 自动划分范围" }, "kano": { "missing": "交付范围尚未完成分析，请先生成范围划分建议。", "generating": "AI 正在分析系统功能卡片并推演交付安排，请稍候。", "draftReady": "AI 已生成范围划分建议草稿，请在下方核对并确认发布计划。", "failed": "范围划分建议生成失败，请重新发起 AI 划分。", "ai": "AI 自动划分范围", "generatingAi": "AI 正在划分范围" }, "stageGateTransition": { "description": "{{stage}} 阶段基础建模规则已满足。建议先运行 AI 智能诊断检查潜在缺口，再决定是否进入下一阶段。", "manual": "申请进入下一阶段", "ai": "AI 智能诊断（推荐）" }
+    "whatOnboarding": {
+      "description": "欢迎进入要做什么阶段，请先创建系统参与者与核心功能能力。",
+      "manual": "开始创建",
+      "ai": "AI 生成角色与能力"
+    },
+    "howOnboarding": {
+      "description": "欢迎进入怎么运作阶段，请为系统核心能力设计第一个业务主流程。",
+      "manual": "手动创建流程",
+      "ai": "AI 一键生成流程"
+    },
+    "generative": {
+      "description": "建议补充以下内容：{{description}}",
+      "manual": "手动补充",
+      "ai": "AI 智能填槽"
+    },
+    "missingActor": {
+      "description": "当前还没有系统参与者角色，请先补充角色定义。",
+      "manual": "添加角色",
+      "ai": "AI 生成角色"
+    },
+    "missingFeature": {
+      "description": "当前还没有核心能力结点，请先梳理业务功能树。",
+      "manual": "添加功能",
+      "ai": "AI 推演功能树"
+    },
+    "missingFeatureActor": {
+      "description": "存在功能结点尚未绑定执行角色，请补充角色关联。",
+      "manual": "去绑定角色"
+    },
+    "missingScenario": {
+      "description": "部分叶子业务结点还没有成功典型场景，请补充对应的 User Story。",
+      "manual": "添加场景",
+      "ai": "AI 生成场景"
+    },
+    "missingAcceptanceCriteria": {
+      "description": "存在典型验收场景缺少验收标准（AC），请补充可验证的完成条件。",
+      "manual": "完善 AC",
+      "ai": "AI 补齐标准"
+    },
+    "missingFlow": {
+      "description": "当前缺少核心业务主流程，请补充代表系统流转的业务流程模型。",
+      "manual": "创建业务流程",
+      "ai": "AI 一键生成流程"
+    },
+    "invalidFlowTopology": {
+      "description": "检测到业务流程步骤尚未编排完整，或步骤顺序链路存在问题，请检查拓扑结构。",
+      "manual": "编排步骤"
+    },
+    "missingBusinessObjectAttribute": {
+      "description": "存在数据实体尚未定义业务字段属性，请补充数据模型。",
+      "manual": "定义字段"
+    },
+    "missingScopeDecision": {
+      "description": "部分业务叶子功能尚未制定交付计划，请完成范围划分。",
+      "ai": "AI 自动划分范围"
+    },
+    "kano": {
+      "missing": "交付范围尚未完成分析，请先生成范围划分建议。",
+      "generating": "AI 正在分析系统功能卡片并推演交付安排，请稍候。",
+      "draftReady": "AI 已生成范围划分建议草稿，请在下方核对并确认发布计划。",
+      "failed": "范围划分建议生成失败，请重新发起 AI 划分。",
+      "ai": "AI 自动划分范围",
+      "generatingAi": "AI 正在划分范围"
+    },
+    "stageGateTransition": {
+      "description": "{{stage}} 阶段基础建模规则已满足。建议先运行 AI 智能诊断检查潜在缺口，再决定是否进入下一阶段。",
+      "manual": "申请进入下一阶段",
+      "ai": "AI 智能诊断（推荐）"
+    }
   },
   "stageGuidance": {
     "severity": {
@@ -2399,8 +2784,8 @@
       "quota": "AI 服务调用额度或频率受限，请稍后重试或检查 API 配额。",
       "unauthorized": "AI 服务鉴权失败，请检查账户设置中的 API 密钥是否有效。",
       "llm_config_required": "尚未配置大语言模型连接信息，请前往账户设置填写 API 密钥后再启用 AI 推演。",
-        "server_llm_config_not_configured": "服务端尚未配置共享 API 密钥与模型。普通用户请联系管理员，管理员请检查服务端 .env 配置。",
-        "llm_content_locale_mismatch": "模型未按项目内容语言返回，请重试或检查当前模型的语言能力。",
+      "server_llm_config_not_configured": "服务端尚未配置共享 API 密钥与模型。普通用户请联系管理员，管理员请检查服务端 .env 配置。",
+      "llm_content_locale_mismatch": "模型未按项目内容语言返回，请重试或检查当前模型的语言能力。",
       "leaf_feature_without_actor": "当前叶子功能节点未关联业务角色，请先为该功能模块绑定至少一个角色，再发起场景推演。",
       "feature_is_not_leaf": "该功能节点不是叶子节点。AI 场景推演仅支持最底层叶子功能节点。",
       "empty_leaf_features": "找不到可用于生成的叶子功能节点，请先在 What 页面创建最底层功能。",
@@ -2445,6 +2830,257 @@
       "createFailed": "添加验收标准失败",
       "updateFailed": "更新验收标准失败",
       "deleteFailed": "删除验收标准失败"
+    }
+  },
+  "versionControl": {
+    "branchSelector": {
+      "label": "当前分支",
+      "searchPlaceholder": "搜索分支…",
+      "myBranches": "我的分支",
+      "allBranches": "全部分支",
+      "createBranch": "新建分支",
+      "protected": "受保护",
+      "noBranches": "暂无其他分支"
+    },
+    "uncommitted": "{{count}} 项未提交",
+    "commit": "提交变更",
+    "commitDisabledNoChanges": "当前分支无未提交变更",
+    "commitDisabledProtected": "main 受保护，请通过分支与合并请求合入",
+    "commitSuccess": "提交成功",
+    "commitFailed": "提交失败",
+    "commitForbidden": "当前分支受保护，不允许直接提交",
+    "commitConflict": "分支已有新提交，请刷新后重试",
+    "commitDialog": {
+      "title": "提交变更",
+      "messageLabel": "提交说明",
+      "messagePlaceholder": "描述本次变更的内容…",
+      "messageRequired": "请填写提交说明",
+      "expectedHead": "基于提交",
+      "summaryTitle": "本次变更",
+      "submit": "提交",
+      "cancel": "取消",
+      "conflictTitle": "提交冲突",
+      "conflictMessage": "在你编辑期间，分支上已有新的提交。请刷新并比较后再提交。",
+      "refresh": "刷新",
+      "compare": "查看差异",
+      "noPermission": "当前用户无权限在此分支提交"
+    },
+    "repository": {
+      "title": "版本控制",
+      "branchList": "分支",
+      "createBranch": "新建分支",
+      "commitTimeline": "提交历史",
+      "commitDetail": "提交详情",
+      "noBranches": "暂无其他分支",
+      "noCommits": "暂无提交",
+      "noSecondCommit": "还没有第二次提交，从创建分支开始并行探索吧",
+      "author": "作者",
+      "summary": "变更摘要",
+      "parent": "父提交",
+      "merge": "合并提交",
+      "compare": "比较",
+      "createBranchFromCommit": "从此提交创建分支",
+      "compareWithWorkspace": "与当前工作区比较",
+      "changeSummary": "{{added}} 新增 / {{removed}} 删除 / {{modified}} 修改",
+      "mergeRequests": "合并请求",
+      "loadMore": "加载更多",
+      "viewFullModel": "查看完整模型"
+    },
+    "commitDetail": {
+      "title": "提交快照",
+      "empty": "该快照无模型数据",
+      "close": "关闭"
+    },
+    "createBranch": {
+      "title": "新建分支",
+      "nameLabel": "分支名称",
+      "namePlaceholder": "例如 feature/探索支付",
+      "descriptionLabel": "说明（可选）",
+      "submit": "创建",
+      "cancel": "取消",
+      "success": "分支已创建",
+      "failed": "创建分支失败"
+    },
+    "diff": {
+      "title": "变更对比",
+      "base": "基准",
+      "target": "对比",
+      "jumpToWhat": "在‘是什么’中查看",
+      "jumpToFlow": "在‘怎么做’中查看",
+      "jumpToScope": "在‘范围’中查看",
+      "treeTitle": "变更对象",
+      "fieldChanged": "字段修改",
+      "relationAdded": "关系新增",
+      "relationRemoved": "关系移除",
+      "entityAdded": "对象新增",
+      "entityRemoved": "对象删除",
+      "entityUpdated": "对象修改",
+      "orderedMoved": "顺序调整",
+      "filterAll": "全部",
+      "filterAdded": "新增",
+      "filterRemoved": "删除",
+      "filterModified": "修改",
+      "filterRelation": "关系",
+      "empty": "无变更",
+      "selectNode": "请选择左侧变更对象查看详情",
+      "before": "修改前",
+      "after": "修改后",
+      "relation": "关系",
+      "parent": "所属",
+      "related": "关联对象",
+      "textChanges": "文本变更",
+      "entityType": {
+        "actor": "参与者",
+        "feature": "功能",
+        "feature_relation": "功能关系",
+        "scenario": "场景",
+        "acceptance_criterion": "验收标准",
+        "business_object": "业务对象",
+        "business_object_attribute": "业务对象属性",
+        "flow": "流程",
+        "flow_step": "流程步骤",
+        "scope": "范围",
+        "project_metadata": "项目元数据"
+      }
+    },
+    "errors": {
+      "loadBranchesFailed": "加载分支失败",
+      "loadCommitsFailed": "加载提交失败",
+      "loadDiffFailed": "加载变更对比失败",
+      "createBranchFailed": "创建分支失败"
+    },
+    "discardConfirmTitle": "丢弃未保存的编辑？",
+    "discardConfirmMessage": "切换分支将丢弃正在进行的未保存编辑。确定继续吗？",
+    "discardCancel": "取消",
+    "discardConfirm": "放弃并切换",
+    "mergeRequest": {
+      "mergeButton": "合并",
+      "mergeFailed": "合并失败",
+      "headChanged": "目标分支已有新提交，请刷新后重试",
+      "listTitle": "合并请求",
+      "total": "共 {{count}} 个",
+      "newMr": "新建 MR",
+      "openMrs": "进行中的 MR",
+      "noMrs": "暂无合并请求",
+      "selectPlaceholder": "请选择要评审的合并请求",
+      "changesHeader": "变更（{{base}} → {{source}}）",
+      "commentOn": "评论于：{{target}}",
+      "commentPlaceholder": "添加评审评论…",
+      "blocksMerge": "阻塞合并",
+      "postComment": "发表评论",
+      "commentsHeader": "评论（{{count}}）",
+      "required": "必须解决",
+      "resolve": "解决",
+      "reopen": "重新打开",
+      "reviewsHeader": "评审",
+      "stale": "已过期",
+      "staleReason": "已过期（{{reason}}）",
+      "whyCantMerge": "为什么不能合并？",
+      "submitReview": "提交评审",
+      "approve": "批准",
+      "requestChanges": "请求变更",
+      "reviewOptionalComment": "可选评论…",
+      "merging": "正在合并…",
+      "close": "关闭 MR",
+      "status": {
+        "open": "进行中",
+        "approved": "已批准",
+        "changes_requested": "已请求变更",
+        "mergeable": "可合并",
+        "merged": "已合并",
+        "closed": "已关闭"
+      },
+      "blocking": {
+        "missing_approval": "等待管理员/所有者批准",
+        "source_no_new_commits": "源分支没有新提交",
+        "source_target_same": "源分支与目标分支相同",
+        "mr_already_closed": "合并请求已关闭或已合并",
+        "target_branch_advanced": "目标分支有新提交，评审可能需要刷新",
+        "source_branch_advanced": "评审后源分支有新提交",
+        "unresolved_required_comments": "仍有未解决的必需评论"
+      },
+      "errors": {
+        "mergeConflict": "检测到合并冲突，请解决后重试",
+        "blocked": "合并被阻塞",
+        "forbidden": "你没有执行该操作的权限",
+        "notFound": "未找到该合并请求",
+        "staleState": "状态已过期，请刷新后重试",
+        "reviewFailed": "提交评审失败",
+        "closeFailed": "关闭合并请求失败",
+        "commentFailed": "发表评论失败",
+        "resolveFailed": "解决评论失败",
+        "reopenFailed": "重新打开评论失败"
+      }
+    },
+    "createMr": {
+      "ariaLabel": "创建合并请求",
+      "title": "创建合并请求",
+      "sourceBranch": "源分支",
+      "targetBranch": "目标分支",
+      "titleLabel": "标题",
+      "titlePlaceholder": "概括变更内容…",
+      "descriptionLabel": "描述（可选）",
+      "select": "-- 请选择 --",
+      "changesPreview": "变更：+{{added}} 新增 / +{{modified}} 修改 / -{{removed}} 删除",
+      "cancel": "取消",
+      "creating": "正在创建…",
+      "create": "创建 MR",
+      "failed": "创建合并请求失败"
+    },
+    "conflict": {
+      "title": "解决冲突",
+      "loading": "正在加载合并预览…",
+      "queueTitle": "冲突队列",
+      "progress": "已解决 {{resolved}} / {{total}}",
+      "remaining": "还有 {{count}} 项冲突未解决",
+      "base": "共同祖先",
+      "target": "目标分支",
+      "source": "来源分支",
+      "choose": "选择保留哪一侧：",
+      "keepTarget": "保留目标分支",
+      "keepSource": "保留来源分支",
+      "manualEdit": "手工编辑",
+      "manualValue": "输入自定义值",
+      "applyManual": "应用手工值",
+      "previous": "上一项",
+      "next": "下一项",
+      "noConflicts": "此 MR 没有需要解决的冲突",
+      "merging": "正在合并…",
+      "mergeNow": "合并到目标分支",
+      "cancel": "取消",
+      "resolved": "已解决",
+      "unresolved": "未解决",
+      "conflictTypes": {
+        "sameField": "同字段不同值",
+        "deleteModify": "删除 vs 修改",
+        "oppositeRelation": "关系相反操作",
+        "samePosition": "排序冲突",
+        "identityParent": "对象归属冲突"
+      }
+    },
+    "guide": {
+      "title": "版本控制引导",
+      "baselineMeaning": {
+        "title": "什么是基线版本",
+        "body": "启用版本管理时，系统会把当前需求空间保存为 main 分支的“基线版本”。基线是不可变的：它记录项目某个时点的完整模型，供后续分支、比较与追溯使用。"
+      },
+      "whenToBranch": {
+        "title": "何时创建分支",
+        "body": "当你想并行探索不同的方案、或做较大改动而不影响主线时，从任意提交或 main 创建分支。分支之间互不影响，可随时提交与比较。"
+      },
+      "mainProtection": {
+        "title": "main 分支为什么受保护",
+        "body": "main 是项目的主线，禁止直接提交。所有进入 main 的变更必须通过 Merge Request 合并，并至少获得一位非作者的 admin/owner 审批，保证历史可追溯、变更可审阅。"
+      },
+      "mrApproval": {
+        "title": "合并请求审批规则",
+        "body": "合并请求需要至少一位非作者的 admin/owner 审批。若来源分支新增提交或目标分支前进，已有审批会自动失效，需要重新审批。存在未解决冲突或必需评论时无法合并。"
+      },
+      "unsupportedGitFeatures": {
+        "title": "暂不支持的 Git 功能",
+        "body": "当前版本管理不提供 rebase、cherry-pick、tag、远程仓库同步或命令行兼容。请通过分支 + 合并请求的方式组织变更。"
+      },
+      "protectedAction": "创建分支 / 发起合并请求"
     }
   }
 }

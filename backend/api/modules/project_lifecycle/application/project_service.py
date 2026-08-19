@@ -208,8 +208,31 @@ class ProjectService:
 
 
 
-    async def get_project_detail(self, project_id: int, session: AsyncSession) -> ProjectDetailResponse:
+    async def get_project_detail(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
+    ) -> ProjectDetailResponse:
         project = await load_project_detail_model(project_id, session)
+
+        effective_reqs = project.user_requirements
+        effective_kano = project.kano_status
+        effective_stages = project.unlocked_stages
+
+        from backend.api.modules.version_control.public import resolve_branch_context
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, project_id, branch_ref, user_id)
+        )
+        if ws_obj:
+            if ws_obj.user_requirements:
+                effective_reqs = ws_obj.user_requirements
+            if ws_obj.kano_status:
+                effective_kano = ws_obj.kano_status
+            if ws_obj.unlocked_stages:
+                effective_stages = ws_obj.unlocked_stages
+
         perception_slot = await build_visible_perception_slot(
             project,
             session,
@@ -227,7 +250,7 @@ class ProjectService:
             project.id,
             session=session,
         )
-        return build_project_detail_response(
+        detail_response = build_project_detail_response(
             project=project,
             perception_slot=perception_slot,
             issue_count=issue_count,
@@ -235,6 +258,16 @@ class ProjectService:
             status=status,
             unresolved_gates=unresolved_gates,
         )
+        detail_response.user_requirements = effective_reqs
+        detail_response.kano_status = effective_kano
+        # ProjectDetailResponse.unlocked_stages 契约是 list[str]，而数据库以逗号分隔字符串存储；
+        # 这里在边界统一转换为有序列表，避免旧数据/工作区字符串直接序列化触发 Pydantic 警告。
+        if isinstance(effective_stages, list):
+            detail_response.unlocked_stages = list(effective_stages)
+        else:
+            _, ordered_stages = parse_unlocked_stages(effective_stages or "")
+            detail_response.unlocked_stages = ordered_stages
+        return detail_response
 
     async def delete_project(self, project_id: int, session: AsyncSession) -> dict:
         stmt = select(ProjectModel).where(ProjectModel.id == project_id)
@@ -306,9 +339,20 @@ class ProjectService:
             "message": "project_updated"
         }
 
-    async def export_project_markdown(self, project_id: int, session: AsyncSession) -> str:
+    async def export_project_markdown(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
+    ) -> str:
         """获取项目完整建模详情并序列化输出高格式的 Markdown 需求文档报告"""
-        detail = await self.get_project_detail(project_id, session)
+        detail = await self.get_project_detail(
+            project_id=project_id,
+            session=session,
+            branch_ref=branch_ref,
+            user_id=user_id,
+        )
         tr = localized_message
         locale = get_content_locale()
 
@@ -373,15 +417,34 @@ class ProjectService:
         project_id: int,
         session: AsyncSession,
         content_locale: SupportedLocale,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
     ) -> str:
         from backend.integration.skill_backed_services.spl_syntax_export_service import SplSyntaxExportService
-        detail = await self.get_project_detail(project_id, session)
+        detail = await self.get_project_detail(
+            project_id=project_id,
+            session=session,
+            branch_ref=branch_ref,
+            user_id=user_id,
+        )
         service = SplSyntaxExportService()
         return await service.export(detail, content_locale=content_locale)
 
-    async def export_project_spl_semantic(self, project_id: int, session: AsyncSession, llm_ctx) -> str:
+    async def export_project_spl_semantic(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        llm_ctx,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
+    ) -> str:
         from backend.integration.skill_backed_services.spl_semantic_export_service import SplSemanticExportService
-        detail = await self.get_project_detail(project_id, session)
+        detail = await self.get_project_detail(
+            project_id=project_id,
+            session=session,
+            branch_ref=branch_ref,
+            user_id=user_id,
+        )
         service = SplSemanticExportService()
         return await service.export(detail, llm_ctx)
 

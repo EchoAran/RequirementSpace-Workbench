@@ -327,6 +327,41 @@ export function WhatToDo() {
   const [showAddScenarioForm, setShowAddScenarioForm] = useState(false);
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
 
+  // 任一编辑弹窗打开时标记 editDirty，分支切换前提示保存/放弃。
+  const setEditDirty = useWorkspaceStore((s) => s.setEditDirty);
+  useEffect(() => {
+    setEditDirty(
+      isScenarioModalOpen ||
+        isAddActorModalOpen ||
+        isAddFeatureModalOpen ||
+        showAddScenarioForm ||
+        isTransitionModalOpen ||
+        isAIDialogOpen
+    );
+  }, [
+    isScenarioModalOpen,
+    isAddActorModalOpen,
+    isAddFeatureModalOpen,
+    showAddScenarioForm,
+    isTransitionModalOpen,
+    isAIDialogOpen,
+    setEditDirty,
+  ]);
+
+  // 分支切换确认"放弃"后，关闭所有编辑弹窗并清理局部编辑状态。
+  const editDiscardVersion = useWorkspaceStore((s) => s.editDiscardVersion);
+  useEffect(() => {
+    if (editDiscardVersion === 0) return;
+    setIsScenarioModalOpen(false);
+    setIsAddActorModalOpen(false);
+    setIsAddFeatureModalOpen(false);
+    setShowAddScenarioForm(false);
+    setIsTransitionModalOpen(false);
+    setAiDialogTarget(null);
+    setEditingScenarioId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDiscardVersion]);
+
   // Inline edit state inside Scenario Manager Modal
   const [editingScenarioId, setEditingScenarioId] = useState<number | null>(null);
   const [editingScenarioName, setEditingScenarioName] = useState('');

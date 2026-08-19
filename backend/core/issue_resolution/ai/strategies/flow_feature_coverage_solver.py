@@ -55,6 +55,7 @@ class FlowFeatureCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = int(target.get("target_id") or target.get("targetId") or 0) if target else 0
 
@@ -65,17 +66,17 @@ class FlowFeatureCoverageSolver(BaseIssueAISolver):
 
         if issue_code == "LEAF_FEATURE_WITHOUT_FLOW":
             # Match feature → flows
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(FeatureModel).where(
                     FeatureModel.id == target_id,
                     FeatureModel.project_id == project_id,
                 )
-            )
+            , FeatureModel, workspace_id))
             feature = res.scalar_one_or_none()
 
-            flows_res = await session.execute(
+            flows_res = await session.execute(self._scope(
                 select(FlowModel).where(FlowModel.project_id == project_id)
-            )
+            , FlowModel, workspace_id))
             flows = flows_res.scalars().all()
             matches = [{"id": f.id, "name": f.name, "description": f.description} for f in flows]
 
@@ -91,17 +92,17 @@ class FlowFeatureCoverageSolver(BaseIssueAISolver):
             }
         else:
             # FLOW_WITHOUT_FEATURE: match flow → features
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(FlowModel).where(
                     FlowModel.id == target_id,
                     FlowModel.project_id == project_id,
                 )
-            )
+            , FlowModel, workspace_id))
             flow = res.scalar_one_or_none()
 
-            features_res = await session.execute(
+            features_res = await session.execute(self._scope(
                 select(FeatureModel).where(FeatureModel.project_id == project_id)
-            )
+            , FeatureModel, workspace_id))
             features = features_res.scalars().all()
             # Determine leaf features (no FeatureRelation where they are parent)
             from backend.database.model import FeatureRelationModel

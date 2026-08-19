@@ -60,6 +60,8 @@ class IssueRepairDraftService:
         issue_fingerprint: str,
         context_hash: str,
         session: AsyncSession,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """Create a new repair draft in pending status."""
         draft = IssueRepairDraftModel(
@@ -76,7 +78,10 @@ class IssueRepairDraftService:
             rationale=rationale or "",
             proposal=proposal or {},
             patch=patch,
-            validation_report={},
+            validation_report={
+                "branch_name": branch_name,
+                "head_commit_id": head_commit_id,
+            },
             status="pending",
         )
         session.add(draft)
@@ -119,10 +124,22 @@ class IssueRepairDraftService:
         project_id: int,
         draft_id: str,
         session: AsyncSession,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """Confirm a repair draft: validate, apply patch, mark stale, verify issue resolved."""
         draft = await self._load_draft(draft_id, session)
         self._ensure_draft_can_be_confirmed(draft, project_id)
+
+        # Check branch mismatch & drift
+        stored_branch = (draft.validation_report or {}).get("branch_name")
+        stored_commit = (draft.validation_report or {}).get("head_commit_id")
+        if stored_branch:
+            if branch_name and stored_branch != branch_name:
+                raise ValueError("draft_branch_mismatch")
+            if head_commit_id and stored_commit != head_commit_id:
+                raise ValueError("branch_drift_detected")
 
         current_hash = await self._load_current_context_hash(
             draft,
@@ -142,7 +159,7 @@ class IssueRepairDraftService:
             return invalid_response
 
         if draft.patch:
-            await self.patch_engine.apply_patch(project_id, draft.patch, session)
+            await self.patch_engine.apply_patch(project_id, draft.patch, session, workspace_id=workspace_id)
         draft.status = "applied"
         await session.flush()
 
@@ -223,12 +240,17 @@ class IssueRepairDraftService:
     ) -> dict | None:
         if not draft.patch:
             return None
+        existing = draft.validation_report or {}
         report = await self.validator.validate(
             project_id=project_id,
             issue_code=draft.issue_code,
             patch=draft.patch,
             session=session,
         )
+        if "branch_name" in existing:
+            report["branch_name"] = existing["branch_name"]
+        if "head_commit_id" in existing:
+            report["head_commit_id"] = existing["head_commit_id"]
         draft.validation_report = report
         if report.get("valid"):
             return None
@@ -379,11 +401,23 @@ class IssueRepairDraftService:
         project_id: int,
         draft_id: str,
         session: AsyncSession,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """Discard old draft and create a new one by re-resolving the original issue."""
         draft = await self._load_draft(draft_id, session)
         if draft.project_id != project_id:
             raise ValueError("draft_project_mismatch")
+
+        # Check branch mismatch & drift
+        stored_branch = (draft.validation_report or {}).get("branch_name")
+        stored_commit = (draft.validation_report or {}).get("head_commit_id")
+        if stored_branch:
+            if branch_name and stored_branch != branch_name:
+                raise ValueError("draft_branch_mismatch")
+            if head_commit_id and stored_commit != head_commit_id:
+                raise ValueError("branch_drift_detected")
 
         draft.status = "discarded"
         await session.flush()
@@ -397,6 +431,9 @@ class IssueRepairDraftService:
             target=draft.target,
             metadata={"issue_id": draft.issue_id, "regenerate_of": draft_id},
             session=session,
+            workspace_id=workspace_id,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
         )
 
         if result.get("resolution_type") != "repair_draft":

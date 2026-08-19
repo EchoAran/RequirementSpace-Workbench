@@ -137,6 +137,18 @@ from backend.api.modules.project_knowledge.routes import (
     router as project_knowledge_router,
     config_router as project_knowledge_config_router,
 )
+from backend.api.modules.version_control.routes import (
+    router as version_control_branch_router,
+)
+from backend.api.modules.version_control.commit_routes import (
+    router as version_control_commit_router,
+)
+from backend.api.modules.version_control.diff_routes import (
+    router as version_control_diff_router,
+)
+from backend.api.modules.version_control.merge_routes import (
+    router as version_control_merge_router,
+)
 
 from backend.database.database import init_db
 
@@ -574,3 +586,7 @@ app.include_router(preferences_router)
 app.include_router(account_router)
 app.include_router(project_knowledge_config_router)
 app.include_router(project_knowledge_router)
+app.include_router(version_control_branch_router, dependencies=[Depends(require_project_member)])
+app.include_router(version_control_commit_router, dependencies=[Depends(require_project_member)])
+app.include_router(version_control_diff_router, dependencies=[Depends(require_project_member)])
+app.include_router(version_control_merge_router, dependencies=[Depends(require_project_member)])

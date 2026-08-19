@@ -28,29 +28,35 @@ class ScenarioService:
         req: ScenarioCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
+        workspace_id: int | None = None,
     ) -> ScenarioResponse:
-        # Verify feature exists in the project
-        feature_res = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id,
-                FeatureModel.id == req.feature_id,
-            )
+        # Verify feature exists in the project and workspace
+        stmt_f = select(FeatureModel).where(
+            FeatureModel.project_id == project_id,
+            FeatureModel.id == req.feature_id,
         )
-        if feature_res.scalar_one_or_none() is None:
-            raise ValueError("feature_not_found")
+        if workspace_id is not None:
+            stmt_f = stmt_f.where(FeatureModel.workspace_id == workspace_id)
+        feature_res = session.execute(stmt_f)
+        feat_obj = (await feature_res if hasattr(feature_res, "__await__") else feature_res).scalar_one_or_none()
+        if feat_obj is None:
+            raise ValueError("Cross-workspace entity reference rejected: feature_not_found_in_workspace")
 
-        # Verify actor exists in the project
-        actor_res = await session.execute(
-            select(ActorModel).where(
-                ActorModel.project_id == project_id,
-                ActorModel.id == req.actor_id,
-            )
+        # Verify actor exists in the project and workspace
+        stmt_a = select(ActorModel).where(
+            ActorModel.project_id == project_id,
+            ActorModel.id == req.actor_id,
         )
-        if actor_res.scalar_one_or_none() is None:
-            raise ValueError("actor_not_found")
+        if workspace_id is not None:
+            stmt_a = stmt_a.where(ActorModel.workspace_id == workspace_id)
+        actor_res = session.execute(stmt_a)
+        actor_obj = (await actor_res if hasattr(actor_res, "__await__") else actor_res).scalar_one_or_none()
+        if actor_obj is None:
+            raise ValueError("Cross-workspace entity reference rejected: actor_not_found_in_workspace")
 
         scenario = ScenarioModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             feature_id=req.feature_id,
             actor_id=req.actor_id,
             name=req.name,
@@ -58,7 +64,9 @@ class ScenarioService:
             confirmation_status=confirmation_status,
         )
         session.add(scenario)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 新增场景
         await audit_service.record(
@@ -94,8 +102,9 @@ class ScenarioService:
         scenario_id: int,
         req: ScenarioUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> ScenarioResponse:
-        result = await session.execute(
+        stmt = (
             select(ScenarioModel)
             .where(
                 ScenarioModel.project_id == project_id,
@@ -103,12 +112,15 @@ class ScenarioService:
             )
             .options(selectinload(ScenarioModel.acceptance_criteria))
         )
-        scenario = result.scalar_one_or_none()
+        if workspace_id is not None:
+            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+        exec_res = session.execute(stmt)
+        scenario = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
 
         if scenario is None:
-            raise ValueError("scenario_not_found")
+            raise ValueError("scenario_not_found_in_workspace")
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "scenario", scenario, req.last_seen_updated_at)
 
         old_name = scenario.name
@@ -119,7 +131,9 @@ class ScenarioService:
         if req.content is not None:
             scenario.content = req.content
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 更新场景
         diff = {}
@@ -145,7 +159,7 @@ class ScenarioService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "scenario", scenario)
 
         return ScenarioResponse(
@@ -170,17 +184,19 @@ class ScenarioService:
         project_id: int,
         scenario_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        result = await session.execute(
-            select(ScenarioModel).where(
-                ScenarioModel.project_id == project_id,
-                ScenarioModel.id == scenario_id,
-            )
+        stmt = select(ScenarioModel).where(
+            ScenarioModel.project_id == project_id,
+            ScenarioModel.id == scenario_id,
         )
-        scenario = result.scalar_one_or_none()
+        if workspace_id is not None:
+            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+        exec_res = session.execute(stmt)
+        scenario = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
 
         if scenario is None:
-            raise ValueError("scenario_not_found")
+            raise ValueError("scenario_not_found_in_workspace")
 
         scenario_name = scenario.name
         await session.delete(scenario)
@@ -301,7 +317,7 @@ class ScenarioService:
         if ac is None:
             raise ValueError("acceptance_criterion_not_found")
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "acceptance_criterion", ac, req.last_seen_updated_at)
 
         old_content = ac.content
@@ -331,7 +347,7 @@ class ScenarioService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "acceptance_criterion", ac)
 
         return AcceptanceCriterionResponse(

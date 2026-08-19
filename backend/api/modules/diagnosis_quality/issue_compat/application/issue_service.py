@@ -14,6 +14,9 @@ class IssueService:
         target: dict | None,
         metadata: dict,
         session,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """Resolve an issue by delegating to IssueRepairService.
 
@@ -32,4 +35,7 @@ class IssueService:
             target=target,
             metadata=merged_metadata,
             session=session,
+            workspace_id=workspace_id,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
         )

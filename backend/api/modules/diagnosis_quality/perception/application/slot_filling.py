@@ -28,12 +28,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_actor_draft(
             project_id=project_id,
             owner_user_id=owner_user_id,
             perception_job_id=perception_job_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_feature_draft(
@@ -42,12 +48,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_feature_draft(
             project_id=project_id,
             owner_user_id=owner_user_id,
             perception_job_id=perception_job_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_scenario_draft(
@@ -56,12 +68,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_scenario_draft(
             project_id=project_id,
             owner_user_id=owner_user_id,
             perception_job_id=perception_job_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_acceptance_criteria_draft(
@@ -70,12 +88,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_acceptance_criteria_draft(
             project_id=project_id,
             owner_user_id=owner_user_id,
             perception_job_id=perception_job_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_flow_draft(
@@ -84,12 +108,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_flow_draft(
             project_id=project_id,
             owner_user_id=owner_user_id,
             perception_job_id=perception_job_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def regenerate_draft(
@@ -98,12 +128,18 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         session,
         user_feedback: str | None = None,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.regenerate_draft(
             draft_id=draft_id,
             owner_user_id=owner_user_id,
             session=session,
             user_feedback=user_feedback,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def confirm_draft(
@@ -111,11 +147,17 @@ class PerceptionSlotFillingService:
         draft_id: str,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._confirmer.confirm_draft(
             draft_id=draft_id,
             owner_user_id=owner_user_id,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def discard_draft(

@@ -1,3 +1,8 @@
+"""Optimistic Lock Node Snapshot Service.
+
+为需求对象提供确定性的语义快照与内容哈希，供乐观锁校验（check_optimistic_lock）
+和节点更新后的任务冲销（supersede_tasks_on_node_update）使用。
+"""
 import hashlib
 import json
 import sqlalchemy as sa
@@ -13,8 +18,12 @@ from backend.database.model import (
     FlowStepModel,
     ScopeModel,
 )
-from .node_snapshot_builders import build_node_snapshot
-from .task_decision import supersede_tasks_for_node_update
+from backend.api.modules.optimistic_lock.node_snapshot_builders import (
+    build_node_snapshot,
+)
+from backend.api.modules.optimistic_lock.superseder import (
+    supersede_tasks_for_node_update,
+)
 
 KIND_TO_MODEL = {
     "actor": ActorModel,
@@ -27,6 +36,7 @@ KIND_TO_MODEL = {
     "flow_step": FlowStepModel,
     "scope": ScopeModel,
 }
+
 
 class NodeSnapshotService:
     async def get_snapshot_and_hash(self, session, node_kind: str, node_id: int) -> dict:
@@ -55,15 +65,15 @@ class NodeSnapshotService:
             raise ValueError(f"Node not found: {node_kind} with id {node_id}")
 
         snapshot = await self.build_snapshot(session, node_kind, node)
-        
+
         # Serialize deterministically (sorted keys, no extra spacing)
-        serialized = json.dumps(snapshot, sort_keys=True, separators=(',', ':'))
+        serialized = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
         content_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
         return {
             "snapshot": snapshot,
             "hash": content_hash,
-            "node": node
+            "node": node,
         }
 
     async def build_snapshot(self, session, node_kind: str, node) -> dict:
@@ -72,7 +82,7 @@ class NodeSnapshotService:
     async def check_optimistic_lock(self, session, node_kind: str, node, last_seen_updated_at) -> None:
         if not last_seen_updated_at:
             return
-        
+
         from datetime import datetime
         if isinstance(last_seen_updated_at, str):
             val = last_seen_updated_at.replace("Z", "")
@@ -90,7 +100,7 @@ class NodeSnapshotService:
 
         node_ts = node.updated_at.timestamp() if node.updated_at else 0
         dt_ts = dt.timestamp()
-        
+
         if abs(node_ts - dt_ts) > 0.001:
             snap_res = await self.get_snapshot_and_hash(session, node_kind, node.id)
             from fastapi import HTTPException
@@ -99,7 +109,7 @@ class NodeSnapshotService:
                 detail={
                     "message": "node_content_changed",
                     "current_snapshot": snap_res["snapshot"]
-                }
+                },
             )
 
     async def supersede_tasks_on_node_update(self, session, node_kind: str, node) -> None:
@@ -109,3 +119,6 @@ class NodeSnapshotService:
             node,
             self.get_snapshot_and_hash,
         )
+
+
+snapshot_service = NodeSnapshotService()

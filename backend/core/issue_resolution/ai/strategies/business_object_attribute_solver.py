@@ -44,17 +44,18 @@ class BusinessObjectAttributeSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = int(target.get("target_id") or target.get("targetId") or 0) if target else 0
 
         bo = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(BusinessObjectModel).where(
                     BusinessObjectModel.id == target_id,
                     BusinessObjectModel.project_id == project_id,
                 )
-            )
+            , BusinessObjectModel, workspace_id))
             bo = res.scalar_one_or_none()
 
         project_res = await session.execute(

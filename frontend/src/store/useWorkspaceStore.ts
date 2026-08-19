@@ -21,6 +21,12 @@ import {
   KnowledgeDocument,
 } from '@/core/schema';
 import { workspaceApi } from '@/lib/api';
+import { setRequestBranch } from '@/lib/http';
+import {
+  BranchSummary,
+  CommitListResponse,
+  CommitCreateRequest,
+} from '@/core/versionControl';
 import i18n from '@/i18n';
 import { getNextSuggestionPresentation } from '@/core/nextSuggestionPresentation';
 import { getGenerationStrategyPresentation } from '@/core/generationStrategyPresentation';
@@ -33,7 +39,7 @@ const getConfirmationStatus = (value: unknown): NodeStatus => {
 };
 
 
-export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview' | '/knowledge';
+export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overview' | '/knowledge' | '/repo';
 
 
 
@@ -692,10 +698,36 @@ export interface WorkspaceState {
   stageProgress: any | null;
   loadStageProgress: (projectId?: string) => Promise<void>;
 
+  // Version Control State
+  /** 当前分支 ref（public_id 或 name），来自 URL ?branch=；缺省 main。 */
+  branchRef: string;
+  branches: BranchSummary[] | null;
+  currentBranch: BranchSummary | null;
+  commits: CommitListResponse | null;
+  branchLoading: boolean;
+  commitLoading: boolean;
+  commitError: string | null;
+  /** 编辑弹窗等未保存输入是否打开；分支切换前需确认。 */
+  editDirty: boolean;
+  setEditDirty: (open: boolean) => void;
+  /** 待确认的分支切换目标；非空时全局守卫弹窗展示。 */
+  pendingBranchRef: string | null;
+  setPendingBranchRef: (ref: string | null) => void;
+  /** 编辑丢弃版本号：确认放弃后自增，各页面据此关闭编辑弹窗并清理局部状态。 */
+  editDiscardVersion: number;
+  /** 请求切换分支：存在未保存编辑或生成中时置 pending 并返回 false，否则返回 true（调用方导航）。 */
+  requestBranchSwitch: (branchRef: string) => boolean;
+  /** 确认丢弃：清空 editDirty、置 pending 为 null、自增 editDiscardVersion。 */
+  discardPendingEdits: () => void;
+  loadBranches: () => Promise<void>;
+  loadCommits: (opts?: { all?: boolean; append?: boolean }) => Promise<void>;
+  switchBranch: (branchRef: string) => Promise<boolean>;
+  createCommit: (message: string, expectedHead: CommitCreateRequest['expected_head_commit_public_id'] | number) => Promise<boolean>;
+
   // Project Lifecycles
   loadWorkspaces: () => Promise<void>;
   openExistingProject: () => Promise<void>;
-  openWorkspace: (workspaceId: string) => Promise<boolean>;
+  openWorkspace: (workspaceId: string, branchRef?: string) => Promise<boolean>;
   refreshWorkspace: () => Promise<void>;
   exitWorkspace: () => void;
   updateProject: (projectId: string, name: string, description: string) => Promise<void>;
@@ -1672,6 +1704,32 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   return {
     sessionVersion: 0,
+    branchRef: 'main',
+    branches: null,
+    currentBranch: null,
+    commits: null,
+    branchLoading: false,
+    commitLoading: false,
+    commitError: null,
+    editDirty: false,
+    setEditDirty: (open) => set({ editDirty: open }),
+    pendingBranchRef: null,
+    setPendingBranchRef: (ref) => set({ pendingBranchRef: ref }),
+    editDiscardVersion: 0,
+    requestBranchSwitch: (branchRef) => {
+      if (get().editDirty || get().isGenerating) {
+        set({ pendingBranchRef: branchRef });
+        return false;
+      }
+      return true;
+    },
+    discardPendingEdits: () => {
+      set((state) => ({
+        editDirty: false,
+        pendingBranchRef: null,
+        editDiscardVersion: state.editDiscardVersion + 1,
+      }));
+    },
     currentSystemView: 'home',
     setSystemView: (view) => set({ currentSystemView: view, activePage: view === 'workspace' ? get().activePage : '/overview' }),
     initialPrompt: '',
@@ -1804,8 +1862,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  openWorkspace: async (workspaceId) => {
+  openWorkspace: async (workspaceId, branchRef) => {
     const version = get().sessionVersion + 1;
+    const effectiveBranch = branchRef || 'main';
+    // 把 URL 分支写入请求上下文，使后续所有项目读写在缺省时自动携带该分支。
+    setRequestBranch(effectiveBranch);
     set({ sessionVersion: version, stageProgress: null, isLoading: true, error: null });
     try {
       const space = await workspaceApi.getById(workspaceId);
@@ -1814,6 +1875,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const hydration = await loadWorkspaceHydration(projectId, version, get);
       if (!hydration) return false;
       set(buildOpenedWorkspaceState(space, hydration));
+      set({ branchRef: effectiveBranch, isLoading: false });
+      await get().loadBranches();
+      if (get().sessionVersion !== version) return false;
+      await get().loadCommits();
+      if (get().sessionVersion !== version) return false;
       return true;
     } catch (err) {
       if (get().sessionVersion !== version) return false;
@@ -1838,9 +1904,121 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         ir: space,
         selectedObject: findSelectedObjectInIr(space, s.selectedObjectId, s.selectedObject)
       }));
+      // 刷新分支列表以同步未提交变更摘要（workspace_dirty）。
+      await get().loadBranches();
     } catch (err) {
       if (get().sessionVersion !== version) return;
       set({ error: err instanceof Error ? err.message : 'store.errors.syncDataFailed' });
+    }
+  },
+  loadBranches: async () => {
+    const version = get().sessionVersion;
+    const id = get().ir?.projectId;
+    if (!id) return;
+    set({ branchLoading: true });
+    try {
+      const branches = await workspaceApi.listBranches(id);
+      if (get().sessionVersion !== version) return;
+      const ref = get().branchRef;
+      const current =
+        branches.find((b) => b.public_id === ref || b.name === ref) ||
+        branches.find((b) => b.is_default) ||
+        null;
+      set({ branches, currentBranch: current, branchLoading: false });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ branchLoading: false });
+    }
+  },
+  loadCommits: async (opts?: { all?: boolean; append?: boolean }) => {
+    const version = get().sessionVersion;
+    const id = get().ir?.projectId;
+    if (!id) return;
+    // 默认加载全项目提交图（all=true），供 Repository 提交图渲染跨分支轨道；
+    // append=true 时在已有基础上追加下一页（offset = 当前已加载长度）。
+    const { all = true, append = false } = opts ?? {};
+    const offset = append ? (get().commits?.commits.length ?? 0) : 0;
+    const params: Record<string, unknown> = { all, limit: 50, offset };
+    if (!all) params.branch = get().branchRef;
+    set({ commitLoading: true });
+    try {
+      const res = await workspaceApi.listCommits(id, params);
+      if (get().sessionVersion !== version) return;
+      const merged = append && get().commits
+        ? { ...res, commits: [...get().commits.commits, ...res.commits] }
+        : res;
+      set({ commits: merged, commitLoading: false });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ commits: null, commitLoading: false });
+    }
+  },
+  switchBranch: async (branchRef) => {
+    const version = get().sessionVersion + 1;
+    const id = get().ir?.projectId;
+    if (!id) return false;
+    // 分支切换是全局操作：更新请求上下文并使后续加载失效。
+    setRequestBranch(branchRef);
+    set({ sessionVersion: version, branchRef, isLoading: true, error: null, commitError: null });
+    try {
+      const space = await workspaceApi.getById(id);
+      if (get().sessionVersion !== version) return false;
+      const hydration = await loadWorkspaceHydration(id, version, get);
+      if (!hydration) return false;
+      set({
+        ...hydration,
+        backendFindingsLoaded: true,
+        ir: space,
+        selectedObject: null,
+        selectedObjectId: null,
+        selectedNodeId: null,
+        selectedSlotId: null,
+        highlightTarget: null,
+        pendingManualAction: null,
+        isLoading: false,
+        branchRef,
+      });
+      await get().loadBranches();
+      if (get().sessionVersion !== version) return false;
+      await get().loadCommits();
+      if (get().sessionVersion !== version) return false;
+      return true;
+    } catch (err) {
+      if (get().sessionVersion !== version) return false;
+      set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false });
+      return false;
+    }
+  },
+  createCommit: async (message, expectedHead) => {
+    const version = get().sessionVersion;
+    const id = get().ir?.projectId;
+    if (!id) return false;
+    set({ commitLoading: true, commitError: null });
+    try {
+      const payload: CommitCreateRequest = {
+        message,
+        ...(typeof expectedHead === 'string'
+          ? { expected_head_commit_public_id: expectedHead }
+          : { expected_head_commit_id: expectedHead }),
+      };
+      await workspaceApi.createCommit(id, payload);
+      if (get().sessionVersion !== version) return false;
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return false;
+      await get().loadCommits();
+      if (get().sessionVersion !== version) return false;
+      set({
+        commitLoading: false,
+        lastActionMessageToken: 'versionControl.commitSuccess',
+      });
+      return true;
+    } catch (err) {
+      if (get().sessionVersion !== version) return false;
+      const e = err as { status?: number };
+      if (e?.status === 409) set({ commitError: 'versionControl.commitConflict', commitLoading: false });
+      else if (e?.status === 403) set({ commitError: 'versionControl.commitForbidden', commitLoading: false });
+      else set({ commitError: err instanceof Error ? err.message : 'versionControl.commitFailed', commitLoading: false });
+      return false;
     }
   },
   loadStageProgress: async (projectId?: string) => {
@@ -2074,11 +2252,21 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   exitWorkspace: () => {
+    setRequestBranch(undefined);
     set((state: any) => ({
       sessionVersion: state.sessionVersion + 1,
       currentSystemView: 'home',
       activePage: '/overview',
       ir: null,
+      branchRef: 'main',
+      branches: null,
+      currentBranch: null,
+      commits: null,
+      branchLoading: false,
+      editDirty: false,
+      pendingBranchRef: null,
+      commitLoading: false,
+      commitError: null,
       selectedObject: null,
       selectedObjectId: null,
       selectedNodeId: null,

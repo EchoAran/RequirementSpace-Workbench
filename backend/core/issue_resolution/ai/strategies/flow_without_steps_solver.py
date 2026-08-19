@@ -46,6 +46,7 @@ class FlowWithoutStepsSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -54,20 +55,20 @@ class FlowWithoutStepsSolver(BaseIssueAISolver):
         # Load target flow
         flow = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(FlowModel).where(FlowModel.id == target_id, FlowModel.project_id == project_id)
-            )
+            , FlowModel, workspace_id))
             flow = res.scalar_one_or_none()
 
         # Load features linked to this flow
         feature_name = ""
         feature_description = ""
         if flow:
-            feats_res = await session.execute(
+            feats_res = await session.execute(self._scope(
                 select(FeatureModel)
                 .join(flow_feature_table, FeatureModel.id == flow_feature_table.c.feature_id)
                 .where(flow_feature_table.c.flow_id == flow.id)
-            )
+            , FeatureModel, workspace_id))
             linked_features = feats_res.scalars().all()
             if linked_features:
                 feature_name = linked_features[0].name
@@ -80,15 +81,15 @@ class FlowWithoutStepsSolver(BaseIssueAISolver):
         project = project_res.scalar_one_or_none()
 
         # Load actors
-        actors_res = await session.execute(
+        actors_res = await session.execute(self._scope(
             select(ActorModel).where(ActorModel.project_id == project_id)
-        )
+        , ActorModel, workspace_id))
         actors = actors_res.scalars().all()
 
         # Load business objects
-        bos_res = await session.execute(
+        bos_res = await session.execute(self._scope(
             select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
-        )
+        , BusinessObjectModel, workspace_id))
         bos = bos_res.scalars().all()
 
         return {

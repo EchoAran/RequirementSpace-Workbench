@@ -65,6 +65,12 @@ except ValueError:
 # Feature Flag
 KNOWLEDGE_BASE_ENABLED = os.getenv("KNOWLEDGE_BASE_ENABLED", "true").strip().lower() in ("true", "1", "yes")
 
+# 版本控制基线迁移 kill-switch：关闭后 _ensure_version_control_baselines 整体跳过，
+# 所有项目继续走 main 兼容路径（不删除既有提交，仅停止新写入的自动迁移）。
+VERSION_CONTROL_MIGRATION_ENABLED = os.getenv(
+    "VERSION_CONTROL_MIGRATION_ENABLED", "true"
+).strip().lower() in ("true", "1", "yes")
+
 LLM_LOCALE_VALIDATION_MODE = os.getenv(
     "LLM_LOCALE_VALIDATION_MODE",
     "observe",

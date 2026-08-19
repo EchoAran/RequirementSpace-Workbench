@@ -13,6 +13,7 @@ from backend.api.modules.diagnosis_quality.next_suggestion.application.next_sugg
     NextSuggestionService,
 )
 from backend.database.database import get_session
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 
 router = APIRouter(
@@ -77,7 +78,9 @@ async def rediagnose_next_suggestion(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_owned_project)):
+    owned_project: ProjectModel = Depends(require_owned_project),
+    commit_guard: None = Depends(reject_commit_write),
+):
     try:
         async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.rediagnose_next_suggestion(

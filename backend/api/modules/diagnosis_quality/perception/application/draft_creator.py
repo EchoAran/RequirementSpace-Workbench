@@ -40,6 +40,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -47,6 +50,9 @@ class PerceptionDraftCreator:
             perception_job_id=perception_job_id,
             filler_kind="actor",
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_feature_draft(
@@ -55,6 +61,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -62,6 +71,9 @@ class PerceptionDraftCreator:
             perception_job_id=perception_job_id,
             filler_kind="feature",
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_scenario_draft(
@@ -70,6 +82,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -77,6 +92,9 @@ class PerceptionDraftCreator:
             perception_job_id=perception_job_id,
             filler_kind="scenario",
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_acceptance_criteria_draft(
@@ -85,6 +103,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -92,6 +113,9 @@ class PerceptionDraftCreator:
             perception_job_id=perception_job_id,
             filler_kind="acceptance_criteria",
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def create_flow_draft(
@@ -100,6 +124,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -107,6 +134,9 @@ class PerceptionDraftCreator:
             perception_job_id=perception_job_id,
             filler_kind="flow",
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
+            workspace_id=workspace_id,
         )
 
     async def _create_draft(
@@ -116,6 +146,9 @@ class PerceptionDraftCreator:
         perception_job_id: int,
         filler_kind: str,
         session,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft_id = uuid4().hex
         draft_payload, response_payload = await self._generate_preview(
@@ -127,6 +160,9 @@ class PerceptionDraftCreator:
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = branch_name
+        draft_payload["head_commit_id"] = head_commit_id
+        draft_payload["workspace_id"] = workspace_id
         response_payload["draft_id"] = draft_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -157,6 +193,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         session,
         user_feedback: str | None = None,
+        branch_name: str | None = None,
+        head_commit_id: int | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -169,6 +208,9 @@ class PerceptionDraftCreator:
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = branch_name
+        draft_payload["head_commit_id"] = head_commit_id
+        draft_payload["workspace_id"] = workspace_id
         response_payload["draft_id"] = draft_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore

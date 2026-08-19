@@ -198,6 +198,37 @@ export function HowItWorks() {
   const [newStepInputBoIds, setNewStepInputBoIds] = useState<number[]>([]);
   const [newStepOutputBoIds, setNewStepOutputBoIds] = useState<number[]>([]);
 
+  // 任一编辑弹窗打开时标记 editDirty，分支切换前提示保存/放弃。
+  const setEditDirty = useWorkspaceStore((s) => s.setEditDirty);
+  useEffect(() => {
+    setEditDirty(
+      isAddBusinessObjectModalOpen ||
+        isAddFlowModalOpen ||
+        isAddStepModalOpen ||
+        isTransitionModalOpen ||
+        isAIDialogOpen
+    );
+  }, [
+    isAddBusinessObjectModalOpen,
+    isAddFlowModalOpen,
+    isAddStepModalOpen,
+    isTransitionModalOpen,
+    isAIDialogOpen,
+    setEditDirty,
+  ]);
+
+  // 分支切换确认"放弃"后，关闭所有编辑弹窗并清理局部编辑状态。
+  const editDiscardVersion = useWorkspaceStore((s) => s.editDiscardVersion);
+  useEffect(() => {
+    if (editDiscardVersion === 0) return;
+    setIsAddBusinessObjectModalOpen(false);
+    setIsAddFlowModalOpen(false);
+    setIsAddStepModalOpen(false);
+    setIsTransitionModalOpen(false);
+    setAiDialogTarget(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDiscardVersion]);
+
   // Draggable steps (repositioning nodes)
   const [customStepPositions, setCustomStepPositions] = useState<Record<number, { x: number; y: number }>>({});
   const [activeDragStepId, setActiveDragStepId] = useState<number | null>(null);

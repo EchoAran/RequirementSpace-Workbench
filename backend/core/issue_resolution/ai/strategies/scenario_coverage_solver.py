@@ -59,6 +59,7 @@ class ScenarioCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = target.get("target_id") or target.get("targetId") or "" if target else ""
         feature_id, actor_id = None, None
@@ -80,28 +81,28 @@ class ScenarioCoverageSolver(BaseIssueAISolver):
 
         feature = None
         if feature_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(FeatureModel).where(
                     FeatureModel.id == feature_id,
                     FeatureModel.project_id == project_id,
                 )
-            )
+            , FeatureModel, workspace_id))
             feature = res.scalar_one_or_none()
 
         actor = None
         if actor_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(ActorModel).where(
                     ActorModel.id == actor_id,
                     ActorModel.project_id == project_id,
                 )
-            )
+            , ActorModel, workspace_id))
             actor = res.scalar_one_or_none()
 
         # Load all scenarios for context (but only those belonging to the same actor or feature)
-        scenarios_res = await session.execute(
+        scenarios_res = await session.execute(self._scope(
             select(ScenarioModel).where(ScenarioModel.project_id == project_id)
-        )
+        , ScenarioModel, workspace_id))
         all_scenarios = scenarios_res.scalars().all()
         scenarios = [
             {"id": s.id, "name": s.name, "content": s.content[:200], "feature_id": s.feature_id, "actor_id": s.actor_id}

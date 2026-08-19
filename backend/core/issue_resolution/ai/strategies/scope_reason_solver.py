@@ -40,6 +40,7 @@ class ScopeReasonSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         from backend.database.model import ProjectModel, FeatureModel
 
@@ -50,10 +51,10 @@ class ScopeReasonSolver(BaseIssueAISolver):
         # Load scope (ScopeModel has no project_id — join through FeatureModel)
         scope = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
                 .where(ScopeModel.id == target_id, FeatureModel.project_id == project_id)
-            )
+            , ScopeModel, workspace_id))
             scope = res.scalar_one_or_none()
 
         # Load project for user_requirements
@@ -65,9 +66,9 @@ class ScopeReasonSolver(BaseIssueAISolver):
         # Load feature
         feature_name = ""
         if scope and scope.feature_id:
-            feat_res = await session.execute(
+            feat_res = await session.execute(self._scope(
                 select(FeatureModel).where(FeatureModel.id == scope.feature_id)
-            )
+            , FeatureModel, workspace_id))
             feature = feat_res.scalar_one_or_none()
             if feature:
                 feature_name = feature.name

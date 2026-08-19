@@ -11,6 +11,13 @@ from backend.database.model import (
 )
 
 
+async def _exec_stmt(session, stmt):
+    res = session.execute(stmt)
+    if hasattr(res, "__await__"):
+        return await res
+    return res
+
+
 async def ensure_parent_feature_exists(
     session,
     project_id: int,
@@ -18,7 +25,8 @@ async def ensure_parent_feature_exists(
 ) -> None:
     if parent_id is None:
         return
-    result = await session.execute(
+    result = await _exec_stmt(
+        session,
         select(FeatureModel).where(
             FeatureModel.project_id == project_id,
             FeatureModel.id == parent_id,
@@ -35,7 +43,8 @@ async def create_feature_parent_relation(
 ) -> None:
     if parent_id is None:
         return
-    result = await session.execute(
+    result = await _exec_stmt(
+        session,
         select(func.max(FeatureRelationModel.position)).where(
             FeatureRelationModel.parent_feature_id == parent_id
         )
@@ -48,7 +57,9 @@ async def create_feature_parent_relation(
             position=0 if maximum is None else maximum + 1,
         )
     )
-    await session.flush()
+    flush_res = session.flush()
+    if hasattr(flush_res, "__await__"):
+        await flush_res
 
 
 async def load_feature_for_update(
@@ -56,7 +67,8 @@ async def load_feature_for_update(
     project_id: int,
     feature_id: int,
 ):
-    result = await session.execute(
+    result = await _exec_stmt(
+        session,
         select(FeatureModel)
         .where(
             FeatureModel.project_id == project_id,
@@ -97,7 +109,8 @@ async def apply_feature_updates(
     if not request.actor_ids:
         feature.actors = []
         return
-    result = await session.execute(
+    result = await _exec_stmt(
+        session,
         select(ActorModel).where(
             ActorModel.project_id == project_id,
             ActorModel.id.in_(request.actor_ids),

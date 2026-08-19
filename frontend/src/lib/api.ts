@@ -10,6 +10,24 @@ import {
   KnowledgeWorkspace,
   KnowledgeDocument,
 } from '@/core/schema';
+import {
+  BranchSummary,
+  CommitDetail,
+  CommitCreateRequest,
+  CommitListResponse,
+  DiffResult,
+  EntityDiffResult,
+  MergeRequestCreateRequest,
+  MergeRequestDetail,
+  MergeRequestListResponse,
+  MergeReviewRequest,
+  MergeReviewResponse,
+  MergeCommentCreateRequest,
+  MergeCommentResponse,
+  MergePreviewResponse,
+  MergeRequestPayload,
+  MergeResponse,
+} from '@/core/versionControl';
 import { http } from './http';
 
 export const workspaceApi = {
@@ -678,5 +696,105 @@ export const workspaceApi = {
   },
   getKnowledgeConfig: async (): Promise<{ enabled: boolean }> => {
     return http.get<{ enabled: boolean }>('/knowledge/config');
+  },
+
+  // ============ Version Control ============
+  listBranches: async (projectId: string): Promise<BranchSummary[]> => {
+    return http.get<BranchSummary[]>(`/projects/${projectId}/branches`);
+  },
+  createBranch: async (
+    projectId: string,
+    payload: { name: string; description?: string; source_commit_public_id?: string; source_branch_public_id?: string }
+  ): Promise<BranchSummary> => {
+    return http.post<BranchSummary>(`/projects/${projectId}/branches`, payload);
+  },
+  getBranchDetail: async (projectId: string, branchRef: string): Promise<BranchSummary> => {
+    return http.get<BranchSummary>(`/projects/${projectId}/branches/${branchRef}`);
+  },
+  listCommits: async (
+    projectId: string,
+    params?: { branch?: string; all?: boolean; limit?: number; offset?: number }
+  ): Promise<CommitListResponse> => {
+    // http.get 的第二参数即查询参数记录，直接透传。
+    return http.get<CommitListResponse>(`/projects/${projectId}/commits`, params);
+  },
+  createCommit: async (
+    projectId: string,
+    payload: CommitCreateRequest
+  ): Promise<CommitDetail> => {
+    return http.post<CommitDetail>(`/projects/${projectId}/commits`, payload);
+  },
+  getCommitDetail: async (projectId: string, commitRef: string): Promise<CommitDetail> => {
+    return http.get<CommitDetail>(`/projects/${projectId}/commits/${commitRef}`);
+  },
+  getSemanticDiff: async (
+    projectId: string,
+    params?: {
+      base_ref?: string;
+      target_ref?: string;
+      branch?: string;
+      entity_type?: string;
+      change_type?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<DiffResult> => {
+    return http.get<DiffResult>(`/projects/${projectId}/diff`, params);
+  },
+  getEntityDiff: async (
+    projectId: string,
+    entityUuid: string,
+    params?: { base_ref?: string; target_ref?: string; branch?: string }
+  ): Promise<EntityDiffResult> => {
+    return http.get<EntityDiffResult>(`/projects/${projectId}/diff/entities/${entityUuid}`, params);
+  },
+
+  // ============ Merge Requests ============
+  previewMergeRequest: async (
+    projectId: string,
+    payload: { source_branch_public_id: string; target_branch_public_id: string }
+  ): Promise<{ merge_base_public_id?: string | null; source_head_public_id?: string | null; target_head_public_id?: string | null; diff_summary: { total_added: number; total_removed: number; total_modified: number } }> => {
+    return http.post(`/projects/${projectId}/merge-requests/preview`, payload);
+  },
+  createMergeRequest: async (projectId: string, payload: MergeRequestCreateRequest): Promise<MergeRequestDetail> => {
+    return http.post<MergeRequestDetail>(`/projects/${projectId}/merge-requests`, payload);
+  },
+  listMergeRequests: async (
+    projectId: string,
+    params?: { status?: string; limit?: number; offset?: number }
+  ): Promise<MergeRequestListResponse> => {
+    return http.get<MergeRequestListResponse>(`/projects/${projectId}/merge-requests`, params);
+  },
+  getMergeRequestDetail: async (projectId: string, mrRef: string): Promise<MergeRequestDetail> => {
+    return http.get<MergeRequestDetail>(`/projects/${projectId}/merge-requests/${mrRef}`);
+  },
+  addMergeRequestComment: async (
+    projectId: string,
+    mrRef: string,
+    payload: MergeCommentCreateRequest
+  ): Promise<MergeCommentResponse> => {
+    return http.post<MergeCommentResponse>(`/projects/${projectId}/merge-requests/${mrRef}/comments`, payload);
+  },
+  reviewMergeRequest: async (
+    projectId: string,
+    mrRef: string,
+    payload: MergeReviewRequest
+  ): Promise<MergeReviewResponse> => {
+    return http.post<MergeReviewResponse>(`/projects/${projectId}/merge-requests/${mrRef}/review`, payload);
+  },
+  closeMergeRequest: async (projectId: string, mrRef: string): Promise<{ status: string; mr_public_id: string; new_status: string }> => {
+    return http.post<{ status: string; mr_public_id: string; new_status: string }>(`/projects/${projectId}/merge-requests/${mrRef}/close`);
+  },
+  resolveMrComment: async (projectId: string, mrRef: string, commentId: number): Promise<MergeCommentResponse> => {
+    return http.post<MergeCommentResponse>(`/projects/${projectId}/merge-requests/${mrRef}/comments/${commentId}/resolve`);
+  },
+  reopenMrComment: async (projectId: string, mrRef: string, commentId: number): Promise<MergeCommentResponse> => {
+    return http.post<MergeCommentResponse>(`/projects/${projectId}/merge-requests/${mrRef}/comments/${commentId}/reopen`);
+  },
+  getMergePreview: async (projectId: string, mrRef: string): Promise<MergePreviewResponse> => {
+    return http.get<MergePreviewResponse>(`/projects/${projectId}/merge-requests/${mrRef}/merge-preview`);
+  },
+  performMerge: async (projectId: string, mrRef: string, payload: MergeRequestPayload): Promise<MergeResponse> => {
+    return http.post<MergeResponse>(`/projects/${projectId}/merge-requests/${mrRef}/merge`, payload);
   },
 };

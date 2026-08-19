@@ -19,6 +19,7 @@ from backend.api.modules.decision_workflow.candidate_generation.application.gene
     GenerationChoiceService,
 )
 from backend.database.database import get_session
+from backend.api.modules.version_control.dependencies import reject_commit_write
 from backend.api.dependencies.llm import llm_context_manager
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import CHOICE_GROUP_RESOLVED
@@ -41,6 +42,7 @@ async def list_choice_groups(
     status: str | None = Query(None, description="Filter by ChoiceGroup status (e.g. 'open', 'resolved')"),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_project_member(project_id, user, session)
     try:
@@ -68,6 +70,7 @@ async def accept_choice(
     body: GenerationAcceptRequest = GenerationAcceptRequest(),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """采纳一个 choice。支持 patch 和 draft_payload 两种模式。
     对 draft_payload 型 choice，默认检查上下文是否过期。
@@ -130,6 +133,7 @@ async def reject_choice(
     choice_id: int,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(project_id, user, session)
 
@@ -174,6 +178,7 @@ async def discard_choice_group(
     group_id: int,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """丢弃整个 choice group。所有候选标记为 discarded，不写入真实模型。"""
     owned_project = await require_owned_project(project_id, user, session)
@@ -226,6 +231,7 @@ async def create_generation_choice_group(
     body: GenerationChoiceGroupCreateRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """
     创建一个 AI 生成 choice group。
@@ -272,6 +278,7 @@ async def regenerate_choice_group(
     feedback: str | None = Query(None, description="User feedback for regeneration"),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """重新生成整个 choice group。旧 group 标记为 discarded，新建一个。"""
     owned_project = await require_owned_project(project_id, user, session)
@@ -321,6 +328,7 @@ async def regenerate_choice(
     feedback: str | None = Query(None, description="User feedback for regeneration"),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """重新生成单个 choice，替代原候选。"""
     owned_project = await require_owned_project(project_id, user, session)

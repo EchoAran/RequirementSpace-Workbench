@@ -76,6 +76,9 @@ class FeatureGenerationService:
         project_id: int,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -83,10 +86,15 @@ class FeatureGenerationService:
             project_id=project_id,
             user_feedback=None,
             session=session,
+            workspace_id=workspace_id,
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = branch_name
+        draft_payload["head_commit_id"] = head_commit_id
         response_payload["draft_id"] = draft_id
+        response_payload["branch_name"] = branch_name
+        response_payload["head_commit_id"] = head_commit_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.save_draft(
@@ -116,7 +124,11 @@ class FeatureGenerationService:
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = draft.get("branch_name")
+        draft_payload["head_commit_id"] = draft.get("head_commit_id")
         response_payload["draft_id"] = draft_id
+        response_payload["branch_name"] = draft.get("branch_name")
+        response_payload["head_commit_id"] = draft.get("head_commit_id")
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.save_draft(
@@ -135,12 +147,24 @@ class FeatureGenerationService:
         draft_id: str,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
+
+        draft_branch = draft.get("branch_name")
+        if draft_branch and branch_name and draft_branch != branch_name:
+            raise ValueError(f"draft_branch_mismatch: Draft created on branch '{draft_branch}' cannot be confirmed on '{branch_name}'")
+
+        draft_commit = draft.get("head_commit_id")
+        if draft_commit and head_commit_id and draft_commit != head_commit_id:
+            raise ValueError("branch_drift_detected: Branch head commit has advanced since draft creation")
 
         result = await self._persist_feature_generation_draft(
             draft=draft,
             session=session,
+            workspace_id=workspace_id,
         )
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
@@ -186,10 +210,12 @@ class FeatureGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         user_requirements, actor_nodes = await self._load_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
 
         raw = await self._features_generator.generate(
@@ -262,8 +288,9 @@ class FeatureGenerationService:
     async def _load_project_context(
         project_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[str, list[ActorNode]]:
-        from backend.database.model import ActorModel, ProjectModel
+        from backend.database.model import ActorModel, ProjectModel, BranchWorkspaceModel
 
         project_result = await session.execute(
             select(ProjectModel).where(
@@ -275,11 +302,21 @@ class FeatureGenerationService:
         if project is None:
             raise ValueError("project_not_found")
 
-        actor_result = await session.execute(
-            select(ActorModel).where(
-                ActorModel.project_id == project_id,
+        user_requirements = project.user_requirements
+        if workspace_id is not None:
+            ws_result = await session.execute(
+                select(BranchWorkspaceModel.user_requirements).where(
+                    BranchWorkspaceModel.id == workspace_id,
+                )
             )
-        )
+            ws_user_reqs = ws_result.scalar_one_or_none()
+            if ws_user_reqs is not None:
+                user_requirements = ws_user_reqs
+
+        actor_stmt = select(ActorModel).where(ActorModel.project_id == project_id)
+        if workspace_id is not None:
+            actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+        actor_result = await session.execute(actor_stmt)
         actor_models = actor_result.scalars().all()
 
         actor_nodes = [
@@ -291,7 +328,7 @@ class FeatureGenerationService:
             for actor in actor_models
         ]
 
-        return project.user_requirements, actor_nodes
+        return user_requirements, actor_nodes
 
     @staticmethod
     def _normalize_actor_ids(raw_actor_ids) -> list[int]:
@@ -335,6 +372,7 @@ class FeatureGenerationService:
         session,
         project_id: int,
         features: list[dict],
+        workspace_id: int | None = None,
     ) -> dict:
         from backend.database.model import FeatureModel
 
@@ -342,13 +380,17 @@ class FeatureGenerationService:
         for feature in features:
             model = FeatureModel(
                 project_id=project_id,
+                workspace_id=workspace_id,
                 name=feature["feature_name"],
                 description=feature["feature_description"],
                 confirmation_status="ai_assumption",
             )
             session.add(model)
             models_by_number[feature["feature_number"]] = model
-        await session.flush()
+
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         return models_by_number
 
     @staticmethod
@@ -370,7 +412,9 @@ class FeatureGenerationService:
             for actor_id in feature.get("actor_ids", [])
         ]
         if rows:
-            await session.execute(insert(feature_actor_table), rows)
+            res = session.execute(insert(feature_actor_table), rows)
+            if hasattr(res, "__await__"):
+                await res
 
     def _update_project_from_root(
         self,
@@ -408,6 +452,7 @@ class FeatureGenerationService:
         self,
         draft: dict,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         project_id = draft["project_id"]
         features = draft["features"]
@@ -419,6 +464,7 @@ class FeatureGenerationService:
             session,
             project_id,
             features,
+            workspace_id=workspace_id,
         )
         await self._write_feature_actor_links(
             session,
@@ -431,7 +477,9 @@ class FeatureGenerationService:
             features,
             models_by_number,
         )
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         return {
             "project_id": project_id,
             "feature_count": len(features),

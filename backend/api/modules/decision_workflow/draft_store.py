@@ -22,7 +22,13 @@ class GenerativeDraftStore:
         session = None,
     ) -> None:
         """Saves or updates a draft in the database."""
-        await session.execute(
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
+        await _exec(
             delete(GenerativeDraftModel).where(
                 GenerativeDraftModel.draft_id == draft_id,
                 GenerativeDraftModel.owner_user_id == owner_user_id,
@@ -36,7 +42,9 @@ class GenerativeDraftStore:
             owner_user_id=owner_user_id,
         )
         session.add(db_draft)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
     @staticmethod
     async def get_draft(draft_id: str, owner_user_id: int, session = None) -> dict:
@@ -44,7 +52,13 @@ class GenerativeDraftStore:
 
         Raises ValueError('draft_not_found') if not found.
         """
-        result = await session.execute(
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
+        result = await _exec(
             select(GenerativeDraftModel).where(
                 GenerativeDraftModel.draft_id == draft_id,
                 GenerativeDraftModel.owner_user_id == owner_user_id,
@@ -58,12 +72,21 @@ class GenerativeDraftStore:
     @staticmethod
     async def delete_draft(draft_id: str, owner_user_id: int, session = None) -> None:
         """Deletes a draft from the database using an existing active session."""
-        await session.execute(
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
+        await _exec(
             delete(GenerativeDraftModel).where(
                 GenerativeDraftModel.draft_id == draft_id,
                 GenerativeDraftModel.owner_user_id == owner_user_id,
             )
         )
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
     @staticmethod
     async def discard_draft_locally(draft_id: str, owner_user_id: int) -> None:

@@ -183,6 +183,7 @@ async def test_confirm_draft_preserves_apply_diff_and_audit_behavior(monkeypatch
         7,
         draft.patch,
         session,
+        workspace_id=None,
     )
     stale_marker.assert_awaited_once_with(
         project_id=7,

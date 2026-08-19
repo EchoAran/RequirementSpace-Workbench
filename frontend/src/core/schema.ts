@@ -45,6 +45,7 @@ export interface ActorNode {
   status?: NodeStatus;
   scopeStatus?: ScopeStatus | 'in_scope' | 'out_of_scope' | 'external_dependency' | 'deferred';
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 成功标准
@@ -59,6 +60,7 @@ export interface AcceptanceCriterionNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 场景/用户故事
@@ -77,6 +79,7 @@ export interface ScenarioNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 功能范围 (Kano)
@@ -99,6 +102,7 @@ export interface ScopeNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 功能结点 (组成特征树)
@@ -119,6 +123,7 @@ export interface FeatureNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 业务对象属性
@@ -136,6 +141,7 @@ export interface BusinessObjectAttributeNode {
   title?: string;
   description?: string;
   status?: NodeStatus;
+  logicalUuid?: string;
 }
 
 // 业务对象主结点
@@ -153,6 +159,7 @@ export interface BusinessObjectNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 // 流程步骤结点
@@ -174,6 +181,7 @@ export interface FlowStepNode {
   description?: string;
   status?: NodeStatus;
   position?: number;
+  logicalUuid?: string;
 }
 
 // 流程主结点
@@ -192,6 +200,7 @@ export interface FlowNode {
   description?: string;
   status?: NodeStatus;
   updatedAt?: string;
+  logicalUuid?: string;
 }
 
 export type Stage = 'what' | 'how' | 'scope';

@@ -20,6 +20,20 @@ from backend.integration.skill_backed_services.spl_syntax_export_service import 
 from backend.integration.skill_backed_services.spl_semantic_export_service import SplSemanticExportService
 
 
+def _fake_resolve_branch_context(db, project_id, branch_ref=None, user_id=None):
+    """阶段 2 起导出路由在 handler 内解析分支上下文；测试跳过真实解析。"""
+    return (
+        None,
+        None,
+        {"can_write": True, "can_delete": False, "can_rename": False, "is_protected": False},
+    )
+
+
+def _patch_route_branch_context(monkeypatch):
+    from backend.api.modules.version_control.application import branch_service
+    monkeypatch.setattr(branch_service, "resolve_branch_context", _fake_resolve_branch_context)
+
+
 @pytest.mark.asyncio
 async def test_spl_syntax_export_service_success():
     service = SplSyntaxExportService()
@@ -335,12 +349,13 @@ async def test_spl_semantic_export_coerces_llm_scalar_field_values():
 
 
 @pytest.mark.asyncio
-async def test_spl_export_routes_skill_unavailable():
+async def test_spl_export_routes_skill_unavailable(monkeypatch):
     from contextlib import asynccontextmanager
     from fastapi.testclient import TestClient
     from backend.main import app
     from backend.api.dependencies.auth import get_current_user
     from backend.api.dependencies.ownership import require_owned_project
+    from backend.api.dependencies.project_access import require_project_member
     from backend.database.model import ProjectModel, UserModel
     from backend.core.llm_context import LLMRequestContext
 
@@ -354,7 +369,9 @@ async def test_spl_export_routes_skill_unavailable():
 
     # Override dependencies to bypass DB/Auth
     app.dependency_overrides[require_owned_project] = lambda: ProjectModel(id=1, public_id="proj-1", name="TestProj")
+    app.dependency_overrides[require_project_member] = lambda: ProjectModel(id=1, public_id="proj-1", name="TestProj")
     app.dependency_overrides[get_current_user] = lambda: UserModel(id=1, email="test@example.com")
+    _patch_route_branch_context(monkeypatch)
 
     client = TestClient(app)
 
@@ -372,18 +389,25 @@ async def test_spl_export_routes_skill_unavailable():
 
     # Cleanup overrides
     app.dependency_overrides.pop(require_owned_project, None)
+    app.dependency_overrides.pop(require_project_member, None)
     app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.mark.asyncio
-async def test_spl_syntax_export_route_handles_chinese_filename():
+async def test_spl_syntax_export_route_handles_chinese_filename(monkeypatch):
     from fastapi.testclient import TestClient
     from backend.main import app
     from backend.api.dependencies.ownership import require_owned_project
+    from backend.api.dependencies.project_access import require_project_member
     from backend.api.dependencies.auth import get_current_user
     from backend.database.model import ProjectModel, UserModel
 
     app.dependency_overrides[require_owned_project] = lambda: ProjectModel(
+        id=1,
+        public_id="proj-1",
+        name="轻量本地音乐播放器",
+    )
+    app.dependency_overrides[require_project_member] = lambda: ProjectModel(
         id=1,
         public_id="proj-1",
         name="轻量本地音乐播放器",
@@ -393,6 +417,7 @@ async def test_spl_syntax_export_route_handles_chinese_filename():
         email="test@example.com",
         preferred_locale="en-US",
     )
+    _patch_route_branch_context(monkeypatch)
 
     client = TestClient(app)
 
@@ -408,6 +433,7 @@ async def test_spl_syntax_export_route_handles_chinese_filename():
         assert "%E8%BD%BB%E9%87%8F" in content_disposition
 
     app.dependency_overrides.pop(require_owned_project, None)
+    app.dependency_overrides.pop(require_project_member, None)
     app.dependency_overrides.pop(get_current_user, None)
 
 
@@ -525,18 +551,21 @@ async def test_spl_semantic_export_enabled_flag():
 
 
 @pytest.mark.asyncio
-async def test_spl_export_routes_semantic_disabled():
+async def test_spl_export_routes_semantic_disabled(monkeypatch):
     from fastapi.testclient import TestClient
     from backend.main import app
     from backend.api.dependencies.auth import get_current_user
     from backend.api.dependencies.ownership import require_owned_project
+    from backend.api.dependencies.project_access import require_project_member
     from backend.database.model import ProjectModel, UserModel
     from backend.api.dependencies.llm import get_llm_context
 
     # Override dependencies to bypass DB/Auth
     app.dependency_overrides[require_owned_project] = lambda: ProjectModel(id=1, public_id="proj-1", name="TestProj")
+    app.dependency_overrides[require_project_member] = lambda: ProjectModel(id=1, public_id="proj-1", name="TestProj")
     app.dependency_overrides[get_current_user] = lambda: UserModel(id=1, email="test@example.com")
     app.dependency_overrides[get_llm_context] = lambda: (_ for _ in ()).throw(AssertionError("LLM context should not be resolved when semantic export is disabled"))
+    _patch_route_branch_context(monkeypatch)
 
     client = TestClient(app)
 
@@ -549,5 +578,6 @@ async def test_spl_export_routes_semantic_disabled():
 
     # Cleanup overrides
     app.dependency_overrides.pop(require_owned_project, None)
+    app.dependency_overrides.pop(require_project_member, None)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_llm_context, None)

@@ -28,6 +28,13 @@ from .business_object_attribute_writer import (
 )
 
 
+async def _exec_stmt(session, stmt):
+    res = session.execute(stmt)
+    if hasattr(res, "__await__"):
+        return await res
+    return res
+
+
 class BusinessObjectService:
     async def create_business_object(
         self,
@@ -35,15 +42,19 @@ class BusinessObjectService:
         req: BusinessObjectCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
+        workspace_id: int | None = None,
     ) -> BusinessObjectResponse:
         bo = BusinessObjectModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=req.name,
             description=req.description,
             confirmation_status=confirmation_status,
         )
         session.add(bo)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 新增业务对象
         await audit_service.record(
@@ -77,8 +88,9 @@ class BusinessObjectService:
         bo_id: int,
         req: BusinessObjectUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> BusinessObjectResponse:
-        result = await session.execute(
+        stmt = (
             select(BusinessObjectModel)
             .where(
                 BusinessObjectModel.project_id == project_id,
@@ -86,12 +98,15 @@ class BusinessObjectService:
             )
             .options(selectinload(BusinessObjectModel.attributes))
         )
-        bo = result.scalar_one_or_none()
+        if workspace_id is not None:
+            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        exec_res = await _exec_stmt(session, stmt)
+        bo = exec_res.scalar_one_or_none()
 
         if bo is None:
-            raise ValueError("business_object_not_found")
+            raise ValueError("business_object_not_found_in_workspace")
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "business_object", bo, req.last_seen_updated_at)
 
         old_name = bo.name
@@ -102,7 +117,9 @@ class BusinessObjectService:
         if req.description is not None:
             bo.description = req.description
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 更新业务对象
         diff = {}
@@ -128,7 +145,7 @@ class BusinessObjectService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "business_object", bo)
 
         return BusinessObjectResponse(
@@ -155,17 +172,19 @@ class BusinessObjectService:
         project_id: int,
         bo_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        result = await session.execute(
-            select(BusinessObjectModel).where(
-                BusinessObjectModel.project_id == project_id,
-                BusinessObjectModel.id == bo_id,
-            )
+        stmt = select(BusinessObjectModel).where(
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.id == bo_id,
         )
-        bo = result.scalar_one_or_none()
+        if workspace_id is not None:
+            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        exec_res = await _exec_stmt(session, stmt)
+        bo = exec_res.scalar_one_or_none()
 
         if bo is None:
-            raise ValueError("business_object_not_found")
+            raise ValueError("business_object_not_found_in_workspace")
 
         # 校验是否被任意 FlowStep 的输入/输出引用
         input_use = await session.execute(
@@ -281,7 +300,7 @@ class BusinessObjectService:
             attr_id,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "business_object_attribute", attr, req.last_seen_updated_at)
 
         before = capture_attribute_state(attr)
@@ -310,7 +329,7 @@ class BusinessObjectService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "business_object_attribute", attr)
 
         return serialize_business_object_attribute(attr)

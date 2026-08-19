@@ -1,5 +1,7 @@
-from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_project, require_project_member
+from backend.database.model import UserModel, ProjectModel
+from backend.api.modules.version_control.public import resolve_branch_context
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,7 @@ from backend.api.modules.diagnosis_quality.finding.schemas import (
 )
 from backend.api.modules.diagnosis_quality.finding.application.finding_service import FindingService
 from backend.database.database import get_session
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/findings",
@@ -35,10 +38,18 @@ async def list_project_findings(
     stage: str = Query("all", pattern="^(what|how|scope|preview|all)$"),
     view: str = Query("issues", pattern="^(issues|next_action|gate|health)$"),
     action: str | None = Query(None, pattern="^(enter_how|enter_scope|generate_preview|export|save_checkpoint)$"),
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     try:
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+        ws_id = ws_obj.id if ws_obj else None
+
         findings = await finding_service.list_findings(
             project_id=owned_project.id,
             stage=stage,
@@ -47,6 +58,7 @@ async def list_project_findings(
             session=session,
             background_tasks=background_tasks,
             public_project_id=owned_project.public_id,
+            workspace_id=ws_id,
         )
         return ProjectFindingsResponse(
             project_id=owned_project.public_id,
@@ -99,15 +111,29 @@ async def list_project_findings(
 async def update_project_finding_status(
     project_id: str,
     request: FindingStatusUpdateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     try:
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+        if not perms.get("can_write", True):
+            raise HTTPException(
+                status_code=403,
+                detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+            )
+
+        ws_id = ws_obj.id if ws_obj else None
         res = await finding_service.set_finding_status(
             project_id=owned_project.id,
             finding_id=request.finding_id,
             status=request.status,
             session=session,
+            workspace_id=ws_id,
         )
         return FindingStatusUpdateResponse(
             project_id=owned_project.public_id,

@@ -138,10 +138,12 @@ async def _load_flow_steps(
 async def load_issue_flows(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> list[FlowIssueItem]:
-    result = await session.execute(
-        select(FlowModel).where(FlowModel.project_id == project_id)
-    )
+    stmt = select(FlowModel).where(FlowModel.project_id == project_id)
+    if workspace_id is not None:
+        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     flow_models = result.scalars().all()
     flow_ids = [flow.id for flow in flow_models]
     if not flow_ids:

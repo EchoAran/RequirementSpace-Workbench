@@ -44,6 +44,7 @@ class DuplicateScenarioNameSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -52,18 +53,18 @@ class DuplicateScenarioNameSolver(BaseIssueAISolver):
         # Load scenario
         scenario = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(ScenarioModel).where(ScenarioModel.id == target_id, ScenarioModel.project_id == project_id)
-            )
+            , ScenarioModel, workspace_id))
             scenario = res.scalar_one_or_none()
 
         # Load feature
         feature = None
         other_names = []
         if scenario:
-            res_feat = await session.execute(
+            res_feat = await session.execute(self._scope(
                 select(FeatureModel).where(FeatureModel.id == scenario.feature_id, FeatureModel.project_id == project_id)
-            )
+            , FeatureModel, workspace_id))
             feature = res_feat.scalar_one_or_none()
 
             # Load other scenario names under the feature

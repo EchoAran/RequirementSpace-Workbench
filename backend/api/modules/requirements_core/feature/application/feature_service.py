@@ -27,8 +27,8 @@ from .feature_writer import (
 
 
 class FeatureService:
-    async def list_features(self, project_id: int, session) -> list[FeatureResponse]:
-        result = await session.execute(
+    async def list_features(self, project_id: int, session, workspace_id: int | None = None) -> list[FeatureResponse]:
+        stmt = (
             select(FeatureModel)
             .where(FeatureModel.project_id == project_id)
             .options(
@@ -37,6 +37,9 @@ class FeatureService:
                 selectinload(FeatureModel.child_relations),
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        result = await session.execute(stmt)
         features = result.scalars().all()
         return [
             FeatureResponse(
@@ -54,9 +57,9 @@ class FeatureService:
             for feature in features
         ]
 
-    async def get_features(self, project_id: int, session) -> list[FeatureResponse]:
+    async def get_features(self, project_id: int, session, workspace_id: int | None = None) -> list[FeatureResponse]:
         """Backward-compatible shim for list_features."""
-        return await self.list_features(project_id, session)
+        return await self.list_features(project_id, session, workspace_id)
 
     async def create_feature(
         self,
@@ -64,6 +67,7 @@ class FeatureService:
         req: FeatureCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
+        workspace_id: int | None = None,
     ) -> FeatureResponse:
         await ensure_parent_feature_exists(
             session,
@@ -71,14 +75,23 @@ class FeatureService:
             req.parent_id,
         )
 
+        if workspace_id is not None and req.parent_id:
+            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == req.parent_id))
+            parent_feat = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+            if parent_feat and parent_feat.workspace_id != workspace_id:
+                raise ValueError("Cross-workspace entity reference rejected: parent feature belongs to a different workspace")
+
         feature = FeatureModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=req.name,
             description=req.description,
             confirmation_status=confirmation_status,
         )
         session.add(feature)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         await create_feature_parent_relation(
             session,
@@ -117,14 +130,23 @@ class FeatureService:
         feature_id: int,
         req: FeatureUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> FeatureResponse:
         feature = await load_feature_for_update(
             session,
             project_id,
             feature_id,
         )
+        if workspace_id is not None and feature.workspace_id != workspace_id:
+            raise ValueError("feature_not_found_in_workspace")
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        if workspace_id is not None and req.parent_id:
+            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == req.parent_id))
+            parent_feat = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+            if parent_feat and parent_feat.workspace_id != workspace_id:
+                raise ValueError("Cross-workspace entity reference rejected: parent feature belongs to a different workspace")
+
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "feature", feature, req.last_seen_updated_at)
 
         before = capture_feature_state(feature)
@@ -135,7 +157,9 @@ class FeatureService:
             req,
         )
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 更新功能
         diff = build_feature_update_diff(before, feature)
@@ -162,7 +186,7 @@ class FeatureService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "feature", feature)
 
         return serialize_feature(feature)
@@ -172,17 +196,19 @@ class FeatureService:
         project_id: int,
         feature_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        result = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id,
-                FeatureModel.id == feature_id,
-            )
+        stmt = select(FeatureModel).where(
+            FeatureModel.project_id == project_id,
+            FeatureModel.id == feature_id,
         )
-        feature = result.scalar_one_or_none()
+        if workspace_id is not None:
+            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        exec_res = session.execute(stmt)
+        feature = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
 
         if feature is None:
-            raise ValueError("feature_not_found")
+            raise ValueError("feature_not_found_in_workspace")
 
         feature_name = feature.name
 

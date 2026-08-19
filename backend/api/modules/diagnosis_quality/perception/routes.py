@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
@@ -6,6 +6,7 @@ from backend.api.dependencies.ownership import require_owned_project, require_ow
 from backend.api.dependencies.llm import get_llm_context, llm_context_manager
 from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.base_schema import DraftRegenerateRequest
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 from backend.api.modules.diagnosis_quality.perception.schemas import (
     PerceptionSlotFillingConfirmResponse,
@@ -29,6 +30,8 @@ perception_slot_filling_service = PerceptionSlotFillingService()
 PERCEPTION_SLOT_FILLING_ERRORS = {
     "project_not_found",
     "draft_not_found",
+    "draft_branch_mismatch",
+    "branch_drift_detected",
     "perception_job_not_found",
     "perception_slot_not_ready",
     "invalid_perception_kind",
@@ -62,16 +65,34 @@ PERCEPTION_SLOT_FILLING_ERRORS = {
 }
 
 
+async def _resolve_write_branch(session, project_id: int, branch: str | None, user_id: int):
+    """解析分支写入上下文；受保护分支（含 main）拒绝直接写入。"""
+    from backend.api.modules.version_control.public import resolve_branch_context
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project_id, branch, user_id)
+    )
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests",
+        )
+    return branch_obj, ws_obj
+
+
 @router.post(
     "/actor",
     response_model=PerceptionSlotFillingDraftResponse,
 )
 async def create_actor_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
+    branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_actor_draft(
@@ -79,6 +100,9 @@ async def create_actor_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
+                branch_name=branch_obj.name if branch_obj else None,
+                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                workspace_id=ws_id,
             )
         except ValueError as error:
             raise _to_http_exception(error)
@@ -90,10 +114,14 @@ async def create_actor_slot_filling_draft(
 )
 async def create_feature_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
+    branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_feature_draft(
@@ -101,6 +129,9 @@ async def create_feature_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
+                branch_name=branch_obj.name if branch_obj else None,
+                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                workspace_id=ws_id,
             )
         except ValueError as error:
             raise _to_http_exception(error)
@@ -112,10 +143,14 @@ async def create_feature_slot_filling_draft(
 )
 async def create_scenario_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
+    branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_scenario_draft(
@@ -123,6 +158,9 @@ async def create_scenario_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
+                branch_name=branch_obj.name if branch_obj else None,
+                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                workspace_id=ws_id,
             )
         except ValueError as error:
             raise _to_http_exception(error)
@@ -134,10 +172,14 @@ async def create_scenario_slot_filling_draft(
 )
 async def create_acceptance_criteria_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
+    branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await (
@@ -147,6 +189,9 @@ async def create_acceptance_criteria_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
+                branch_name=branch_obj.name if branch_obj else None,
+                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                workspace_id=ws_id,
             )
         except ValueError as error:
             raise _to_http_exception(error)
@@ -158,10 +203,14 @@ async def create_acceptance_criteria_slot_filling_draft(
 )
 async def create_flow_slot_filling_draft(
     request: PerceptionSlotFillingDraftCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
+    branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_flow_draft(
@@ -169,6 +218,9 @@ async def create_flow_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
+                branch_name=branch_obj.name if branch_obj else None,
+                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                workspace_id=ws_id,
             )
         except ValueError as error:
             raise _to_http_exception(error)
@@ -180,10 +232,15 @@ async def create_flow_slot_filling_draft(
 )
 async def regenerate_slot_filling_draft(
     request: DraftRegenerateRequest | None = None,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
     llm_ctx=Depends(get_llm_context),
+    commit_guard: None = Depends(reject_commit_write),
 ):
+    branch_obj, ws_obj = await _resolve_write_branch(session, draft.project_id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     user_feedback = request.user_feedback if request else None
     try:
         return await perception_slot_filling_service.regenerate_draft(
@@ -191,6 +248,9 @@ async def regenerate_slot_filling_draft(
             owner_user_id=draft.owner_user_id,
             session=session,
             user_feedback=user_feedback,
+            branch_name=branch_obj.name if branch_obj else None,
+            head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         raise _to_http_exception(error)
@@ -201,14 +261,22 @@ async def regenerate_slot_filling_draft(
     response_model=PerceptionSlotFillingConfirmResponse,
 )
 async def confirm_slot_filling_draft(
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
+    branch_obj, ws_obj = await _resolve_write_branch(session, draft.project_id, branch, user.id)
+    ws_id = ws_obj.id if ws_obj else None
     try:
         return await perception_slot_filling_service.confirm_draft(
             draft_id=draft.draft_id,
             owner_user_id=draft.owner_user_id,
             session=session,
+            branch_name=branch_obj.name if branch_obj else None,
+            head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         raise _to_http_exception(error)
@@ -220,6 +288,7 @@ async def confirm_slot_filling_draft(
 )
 async def discard_slot_filling_draft(
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     return await perception_slot_filling_service.discard_draft(
         draft_id=draft.draft_id,
@@ -230,8 +299,11 @@ async def discard_slot_filling_draft(
 def _to_http_exception(error: ValueError) -> HTTPException:
     detail = str(error)
 
-    if detail == "draft_not_found" or detail == "perception_job_not_found":
+    if detail in ("draft_not_found", "perception_job_not_found"):
         return HTTPException(status_code=404, detail=detail)
+
+    if detail in ("draft_branch_mismatch", "branch_drift_detected"):
+        return HTTPException(status_code=409, detail=detail)
 
     if detail in PERCEPTION_SLOT_FILLING_ERRORS:
         return HTTPException(status_code=400, detail=detail)

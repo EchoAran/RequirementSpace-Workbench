@@ -1,47 +1,192 @@
 {
-  "pageHealth": { "notStarted": "Not started", "ready": "Ready", "needsAttention": "Needs attention", "pendingCheck": "Pending check", "readyToAdvance": "Ready to advance", "waitingPrerequisite": "Waiting for prerequisites", "completeWhat": "Complete all core What-stage modeling rules first", "completeWhatAndHow": "Complete the core What and How modeling rules first", "shadowPreviewAvailable": "Shadow preview available", "pendingDecision": "Pending decision", "converged": "Converged" },
-  "http": { "timeoutStatus": "Gateway Timeout", "timeoutMessage": "The request timed out because the backend task took too long. Please try again later.", "networkStatus": "Network Error", "networkMessage": "Unable to connect. Check whether the service is running." },
+  "pageHealth": {
+    "notStarted": "Not started",
+    "ready": "Ready",
+    "needsAttention": "Needs attention",
+    "pendingCheck": "Pending check",
+    "readyToAdvance": "Ready to advance",
+    "waitingPrerequisite": "Waiting for prerequisites",
+    "completeWhat": "Complete all core What-stage modeling rules first",
+    "completeWhatAndHow": "Complete the core What and How modeling rules first",
+    "shadowPreviewAvailable": "Shadow preview available",
+    "pendingDecision": "Pending decision",
+    "converged": "Converged"
+  },
+  "http": {
+    "timeoutStatus": "Gateway Timeout",
+    "timeoutMessage": "The request timed out because the backend task took too long. Please try again later.",
+    "networkStatus": "Network Error",
+    "networkMessage": "Unable to connect. Check whether the service is running."
+  },
   "findingText": {
-    "ACTOR_WITHOUT_FEATURE": { "title": "Actor Not Linked to a Feature", "description": "This actor is not linked to any feature." },
-    "LEAF_FEATURE_WITHOUT_ACTOR": { "title": "Leaf Feature Missing an Actor", "description": "This leaf feature has no participating actor." },
-    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": { "title": "Feature and Actor Missing a Scenario", "description": "This feature and actor combination has no scenario." },
-    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS": { "title": "Scenario Actor Link Is Inconsistent", "description": "The scenario actor is not linked to its feature." },
-    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": { "title": "Scenario Missing Acceptance Criteria", "description": "This scenario has no acceptance criteria." },
-    "DUPLICATE_SCENARIO_NAME": { "title": "Duplicate Scenario Name", "description": "Duplicate scenario names exist under the same feature and actor." },
-    "LEAF_FEATURE_WITHOUT_FLOW": { "title": "Leaf Feature Missing Flow Coverage", "description": "This leaf feature is not covered by a flow." },
-    "FLOW_WITHOUT_FEATURE": { "title": "Flow Not Linked to a Feature", "description": "This flow is not linked to any feature." },
-    "FLOW_WITHOUT_STEPS": { "title": "Flow Missing Steps", "description": "This flow has no steps." },
-    "ACTOR_ACTION_STEP_WITHOUT_ACTOR": { "title": "User Action Missing an Actor", "description": "This user-action step has no participating actor." },
-    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": { "title": "Decision Step Has Too Few Branches", "description": "This decision step needs at least two successor branches." },
-    "UNREACHABLE_FLOW_STEP": { "title": "Unreachable Flow Step", "description": "This step cannot be reached from the first step." },
-    "BUSINESS_OBJECT_WITHOUT_USAGE": { "title": "Business Object Is Unused", "description": "This business object is not used by a flow step." },
-    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES": { "title": "Business Object Missing Attributes", "description": "This business object has no attributes." },
-    "LEAF_FEATURE_WITHOUT_SCOPE": { "title": "Leaf Feature Missing a Scope Decision", "description": "This leaf feature has no scope decision." },
-    "SCOPE_WITHOUT_REASON": { "title": "Scope Decision Missing a Reason", "description": "This scope decision needs a reason." },
-    "GENERATE_ACTORS": { "title": "Generate Actors", "description": "Start by generating the project actors." },
-    "GENERATE_FEATURES": { "title": "Generate Features", "description": "Generate a feature tree based on the project actors." },
-    "BIND_ACTORS_TO_FEATURE": { "title": "Bind Actors to Features", "description": "Bind an execution actor to each leaf feature." },
-    "GENERATE_SCENARIOS": { "title": "Generate Scenarios", "description": "Generate scenarios for the project features and actors." },
-    "GENERATE_ACCEPTANCE_CRITERIA": { "title": "Generate Acceptance Criteria", "description": "Add acceptance criteria to the success scenarios." },
-    "ENTER_HOW": { "title": "Enter the How Stage", "description": "The What-stage foundation is ready for workflow modeling." },
-    "GENERATE_FLOWS_AND_BUSINESS_OBJECTS": { "title": "Generate Flows and Business Objects", "description": "Generate the workflows and related business objects." },
-    "COMPLETE_FLOW_STEPS": { "title": "Complete Flow Steps", "description": "Complete the missing steps in the project flows." },
-    "ENTER_SCOPE": { "title": "Enter the Scope Stage", "description": "The workflow foundation is ready for scope decisions." },
-    "GENERATE_SCOPE": { "title": "Generate Scope Decisions", "description": "Generate scope and Kano recommendations for leaf features." },
-    "ENTER_PREVIEW": { "title": "Enter Preview", "description": "The project is ready for preview and export checks." },
-    "PREVIEW_READY": { "title": "View Preview", "description": "The project is now in the preview stage." },
-    "STAGE_LOCKED": { "title": "Stage Not Unlocked", "description": "Complete and confirm the previous stage before entering this stage." },
-    "PERCEPTION_RUNNING": { "title": "AI Analysis in Progress", "description": "AI is analyzing this stage. Check again shortly." },
-    "PERCEPTION_FAILED": { "title": "AI Analysis Failed", "description": "The stage analysis failed. Retry the diagnosis." }
+    "ACTOR_WITHOUT_FEATURE": {
+      "title": "Actor Not Linked to a Feature",
+      "description": "This actor is not linked to any feature."
+    },
+    "LEAF_FEATURE_WITHOUT_ACTOR": {
+      "title": "Leaf Feature Missing an Actor",
+      "description": "This leaf feature has no participating actor."
+    },
+    "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": {
+      "title": "Feature and Actor Missing a Scenario",
+      "description": "This feature and actor combination has no scenario."
+    },
+    "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS": {
+      "title": "Scenario Actor Link Is Inconsistent",
+      "description": "The scenario actor is not linked to its feature."
+    },
+    "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": {
+      "title": "Scenario Missing Acceptance Criteria",
+      "description": "This scenario has no acceptance criteria."
+    },
+    "DUPLICATE_SCENARIO_NAME": {
+      "title": "Duplicate Scenario Name",
+      "description": "Duplicate scenario names exist under the same feature and actor."
+    },
+    "LEAF_FEATURE_WITHOUT_FLOW": {
+      "title": "Leaf Feature Missing Flow Coverage",
+      "description": "This leaf feature is not covered by a flow."
+    },
+    "FLOW_WITHOUT_FEATURE": {
+      "title": "Flow Not Linked to a Feature",
+      "description": "This flow is not linked to any feature."
+    },
+    "FLOW_WITHOUT_STEPS": {
+      "title": "Flow Missing Steps",
+      "description": "This flow has no steps."
+    },
+    "ACTOR_ACTION_STEP_WITHOUT_ACTOR": {
+      "title": "User Action Missing an Actor",
+      "description": "This user-action step has no participating actor."
+    },
+    "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": {
+      "title": "Decision Step Has Too Few Branches",
+      "description": "This decision step needs at least two successor branches."
+    },
+    "UNREACHABLE_FLOW_STEP": {
+      "title": "Unreachable Flow Step",
+      "description": "This step cannot be reached from the first step."
+    },
+    "BUSINESS_OBJECT_WITHOUT_USAGE": {
+      "title": "Business Object Is Unused",
+      "description": "This business object is not used by a flow step."
+    },
+    "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES": {
+      "title": "Business Object Missing Attributes",
+      "description": "This business object has no attributes."
+    },
+    "LEAF_FEATURE_WITHOUT_SCOPE": {
+      "title": "Leaf Feature Missing a Scope Decision",
+      "description": "This leaf feature has no scope decision."
+    },
+    "SCOPE_WITHOUT_REASON": {
+      "title": "Scope Decision Missing a Reason",
+      "description": "This scope decision needs a reason."
+    },
+    "GENERATE_ACTORS": {
+      "title": "Generate Actors",
+      "description": "Start by generating the project actors."
+    },
+    "GENERATE_FEATURES": {
+      "title": "Generate Features",
+      "description": "Generate a feature tree based on the project actors."
+    },
+    "BIND_ACTORS_TO_FEATURE": {
+      "title": "Bind Actors to Features",
+      "description": "Bind an execution actor to each leaf feature."
+    },
+    "GENERATE_SCENARIOS": {
+      "title": "Generate Scenarios",
+      "description": "Generate scenarios for the project features and actors."
+    },
+    "GENERATE_ACCEPTANCE_CRITERIA": {
+      "title": "Generate Acceptance Criteria",
+      "description": "Add acceptance criteria to the success scenarios."
+    },
+    "ENTER_HOW": {
+      "title": "Enter the How Stage",
+      "description": "The What-stage foundation is ready for workflow modeling."
+    },
+    "GENERATE_FLOWS_AND_BUSINESS_OBJECTS": {
+      "title": "Generate Flows and Business Objects",
+      "description": "Generate the workflows and related business objects."
+    },
+    "COMPLETE_FLOW_STEPS": {
+      "title": "Complete Flow Steps",
+      "description": "Complete the missing steps in the project flows."
+    },
+    "ENTER_SCOPE": {
+      "title": "Enter the Scope Stage",
+      "description": "The workflow foundation is ready for scope decisions."
+    },
+    "GENERATE_SCOPE": {
+      "title": "Generate Scope Decisions",
+      "description": "Generate scope and Kano recommendations for leaf features."
+    },
+    "ENTER_PREVIEW": {
+      "title": "Enter Preview",
+      "description": "The project is ready for preview and export checks."
+    },
+    "PREVIEW_READY": {
+      "title": "View Preview",
+      "description": "The project is now in the preview stage."
+    },
+    "STAGE_LOCKED": {
+      "title": "Stage Not Unlocked",
+      "description": "Complete and confirm the previous stage before entering this stage."
+    },
+    "PERCEPTION_RUNNING": {
+      "title": "AI Analysis in Progress",
+      "description": "AI is analyzing this stage. Check again shortly."
+    },
+    "PERCEPTION_FAILED": {
+      "title": "AI Analysis Failed",
+      "description": "The stage analysis failed. Retry the diagnosis."
+    }
   },
   "stageProgress": {
-    "status": { "ready": "Stage Complete", "locked": "Not Unlocked", "analysis_running": "AI Analysis in Progress", "analyzing": "AI Analysis in Progress", "blocked": "Blocked", "ready_to_advance": "Ready to Advance", "unlocked_not_started": "Unlocked, Not Started", "in_progress": "In Progress", "not_started": "Not Started" },
-    "actions": { "request_transition": "Request Next Stage", "open_gate_findings": "View Blocking Issues", "wait": "View Analysis Progress", "navigate": "Go to Stage", "none": "" },
-    "checks": { "missing_actors": "The project has no actors.", "missing_leaf_features": "The project has no leaf features.", "leaf_feature_without_actor": "Some leaf features have no actor.", "leaf_feature_without_scenario": "Some leaf features have no scenario.", "missing_acceptance_criteria": "Some scenarios have no acceptance criteria.", "missing_flows": "The project has no flows.", "flows_without_steps": "Some flows have no steps.", "invalid_step_actor": "Some flow steps reference invalid actors.", "invalid_step_business_object": "Some flow steps reference invalid business objects.", "missing_object_attributes": "Business objects have no attributes.", "missing_scope_decision": "Some leaf features have no scope decision.", "kano_not_ready": "Kano analysis is not complete." }
+    "status": {
+      "ready": "Stage Complete",
+      "locked": "Not Unlocked",
+      "analysis_running": "AI Analysis in Progress",
+      "analyzing": "AI Analysis in Progress",
+      "blocked": "Blocked",
+      "ready_to_advance": "Ready to Advance",
+      "unlocked_not_started": "Unlocked, Not Started",
+      "in_progress": "In Progress",
+      "not_started": "Not Started"
+    },
+    "actions": {
+      "request_transition": "Request Next Stage",
+      "open_gate_findings": "View Blocking Issues",
+      "wait": "View Analysis Progress",
+      "navigate": "Go to Stage",
+      "none": ""
+    },
+    "checks": {
+      "missing_actors": "The project has no actors.",
+      "missing_leaf_features": "The project has no leaf features.",
+      "leaf_feature_without_actor": "Some leaf features have no actor.",
+      "leaf_feature_without_scenario": "Some leaf features have no scenario.",
+      "missing_acceptance_criteria": "Some scenarios have no acceptance criteria.",
+      "missing_flows": "The project has no flows.",
+      "flows_without_steps": "Some flows have no steps.",
+      "invalid_step_actor": "Some flow steps reference invalid actors.",
+      "invalid_step_business_object": "Some flow steps reference invalid business objects.",
+      "missing_object_attributes": "Business objects have no attributes.",
+      "missing_scope_decision": "Some leaf features have no scope decision.",
+      "kano_not_ready": "Kano analysis is not complete."
+    }
   },
   "selectors": {
     "system": "System",
-    "readiness": { "goal": "System Goal Readiness", "role": "Actor Coverage", "system": "Workflow Closure", "data": "Business Object Modeling", "ui": "Acceptance Scenario Coverage" },
+    "readiness": {
+      "goal": "System Goal Readiness",
+      "role": "Actor Coverage",
+      "system": "Workflow Closure",
+      "data": "Business Object Modeling",
+      "ui": "Acceptance Scenario Coverage"
+    },
     "stepDetail": {
       "businessFlowRule": "Satisfies the primary workflow constraints",
       "flowIntegrityRule": "Ensures AI workflow continuity",
@@ -50,7 +195,9 @@
       "entryPage": "Scan Entry Page"
     },
     "ungroupedModule": "Ungrouped Module",
-    "scope": { "pendingDecision": "Delivery scope decision pending" },
+    "scope": {
+      "pendingDecision": "Delivery scope decision pending"
+    },
     "rolePage": {
       "name": "{{featureName}} Operations Screen",
       "description": "An interface for {{actorName}} to perform {{featureName}}.",
@@ -130,7 +277,8 @@
       "what": "What",
       "how": "How"
     },
-    "backToProjectOverview": "Back to Project Overview"
+    "backToProjectOverview": "Back to Project Overview",
+    "repo": "Version Control"
   },
   "topbar": {
     "subtitle": {
@@ -138,7 +286,8 @@
       "what": "Goals, Capabilities, Tasks, Actors Convergence",
       "flow": "Flows, Rules, Exceptions, State Transitions",
       "scope": "Scope Boundaries & Generation Conditions",
-      "preview": "Verification & Pre-generation Checks"
+      "preview": "Verification & Pre-generation Checks",
+      "repo": "Repository & history"
     },
     "projectMembers": "Members",
     "accountSettings": "Account & LLM Settings",
@@ -172,17 +321,50 @@
       "resolveConflict": "The project context changed after the AI suggestion was generated. Resolve the conflict manually."
     },
     "notifications": {
-      "singleTaskAssigned": { "title": "New Confirmation Assignment", "body": "A new confirmation task was assigned to you." },
-      "batchTaskAssigned": { "title": "New Batch Confirmation Assignment", "body": "A new batch confirmation task was assigned to you." },
-      "singleTaskApproved": { "title": "Confirmation Task Approved", "body": "A confirmation task you assigned was approved." },
-      "singleTaskRejected": { "title": "Confirmation Task Rejected", "body": "A confirmation task you assigned was rejected." },
-      "batchTaskApproved": { "title": "Batch Confirmation Task Approved", "body": "A batch confirmation task you assigned was approved." },
-      "batchTaskRejected": { "title": "Batch Confirmation Task Rejected", "body": "A batch confirmation task you assigned was rejected." },
-      "conflictTaskApproved": { "title": "Conflict Resolution Accepted", "body": "The conflict or draft resolution was accepted." },
-      "conflictTaskRejected": { "title": "Conflict Resolution Discarded", "body": "The conflict or draft resolution was discarded." },
-      "singleTaskSuperseded": { "title": "Confirmation Assignment Expired", "body": "The confirmation task expired after its related content changed." },
-      "batchTaskSuperseded": { "title": "Batch Confirmation Assignment Expired", "body": "The batch confirmation task expired after related content changed." },
-      "conflictDetected": { "title": "AI Write Conflict Detected", "body": "An AI suggestion caused a write conflict and was converted into a conflict-resolution task." }
+      "singleTaskAssigned": {
+        "title": "New Confirmation Assignment",
+        "body": "A new confirmation task was assigned to you."
+      },
+      "batchTaskAssigned": {
+        "title": "New Batch Confirmation Assignment",
+        "body": "A new batch confirmation task was assigned to you."
+      },
+      "singleTaskApproved": {
+        "title": "Confirmation Task Approved",
+        "body": "A confirmation task you assigned was approved."
+      },
+      "singleTaskRejected": {
+        "title": "Confirmation Task Rejected",
+        "body": "A confirmation task you assigned was rejected."
+      },
+      "batchTaskApproved": {
+        "title": "Batch Confirmation Task Approved",
+        "body": "A batch confirmation task you assigned was approved."
+      },
+      "batchTaskRejected": {
+        "title": "Batch Confirmation Task Rejected",
+        "body": "A batch confirmation task you assigned was rejected."
+      },
+      "conflictTaskApproved": {
+        "title": "Conflict Resolution Accepted",
+        "body": "The conflict or draft resolution was accepted."
+      },
+      "conflictTaskRejected": {
+        "title": "Conflict Resolution Discarded",
+        "body": "The conflict or draft resolution was discarded."
+      },
+      "singleTaskSuperseded": {
+        "title": "Confirmation Assignment Expired",
+        "body": "The confirmation task expired after its related content changed."
+      },
+      "batchTaskSuperseded": {
+        "title": "Batch Confirmation Assignment Expired",
+        "body": "The batch confirmation task expired after related content changed."
+      },
+      "conflictDetected": {
+        "title": "AI Write Conflict Detected",
+        "body": "An AI suggestion caused a write conflict and was converted into a conflict-resolution task."
+      }
     }
   },
   "settings": {
@@ -190,8 +372,83 @@
     "subtitle": "AI connection channels and authentication credentials",
     "personalTab": "Personal LLM Config",
     "projectTab": "Project Config Index",
-    "account": { "personalConfigurationDescription": "Standard users must provide an OpenAI-compatible AI connection and API key to use intelligent generation. Personal credentials are encrypted and never shared.", "apiKey": "API Key", "apiKeyUnchanged": "Unchanged (enter a new key to replace it)", "apiKeyPlaceholder": "Enter API key", "saveConfiguration": "Save Configuration", "projectIndexDescription": "Project-level configuration is maintained per project. This page summarizes manageable projects; edit strategies, knowledge, and project LLM settings in the relevant project configuration.", "loadingProjectIndex": "Loading project configuration overview...", "noManageableProjects": "No manageable projects.", "currentProject": "Current Project", "noProjectDescription": "No project description", "openConfiguration": "Open Configuration", "generationStrategy": "AI Generation Strategy", "projectCustom": "Project Custom", "systemDefault": "System Default", "strategySummary": "{{candidates}} candidate(s) · {{enabled}} enabled strategy(ies)", "viewStrategy": "View Strategy", "projectKnowledge": "Project Knowledge", "disabled": "Disabled", "enabled": "Enabled", "knowledgeSummary": "{{documents}} document(s) · {{aiEnabled}} AI-available", "knowledgeProcessingSummary": "{{processing}} processing · {{failed}} failed", "viewKnowledge": "View Knowledge", "projectLlm": "Project LLM", "projectConfigured": "Project configured", "projectNotConfigured": "Project not configured", "projectModel": "Project model", "fallbackTo": "Falls back to {{source}}", "personalConfiguration": "personal configuration", "systemConfiguration": "system configuration", "effectiveModel": "Effective model: {{model}}", "viewProjectLlm": "View Project LLM", "testPassed": "Test passed", "testFailed": "Test failed",
-      "fetchFailed": "Failed to load configuration.", "fieldsRequired": "Configuration fields cannot be empty.", "projectSaved": "Project connection configuration saved.", "projectSaveFailed": "Failed to save project connection configuration.", "clearProjectConfirm": "Clear the project LLM configuration? Personal or system configuration will be used afterwards.", "projectCleared": "Project connection configuration cleared.", "projectClearFailed": "Failed to clear project connection configuration.", "completeConfigurationFirst": "Complete the connection configuration before testing.", "projectConnectionSucceeded": "Connected successfully. The project LLM connection is working.", "connectionFailed": "Connection failed: {{error}}", "upstreamUnavailable": "The upstream model could not be reached. Check the service configuration.", "networkError": "Network error: {{error}}", "urlUnavailable": "Connection failed. Check that the URL is accessible.", "completePersonalConfigurationFirst": "Complete the API base URL, API key, and model name before testing.", "personalConnectionSucceeded": "Connected successfully. Your LLM connection is working.", "personalSaved": "Connection configuration saved.", "personalSaveFailed": "Failed to save connection configuration.", "clearPersonalConfirm": "Clear your personal LLM configuration? You will need to configure it again before using AI generation.", "personalCleared": "Configuration cleared.", "personalClearFailed": "Failed to clear configuration.", "backHome": "Back to Home", "navigationTitle": "Account Settings and LLM Configuration", "pageTitle": "Account and Service Configuration", "pageDescription": "Configure your account and LLM API connection to enable intelligent generation.", "adminCannotConfigure": "Administrators cannot configure personal settings.", "personalInfo": "Personal Information", "personalInfoDescription": "Identity information for the signed-in account", "email": "Email Address", "role": "Account Role", "adminUser": "Administrator", "standardUser": "Standard User", "loadingConfiguration": "Loading configuration details...", "serverConfigurationTitle": "Shared Server LLM Configuration", "serverConfigurationDescription": "The system reads shared LLM API settings from the server environment; administrators do not need to configure a personal API connection here.", "serverConnectionStatus": "Server connection status: {{status}}", "ready": "Ready", "notReady": "Not ready (check the server environment)", "testConnection": "Test Connection", "apiBaseUrl": "API Base URL", "modelName": "Model Name", "apiKeyCiphertext": "API Key Ciphertext", "editConfiguration": "Edit Configuration", "clearConfiguration": "Clear Configuration"
+    "account": {
+      "personalConfigurationDescription": "Standard users must provide an OpenAI-compatible AI connection and API key to use intelligent generation. Personal credentials are encrypted and never shared.",
+      "apiKey": "API Key",
+      "apiKeyUnchanged": "Unchanged (enter a new key to replace it)",
+      "apiKeyPlaceholder": "Enter API key",
+      "saveConfiguration": "Save Configuration",
+      "projectIndexDescription": "Project-level configuration is maintained per project. This page summarizes manageable projects; edit strategies, knowledge, and project LLM settings in the relevant project configuration.",
+      "loadingProjectIndex": "Loading project configuration overview...",
+      "noManageableProjects": "No manageable projects.",
+      "currentProject": "Current Project",
+      "noProjectDescription": "No project description",
+      "openConfiguration": "Open Configuration",
+      "generationStrategy": "AI Generation Strategy",
+      "projectCustom": "Project Custom",
+      "systemDefault": "System Default",
+      "strategySummary": "{{candidates}} candidate(s) · {{enabled}} enabled strategy(ies)",
+      "viewStrategy": "View Strategy",
+      "projectKnowledge": "Project Knowledge",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
+      "knowledgeSummary": "{{documents}} document(s) · {{aiEnabled}} AI-available",
+      "knowledgeProcessingSummary": "{{processing}} processing · {{failed}} failed",
+      "viewKnowledge": "View Knowledge",
+      "projectLlm": "Project LLM",
+      "projectConfigured": "Project configured",
+      "projectNotConfigured": "Project not configured",
+      "projectModel": "Project model",
+      "fallbackTo": "Falls back to {{source}}",
+      "personalConfiguration": "personal configuration",
+      "systemConfiguration": "system configuration",
+      "effectiveModel": "Effective model: {{model}}",
+      "viewProjectLlm": "View Project LLM",
+      "testPassed": "Test passed",
+      "testFailed": "Test failed",
+      "fetchFailed": "Failed to load configuration.",
+      "fieldsRequired": "Configuration fields cannot be empty.",
+      "projectSaved": "Project connection configuration saved.",
+      "projectSaveFailed": "Failed to save project connection configuration.",
+      "clearProjectConfirm": "Clear the project LLM configuration? Personal or system configuration will be used afterwards.",
+      "projectCleared": "Project connection configuration cleared.",
+      "projectClearFailed": "Failed to clear project connection configuration.",
+      "completeConfigurationFirst": "Complete the connection configuration before testing.",
+      "projectConnectionSucceeded": "Connected successfully. The project LLM connection is working.",
+      "connectionFailed": "Connection failed: {{error}}",
+      "upstreamUnavailable": "The upstream model could not be reached. Check the service configuration.",
+      "networkError": "Network error: {{error}}",
+      "urlUnavailable": "Connection failed. Check that the URL is accessible.",
+      "completePersonalConfigurationFirst": "Complete the API base URL, API key, and model name before testing.",
+      "personalConnectionSucceeded": "Connected successfully. Your LLM connection is working.",
+      "personalSaved": "Connection configuration saved.",
+      "personalSaveFailed": "Failed to save connection configuration.",
+      "clearPersonalConfirm": "Clear your personal LLM configuration? You will need to configure it again before using AI generation.",
+      "personalCleared": "Configuration cleared.",
+      "personalClearFailed": "Failed to clear configuration.",
+      "backHome": "Back to Home",
+      "navigationTitle": "Account Settings and LLM Configuration",
+      "pageTitle": "Account and Service Configuration",
+      "pageDescription": "Configure your account and LLM API connection to enable intelligent generation.",
+      "adminCannotConfigure": "Administrators cannot configure personal settings.",
+      "personalInfo": "Personal Information",
+      "personalInfoDescription": "Identity information for the signed-in account",
+      "email": "Email Address",
+      "role": "Account Role",
+      "adminUser": "Administrator",
+      "standardUser": "Standard User",
+      "loadingConfiguration": "Loading configuration details...",
+      "serverConfigurationTitle": "Shared Server LLM Configuration",
+      "serverConfigurationDescription": "The system reads shared LLM API settings from the server environment; administrators do not need to configure a personal API connection here.",
+      "serverConnectionStatus": "Server connection status: {{status}}",
+      "ready": "Ready",
+      "notReady": "Not ready (check the server environment)",
+      "testConnection": "Test Connection",
+      "apiBaseUrl": "API Base URL",
+      "modelName": "Model Name",
+      "apiKeyCiphertext": "API Key Ciphertext",
+      "editConfiguration": "Edit Configuration",
+      "clearConfiguration": "Clear Configuration"
     },
     "interfaceLanguage": {
       "title": "Interface Language / 界面语言",
@@ -276,11 +533,31 @@
       "builtinBadge": "Built-in",
       "customBadge": "Custom",
       "builtin": {
-        "balanced": { "label": "Balanced", "description": "Balance functional completeness and complexity, favoring practical options with clear boundaries.", "instruction": "Balance functional completeness and complexity. Cover core business actors, main flows, key exceptions, and essential acceptance conditions while avoiding excessive decomposition, duplicate actors, and low-value edge cases." },
-        "comprehensive": { "label": "Comprehensive", "description": "Cover main paths, exception paths, boundary conditions, and acceptance conditions as completely as possible.", "instruction": "Cover main paths, exception paths, boundary conditions, permission constraints, and acceptance conditions as completely as possible. Be more detailed than the balanced strategy when useful, but do not invent content unrelated to the requirements." },
-        "minimal": { "label": "Minimal", "description": "Favor a minimum viable, low-complexity option that is quick to review and implement.", "instruction": "Generate a minimum viable, low-complexity option. Cover only the core actors, main flows, and mandatory acceptance conditions, avoiding unnecessary extensions, complex permissions, and overly detailed edge cases." },
-        "risk_averse": { "label": "Risk-Averse", "description": "Emphasize permissions, data consistency, exception handling, and compliance risks.", "instruction": "Emphasize permissions, data consistency, exception handling, auditability, and compliance risks. Include key risk scenarios, failure fallbacks, boundary validation, and acceptance conditions without inventing unrelated processes." },
-        "workflow_first": { "label": "Workflow-First", "description": "Organize the option around end-to-end business flows, state transitions, and collaboration points.", "instruction": "Organize the generated content around end-to-end business flows, state transitions, collaboration points, and preconditions. Highlight sequence, triggers, actor handoffs, and completion criteria instead of listing static features only." }
+        "balanced": {
+          "label": "Balanced",
+          "description": "Balance functional completeness and complexity, favoring practical options with clear boundaries.",
+          "instruction": "Balance functional completeness and complexity. Cover core business actors, main flows, key exceptions, and essential acceptance conditions while avoiding excessive decomposition, duplicate actors, and low-value edge cases."
+        },
+        "comprehensive": {
+          "label": "Comprehensive",
+          "description": "Cover main paths, exception paths, boundary conditions, and acceptance conditions as completely as possible.",
+          "instruction": "Cover main paths, exception paths, boundary conditions, permission constraints, and acceptance conditions as completely as possible. Be more detailed than the balanced strategy when useful, but do not invent content unrelated to the requirements."
+        },
+        "minimal": {
+          "label": "Minimal",
+          "description": "Favor a minimum viable, low-complexity option that is quick to review and implement.",
+          "instruction": "Generate a minimum viable, low-complexity option. Cover only the core actors, main flows, and mandatory acceptance conditions, avoiding unnecessary extensions, complex permissions, and overly detailed edge cases."
+        },
+        "risk_averse": {
+          "label": "Risk-Averse",
+          "description": "Emphasize permissions, data consistency, exception handling, and compliance risks.",
+          "instruction": "Emphasize permissions, data consistency, exception handling, auditability, and compliance risks. Include key risk scenarios, failure fallbacks, boundary validation, and acceptance conditions without inventing unrelated processes."
+        },
+        "workflow_first": {
+          "label": "Workflow-First",
+          "description": "Organize the option around end-to-end business flows, state transitions, and collaboration points.",
+          "instruction": "Organize the generated content around end-to-end business flows, state transitions, collaboration points, and preconditions. Highlight sequence, triggers, actor handoffs, and completion criteria instead of listing static features only."
+        }
       },
       "promptLabelColon": "Prompt Instruction:",
       "editStrategyTooltip": "Edit strategy",
@@ -462,7 +739,15 @@
       "title": "Decision: Option Group #{{id}}",
       "descriptionWithType": "AI generated {{count}} {{type}} candidate option(s). Review the differences before deciding whether to adopt one.",
       "description": "AI generated {{count}} candidate option(s). Review the differences before deciding whether to adopt one.",
-      "types": { "actor": "Actor", "scenario": "Scenario", "feature": "Feature Tree", "flow": "Workflow", "scope": "Scope Analysis", "acceptanceCriteria": "Acceptance Criteria", "projectCreation": "Project Draft" }
+      "types": {
+        "actor": "Actor",
+        "scenario": "Scenario",
+        "feature": "Feature Tree",
+        "flow": "Workflow",
+        "scope": "Scope Analysis",
+        "acceptanceCriteria": "Acceptance Criteria",
+        "projectCreation": "Project Draft"
+      }
     },
     "continueProcessing": "Continue",
     "projections": {
@@ -930,8 +1215,91 @@
     "shadowCompileProgress4": "Shadow assembly complete, rendering prototype...",
     "shadowCompileFailPrefix": "Shadow compile failed. Retrieved traceback logs:",
     "shadowCompileSuccessPrefix": "Shadow compile successful. Preview ready...",
-    "full": { "overlayFailed": "Intelligent Generation Failed", "overlaySucceeded": "Shadow Prototype Generated", "overlayShadowGenerating": "AI is completing the specification and generating a shadow preview", "stepWhat": "Step 1: What-stage generation (actors and features)", "stepHow": "Step 2: How-stage generation (workflow and business objects)", "stepScope": "Step 3: Scope-stage evaluation (Kano classification)", "stepAssembly": "Step 4: Shadow assembly and high-fidelity prototype generation", "interactiveGenerating": "Generating Interactive Preview Prototype", "interactiveGeneratingDescription": "The specification meets preview requirements, so no additional stage gaps are shown.", "tracebackTitle": "Backend Perception Traceback", "unknownPerceptionError": "Unknown error. Check PerceptionJob logs in the backend.", "closeAndReset": "Close and Reset Shadow Proposal", "needsCompletion": "Needs completion", "completeNow": "Complete now",
-      "progressFailed": "Shadow prototype generation failed. Diagnostic logs were captured.", "progressSucceeded": "Shadow prototype generated. Loading preview...", "progressGenerating": "AI is generating the high-fidelity prototype. Please wait.", "progressWhat": "AI is completing What-stage assets: actor tree, feature tree, scenarios, and acceptance criteria...", "progressHow": "AI is refining stable assets and incrementally modeling How-stage workflows and business objects...", "progressScope": "AI is evaluating and prioritizing leaf features for the Kano scope stage...", "progressAssembly": "Shadow sandbox assembly is complete. Rendering the high-fidelity UI prototype...", "shadowFailure": "Shadow proposal generation failed, possibly because a key relationship is broken. Refresh the workspace or regenerate it.", "splSemanticGenerating": "Generating the SPL semantic specification. This may take a few moments; keep this page open.", "splUnavailable": "SPL export is unavailable. You can export the Markdown requirements specification first.", "splSemanticDisabled": "SPL semantic export is disabled. Export the SPL syntax specification first.", "splSemanticTimeout": "SPL semantic export took too long. Try again later or export the SPL syntax specification first.", "splSemanticFailed": "SPL semantic export failed. Try again later or export the SPL syntax specification first.", "splSyntaxFailed": "SPL syntax export failed. Please try again later.", "exportFailed": "Export failed: {{error}}", "prototypeFailure": "Prototype generation failed", "shadowRegenerating": "Shadow draft regeneration started. Please wait.", "regenerateFailed": "Regeneration failed: {{error}}", "discardConfirm": "Discard the current shadow draft? This will not change existing project data.", "shadowDiscarded": "Shadow draft discarded.", "discardFailed": "Failed to discard the shadow draft: {{error}}", "commitConfirm": "Adopt all AI-supplemented objects in the shadow sandbox and write them to the project in one transaction?", "shadowMerged": "Shadow sandbox merged successfully. The formal prototype is being generated.", "shadowConflict": "Merge conflict: the project changed while the shadow draft was being generated. Refresh and regenerate.", "commitFailed": "Failed to adopt the shadow draft: {{error}}", "loadingShadow": "Loading the shadow sandbox safely...", "notReadyTitle": "Prototype and Asset View Is Not Ready", "notReadyDescription": "Complete the modeling work in the following three stages before generating and previewing a runnable prototype.", "whatRequirement": "Define at least one actor and a system feature tree.", "howRequirement": "Define at least one workflow step and its related business objects.", "scopeRequirement": "Make an in-scope, deferred, or excluded decision for at least one third-level leaf node.", "startFailure": "Failed to start intelligent generation. Check the network or backend service.", "generateShadow": "Generate and Preview Shadow Prototype", "deliveryTitle": "Delivery Prototype and Model Asset Export", "deliveryDescription": "Review the interactive role prototype generated during requirements modeling, or export the requirements specification and engineering assets.", "exportSplSyntax": "Export SPL Syntax Specification", "exportSplSyntaxTip": "Preserve structure and output the syntax specification", "exportSplSemantic": "Export SPL Semantic Specification", "exportSplSemanticTip": "Compile with an LLM to output deep semantic rules", "exportAuditLogs": "Export Audit Logs", "shadowTitle": "AI Shadow Convergence Preview", "shadowSubtitle": "The specification has not fully converged; a safe shadow proposal is available for preview.", "shadowDescription": "This AI-supplemented sandbox draft previews the completed prototype and structure without overwriting the formal project.", "kanoEvaluated": "Kano scope evaluated", "feedbackPlaceholder": "Enter adjustment feedback, for example: add administrator approval...", "regenerate": "Regenerate", "discard": "Discard Shadow Draft", "commit": "Adopt and Merge into Project", "quickPrototype": "Quick Prototype", "openPrototype": "Open Prototype in New Window", "regeneratePrototype": "Regenerate Prototype", "generatePrototype": "Generate Prototype", "compilingCommitted": "AI is assembling the formal high-fidelity prototype", "generatingPrototype": "AI is generating the preview prototype", "compilingCommittedDescription": "The adopted design assets are being converted to a formal web prototype and will load automatically.", "generatingPrototypeDescription": "The interactive prototype will appear here automatically after generation.", "assemblyFailure": "Prototype assembly failed. Ensure the feature tree and workflows are complete.", "noPrototype": "This project has no prototype yet. Select Generate Prototype in the upper right.", "roleSpecs": "Role UI and Interaction Specifications", "pageCount": "{{count}} page definition(s)", "noRolePreview": "This role has no related page preview", "noRolePreviewDescription": "Associate this role with features in What or workflow steps in How first.", "acceptanceScenarios": "Acceptance Scenarios (AC)", "noAcceptanceScenarios": "No related delivery scenarios.", "executionSteps": "Execution Steps", "noExecutionSteps": "No related steps.", "actorInitiated": "Actor initiated", "unresolvedIssues": "Unresolved System Design Issues ({{count}})", "unresolvedIssuesDescription": "The workspace has unresolved business conflicts or workflow gaps. Fix them in the related stages before exporting the product specification.", "reviewingFlow": "Reviewing workflow sequence: {{name}}"
+    "full": {
+      "overlayFailed": "Intelligent Generation Failed",
+      "overlaySucceeded": "Shadow Prototype Generated",
+      "overlayShadowGenerating": "AI is completing the specification and generating a shadow preview",
+      "stepWhat": "Step 1: What-stage generation (actors and features)",
+      "stepHow": "Step 2: How-stage generation (workflow and business objects)",
+      "stepScope": "Step 3: Scope-stage evaluation (Kano classification)",
+      "stepAssembly": "Step 4: Shadow assembly and high-fidelity prototype generation",
+      "interactiveGenerating": "Generating Interactive Preview Prototype",
+      "interactiveGeneratingDescription": "The specification meets preview requirements, so no additional stage gaps are shown.",
+      "tracebackTitle": "Backend Perception Traceback",
+      "unknownPerceptionError": "Unknown error. Check PerceptionJob logs in the backend.",
+      "closeAndReset": "Close and Reset Shadow Proposal",
+      "needsCompletion": "Needs completion",
+      "completeNow": "Complete now",
+      "progressFailed": "Shadow prototype generation failed. Diagnostic logs were captured.",
+      "progressSucceeded": "Shadow prototype generated. Loading preview...",
+      "progressGenerating": "AI is generating the high-fidelity prototype. Please wait.",
+      "progressWhat": "AI is completing What-stage assets: actor tree, feature tree, scenarios, and acceptance criteria...",
+      "progressHow": "AI is refining stable assets and incrementally modeling How-stage workflows and business objects...",
+      "progressScope": "AI is evaluating and prioritizing leaf features for the Kano scope stage...",
+      "progressAssembly": "Shadow sandbox assembly is complete. Rendering the high-fidelity UI prototype...",
+      "shadowFailure": "Shadow proposal generation failed, possibly because a key relationship is broken. Refresh the workspace or regenerate it.",
+      "splSemanticGenerating": "Generating the SPL semantic specification. This may take a few moments; keep this page open.",
+      "splUnavailable": "SPL export is unavailable. You can export the Markdown requirements specification first.",
+      "splSemanticDisabled": "SPL semantic export is disabled. Export the SPL syntax specification first.",
+      "splSemanticTimeout": "SPL semantic export took too long. Try again later or export the SPL syntax specification first.",
+      "splSemanticFailed": "SPL semantic export failed. Try again later or export the SPL syntax specification first.",
+      "splSyntaxFailed": "SPL syntax export failed. Please try again later.",
+      "exportFailed": "Export failed: {{error}}",
+      "prototypeFailure": "Prototype generation failed",
+      "shadowRegenerating": "Shadow draft regeneration started. Please wait.",
+      "regenerateFailed": "Regeneration failed: {{error}}",
+      "discardConfirm": "Discard the current shadow draft? This will not change existing project data.",
+      "shadowDiscarded": "Shadow draft discarded.",
+      "discardFailed": "Failed to discard the shadow draft: {{error}}",
+      "commitConfirm": "Adopt all AI-supplemented objects in the shadow sandbox and write them to the project in one transaction?",
+      "shadowMerged": "Shadow sandbox merged successfully. The formal prototype is being generated.",
+      "shadowConflict": "Merge conflict: the project changed while the shadow draft was being generated. Refresh and regenerate.",
+      "commitFailed": "Failed to adopt the shadow draft: {{error}}",
+      "loadingShadow": "Loading the shadow sandbox safely...",
+      "notReadyTitle": "Prototype and Asset View Is Not Ready",
+      "notReadyDescription": "Complete the modeling work in the following three stages before generating and previewing a runnable prototype.",
+      "whatRequirement": "Define at least one actor and a system feature tree.",
+      "howRequirement": "Define at least one workflow step and its related business objects.",
+      "scopeRequirement": "Make an in-scope, deferred, or excluded decision for at least one third-level leaf node.",
+      "startFailure": "Failed to start intelligent generation. Check the network or backend service.",
+      "generateShadow": "Generate and Preview Shadow Prototype",
+      "deliveryTitle": "Delivery Prototype and Model Asset Export",
+      "deliveryDescription": "Review the interactive role prototype generated during requirements modeling, or export the requirements specification and engineering assets.",
+      "exportSplSyntax": "Export SPL Syntax Specification",
+      "exportSplSyntaxTip": "Preserve structure and output the syntax specification",
+      "exportSplSemantic": "Export SPL Semantic Specification",
+      "exportSplSemanticTip": "Compile with an LLM to output deep semantic rules",
+      "exportAuditLogs": "Export Audit Logs",
+      "shadowTitle": "AI Shadow Convergence Preview",
+      "shadowSubtitle": "The specification has not fully converged; a safe shadow proposal is available for preview.",
+      "shadowDescription": "This AI-supplemented sandbox draft previews the completed prototype and structure without overwriting the formal project.",
+      "kanoEvaluated": "Kano scope evaluated",
+      "feedbackPlaceholder": "Enter adjustment feedback, for example: add administrator approval...",
+      "regenerate": "Regenerate",
+      "discard": "Discard Shadow Draft",
+      "commit": "Adopt and Merge into Project",
+      "quickPrototype": "Quick Prototype",
+      "openPrototype": "Open Prototype in New Window",
+      "regeneratePrototype": "Regenerate Prototype",
+      "generatePrototype": "Generate Prototype",
+      "compilingCommitted": "AI is assembling the formal high-fidelity prototype",
+      "generatingPrototype": "AI is generating the preview prototype",
+      "compilingCommittedDescription": "The adopted design assets are being converted to a formal web prototype and will load automatically.",
+      "generatingPrototypeDescription": "The interactive prototype will appear here automatically after generation.",
+      "assemblyFailure": "Prototype assembly failed. Ensure the feature tree and workflows are complete.",
+      "noPrototype": "This project has no prototype yet. Select Generate Prototype in the upper right.",
+      "roleSpecs": "Role UI and Interaction Specifications",
+      "pageCount": "{{count}} page definition(s)",
+      "noRolePreview": "This role has no related page preview",
+      "noRolePreviewDescription": "Associate this role with features in What or workflow steps in How first.",
+      "acceptanceScenarios": "Acceptance Scenarios (AC)",
+      "noAcceptanceScenarios": "No related delivery scenarios.",
+      "executionSteps": "Execution Steps",
+      "noExecutionSteps": "No related steps.",
+      "actorInitiated": "Actor initiated",
+      "unresolvedIssues": "Unresolved System Design Issues ({{count}})",
+      "unresolvedIssuesDescription": "The workspace has unresolved business conflicts or workflow gaps. Fix them in the related stages before exporting the product specification.",
+      "reviewingFlow": "Reviewing workflow sequence: {{name}}"
     },
     "shadowDiagTitle": "Diagnosing Exceptions"
   },
@@ -1033,8 +1401,23 @@
     "choices": "Choices",
     "choiceGroup": "Choice Group",
     "choiceGroupTitle": "Choice Group #{{id}}",
-    "choiceGroupStatus": { "open": "Pending", "resolved": "Resolved", "discarded": "Discarded", "stale": "Stale" },
-    "slotDetail": { "slot": "Slot", "context": "Context", "ownerNode": "Owner node: {{name}}", "expectedKinds": "Expected kinds: {{kinds}}", "notSpecified": "Not specified", "openChoiceGroup": "Open Choice Group", "noChoiceGroup": "No choice group yet", "expand": "Expand Slot", "ignore": "Ignore Slot" },
+    "choiceGroupStatus": {
+      "open": "Pending",
+      "resolved": "Resolved",
+      "discarded": "Discarded",
+      "stale": "Stale"
+    },
+    "slotDetail": {
+      "slot": "Slot",
+      "context": "Context",
+      "ownerNode": "Owner node: {{name}}",
+      "expectedKinds": "Expected kinds: {{kinds}}",
+      "notSpecified": "Not specified",
+      "openChoiceGroup": "Open Choice Group",
+      "noChoiceGroup": "No choice group yet",
+      "expand": "Expand Slot",
+      "ignore": "Ignore Slot"
+    },
     "ignoreIssue": "Ignore Issue",
     "staleChoiceTitle": "Project Context Changed",
     "staleChoiceSubtitle": "This candidate may not apply to current project status",
@@ -1052,7 +1435,6 @@
     "project": "Project Settings",
     "node": "Node",
     "unknownNode": "Unknown Node",
-    "issue": "Issue",
     "description": "Description",
     "unresolvedIssues": "Open Issues",
     "nodeKind": "Node Kind",
@@ -1862,7 +2244,75 @@
     "boundaryRulesPlaceholder": "Specify any boundary conditions or limits"
   },
   "stageGuidanceSlots": {
-    "whatOnboarding": { "description": "Welcome to What. Create system actors and core capabilities first.", "manual": "Start creating", "ai": "Generate actors and capabilities" }, "howOnboarding": { "description": "Welcome to How. Design the first core business workflow.", "manual": "Create workflow manually", "ai": "Generate workflow with AI" }, "generative": { "description": "Suggested addition: {{description}}", "manual": "Add manually", "ai": "Fill slot with AI" }, "missingActor": { "description": "No system actor exists yet. Add an actor definition first.", "manual": "Add actor", "ai": "Generate actors with AI" }, "missingFeature": { "description": "No core capability exists yet. Define the business feature tree first.", "manual": "Add feature", "ai": "Generate feature tree with AI" }, "missingFeatureActor": { "description": "A feature is not bound to an actor. Add the actor relationship.", "manual": "Bind actor" }, "missingScenario": { "description": "Some leaf features have no representative scenario. Add the corresponding user story.", "manual": "Add scenario", "ai": "Generate scenarios with AI" }, "missingAcceptanceCriteria": { "description": "A representative scenario has no acceptance criteria. Add verifiable completion conditions.", "manual": "Complete AC", "ai": "Generate criteria with AI" }, "missingFlow": { "description": "A core business workflow is missing. Add a model for system flow.", "manual": "Create workflow", "ai": "Generate workflow with AI" }, "invalidFlowTopology": { "description": "Workflow steps are incomplete or their ordering is invalid. Check the topology.", "manual": "Arrange steps" }, "missingBusinessObjectAttribute": { "description": "A data entity has no business fields. Complete the data model.", "manual": "Define fields" }, "missingScopeDecision": { "description": "Some leaf features have no delivery plan. Complete scope allocation.", "ai": "Allocate scope with AI" }, "kano": { "missing": "Delivery scope analysis is incomplete. Generate a scope suggestion first.", "generating": "AI is analyzing system features and planning delivery. Please wait.", "draftReady": "AI generated a scope draft. Review it and confirm the release plan below.", "failed": "Scope suggestion generation failed. Start AI allocation again.", "ai": "Allocate scope with AI", "generatingAi": "AI is allocating scope" }, "stageGateTransition": { "description": "{{stage}} stage baseline modeling rules are satisfied. Run AI diagnosis before deciding whether to enter the next stage.", "manual": "Request next stage", "ai": "AI diagnosis (recommended)" }
+    "whatOnboarding": {
+      "description": "Welcome to What. Create system actors and core capabilities first.",
+      "manual": "Start creating",
+      "ai": "Generate actors and capabilities"
+    },
+    "howOnboarding": {
+      "description": "Welcome to How. Design the first core business workflow.",
+      "manual": "Create workflow manually",
+      "ai": "Generate workflow with AI"
+    },
+    "generative": {
+      "description": "Suggested addition: {{description}}",
+      "manual": "Add manually",
+      "ai": "Fill slot with AI"
+    },
+    "missingActor": {
+      "description": "No system actor exists yet. Add an actor definition first.",
+      "manual": "Add actor",
+      "ai": "Generate actors with AI"
+    },
+    "missingFeature": {
+      "description": "No core capability exists yet. Define the business feature tree first.",
+      "manual": "Add feature",
+      "ai": "Generate feature tree with AI"
+    },
+    "missingFeatureActor": {
+      "description": "A feature is not bound to an actor. Add the actor relationship.",
+      "manual": "Bind actor"
+    },
+    "missingScenario": {
+      "description": "Some leaf features have no representative scenario. Add the corresponding user story.",
+      "manual": "Add scenario",
+      "ai": "Generate scenarios with AI"
+    },
+    "missingAcceptanceCriteria": {
+      "description": "A representative scenario has no acceptance criteria. Add verifiable completion conditions.",
+      "manual": "Complete AC",
+      "ai": "Generate criteria with AI"
+    },
+    "missingFlow": {
+      "description": "A core business workflow is missing. Add a model for system flow.",
+      "manual": "Create workflow",
+      "ai": "Generate workflow with AI"
+    },
+    "invalidFlowTopology": {
+      "description": "Workflow steps are incomplete or their ordering is invalid. Check the topology.",
+      "manual": "Arrange steps"
+    },
+    "missingBusinessObjectAttribute": {
+      "description": "A data entity has no business fields. Complete the data model.",
+      "manual": "Define fields"
+    },
+    "missingScopeDecision": {
+      "description": "Some leaf features have no delivery plan. Complete scope allocation.",
+      "ai": "Allocate scope with AI"
+    },
+    "kano": {
+      "missing": "Delivery scope analysis is incomplete. Generate a scope suggestion first.",
+      "generating": "AI is analyzing system features and planning delivery. Please wait.",
+      "draftReady": "AI generated a scope draft. Review it and confirm the release plan below.",
+      "failed": "Scope suggestion generation failed. Start AI allocation again.",
+      "ai": "Allocate scope with AI",
+      "generatingAi": "AI is allocating scope"
+    },
+    "stageGateTransition": {
+      "description": "{{stage}} stage baseline modeling rules are satisfied. Run AI diagnosis before deciding whether to enter the next stage.",
+      "manual": "Request next stage",
+      "ai": "AI diagnosis (recommended)"
+    }
   },
   "stageGuidance": {
     "severity": {
@@ -2332,8 +2782,8 @@
       "quota": "AI service quota or rate limit exceeded, please try again later or check API quota.",
       "unauthorized": "AI service authentication failed, please verify API Key in account settings.",
       "llm_config_required": "LLM connection details not configured. Please enter API Key in account settings first.",
-        "server_llm_config_not_configured": "Server-side shared API key and model not configured. Please contact admin.",
-        "llm_content_locale_mismatch": "The model did not respond in the project content language. Please retry or check the model's language capabilities.",
+      "server_llm_config_not_configured": "Server-side shared API key and model not configured. Please contact admin.",
+      "llm_content_locale_mismatch": "The model did not respond in the project content language. Please retry or check the model's language capabilities.",
       "leaf_feature_without_actor": "Leaf feature not associated with system actor. Please bind an actor first.",
       "feature_is_not_leaf": "Selected feature is not a leaf node. AI scenario generation only supports leaf features.",
       "empty_leaf_features": "No leaf features found. Please create leaf feature nodes on the What page first.",
@@ -2378,6 +2828,257 @@
       "createFailed": "Failed to add acceptance criterion",
       "updateFailed": "Failed to update acceptance criterion",
       "deleteFailed": "Failed to delete acceptance criterion"
+    }
+  },
+  "versionControl": {
+    "branchSelector": {
+      "label": "Branch",
+      "searchPlaceholder": "Search branches…",
+      "myBranches": "My branches",
+      "allBranches": "All branches",
+      "createBranch": "New branch",
+      "protected": "Protected",
+      "noBranches": "No other branches"
+    },
+    "uncommitted": "{{count}} uncommitted",
+    "commit": "Commit changes",
+    "commitDisabledNoChanges": "No uncommitted changes on this branch",
+    "commitDisabledProtected": "main is protected; use a branch and merge request",
+    "commitSuccess": "Commit created",
+    "commitFailed": "Commit failed",
+    "commitForbidden": "This branch is protected and cannot be committed directly",
+    "commitConflict": "The branch has new commits; refresh and retry",
+    "commitDialog": {
+      "title": "Commit changes",
+      "messageLabel": "Commit message",
+      "messagePlaceholder": "Describe what changed…",
+      "messageRequired": "Please provide a commit message",
+      "expectedHead": "Based on commit",
+      "summaryTitle": "This change",
+      "submit": "Commit",
+      "cancel": "Cancel",
+      "conflictTitle": "Commit conflict",
+      "conflictMessage": "New commits landed on this branch while you were editing. Refresh and compare before committing.",
+      "refresh": "Refresh",
+      "compare": "View diff",
+      "noPermission": "You don't have permission to commit on this branch"
+    },
+    "repository": {
+      "title": "Version Control",
+      "branchList": "Branches",
+      "createBranch": "New branch",
+      "commitTimeline": "History",
+      "commitDetail": "Commit detail",
+      "noBranches": "No other branches",
+      "noCommits": "No commits yet",
+      "noSecondCommit": "No second commit yet — create a branch to explore in parallel",
+      "author": "Author",
+      "summary": "Summary",
+      "parent": "Parent",
+      "merge": "Merge commit",
+      "compare": "Compare",
+      "createBranchFromCommit": "Create branch from this commit",
+      "compareWithWorkspace": "Compare with workspace",
+      "changeSummary": "{{added}} added / {{removed}} removed / {{modified}} modified",
+      "mergeRequests": "Merge Requests",
+      "loadMore": "Load more",
+      "viewFullModel": "View full model"
+    },
+    "commitDetail": {
+      "title": "Commit snapshot",
+      "empty": "No model data in this snapshot",
+      "close": "Close"
+    },
+    "createBranch": {
+      "title": "Create branch",
+      "nameLabel": "Branch name",
+      "namePlaceholder": "e.g. feature/explore-payment",
+      "descriptionLabel": "Description (optional)",
+      "submit": "Create",
+      "cancel": "Cancel",
+      "success": "Branch created",
+      "failed": "Failed to create branch"
+    },
+    "diff": {
+      "title": "Diff",
+      "base": "Base",
+      "target": "Compare",
+      "jumpToWhat": "View in What",
+      "jumpToFlow": "View in Flow",
+      "jumpToScope": "View in Scope",
+      "treeTitle": "Changed objects",
+      "fieldChanged": "Field changed",
+      "relationAdded": "Relation added",
+      "relationRemoved": "Relation removed",
+      "entityAdded": "Object added",
+      "entityRemoved": "Object removed",
+      "entityUpdated": "Object modified",
+      "orderedMoved": "Reordered",
+      "filterAll": "All",
+      "filterAdded": "Added",
+      "filterRemoved": "Removed",
+      "filterModified": "Modified",
+      "filterRelation": "Relations",
+      "empty": "No changes",
+      "selectNode": "Select a changed object on the left for details",
+      "before": "Before",
+      "after": "After",
+      "relation": "Relation",
+      "parent": "Parent",
+      "related": "Related",
+      "textChanges": "Text changes",
+      "entityType": {
+        "actor": "Actor",
+        "feature": "Feature",
+        "feature_relation": "Feature relation",
+        "scenario": "Scenario",
+        "acceptance_criterion": "Acceptance criterion",
+        "business_object": "Business object",
+        "business_object_attribute": "Business object attribute",
+        "flow": "Flow",
+        "flow_step": "Flow step",
+        "scope": "Scope",
+        "project_metadata": "Project metadata"
+      }
+    },
+    "errors": {
+      "loadBranchesFailed": "Failed to load branches",
+      "loadCommitsFailed": "Failed to load commits",
+      "loadDiffFailed": "Failed to load diff",
+      "createBranchFailed": "Failed to create branch"
+    },
+    "discardConfirmTitle": "Discard unsaved edits?",
+    "discardConfirmMessage": "Switching branches will discard your unsaved edits. Continue?",
+    "discardCancel": "Cancel",
+    "discardConfirm": "Discard & switch",
+    "mergeRequest": {
+      "mergeButton": "Merge",
+      "mergeFailed": "Merge failed",
+      "headChanged": "Target branch has new commits — refresh and retry",
+      "listTitle": "Merge Requests",
+      "total": "{{count}} total",
+      "newMr": "New MR",
+      "openMrs": "Open MRs",
+      "noMrs": "No Merge Requests",
+      "selectPlaceholder": "Select a merge request to review",
+      "changesHeader": "Changes ({{base}} → {{source}})",
+      "commentOn": "Comment on: {{target}}",
+      "commentPlaceholder": "Add review comment...",
+      "blocksMerge": "blocks merge",
+      "postComment": "Post Comment",
+      "commentsHeader": "Comments ({{count}})",
+      "required": "required",
+      "resolve": "Resolve",
+      "reopen": "Reopen",
+      "reviewsHeader": "Reviews",
+      "stale": "stale",
+      "staleReason": "stale ({{reason}})",
+      "whyCantMerge": "Why can't merge?",
+      "submitReview": "Submit Review",
+      "approve": "Approve",
+      "requestChanges": "Request Changes",
+      "reviewOptionalComment": "Optional comment...",
+      "merging": "Merging…",
+      "close": "Close MR",
+      "status": {
+        "open": "Open",
+        "approved": "Approved",
+        "changes_requested": "Changes requested",
+        "mergeable": "Mergeable",
+        "merged": "Merged",
+        "closed": "Closed"
+      },
+      "blocking": {
+        "missing_approval": "Waiting for an admin/owner to approve",
+        "source_no_new_commits": "Source branch has no new commits",
+        "source_target_same": "Source and target branches are the same",
+        "mr_already_closed": "Merge request is already closed or merged",
+        "target_branch_advanced": "Target branch has new commits — review may need refresh",
+        "source_branch_advanced": "Source branch has new commits since review",
+        "unresolved_required_comments": "Unresolved required comments remain"
+      },
+      "errors": {
+        "mergeConflict": "Merge conflict detected — resolve conflicts and retry",
+        "blocked": "Merge is blocked",
+        "forbidden": "You don't have permission to perform this action",
+        "notFound": "Merge request not found",
+        "staleState": "State is stale — refresh and retry",
+        "reviewFailed": "Failed to submit review",
+        "closeFailed": "Failed to close the merge request",
+        "commentFailed": "Failed to post comment",
+        "resolveFailed": "Failed to resolve comment",
+        "reopenFailed": "Failed to reopen comment"
+      }
+    },
+    "createMr": {
+      "ariaLabel": "Create Merge Request",
+      "title": "Create Merge Request",
+      "sourceBranch": "Source branch",
+      "targetBranch": "Target branch",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Summarize the changes...",
+      "descriptionLabel": "Description (optional)",
+      "select": "-- select --",
+      "changesPreview": "Changes: +{{added}} added / +{{modified}} modified / -{{removed}} removed",
+      "cancel": "Cancel",
+      "creating": "Creating...",
+      "create": "Create MR",
+      "failed": "Failed to create Merge Request"
+    },
+    "conflict": {
+      "title": "Resolve conflicts",
+      "loading": "Loading merge preview…",
+      "queueTitle": "Conflict queue",
+      "progress": "{{resolved}} / {{total}} resolved",
+      "remaining": "{{count}} conflicts remaining",
+      "base": "Common ancestor",
+      "target": "Target branch",
+      "source": "Source branch",
+      "choose": "Choose which side to keep:",
+      "keepTarget": "Keep target branch",
+      "keepSource": "Keep source branch",
+      "manualEdit": "Manual edit",
+      "manualValue": "Enter custom value",
+      "applyManual": "Apply manual value",
+      "previous": "Previous",
+      "next": "Next",
+      "noConflicts": "No conflicts to resolve in this MR",
+      "merging": "Merging…",
+      "mergeNow": "Merge into target branch",
+      "cancel": "Cancel",
+      "resolved": "Resolved",
+      "unresolved": "Unresolved",
+      "conflictTypes": {
+        "sameField": "Same field, different value",
+        "deleteModify": "Deleted vs modified",
+        "oppositeRelation": "Opposite relation operations",
+        "samePosition": "Ordering conflict",
+        "identityParent": "Object ownership conflict"
+      }
+    },
+    "guide": {
+      "title": "Version Control Guide",
+      "baselineMeaning": {
+        "title": "What is the baseline version",
+        "body": "When version control is enabled, the system saves the current requirement space as the \"baseline\" commit on main. A baseline is immutable: it records the full model at a point in time, for later branching, comparison, and traceability."
+      },
+      "whenToBranch": {
+        "title": "When to create a branch",
+        "body": "Create a branch from any commit or main when you want to explore alternatives in parallel or make a large change without affecting the mainline. Branches are isolated from each other and can be committed and compared at any time."
+      },
+      "mainProtection": {
+        "title": "Why main is protected",
+        "body": "main is the project's mainline and forbids direct commits. Every change entering main must go through a Merge Request and receive at least one approval from a non-author admin/owner, keeping history traceable and changes reviewable."
+      },
+      "mrApproval": {
+        "title": "Merge Request approval rules",
+        "body": "A Merge Request needs at least one approval from a non-author admin/owner. If the source branch gains new commits or the target branch advances, existing approvals are automatically invalidated and must be re-given. Unresolved conflicts or required comments block the merge."
+      },
+      "unsupportedGitFeatures": {
+        "title": "Git features not yet supported",
+        "body": "This version control does not offer rebase, cherry-pick, tags, remote repository sync, or command-line compatibility. Organize changes through branches and merge requests instead."
+      },
+      "protectedAction": "Create branch / Open Merge Request"
     }
   }
 }

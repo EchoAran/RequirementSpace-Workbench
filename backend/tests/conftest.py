@@ -91,8 +91,8 @@ async def patch_ai_create_session(self, project_id, target_type, anchor, session
 async def patch_ai_generate_draft(self, session_id, db_session, owner_user_id=1):
     return await _orig_ai_generate_draft(self, session_id, db_session, owner_user_id)
 
-async def patch_ai_confirm_draft(self, draft_id, db_session, owner_user_id=1):
-    return await _orig_ai_confirm_draft(self, draft_id, db_session, owner_user_id)
+async def patch_ai_confirm_draft(self, draft_id, db_session, owner_user_id=1, workspace_id=None):
+    return await _orig_ai_confirm_draft(self, draft_id, db_session, owner_user_id, workspace_id=workspace_id)
 
 async def patch_ai_discard_draft(self, draft_id, db_session, owner_user_id=1):
     return await _orig_ai_discard_draft(self, draft_id, db_session, owner_user_id)

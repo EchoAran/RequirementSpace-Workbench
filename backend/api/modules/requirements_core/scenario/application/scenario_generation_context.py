@@ -67,10 +67,25 @@ async def load_scenario_generation_context(
     actor_id: int | None,
     generation_mode: str,
     session,
+    workspace_id: int | None = None,
 ):
     project = await load_generation_project(session, project_id)
-    actor_models = await load_generation_actors(session, project_id)
-    feature_models = await load_generation_features(session, project_id)
+    user_reqs = project.user_requirements
+    if workspace_id is not None:
+        from backend.database.model import BranchWorkspaceModel
+        from sqlalchemy import select
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+        ws_res = await _exec(select(BranchWorkspaceModel.user_requirements).where(BranchWorkspaceModel.id == workspace_id))
+        ws_user_reqs = ws_res.scalar_one_or_none()
+        if ws_user_reqs is not None:
+            user_reqs = ws_user_reqs
+
+    actor_models = await load_generation_actors(session, project_id, workspace_id=workspace_id)
+    feature_models = await load_generation_features(session, project_id, workspace_id=workspace_id)
     relations, feature_actor_rows = await load_feature_graph_rows(
         session,
         {feature.id for feature in feature_models},
@@ -114,7 +129,7 @@ async def load_scenario_generation_context(
     if not target_pairs:
         raise ValueError("empty_generation_targets")
     return (
-        project.user_requirements,
+        user_reqs,
         actor_nodes_by_id,
         feature_nodes_by_id,
         target_pairs,

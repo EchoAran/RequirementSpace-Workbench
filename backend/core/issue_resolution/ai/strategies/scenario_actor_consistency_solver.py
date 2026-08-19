@@ -48,6 +48,7 @@ class ScenarioActorConsistencySolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -56,41 +57,41 @@ class ScenarioActorConsistencySolver(BaseIssueAISolver):
         # Load scenario
         scenario = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(ScenarioModel).where(ScenarioModel.id == target_id, ScenarioModel.project_id == project_id)
-            )
+            , ScenarioModel, workspace_id))
             scenario = res.scalar_one_or_none()
 
         # Load parent feature
         feature = None
         feature_actors = []
         if scenario:
-            res_feat = await session.execute(
+            res_feat = await session.execute(self._scope(
                 select(FeatureModel).where(FeatureModel.id == scenario.feature_id, FeatureModel.project_id == project_id)
-            )
+            , FeatureModel, workspace_id))
             feature = res_feat.scalar_one_or_none()
 
             if feature:
                 # Load feature actors
-                actors_res = await session.execute(
+                actors_res = await session.execute(self._scope(
                     select(ActorModel)
                     .join(feature_actor_table, ActorModel.id == feature_actor_table.c.actor_id)
                     .where(feature_actor_table.c.feature_id == feature.id)
-                )
+                , ActorModel, workspace_id))
                 feature_actors = actors_res.scalars().all()
 
         # Load scenario actor
         scenario_actor = None
         if scenario and scenario.actor_id:
-            res_act = await session.execute(
+            res_act = await session.execute(self._scope(
                 select(ActorModel).where(ActorModel.id == scenario.actor_id, ActorModel.project_id == project_id)
-            )
+            , ActorModel, workspace_id))
             scenario_actor = res_act.scalar_one_or_none()
 
         # Load all project actors
-        all_actors_res = await session.execute(
+        all_actors_res = await session.execute(self._scope(
             select(ActorModel).where(ActorModel.project_id == project_id)
-        )
+        , ActorModel, workspace_id))
         all_actors = all_actors_res.scalars().all()
 
         return {

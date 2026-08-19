@@ -44,6 +44,7 @@ class ActorFeatureCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -52,15 +53,15 @@ class ActorFeatureCoverageSolver(BaseIssueAISolver):
         # Load feature
         feature = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(FeatureModel).where(FeatureModel.id == target_id, FeatureModel.project_id == project_id)
-            )
+            , FeatureModel, workspace_id))
             feature = res.scalar_one_or_none()
 
         # Load all actors
-        actors_res = await session.execute(
+        actors_res = await session.execute(self._scope(
             select(ActorModel).where(ActorModel.project_id == project_id)
-        )
+        , ActorModel, workspace_id))
         actors = actors_res.scalars().all()
 
         # Load project

@@ -83,7 +83,9 @@ export function AccountSettings() {
         });
       }
       await applyUiLocale(newLocale);
-      setActionSuccess(t('settings.interfaceLanguage.saveSuccess'));
+      // 这里的 t 绑定在语言切换前那次渲染上，须显式指定目标语言，
+      // 否则提示框会显示切换前的旧语言
+      setActionSuccess(t('settings.interfaceLanguage.saveSuccess', { lng: newLocale }));
     } catch (err: any) {
       console.error(err);
       setSelectedLocale(oldLocale);

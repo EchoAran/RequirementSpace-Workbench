@@ -43,6 +43,7 @@ class ActorFeatureReverseCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -51,9 +52,9 @@ class ActorFeatureReverseCoverageSolver(BaseIssueAISolver):
         # Load target actor
         actor = None
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(ActorModel).where(ActorModel.id == target_id, ActorModel.project_id == project_id)
-            )
+            , ActorModel, workspace_id))
             actor = res.scalar_one_or_none()
 
         # Load parent feature IDs to find leaf features
@@ -63,9 +64,9 @@ class ActorFeatureReverseCoverageSolver(BaseIssueAISolver):
         parent_ids = {r[0] for r in relations_res.all()}
 
         # Load all features
-        features_res = await session.execute(
+        features_res = await session.execute(self._scope(
             select(FeatureModel).where(FeatureModel.project_id == project_id)
-        )
+        , FeatureModel, workspace_id))
         all_features = features_res.scalars().all()
         leaf_features = [f for f in all_features if f.id not in parent_ids]
 

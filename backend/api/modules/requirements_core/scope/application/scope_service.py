@@ -29,15 +29,17 @@ class ScopeService:
         req: ScopeUpdateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.AI_ASSUMPTION.value,
+        workspace_id: int | None = None,
     ) -> ScopeResponse:
         scope = await load_existing_scope(
             session,
             project_id,
             feature_id,
+            workspace_id=workspace_id,
         )
 
         if scope is not None:
-            from backend.api.modules.collaboration.application.task_service import snapshot_service
+            from backend.api.modules.optimistic_lock.public import snapshot_service
             await snapshot_service.check_optimistic_lock(session, "scope", scope, req.last_seen_updated_at)
 
         before = capture_scope_state(scope)
@@ -47,6 +49,7 @@ class ScopeService:
             scope=scope,
             request=req,
             confirmation_status=confirmation_status,
+            workspace_id=workspace_id,
         )
 
         await session.flush()
@@ -70,7 +73,7 @@ class ScopeService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "scope", scope)
 
         return serialize_scope(scope)
@@ -80,28 +83,39 @@ class ScopeService:
         project_id: int,
         status: str,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ProjectModel, ScopeModel, FeatureModel
+        from backend.database.model import ProjectModel, ScopeModel, FeatureModel, BranchWorkspaceModel
+
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
         # Verify project exists
-        project_res = await session.execute(
-            select(ProjectModel).where(ProjectModel.id == project_id)
-        )
+        project_res = await _exec(select(ProjectModel).where(ProjectModel.id == project_id))
         project = project_res.scalar_one_or_none()
         if project is None:
             raise ValueError("project_not_found")
 
-        project.kano_status = status
+        if workspace_id is not None:
+            ws_res = await _exec(select(BranchWorkspaceModel).where(BranchWorkspaceModel.id == workspace_id))
+            ws = ws_res.scalar_one_or_none()
+            if ws is not None:
+                ws.kano_status = status
+        else:
+            project.kano_status = status
 
         if status == "missing":
             # Clear Kano-specific metrics and chart records but KEEP manual decisions status and reason
-            feature_res = await session.execute(
-                select(FeatureModel.id).where(FeatureModel.project_id == project_id)
-            )
+            stmt_f = select(FeatureModel.id).where(FeatureModel.project_id == project_id)
+            if workspace_id is not None:
+                stmt_f = stmt_f.where(FeatureModel.workspace_id == workspace_id)
+            feature_res = await _exec(stmt_f)
             feature_ids = feature_res.scalars().all()
             if feature_ids:
-                scopes_res = await session.execute(
-                    select(ScopeModel).where(ScopeModel.feature_id.in_(feature_ids))
-                )
+                scopes_res = await _exec(select(ScopeModel).where(ScopeModel.feature_id.in_(feature_ids)))
                 scopes = scopes_res.scalars().all()
                 for scope in scopes:
                     scope.kano_category = None
@@ -110,8 +124,12 @@ class ScopeService:
                     scope.negative_summary = None
                     scope.positive_picture = None
                     scope.negative_picture = None
+                    scope.positive_picture = None
+                    scope.negative_picture = None
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # Audit Log
         await audit_service.record(

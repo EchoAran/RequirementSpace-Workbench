@@ -462,6 +462,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -590,6 +601,17 @@
             "default": "actor",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "updatedAt": {
             "format": "date-time",
@@ -1131,6 +1153,398 @@
         "title": "Body_upload_workspace_document_api_knowledge_workspaces__workspace_id__documents_post",
         "type": "object"
       },
+      "BranchCreateRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Public Id"
+          },
+          "source_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Commit Public Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BranchCreateRequest",
+        "type": "object"
+      },
+      "BranchDetailResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "head_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit Id"
+          },
+          "head_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit Public Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "is_protected": {
+            "default": false,
+            "title": "Is Protected",
+            "type": "boolean"
+          },
+          "kano_status": {
+            "default": "missing",
+            "title": "Kano Status",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BranchPermissions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "source_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Commit Id"
+          },
+          "source_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Commit Public Id"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "unlocked_stages": {
+            "default": "",
+            "title": "Unlocked Stages",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_requirements": {
+            "default": "",
+            "title": "User Requirements",
+            "type": "string"
+          },
+          "workspace_dirty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceDirtySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "project_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BranchDetailResponse",
+        "type": "object"
+      },
+      "BranchPermissions": {
+        "properties": {
+          "can_delete": {
+            "default": false,
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_rename": {
+            "default": false,
+            "title": "Can Rename",
+            "type": "boolean"
+          },
+          "can_write": {
+            "default": true,
+            "title": "Can Write",
+            "type": "boolean"
+          },
+          "is_protected": {
+            "default": false,
+            "title": "Is Protected",
+            "type": "boolean"
+          }
+        },
+        "title": "BranchPermissions",
+        "type": "object"
+      },
+      "BranchSummaryResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "head_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit Id"
+          },
+          "head_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit Public Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "is_protected": {
+            "default": false,
+            "title": "Is Protected",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BranchPermissions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "source_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Commit Id"
+          },
+          "source_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Commit Public Id"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_dirty": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceDirtySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "project_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BranchSummaryResponse",
+        "type": "object"
+      },
+      "BranchUpdateRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "BranchUpdateRequest",
+        "type": "object"
+      },
       "BusinessObjectAttributeCreateRequest": {
         "properties": {
           "data_type": {
@@ -1200,6 +1614,17 @@
             "default": "business_object_attribute",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "updatedAt": {
             "format": "date-time",
@@ -1390,6 +1815,17 @@
             "default": "business_object",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "updatedAt": {
             "format": "date-time",
@@ -1933,6 +2369,305 @@
         "title": "ChoiceResponse",
         "type": "object"
       },
+      "CommitCreateRequest": {
+        "properties": {
+          "expected_head_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Commit Id"
+          },
+          "expected_head_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Commit Public Id"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "CommitCreateRequest",
+        "type": "object"
+      },
+      "CommitDetailResponse": {
+        "properties": {
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "branch_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Branch Names",
+            "type": "array"
+          },
+          "branch_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Branch Public Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_merge": {
+            "default": false,
+            "title": "Is Merge",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "parent_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Public Ids",
+            "type": "array"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "short_id": {
+            "title": "Short Id",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "state_hash": {
+            "title": "State Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "short_id",
+          "message",
+          "state_hash",
+          "created_at"
+        ],
+        "title": "CommitDetailResponse",
+        "type": "object"
+      },
+      "CommitListResponse": {
+        "properties": {
+          "commits": {
+            "items": {
+              "$ref": "#/components/schemas/CommitSummaryResponse"
+            },
+            "title": "Commits",
+            "type": "array"
+          },
+          "limit": {
+            "default": 50,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "CommitListResponse",
+        "type": "object"
+      },
+      "CommitSummaryResponse": {
+        "properties": {
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "branch_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Branch Names",
+            "type": "array"
+          },
+          "branch_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Branch Public Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_merge": {
+            "default": false,
+            "title": "Is Merge",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "parent_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Public Ids",
+            "type": "array"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "short_id": {
+            "title": "Short Id",
+            "type": "string"
+          },
+          "state_hash": {
+            "title": "State Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "short_id",
+          "message",
+          "state_hash",
+          "created_at"
+        ],
+        "title": "CommitSummaryResponse",
+        "type": "object"
+      },
       "ConfirmationStatusEnum": {
         "enum": [
           "ai_assumption",
@@ -1991,6 +2726,454 @@
         "title": "ConfirmationSummaryResponse",
         "type": "object"
       },
+      "ConflictItemResponse": {
+        "description": "\u5355\u4e2a\u51b2\u7a81\u9879\uff1a\u643a\u5e26 base/target/source \u4e09\u4fa7\u503c\u4f9b\u89e3\u51b3\u754c\u9762\u5c55\u793a\u4e0e\u9009\u62e9\u3002",
+        "properties": {
+          "base_value": {
+            "title": "Base Value"
+          },
+          "choices": {
+            "default": [
+              "target",
+              "source"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "conflict_id": {
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "conflict_type": {
+            "title": "Conflict Type",
+            "type": "string"
+          },
+          "entity_name": {
+            "default": "",
+            "title": "Entity Name",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "entity_uuid": {
+            "title": "Entity Uuid",
+            "type": "string"
+          },
+          "parent_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Type"
+          },
+          "parent_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Uuid"
+          },
+          "path": {
+            "default": "",
+            "title": "Path",
+            "type": "string"
+          },
+          "related_entity_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Name"
+          },
+          "related_entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Type"
+          },
+          "related_entity_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Uuid"
+          },
+          "resolved": {
+            "default": false,
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "source_value": {
+            "title": "Source Value"
+          },
+          "target_value": {
+            "title": "Target Value"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "conflict_type",
+          "entity_type",
+          "entity_uuid"
+        ],
+        "title": "ConflictItemResponse",
+        "type": "object"
+      },
+      "ConflictResolution": {
+        "description": "\u5bf9\u5355\u4e2a\u51b2\u7a81\u7684\u89e3\u51b3\u9009\u62e9\uff1a\u4fdd\u7559\u76ee\u6807/\u6765\u6e90/\u53d7\u9650\u624b\u5de5\u503c\u3002",
+        "properties": {
+          "choice": {
+            "default": "target",
+            "enum": [
+              "target",
+              "source",
+              "manual"
+            ],
+            "title": "Choice",
+            "type": "string"
+          },
+          "conflict_id": {
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "manual_value": {
+            "title": "Manual Value"
+          }
+        },
+        "required": [
+          "conflict_id"
+        ],
+        "title": "ConflictResolution",
+        "type": "object"
+      },
+      "DiffEntry": {
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "after_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Position"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "before_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Position"
+          },
+          "change_type": {
+            "title": "Change Type",
+            "type": "string"
+          },
+          "entity_name": {
+            "default": "",
+            "title": "Entity Name",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "entity_uuid": {
+            "title": "Entity Uuid",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "parent_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Type"
+          },
+          "parent_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Uuid"
+          },
+          "path": {
+            "default": "",
+            "title": "Path",
+            "type": "string"
+          },
+          "related_entity_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Name"
+          },
+          "related_entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Type"
+          },
+          "related_entity_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Entity Uuid"
+          },
+          "relation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Type"
+          },
+          "text_blocks": {
+            "items": {
+              "$ref": "#/components/schemas/TextDiffBlock"
+            },
+            "title": "Text Blocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "change_type",
+          "entity_type",
+          "entity_uuid"
+        ],
+        "title": "DiffEntry",
+        "type": "object"
+      },
+      "DiffRefInfo": {
+        "properties": {
+          "branch_is_protected": {
+            "default": false,
+            "title": "Branch Is Protected",
+            "type": "boolean"
+          },
+          "branch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Name"
+          },
+          "branch_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Ref"
+          },
+          "kind": {
+            "default": "commit",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Id"
+          }
+        },
+        "title": "DiffRefInfo",
+        "type": "object"
+      },
+      "DiffResult": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiffRefInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "limit": {
+            "default": 0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DiffSummary"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiffRefInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "DiffResult",
+        "type": "object"
+      },
+      "DiffSummary": {
+        "properties": {
+          "by_type": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DiffTypeSummary"
+            },
+            "title": "By Type",
+            "type": "object"
+          },
+          "total_added": {
+            "default": 0,
+            "title": "Total Added",
+            "type": "integer"
+          },
+          "total_modified": {
+            "default": 0,
+            "title": "Total Modified",
+            "type": "integer"
+          },
+          "total_removed": {
+            "default": 0,
+            "title": "Total Removed",
+            "type": "integer"
+          }
+        },
+        "title": "DiffSummary",
+        "type": "object"
+      },
+      "DiffTypeSummary": {
+        "properties": {
+          "added": {
+            "default": 0,
+            "title": "Added",
+            "type": "integer"
+          },
+          "modified": {
+            "default": 0,
+            "title": "Modified",
+            "type": "integer"
+          },
+          "removed": {
+            "default": 0,
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "title": "DiffTypeSummary",
+        "type": "object"
+      },
       "DraftRegenerateRequest": {
         "properties": {
           "userFeedback": {
@@ -2007,6 +3190,80 @@
           }
         },
         "title": "DraftRegenerateRequest",
+        "type": "object"
+      },
+      "EntityDiffResponse": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiffRefInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_value": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Value"
+          },
+          "entity_name": {
+            "default": "",
+            "title": "Entity Name",
+            "type": "string"
+          },
+          "entity_type": {
+            "default": "",
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "entity_uuid": {
+            "title": "Entity Uuid",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiffRefInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_value": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Value"
+          }
+        },
+        "required": [
+          "entity_uuid"
+        ],
+        "title": "EntityDiffResponse",
         "type": "object"
       },
       "ExplainContextSummary": {
@@ -2260,6 +3517,17 @@
             "default": "feature",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "parentId": {
             "anyOf": [
@@ -2700,6 +3968,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -2960,6 +4239,17 @@
             "default": "flow_step",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "nextStepIds": {
             "default": [],
@@ -4688,6 +5978,34 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MRDiffSummary": {
+        "properties": {
+          "by_type": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DiffTypeSummary"
+            },
+            "title": "By Type",
+            "type": "object"
+          },
+          "total_added": {
+            "default": 0,
+            "title": "Total Added",
+            "type": "integer"
+          },
+          "total_modified": {
+            "default": 0,
+            "title": "Total Modified",
+            "type": "integer"
+          },
+          "total_removed": {
+            "default": 0,
+            "title": "Total Removed",
+            "type": "integer"
+          }
+        },
+        "title": "MRDiffSummary",
+        "type": "object"
+      },
       "MarkNotificationsReadRequest": {
         "properties": {
           "notificationIds": {
@@ -4707,6 +6025,1005 @@
           }
         },
         "title": "MarkNotificationsReadRequest",
+        "type": "object"
+      },
+      "MergeCommentCreateRequest": {
+        "properties": {
+          "comment": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          },
+          "entity_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Uuid"
+          },
+          "field_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Path"
+          },
+          "relation_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Key"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "title": "MergeCommentCreateRequest",
+        "type": "object"
+      },
+      "MergeCommentResponse": {
+        "properties": {
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective_source_head_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Source Head Id"
+          },
+          "entity_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Uuid"
+          },
+          "expired_by_source_head_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired By Source Head Id"
+          },
+          "field_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Path"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "relation_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Key"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "comment",
+          "created_at"
+        ],
+        "title": "MergeCommentResponse",
+        "type": "object"
+      },
+      "MergePreviewResponse": {
+        "description": "MR \u4e09\u65b9\u5408\u5e76\u9884\u89c8\uff1a\u53ef\u91cd\u5efa\uff08\u6bcf\u6b21\u6309\u5f53\u524d heads \u91cd\u7b97\uff09\uff0c\u5217\u51fa\u5f85\u89e3\u51b3\u51b2\u7a81\u4e0e\u81ea\u52a8\u5408\u5e76\u7edf\u8ba1\u3002",
+        "properties": {
+          "auto_merged_summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Auto Merged Summary",
+            "type": "object"
+          },
+          "conflict_count": {
+            "default": 0,
+            "title": "Conflict Count",
+            "type": "integer"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictItemResponse"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "merge_base_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Public Id"
+          },
+          "source_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Public Id"
+          },
+          "target_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Public Id"
+          }
+        },
+        "title": "MergePreviewResponse",
+        "type": "object"
+      },
+      "MergeRequestCreateRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "source_branch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Id"
+          },
+          "source_branch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Name"
+          },
+          "source_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Public Id"
+          },
+          "target_branch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Branch Id"
+          },
+          "target_branch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Branch Name"
+          },
+          "target_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Branch Public Id"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "MergeRequestCreateRequest",
+        "type": "object"
+      },
+      "MergeRequestDetailResponse": {
+        "properties": {
+          "active_review_count": {
+            "default": 0,
+            "title": "Active Review Count",
+            "type": "integer"
+          },
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "blocking_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Reasons",
+            "type": "array"
+          },
+          "can_approve": {
+            "default": false,
+            "title": "Can Approve",
+            "type": "boolean"
+          },
+          "can_merge": {
+            "default": false,
+            "title": "Can Merge",
+            "type": "boolean"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/MergeCommentResponse"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "diff_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MRDiffSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "merge_base_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Commit Id"
+          },
+          "merge_base_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Public Id"
+          },
+          "merged_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Commit Id"
+          },
+          "merged_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Commit Public Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/MergeReviewResponse"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "source_branch_name": {
+            "default": "",
+            "title": "Source Branch Name",
+            "type": "string"
+          },
+          "source_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Public Id"
+          },
+          "source_head_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Commit Id"
+          },
+          "source_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Public Id"
+          },
+          "source_head_short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Short"
+          },
+          "status": {
+            "default": "open",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_branch_name": {
+            "default": "",
+            "title": "Target Branch Name",
+            "type": "string"
+          },
+          "target_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Branch Public Id"
+          },
+          "target_head_commit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Commit Id"
+          },
+          "target_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Public Id"
+          },
+          "target_head_short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Short"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_comments": {
+            "default": 0,
+            "title": "Total Comments",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "project_id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MergeRequestDetailResponse",
+        "type": "object"
+      },
+      "MergeRequestListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MergeRequestSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "default": 50,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "MergeRequestListResponse",
+        "type": "object"
+      },
+      "MergeRequestPayload": {
+        "description": "\u5408\u5e76\u8bf7\u6c42\u4f53\uff1a\u5ba2\u6237\u7aef\u4e00\u6b21\u6027\u63d0\u4ea4\u5176\u5bf9\u5168\u90e8\u51b2\u7a81\u7684\u89e3\u51b3\u9009\u62e9\uff0c\u5e76\u7ed1\u5b9a\u9884\u89c8\u65f6\u7684\u4e09\u65b9 heads\u3002\n\n\u4e09\u4e2a head \u5b57\u6bb5\u5fc5\u586b\uff1a\u5408\u5e76\u6267\u884c\u65f6\u636e\u6b64\u6821\u9a8c source/target \u662f\u5426\u5728\u9884\u89c8\u540e\u63a8\u8fdb\uff0c\u9632\u6b62\u6309\u9648\u65e7\nheads \u521b\u5efa merge commit\u3002\u7f3a\u5931\u4efb\u4e00\u5b57\u6bb5\u5373\u62d2\u7edd\u5408\u5e76\uff08\u8fd4\u56de 422\uff09\uff0c\u4e0d\u5141\u8bb8\u7ed5\u8fc7\u5e76\u53d1\u4fdd\u62a4\u3002",
+        "properties": {
+          "merge_base_public_id": {
+            "minLength": 1,
+            "title": "Merge Base Public Id",
+            "type": "string"
+          },
+          "resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictResolution"
+            },
+            "title": "Resolutions",
+            "type": "array"
+          },
+          "source_head_public_id": {
+            "minLength": 1,
+            "title": "Source Head Public Id",
+            "type": "string"
+          },
+          "target_head_public_id": {
+            "minLength": 1,
+            "title": "Target Head Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merge_base_public_id",
+          "source_head_public_id",
+          "target_head_public_id"
+        ],
+        "title": "MergeRequestPayload",
+        "type": "object"
+      },
+      "MergeRequestPreviewRequest": {
+        "properties": {
+          "source_branch_public_id": {
+            "title": "Source Branch Public Id",
+            "type": "string"
+          },
+          "target_branch_public_id": {
+            "title": "Target Branch Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_branch_public_id",
+          "target_branch_public_id"
+        ],
+        "title": "MergeRequestPreviewRequest",
+        "type": "object"
+      },
+      "MergeRequestPreviewResponse": {
+        "properties": {
+          "diff_summary": {
+            "$ref": "#/components/schemas/MRDiffSummary",
+            "default": {
+              "by_type": {},
+              "total_added": 0,
+              "total_modified": 0,
+              "total_removed": 0
+            }
+          },
+          "merge_base_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Public Id"
+          },
+          "source_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Public Id"
+          },
+          "target_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Public Id"
+          }
+        },
+        "title": "MergeRequestPreviewResponse",
+        "type": "object"
+      },
+      "MergeRequestSummaryResponse": {
+        "properties": {
+          "active_review_count": {
+            "default": 0,
+            "title": "Active Review Count",
+            "type": "integer"
+          },
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "diff_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MRDiffSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "source_branch_name": {
+            "default": "",
+            "title": "Source Branch Name",
+            "type": "string"
+          },
+          "source_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Public Id"
+          },
+          "source_head_short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Head Short"
+          },
+          "status": {
+            "default": "open",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_branch_name": {
+            "default": "",
+            "title": "Target Branch Name",
+            "type": "string"
+          },
+          "target_branch_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Branch Public Id"
+          },
+          "target_head_short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Short"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_comments": {
+            "default": 0,
+            "title": "Total Comments",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "project_id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MergeRequestSummaryResponse",
+        "type": "object"
+      },
+      "MergeResponse": {
+        "description": "\u5408\u5e76\u6210\u529f\u7ed3\u679c\uff1a\u76ee\u6807\u5206\u652f\u4ea7\u751f\u5e26\u4e24\u4e2a\u7236\u8282\u70b9\u7684 merge commit\u3002",
+        "properties": {
+          "merged_commit_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Commit Public Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_head_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Head Public Id"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "MergeResponse",
+        "type": "object"
+      },
+      "MergeReviewRequest": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decision": {
+            "default": "approved",
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "title": "MergeReviewRequest",
+        "type": "object"
+      },
+      "MergeReviewResponse": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "default": "approved",
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reviewer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Email"
+          },
+          "reviewer_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer User Id"
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Reason"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MergeReviewResponse",
         "type": "object"
       },
       "NextSuggestionRediagnoseRequest": {
@@ -7002,6 +9319,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
+          },
           "scenarioContent": {
             "title": "Scenariocontent",
             "type": "string"
@@ -7295,6 +9623,17 @@
             "default": "scope",
             "title": "Kind",
             "type": "string"
+          },
+          "logicalUuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logicaluuid"
           },
           "negativePictureBase64": {
             "anyOf": [
@@ -8212,6 +10551,31 @@
         "title": "TaskResponse",
         "type": "object"
       },
+      "TextDiffBlock": {
+        "properties": {
+          "after_lines": {
+            "items": {
+              "type": "string"
+            },
+            "title": "After Lines",
+            "type": "array"
+          },
+          "before_lines": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Before Lines",
+            "type": "array"
+          },
+          "kind": {
+            "default": "replace",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "TextDiffBlock",
+        "type": "object"
+      },
       "UnresolvedGateResponse": {
         "properties": {
           "code": {
@@ -8510,6 +10874,22 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkspaceDirtySummary": {
+        "properties": {
+          "is_dirty": {
+            "default": false,
+            "title": "Is Dirty",
+            "type": "boolean"
+          },
+          "modified_entities_count": {
+            "default": 0,
+            "title": "Modified Entities Count",
+            "type": "integer"
+          }
+        },
+        "title": "WorkspaceDirtySummary",
         "type": "object"
       },
       "backend__api__modules__project_lifecycle__schemas__creation__GeneratedFeaturePreview": {
@@ -9225,6 +11605,22 @@
         "operationId": "create_actor_generation_draft_api_actor_generation_drafts_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -9348,6 +11744,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -9908,6 +12320,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -10230,6 +12658,22 @@
         "operationId": "create_feature_generation_draft_api_feature_generation_drafts_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -10353,6 +12797,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -10480,6 +12940,22 @@
         "operationId": "create_flow_generation_draft_api_flow_generation_drafts_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -10603,6 +13079,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -11502,6 +13994,22 @@
         "operationId": "create_acceptance_criteria_slot_filling_draft_api_perception_slot_filling_drafts_acceptance_criteria_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -11560,6 +14068,22 @@
       "post": {
         "operationId": "create_actor_slot_filling_draft_api_perception_slot_filling_drafts_actor_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
           {
             "in": "cookie",
             "name": "auth_session",
@@ -11620,6 +14144,22 @@
         "operationId": "create_feature_slot_filling_draft_api_perception_slot_filling_drafts_feature_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -11679,6 +14219,22 @@
         "operationId": "create_flow_slot_filling_draft_api_perception_slot_filling_drafts_flow_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -11737,6 +14293,22 @@
       "post": {
         "operationId": "create_scenario_slot_filling_draft_api_perception_slot_filling_drafts_scenario_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
           {
             "in": "cookie",
             "name": "auth_session",
@@ -11864,6 +14436,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -11919,6 +14507,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -12849,6 +15453,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -12973,6 +15593,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -13030,6 +15666,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -13110,6 +15762,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -13170,6 +15838,22 @@
             "schema": {
               "title": "Actor Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -13369,6 +16053,586 @@
         ]
       }
     },
+    "/api/projects/{project_id}/branches": {
+      "get": {
+        "description": "\u5217\u8868\u83b7\u53d6\u9879\u76ee\u4e0b\u7684\u6240\u6709\u6d3b\u8dc3\u5206\u652f\u3002",
+        "operationId": "list_branches_api_projects__project_id__branches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BranchSummaryResponse"
+                  },
+                  "title": "Response List Branches Api Projects  Project Id  Branches Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Branches",
+        "tags": [
+          "branches"
+        ]
+      },
+      "post": {
+        "description": "\u4ece\u6307\u5b9a Commit \u6216\u6e90\u5206\u652f\u521b\u5efa\u65b0\u5206\u652f\u3002",
+        "operationId": "create_branch_api_projects__project_id__branches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Branch",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/branches/active": {
+      "get": {
+        "description": "\u83b7\u53d6\u5f53\u524d\u7528\u6237\u5728\u9879\u76ee\u4e2d\u7684\u6d3b\u8dc3\u5206\u652f\u504f\u597d\u3002",
+        "operationId": "get_active_branch_preference_api_projects__project_id__branches_active_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Active Branch Preference",
+        "tags": [
+          "branches"
+        ]
+      },
+      "put": {
+        "description": "\u66f4\u65b0\u5f53\u524d\u7528\u6237\u5728\u9879\u76ee\u4e2d\u7684\u6d3b\u8dc3\u5206\u652f\u504f\u597d\u3002",
+        "operationId": "set_active_branch_preference_api_projects__project_id__branches_active_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch_name",
+            "required": true,
+            "schema": {
+              "title": "Branch Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Active Branch Preference",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/branches/active/preference": {
+      "get": {
+        "description": "\u83b7\u53d6\u5f53\u524d\u7528\u6237\u5728\u9879\u76ee\u4e2d\u7684\u6d3b\u8dc3\u5206\u652f\u504f\u597d\u3002",
+        "operationId": "get_active_branch_preference_api_projects__project_id__branches_active_preference_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Active Branch Preference",
+        "tags": [
+          "branches"
+        ]
+      },
+      "put": {
+        "description": "\u66f4\u65b0\u5f53\u524d\u7528\u6237\u5728\u9879\u76ee\u4e2d\u7684\u6d3b\u8dc3\u5206\u652f\u504f\u597d\u3002",
+        "operationId": "set_active_branch_preference_api_projects__project_id__branches_active_preference_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch_name",
+            "required": true,
+            "schema": {
+              "title": "Branch Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Active Branch Preference",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/branches/{branch_ref}": {
+      "delete": {
+        "description": "\u5220\u9664\u975e\u53d7\u4fdd\u62a4\u5206\u652f\u3002",
+        "operationId": "delete_branch_api_projects__project_id__branches__branch_ref__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "branch_ref",
+            "required": true,
+            "schema": {
+              "title": "Branch Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Branch",
+        "tags": [
+          "branches"
+        ]
+      },
+      "get": {
+        "description": "\u83b7\u53d6\u6307\u5b9a\u5206\u652f\u7684\u8be6\u7ec6\u6570\u636e\u3002",
+        "operationId": "get_branch_detail_api_projects__project_id__branches__branch_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "branch_ref",
+            "required": true,
+            "schema": {
+              "title": "Branch Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Branch Detail",
+        "tags": [
+          "branches"
+        ]
+      },
+      "patch": {
+        "description": "\u91cd\u547d\u540d\u975e\u53d7\u4fdd\u62a4\u5206\u652f\u3002",
+        "operationId": "rename_branch_api_projects__project_id__branches__branch_ref__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "branch_ref",
+            "required": true,
+            "schema": {
+              "title": "Branch Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Branch",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
     "/api/projects/{project_id}/business_objects": {
       "post": {
         "operationId": "create_business_object_api_projects__project_id__business_objects_post",
@@ -13380,6 +16644,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -13460,6 +16740,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -13520,6 +16816,22 @@
             "schema": {
               "title": "Bo Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -14279,6 +17591,267 @@
         ]
       }
     },
+    "/api/projects/{project_id}/commits": {
+      "get": {
+        "description": "\u5206\u9875\u5217\u51fa\u9879\u76ee\u5185\u6216\u6307\u5b9a\u5206\u652f\u53ef\u8fbe\u7684\u63d0\u4ea4\u56fe\u3002",
+        "operationId": "list_commits_api_projects__project_id__commits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "description": "\u8fd4\u56de\u5168\u9879\u76ee\u63d0\u4ea4\u56fe\uff0c\u5ffd\u7565 branch \u8fc7\u6ee4",
+            "in": "query",
+            "name": "all",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "\u8fd4\u56de\u5168\u9879\u76ee\u63d0\u4ea4\u56fe\uff0c\u5ffd\u7565 branch \u8fc7\u6ee4",
+              "title": "All",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Commits",
+        "tags": [
+          "commits"
+        ]
+      },
+      "post": {
+        "description": "\u628a\u6307\u5b9a\u5206\u652f\u5de5\u4f5c\u533a\u56fa\u5316\u4e3a\u4e0d\u53ef\u53d8\u63d0\u4ea4\uff1bmain \u53d7\u4fdd\u62a4\u7981\u6b62\u76f4\u63a5\u63d0\u4ea4\uff0c\u9884\u671f head \u53d8\u5316\u8fd4\u56de 409\u3002",
+        "operationId": "create_commit_api_projects__project_id__commits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Commit",
+        "tags": [
+          "commits"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/commits/{commit_ref}": {
+      "get": {
+        "description": "\u83b7\u53d6\u63d0\u4ea4\u8be6\u60c5\u5e76\u4ece state_json \u91cd\u5efa\u5386\u53f2\u53ea\u8bfb\u89c6\u56fe\u3002",
+        "operationId": "get_commit_detail_api_projects__project_id__commits__commit_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commit_ref",
+            "required": true,
+            "schema": {
+              "title": "Commit Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Commit Detail",
+        "tags": [
+          "commits"
+        ]
+      }
+    },
     "/api/projects/{project_id}/configuration": {
       "get": {
         "description": "Retrieve aggregated project configurations summary.",
@@ -14713,6 +18286,284 @@
         ]
       }
     },
+    "/api/projects/{project_id}/diff": {
+      "get": {
+        "description": "\u8ba1\u7b97\u4e24 ref \u7684\u8bed\u4e49\u5dee\u5f02\uff1b\u7f3a\u7701\u6bd4\u8f83\u5206\u652f head \u4e0e\u5f53\u524d\u5de5\u4f5c\u533a\uff08\u672a\u63d0\u4ea4\u53d8\u66f4\uff09\u3002",
+        "operationId": "get_diff_api_projects__project_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "change_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Diff",
+        "tags": [
+          "diff"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/diff/entities/{entity_uuid}": {
+      "get": {
+        "description": "\u8fd4\u56de\u5355\u4e2a\u5bf9\u8c61\u7684\u5dee\u5f02\u8be6\u60c5\uff1a\u81ea\u8eab\u53ca\u5b50\u5bf9\u8c61\u53d8\u66f4\uff0c\u4ee5\u53ca base/target \u7684\u5b8c\u6574\u503c\u3002",
+        "operationId": "get_entity_diff_api_projects__project_id__diff_entities__entity_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entity_uuid",
+            "required": true,
+            "schema": {
+              "title": "Entity Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityDiffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Entity Diff",
+        "tags": [
+          "diff"
+        ]
+      }
+    },
     "/api/projects/{project_id}/export/json": {
       "get": {
         "operationId": "export_project_json_api_projects__project_id__export_json_get",
@@ -14724,6 +18575,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -14785,6 +18652,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -14840,6 +18723,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -14901,6 +18800,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -14956,6 +18871,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15016,6 +18947,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15096,6 +19043,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -15156,6 +19119,22 @@
             "schema": {
               "title": "Feature Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15233,6 +19212,22 @@
             "schema": {
               "title": "Feature Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15343,6 +19338,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -15398,6 +19409,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15466,6 +19493,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -15546,6 +19589,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -15606,6 +19665,22 @@
             "schema": {
               "title": "Flow Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -16066,6 +20141,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -16130,6 +20221,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -16201,6 +20308,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -16256,6 +20379,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -17171,6 +21310,822 @@
         ]
       }
     },
+    "/api/projects/{project_id}/merge-requests": {
+      "get": {
+        "operationId": "list_merge_requests_api_projects__project_id__merge_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeRequestListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Merge Requests",
+        "tags": [
+          "merge_requests"
+        ]
+      },
+      "post": {
+        "operationId": "create_merge_request_api_projects__project_id__merge_requests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeRequestDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Merge Request",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/preview": {
+      "post": {
+        "description": "\u9884\u8ba1\u7b97 MR \u53d8\u66f4\u6458\u8981\uff08merge_base \u2192 source_head\uff09\uff0c\u4e0e\u521b\u5efa\u540e\u4e00\u81f4\u3002",
+        "operationId": "preview_merge_request_api_projects__project_id__merge_requests_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeRequestPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Merge Request",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}": {
+      "get": {
+        "operationId": "get_merge_request_detail_api_projects__project_id__merge_requests__mr_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeRequestDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Merge Request Detail",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/close": {
+      "post": {
+        "operationId": "close_merge_request_api_projects__project_id__merge_requests__mr_ref__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close Merge Request",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/comments": {
+      "post": {
+        "operationId": "add_mr_comment_api_projects__project_id__merge_requests__mr_ref__comments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeCommentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeCommentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Mr Comment",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/comments/{comment_id}/reopen": {
+      "post": {
+        "operationId": "reopen_mr_comment_api_projects__project_id__merge_requests__mr_ref__comments__comment_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "title": "Comment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeCommentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reopen Mr Comment",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/comments/{comment_id}/resolve": {
+      "post": {
+        "operationId": "resolve_mr_comment_api_projects__project_id__merge_requests__mr_ref__comments__comment_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "title": "Comment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeCommentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Mr Comment",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/merge": {
+      "post": {
+        "description": "\u6267\u884c\u4e09\u65b9\u8bed\u4e49\u5408\u5e76\u5e76\u521b\u5efa merge commit\uff1b\u5408\u5e76\u524d\u5fc5\u987b\u6ee1\u8db3\u5ba1\u6279\u4e14\u65e0\u672a\u89e3\u51b3\u51b2\u7a81\u3002",
+        "operationId": "perform_mr_merge_api_projects__project_id__merge_requests__mr_ref__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Perform Mr Merge",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/merge-preview": {
+      "get": {
+        "description": "\u8ba1\u7b97 MR \u7684\u4e09\u65b9\u5408\u5e76\u9884\u89c8\uff08\u53ea\u8bfb\uff0c\u53ef\u91cd\u5efa\uff09\uff1a\u5217\u51fa\u5f85\u89e3\u51b3\u51b2\u7a81\u4e0e\u81ea\u52a8\u5408\u5e76\u7edf\u8ba1\u3002",
+        "operationId": "get_mr_merge_preview_api_projects__project_id__merge_requests__mr_ref__merge_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mr Merge Preview",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/merge-requests/{mr_ref}/review": {
+      "post": {
+        "operationId": "review_merge_request_api_projects__project_id__merge_requests__mr_ref__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mr_ref",
+            "required": true,
+            "schema": {
+              "title": "Mr Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "auth_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auth Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Merge Request",
+        "tags": [
+          "merge_requests"
+        ]
+      }
+    },
     "/api/projects/{project_id}/next-suggestion": {
       "get": {
         "operationId": "get_next_suggestion_api_projects__project_id__next_suggestion_get",
@@ -17389,6 +22344,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -17453,6 +22424,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -18171,6 +23158,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -18248,6 +23251,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -18308,6 +23327,22 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -18614,6 +23649,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -18667,6 +23718,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -19484,6 +24551,22 @@
         "operationId": "create_full_scenario_generation_draft_api_scenario_generation_drafts_full_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -19542,6 +24625,22 @@
       "post": {
         "operationId": "create_single_scenario_generation_draft_api_scenario_generation_drafts_single_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
           {
             "in": "cookie",
             "name": "auth_session",
@@ -19666,6 +24765,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {
@@ -19810,6 +24925,22 @@
         "operationId": "create_scope_generation_draft_api_scope_generation_drafts_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -19933,6 +25064,22 @@
             "schema": {
               "title": "Draft Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
             }
           },
           {

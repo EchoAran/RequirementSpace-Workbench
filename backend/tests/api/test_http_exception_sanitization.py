@@ -10,17 +10,35 @@ def _events(caplog, event):
     return [record for record in caplog.records if getattr(record, "event", None) == event]
 
 @pytest.fixture(autouse=True)
-def bypass_auth():
+def bypass_auth(monkeypatch):
     from unittest.mock import MagicMock
     from backend.api.dependencies.project_access import require_project_member
+    from backend.api.dependencies.auth import get_current_user
     mock_project = MagicMock()
     mock_project.id = 123
     mock_project.public_id = "123"
+    mock_user = MagicMock()
+    mock_user.id = 1
     app.dependency_overrides[require_owned_project] = lambda: mock_project
     app.dependency_overrides[require_project_member] = lambda: mock_project
+    # 阶段 2 起 actor 路由直接依赖 get_current_user；未认证请求会被 401 拦截。
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    # 阶段 2 起路由会在 handler 内解析分支上下文；测试 DB 未必有 requirement_branches 表，
+    # 因此跳过真实分支解析（本测试只关注异常清洗）。
+    from backend.api.modules.requirements_core.actor import routes as actor_routes
+    monkeypatch.setattr(
+        actor_routes,
+        "resolve_branch_context",
+        lambda db, project_id, branch_ref=None, user_id=None: (
+            None,
+            None,
+            {"can_write": True, "can_delete": False, "can_rename": False, "is_protected": False},
+        ),
+    )
     yield
     app.dependency_overrides.pop(require_owned_project, None)
     app.dependency_overrides.pop(require_project_member, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 # Test 1: Real CRUD route throwing unhandled Exception (via mock get_actors)
 def test_real_route_exception_returns_clean_500(monkeypatch, caplog):

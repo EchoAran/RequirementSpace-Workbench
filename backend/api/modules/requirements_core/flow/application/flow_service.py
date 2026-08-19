@@ -46,6 +46,13 @@ from backend.api.modules.requirements_core.flow.schemas import (
 )
 
 
+async def _exec_stmt(session, stmt):
+    res = session.execute(stmt)
+    if hasattr(res, "__await__"):
+        return await res
+    return res
+
+
 class FlowService:
     async def create_flow(
         self,
@@ -53,38 +60,45 @@ class FlowService:
         req: FlowCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
+        workspace_id: int | None = None,
     ) -> FlowResponse:
         flow = FlowModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=req.name,
             description=req.description,
             confirmation_status=confirmation_status,
         )
         session.add(flow)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         if req.feature_ids:
-            # 验证 feature 是否属于该项目
-            features_result = await session.execute(
-                select(FeatureModel.id).where(
-                    FeatureModel.project_id == project_id,
-                    FeatureModel.id.in_(req.feature_ids),
-                )
+            # 验证 feature 是否属于该项目和工作区
+            stmt_feat = select(FeatureModel.id).where(
+                FeatureModel.project_id == project_id,
+                FeatureModel.id.in_(req.feature_ids),
             )
+            if workspace_id is not None:
+                stmt_feat = stmt_feat.where(FeatureModel.workspace_id == workspace_id)
+            features_result = await _exec_stmt(session, stmt_feat)
             valid_feature_ids = features_result.scalars().all()
             if len(valid_feature_ids) != len(req.feature_ids):
-                raise ValueError("invalid_feature_ids")
+                raise ValueError("Cross-workspace entity reference rejected: invalid_feature_ids_or_workspace_mismatch")
             if valid_feature_ids:
                 flow_feature_rows = [
                     {"flow_id": flow.id, "feature_id": feat_id}
                     for feat_id in valid_feature_ids
                 ]
-                await session.execute(
-                    insert(flow_feature_table),
-                    flow_feature_rows,
+                await _exec_stmt(
+                    session,
+                    insert(flow_feature_table).values(flow_feature_rows) if hasattr(insert(flow_feature_table), "values") else insert(flow_feature_table),
                 )
 
-        await session.flush()
+        flush_res2 = session.flush()
+        if hasattr(flush_res2, "__await__"):
+            await flush_res2
 
         # 审计日志: 新增流程
         await audit_service.record(
@@ -119,10 +133,21 @@ class FlowService:
         flow_id: int,
         req: FlowUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> FlowResponse:
+        stmt = select(FlowModel).where(
+            FlowModel.project_id == project_id,
+            FlowModel.id == flow_id,
+        )
+        if workspace_id is not None:
+            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+        exec_res = await _exec_stmt(session, stmt)
+        if exec_res.scalar_one_or_none() is None:
+            raise ValueError("flow_not_found_in_workspace")
+
         flow = await load_flow_for_update(session, project_id, flow_id)
         
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "flow", flow, req.last_seen_updated_at)
 
         before = capture_flow_state(flow)
@@ -133,7 +158,9 @@ class FlowService:
             request=req,
         )
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         # 审计日志: 更新流程
         diff = build_flow_update_diff(before, flow)
@@ -155,7 +182,7 @@ class FlowService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "flow", flow)
 
         return self._serialize_flow(flow)
@@ -165,17 +192,19 @@ class FlowService:
         project_id: int,
         flow_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        result = await session.execute(
-            select(FlowModel).where(
-                FlowModel.project_id == project_id,
-                FlowModel.id == flow_id,
-            )
+        stmt = select(FlowModel).where(
+            FlowModel.project_id == project_id,
+            FlowModel.id == flow_id,
         )
+        if workspace_id is not None:
+            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+        result = await _exec_stmt(session, stmt)
         flow = result.scalar_one_or_none()
 
         if flow is None:
-            raise ValueError("flow_not_found")
+            raise ValueError("flow_not_found_in_workspace")
 
         flow_name = flow.name
         await session.delete(flow)
@@ -286,7 +315,7 @@ class FlowService:
         await ensure_flow_exists(session, project_id, flow_id)
         step = await load_flow_step_for_update(session, flow_id, step_id)
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "flow_step", step, req.last_seen_updated_at)
 
         before = capture_flow_step_state(step)
@@ -323,7 +352,7 @@ class FlowService:
             session=session,
         )
 
-        from backend.api.modules.collaboration.application.task_service import snapshot_service
+        from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.supersede_tasks_on_node_update(session, "flow_step", step)
 
         return self._serialize_flow_step(step)

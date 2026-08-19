@@ -33,21 +33,38 @@ class ScopeGenerationService:
         project_id: int,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ProjectModel
-        # 1. Update project kano_status to generating and commit immediately
-        project_res = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-                ProjectModel.owner_user_id == owner_user_id,
-            )
-        )
-        project = project_res.scalar_one_or_none()
-        if project is None:
-            raise ValueError("project_not_found")
-        project.kano_status = "generating"
-        await session.flush()
-        await session.commit()
+        from backend.database.model import ProjectModel, BranchWorkspaceModel
+
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
+        # 1. Update kano_status to generating and commit immediately
+        if workspace_id is not None:
+            ws_res = await _exec(select(BranchWorkspaceModel).where(BranchWorkspaceModel.id == workspace_id))
+            ws = ws_res.scalar_one_or_none()
+            if ws is None:
+                raise ValueError("project_not_found")
+            ws.kano_status = "generating"
+        else:
+            project_res = await _exec(select(ProjectModel).where(ProjectModel.id == project_id, ProjectModel.owner_user_id == owner_user_id))
+            project = project_res.scalar_one_or_none()
+            if project is None:
+                raise ValueError("project_not_found")
+            project.kano_status = "generating"
+
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
+        commit_res = session.commit()
+        if hasattr(commit_res, "__await__"):
+            await commit_res
 
         try:
             draft_id = uuid4().hex
@@ -56,10 +73,15 @@ class ScopeGenerationService:
                 project_id=project_id,
                 user_feedback=None,
                 session=session,
+                workspace_id=workspace_id,
             )
 
             draft_payload["draft_id"] = draft_id
+            draft_payload["branch_name"] = branch_name
+            draft_payload["head_commit_id"] = head_commit_id
             response_payload["draft_id"] = draft_id
+            response_payload["branch_name"] = branch_name
+            response_payload["head_commit_id"] = head_commit_id
 
             from backend.api.modules.decision_workflow.public import GenerativeDraftStore
             await GenerativeDraftStore.save_draft(
@@ -71,22 +93,14 @@ class ScopeGenerationService:
                 session=session,
             )
 
-            # 2. Re-acquire project to set draft_ready state
-            project_res = await session.execute(
-                select(ProjectModel).where(
-                    ProjectModel.id == project_id,
-                    ProjectModel.owner_user_id == owner_user_id,
-                )
-            )
-            project = project_res.scalar_one()
-            project.kano_status = "missing"
-            await session.flush()
-
-            return response_payload
-        except Exception as err:
-            # Re-acquire project under new transaction to set failed state
-            try:
-                project_res = await session.execute(
+            # 2. Re-acquire workspace/project to update state
+            if workspace_id is not None:
+                ws_res = await _exec(select(BranchWorkspaceModel).where(BranchWorkspaceModel.id == workspace_id))
+                ws = ws_res.scalar_one_or_none()
+                if ws:
+                    ws.kano_status = "missing"
+            else:
+                project_res = await _exec(
                     select(ProjectModel).where(
                         ProjectModel.id == project_id,
                         ProjectModel.owner_user_id == owner_user_id,
@@ -94,9 +108,38 @@ class ScopeGenerationService:
                 )
                 project = project_res.scalar_one_or_none()
                 if project:
-                    project.kano_status = "failed"
-                    await session.flush()
-                    await session.commit()
+                    project.kano_status = "missing"
+
+            flush_res = session.flush()
+            if hasattr(flush_res, "__await__"):
+                await flush_res
+
+            return response_payload
+        except Exception as err:
+            # Re-acquire project/workspace to set failed state
+            try:
+                if workspace_id is not None:
+                    ws_res = await _exec(select(BranchWorkspaceModel).where(BranchWorkspaceModel.id == workspace_id))
+                    ws = ws_res.scalar_one_or_none()
+                    if ws:
+                        ws.kano_status = "failed"
+                else:
+                    project_res = await _exec(
+                        select(ProjectModel).where(
+                            ProjectModel.id == project_id,
+                            ProjectModel.owner_user_id == owner_user_id,
+                        )
+                    )
+                    project = project_res.scalar_one_or_none()
+                    if project:
+                        project.kano_status = "failed"
+
+                flush_res = session.flush()
+                if hasattr(flush_res, "__await__"):
+                    await flush_res
+                commit_res = session.commit()
+                if hasattr(commit_res, "__await__"):
+                    await commit_res
             except Exception:
                 pass
             raise err
@@ -179,14 +222,26 @@ class ScopeGenerationService:
         draft_id: str,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         from backend.database.model import ProjectModel
         draft = await self._get_draft(draft_id, owner_user_id, session)
         project_id = draft["project_id"]
 
+        draft_branch = draft.get("branch_name")
+        if draft_branch and branch_name and draft_branch != branch_name:
+            raise ValueError(f"draft_branch_mismatch: Draft created on branch '{draft_branch}' cannot be confirmed on '{branch_name}'")
+
+        draft_commit = draft.get("head_commit_id")
+        if draft_commit and head_commit_id and draft_commit != head_commit_id:
+            raise ValueError("branch_drift_detected: Branch head commit has advanced since draft creation")
+
         result = await self._persist_scope_generation_draft(
             draft=draft,
             session=session,
+            workspace_id=workspace_id,
         )
         await get_notifier().mark_stale(
             project_id=project_id,
@@ -194,17 +249,34 @@ class ScopeGenerationService:
             session=session,
         )
 
+        from backend.database.model import ProjectModel, BranchWorkspaceModel
+
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
         # Set kano_status to generated
-        project_res = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-                ProjectModel.owner_user_id == owner_user_id,
+        if workspace_id is not None:
+            ws_res = await _exec(select(BranchWorkspaceModel).where(BranchWorkspaceModel.id == workspace_id))
+            ws = ws_res.scalar_one_or_none()
+            if ws:
+                ws.kano_status = "generated"
+        else:
+            project_res = await _exec(
+                select(ProjectModel).where(
+                    ProjectModel.id == project_id,
+                    ProjectModel.owner_user_id == owner_user_id,
+                )
             )
-        )
-        project = project_res.scalar_one_or_none()
-        if project:
-            project.kano_status = "generated"
-            await session.flush()
+            project = project_res.scalar_one_or_none()
+            if project:
+                project.kano_status = "generated"
+
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -256,6 +328,7 @@ class ScopeGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -264,6 +337,7 @@ class ScopeGenerationService:
         ) = await self._load_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
 
         raw = await self._scopes_generator.generate(
@@ -296,8 +370,9 @@ class ScopeGenerationService:
     async def _load_project_context(
         project_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[str, list[FeatureNode], list[FeatureNode]]:
-        return await load_scope_generation_context(project_id, session)
+        return await load_scope_generation_context(project_id, session, workspace_id=workspace_id)
 
     def _normalize_generated_scopes(
         self,
@@ -414,8 +489,15 @@ class ScopeGenerationService:
     async def _persist_scope_generation_draft(
         draft: dict,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ScopeModel
+        from backend.database.model import ScopeModel, FeatureModel
+
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
 
         project_id = draft["project_id"]
         scopes = draft["scopes"]
@@ -424,11 +506,11 @@ class ScopeGenerationService:
             for item in scopes
         ]
 
-        existing_result = await session.execute(
-            select(ScopeModel).where(
-                ScopeModel.feature_id.in_(feature_ids)
-            )
-        )
+        stmt = select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id).where(ScopeModel.feature_id.in_(feature_ids))
+        if workspace_id is not None:
+            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+
+        existing_result = await _exec(stmt)
         existing_scope_map = {
             scope.feature_id: scope
             for scope in existing_result.scalars().all()

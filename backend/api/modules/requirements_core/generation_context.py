@@ -20,20 +20,34 @@ async def load_generation_project(session, project_id: int):
     return project
 
 
-async def load_generation_actors(session, project_id: int) -> list:
-    result = await session.execute(
-        select(ActorModel).where(ActorModel.project_id == project_id)
-    )
+async def load_generation_actors(session, project_id: int, workspace_id: int | None = None) -> list:
+    async def _exec(stmt):
+        res = session.execute(stmt)
+        if hasattr(res, "__await__"):
+            return await res
+        return res
+
+    stmt = select(ActorModel).where(ActorModel.project_id == project_id)
+    if workspace_id is not None:
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+    result = await _exec(stmt)
     actors = result.scalars().all()
     if not actors:
         raise ValueError("empty_actors")
     return actors
 
 
-async def load_generation_features(session, project_id: int) -> list:
-    result = await session.execute(
-        select(FeatureModel).where(FeatureModel.project_id == project_id)
-    )
+async def load_generation_features(session, project_id: int, workspace_id: int | None = None) -> list:
+    async def _exec(stmt):
+        res = session.execute(stmt)
+        if hasattr(res, "__await__"):
+            return await res
+        return res
+
+    stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
+    if workspace_id is not None:
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+    result = await _exec(stmt)
     features = result.scalars().all()
     if not features:
         raise ValueError("empty_features")
@@ -122,10 +136,24 @@ def count_leaf_features(features: list[FeatureNode]) -> int:
 async def load_flow_generation_context(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> tuple[str, list[ActorNode], list[FeatureNode], int]:
     project = await load_generation_project(session, project_id)
-    actors = await load_generation_actors(session, project_id)
-    features = await load_generation_features(session, project_id)
+    user_reqs = project.user_requirements
+    if workspace_id is not None:
+        from backend.database.model import BranchWorkspaceModel
+        async def _exec(stmt):
+            res = session.execute(stmt)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+        ws_res = await _exec(select(BranchWorkspaceModel.user_requirements).where(BranchWorkspaceModel.id == workspace_id))
+        ws_user_reqs = ws_res.scalar_one_or_none()
+        if ws_user_reqs is not None:
+            user_reqs = ws_user_reqs
+
+    actors = await load_generation_actors(session, project_id, workspace_id=workspace_id)
+    features = await load_generation_features(session, project_id, workspace_id=workspace_id)
     feature_ids = {feature.id for feature in features}
     relations, feature_actor_rows = await load_feature_graph_rows(
         session,
@@ -138,7 +166,7 @@ async def load_flow_generation_context(
     actor_nodes = build_actor_nodes(actors)
     feature_nodes = build_feature_nodes(features, *graph_maps)
     return (
-        project.user_requirements,
+        user_reqs,
         actor_nodes,
         feature_nodes,
         count_leaf_features(feature_nodes),

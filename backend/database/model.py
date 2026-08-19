@@ -406,6 +406,18 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    branches: Mapped[list["RequirementBranchModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    commits: Mapped[list["RequirementCommitModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    workspaces: Mapped[list["BranchWorkspaceModel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class PerceptionSlotModel(TimestampMixin, Base):
@@ -472,13 +484,263 @@ class PerceptionJobModel(TimestampMixin, Base):
     project: Mapped[ProjectModel] = relationship(back_populates="perception_jobs")
 
 
+class RequirementBranchModel(TimestampMixin, Base):
+    """
+    项目内的需求空间分支模型。
+    对应 Git 的 Branch 语义，包含逻辑名称、Head Commit 引用以及绑定的分支工作区。
+    """
+    __tablename__ = "requirement_branches"
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_requirement_branch_project_name"),
+        Index("ix_requirement_branches_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    head_commit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_commit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
+
+    # Relationships
+    project: Mapped["ProjectModel"] = relationship(back_populates="branches")
+    workspace: Mapped["BranchWorkspaceModel | None"] = relationship(
+        back_populates="branch",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    head_commit: Mapped["RequirementCommitModel | None"] = relationship(
+        foreign_keys=[head_commit_id],
+    )
+    source_commit: Mapped["RequirementCommitModel | None"] = relationship(
+        foreign_keys=[source_commit_id],
+    )
+    created_by: Mapped["UserModel | None"] = relationship(
+        foreign_keys=[created_by_user_id],
+    )
+
+
+class RequirementCommitModel(TimestampMixin, Base):
+    """
+    不可变的需求状态提交记录。
+    保存完整、规范化的需求模型 JSON 快照 state_json，以及 SHA-256 state_hash 签名。
+    """
+    __tablename__ = "requirement_commits"
+    __table_args__ = (
+        Index("ix_requirement_commits_created_at", "created_at"),
+        # 提交列表 SQL 分页的复合索引：按 (project_id, created_at, id) 排序。
+        Index(
+            "ix_requirement_commits_project_created_id",
+            "project_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    state_json: Mapped[str] = mapped_column(Text, nullable=False)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    schema_version: Mapped[str] = mapped_column(String(32), default="1.0", nullable=False)
+    author_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Relationships
+    project: Mapped["ProjectModel"] = relationship(back_populates="commits")
+    author: Mapped["UserModel | None"] = relationship(
+        foreign_keys=[author_user_id],
+    )
+    parent_relations: Mapped[list["RequirementCommitParentModel"]] = relationship(
+        back_populates="commit",
+        foreign_keys="[RequirementCommitParentModel.commit_id]",
+        cascade="all, delete-orphan",
+    )
+
+
+class RequirementCommitParentModel(Base):
+    """
+    提交父子图关系表。
+    支持 1 个父节点（普通 Commit）或 2 个父节点（Merge Commit），parent_order 标识主父/副父。
+    """
+    __tablename__ = "requirement_commit_parents"
+
+    __table_args__ = (
+        UniqueConstraint("commit_id", "parent_commit_id", name="uq_commit_parent"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    commit_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_commit_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    commit: Mapped["RequirementCommitModel"] = relationship(
+        foreign_keys=[commit_id],
+        back_populates="parent_relations",
+    )
+    parent_commit: Mapped["RequirementCommitModel"] = relationship(
+        foreign_keys=[parent_commit_id],
+    )
+
+
+from sqlalchemy import event, select
+from sqlalchemy.orm import Session
+
+@event.listens_for(RequirementCommitModel, "before_update")
+def prevent_commit_update(mapper, connection, target: RequirementCommitModel):
+    """RequirementCommitModel 是不可变快照，禁止任何 UPDATE 操作。"""
+    raise ValueError("RequirementCommitModel is immutable and cannot be updated")
+
+
+@event.listens_for(RequirementBranchModel, "before_insert")
+@event.listens_for(RequirementBranchModel, "before_update")
+def validate_branch_model(mapper, connection, target: RequirementBranchModel):
+    """验证分支引用的 head 和 source 提交属于相同项目。"""
+    session = Session.object_session(target)
+    if session is not None:
+        if target.head_commit_id is not None:
+            commit = session.get(RequirementCommitModel, target.head_commit_id)
+            if commit and commit.project_id != target.project_id:
+                raise ValueError("Branch head commit must belong to the same project")
+        if target.source_commit_id is not None:
+            commit = session.get(RequirementCommitModel, target.source_commit_id)
+            if commit and commit.project_id != target.project_id:
+                raise ValueError("Branch source commit must belong to the same project")
+
+
+@event.listens_for(RequirementCommitParentModel, "before_insert")
+@event.listens_for(RequirementCommitParentModel, "before_update")
+def validate_commit_parent_model(mapper, connection, target: RequirementCommitParentModel):
+    """验证提交父子关系的防环约束与跨项目约束。"""
+    if target.commit_id == target.parent_commit_id:
+        raise ValueError("Commit cannot have itself as a parent (self-loop)")
+
+    session = Session.object_session(target)
+    if session is not None:
+        commit = session.get(RequirementCommitModel, target.commit_id)
+        parent_commit = session.get(RequirementCommitModel, target.parent_commit_id)
+        if commit and parent_commit and commit.project_id != parent_commit.project_id:
+            raise ValueError("Parent and child commits must belong to the same project")
+
+        visited = set()
+        queue = [target.parent_commit_id]
+        while queue:
+            curr_id = queue.pop(0)
+            if curr_id == target.commit_id:
+                raise ValueError("Cycle detected in commit parent graph")
+            if curr_id in visited:
+                continue
+            visited.add(curr_id)
+            parents = session.execute(
+                select(RequirementCommitParentModel.parent_commit_id).where(
+                    RequirementCommitParentModel.commit_id == curr_id
+                )
+            ).scalars().all()
+            queue.extend(parents)
+
+
+class BranchWorkspaceModel(TimestampMixin, Base):
+    """
+    分支独立建模工作区。
+    存储某分支尚未提交或最新处于编辑状态的需求空间元数据，所有正式需求实体在此约束下持久化。
+    """
+    __tablename__ = "branch_workspaces"
+    __table_args__ = (
+        Index("ix_branch_workspaces_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    branch_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_branches.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    user_requirements: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    kano_status: Mapped[str] = mapped_column(String(50), default="missing", nullable=False)
+    unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+
+    # Relationships
+    project: Mapped["ProjectModel"] = relationship(back_populates="workspaces")
+    branch: Mapped["RequirementBranchModel"] = relationship(back_populates="workspace")
+
+
 class ActorModel(TimestampMixin, Base):
     __tablename__ = "actors"
     __table_args__ = (
         Index("ix_actors_project_id", "project_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_actors_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
@@ -529,9 +791,21 @@ class FeatureRelationModel(TimestampMixin, Base):
         ),
         Index("ix_feature_relations_parent", "parent_feature_id"),
         Index("ix_feature_relations_child", "child_feature_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_feature_relations_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     parent_feature_id: Mapped[int] = mapped_column(
         ForeignKey("features.id", ondelete="CASCADE"),
@@ -562,9 +836,21 @@ class FeatureModel(TimestampMixin, Base):
     __tablename__ = "features"
     __table_args__ = (
         Index("ix_features_project_id", "project_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_features_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
@@ -628,8 +914,22 @@ class FeatureModel(TimestampMixin, Base):
 
 class ScopeModel(TimestampMixin, Base):
     __tablename__ = "feature_scopes"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_feature_scopes_workspace_logical_uuid"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     feature_id: Mapped[int] = mapped_column(
         ForeignKey("features.id", ondelete="CASCADE"),
@@ -675,9 +975,21 @@ class ScenarioAcceptanceCriterionModel(TimestampMixin, Base):
             "position",
             name="uq_scenario_acceptance_position",
         ),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_scenario_ac_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     scenario_id: Mapped[int] = mapped_column(
         ForeignKey("scenarios.id", ondelete="CASCADE"),
         nullable=False,
@@ -782,9 +1094,21 @@ class ScenarioModel(TimestampMixin, Base):
         Index("ix_scenarios_feature_id", "feature_id"),
         Index("ix_scenarios_actor_id", "actor_id"),
         Index("ix_scenarios_gherkin_spec_id", "gherkin_spec_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_scenarios_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
@@ -832,9 +1156,21 @@ class BusinessObjectModel(TimestampMixin, Base):
     __tablename__ = "business_objects"
     __table_args__ = (
         Index("ix_business_objects_project_id", "project_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_business_objects_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
@@ -868,9 +1204,21 @@ class BusinessObjectAttributeModel(TimestampMixin, Base):
     __tablename__ = "business_object_attributes"
     __table_args__ = (
         Index("ix_business_object_attributes_object_id", "business_object_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_bo_attributes_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     business_object_id: Mapped[int] = mapped_column(
         ForeignKey("business_objects.id", ondelete="CASCADE"),
         nullable=False,
@@ -894,9 +1242,21 @@ class FlowModel(TimestampMixin, Base):
     __tablename__ = "flows"
     __table_args__ = (
         Index("ix_flows_project_id", "project_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_flows_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
@@ -928,9 +1288,21 @@ class FlowStepModel(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_flow_steps_flow_id", "flow_id"),
         UniqueConstraint("flow_id", "position", name="uq_flow_step_position"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_flow_steps_workspace_logical_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     flow_id: Mapped[int] = mapped_column(
         ForeignKey("flows.id", ondelete="CASCADE"),
         nullable=False,
@@ -978,8 +1350,22 @@ class FlowStepModel(TimestampMixin, Base):
 
 class ChoiceGroupModel(TimestampMixin, Base):
     __tablename__ = "choice_groups"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_choice_groups_workspace_logical_uuid"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
@@ -1037,8 +1423,22 @@ class ChoiceGroupModel(TimestampMixin, Base):
 
 class ChoiceModel(TimestampMixin, Base):
     __tablename__ = "choices"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_choices_workspace_logical_uuid"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     choice_group_id: Mapped[int] = mapped_column(
         ForeignKey("choice_groups.id", ondelete="CASCADE"),
         nullable=False,
@@ -1236,8 +1636,9 @@ class FindingOverrideModel(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "project_id",
+            "workspace_id",
             "finding_id",
-            name="uq_finding_override_project_finding",
+            name="uq_finding_override_project_workspace_finding",
         ),
         Index(
             "ix_finding_overrides_project_type_status",
@@ -1257,6 +1658,10 @@ class FindingOverrideModel(TimestampMixin, Base):
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
     )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     finding_id: Mapped[str] = mapped_column(String(255), nullable=False)
     finding_type: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -1267,6 +1672,24 @@ class FindingOverrideModel(TimestampMixin, Base):
     context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     project: Mapped[ProjectModel] = relationship(back_populates="finding_overrides")
+
+
+class UserBranchPreferenceModel(TimestampMixin, Base):
+    __tablename__ = "user_branch_preferences"
+    __table_args__ = (
+        UniqueConstraint("user_id", "project_id", name="uq_user_project_branch_preference"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    branch_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
 
@@ -1575,6 +1998,198 @@ class ProjectGenerationStrategyConfigModel(TimestampMixin, Base):
 
 
 from sqlalchemy import event, text
+
+
+# ============================================================
+# Merge Request Models (Phase 5)
+# ============================================================
+
+class MergeRequestModel(TimestampMixin, Base):
+    """将来源分支变更审阅并合入目标分支的协作对象。
+
+    source 新提交或 target 推进后需撤销已有审批（stale_reviews），但历史评论保留。
+    """
+    __tablename__ = "merge_requests"
+    __table_args__ = (
+        UniqueConstraint("project_id", "title", name="uq_merge_request_project_title"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_branch_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_branches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_branch_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_branches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default="open",
+        nullable=False,
+    )
+    merge_base_commit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_head_commit_id: Mapped[int] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    target_head_commit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    merged_commit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    closed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+    source_branch: Mapped["RequirementBranchModel"] = relationship(foreign_keys=[source_branch_id])
+    target_branch: Mapped["RequirementBranchModel"] = relationship(foreign_keys=[target_branch_id])
+    merge_base: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[merge_base_commit_id])
+    source_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[source_head_commit_id])
+    target_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[target_head_commit_id])
+    author: Mapped["UserModel | None"] = relationship(foreign_keys=[author_user_id])
+    merged_commit: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[merged_commit_id])
+    closed_by: Mapped["UserModel | None"] = relationship(foreign_keys=[closed_by_user_id])
+    reviews: Mapped[list["MergeReviewModel"]] = relationship(
+        back_populates="merge_request",
+        cascade="all, delete-orphan",
+    )
+    comments: Mapped[list["MergeCommentModel"]] = relationship(
+        back_populates="merge_request",
+        cascade="all, delete-orphan",
+    )
+
+    def _validate_mr(self) -> None:
+        if self.source_branch_id == self.target_branch_id:
+            raise ValueError("Merge Request source and target branches must be different")
+
+
+@event.listens_for(MergeRequestModel, "before_insert")
+@event.listens_for(MergeRequestModel, "before_update")
+def validate_merge_request_branches(mapper, connection, target: MergeRequestModel) -> None:
+    target._validate_mr()
+
+
+class MergeReviewModel(TimestampMixin, Base):
+    """审批记录：approve / request changes / comment only。
+
+    审批人不能是 MR 作者；每次 source 新提交或 target 推进后标记 stale。
+    """
+    __tablename__ = "merge_reviews"
+    __table_args__ = (
+        UniqueConstraint(
+            "merge_request_id", "reviewer_user_id",
+            name="uq_merge_review_reviewer",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    merge_request_id: Mapped[int] = mapped_column(
+        ForeignKey("merge_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reviewer_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    decision: Mapped[str] = mapped_column(
+        String(30),
+        default="approved",
+        nullable=False,
+    )  # "approved" | "changes_requested"
+    comment: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="active",
+        nullable=False,
+    )  # "active" | "stale"
+    stale_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    stale_source_head_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    stale_target_head_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    merge_request: Mapped["MergeRequestModel"] = relationship(back_populates="reviews")
+    reviewer: Mapped["UserModel | None"] = relationship(foreign_keys=[reviewer_user_id])
+    stale_source_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[stale_source_head_id])
+    stale_target_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[stale_target_head_id])
+
+
+class MergeCommentModel(TimestampMixin, Base):
+    """行内评论，锚定到 entity_uuid、字段路径或关系键。
+
+    来源新提交后标记 expired 但不删除历史评论。
+    """
+    __tablename__ = "merge_comments"
+    __table_args__ = ()
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    merge_request_id: Mapped[int] = mapped_column(
+        ForeignKey("merge_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    entity_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    field_path: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    relation_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="active",
+        nullable=False,
+    )
+    effective_source_head_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    expired_by_source_head_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requirement_commits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    merge_request: Mapped["MergeRequestModel"] = relationship(back_populates="comments")
+    author: Mapped["UserModel | None"] = relationship(foreign_keys=[author_user_id])
 
 @event.listens_for(ProjectModel, 'after_insert')
 def auto_create_project_owner_member(mapper, connection, target):

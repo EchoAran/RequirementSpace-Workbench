@@ -9,13 +9,16 @@ async def load_existing_scope(
     session,
     project_id: int,
     feature_id: int,
+    workspace_id: int | None = None,
 ):
-    feature_result = await session.execute(
-        select(FeatureModel).where(
-            FeatureModel.project_id == project_id,
-            FeatureModel.id == feature_id,
-        )
+    # 显式 workspace 过滤：功能必须属于目标分支工作区，跨工作区引用应被拒绝。
+    feature_stmt = select(FeatureModel).where(
+        FeatureModel.project_id == project_id,
+        FeatureModel.id == feature_id,
     )
+    if workspace_id is not None:
+        feature_stmt = feature_stmt.where(FeatureModel.workspace_id == workspace_id)
+    feature_result = await session.execute(feature_stmt)
     if feature_result.scalar_one_or_none() is None:
         raise ValueError("feature_not_found")
     scope_result = await session.execute(
@@ -52,11 +55,13 @@ def upsert_scope(
     scope,
     request,
     confirmation_status: str,
+    workspace_id: int | None = None,
 ):
     normalized_status = normalize_scope_status(request.status)
     if scope is None:
         scope = ScopeModel(
             feature_id=feature_id,
+            workspace_id=workspace_id,
             status=normalized_status,
             reason=request.reason,
             positive_summary=request.positive_summary,

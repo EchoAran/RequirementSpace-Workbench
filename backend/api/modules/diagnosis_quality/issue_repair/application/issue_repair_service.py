@@ -159,6 +159,9 @@ class IssueRepairService:
         target: dict | None,
         metadata: dict,
         session: AsyncSession,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """Main resolve entry point.
 
@@ -166,7 +169,7 @@ class IssueRepairService:
         """
         await self._ensure_project_exists(project_id, session)
         resolved_stage = self._resolve_stage(stage, issue_code)
-        current_issues = await self._detect_stage_issues(project_id, resolved_stage, session)
+        current_issues = await self._detect_stage_issues(project_id, resolved_stage, session, workspace_id=workspace_id)
         issue_target = self._build_target(target)
         issue_target_dict = self._target_to_dict(target)
         self._validate_target_for_code(issue_code, target)
@@ -202,6 +205,9 @@ class IssueRepairService:
                     ai_solver=ai_solver,
                     metadata=metadata or {},
                     session=session,
+                    workspace_id=workspace_id,
+                    branch_name=branch_name,
+                    head_commit_id=head_commit_id,
                 )
 
         return await self._resolve_with_registry(
@@ -333,6 +339,9 @@ class IssueRepairService:
         ai_solver,
         metadata: dict,
         session: AsyncSession,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         """AI solver path: call solver, validate, create draft, return response."""
         result = await self._call_ai_solver(
@@ -343,6 +352,7 @@ class IssueRepairService:
             stage,
             ai_solver,
             session,
+            workspace_id=workspace_id,
         )
         if result.fallback_to_registry:
             return await self._resolve_ai_registry_fallback(
@@ -398,6 +408,9 @@ class IssueRepairService:
             context_hash,
             candidate,
             session,
+            workspace_id=workspace_id,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
         )
 
     def _build_no_ai_candidate_response(
@@ -458,6 +471,7 @@ class IssueRepairService:
         stage: str,
         ai_solver,
         session: AsyncSession,
+        workspace_id: int | None = None,
     ) -> RepairResult:
         try:
             return await ai_solver.solve(
@@ -465,6 +479,7 @@ class IssueRepairService:
                 issue_code=issue_code,
                 target=target,
                 session=session,
+                workspace_id=workspace_id,
             )
         except Exception as exc:
             log_event(
@@ -559,6 +574,9 @@ class IssueRepairService:
         context_hash: str,
         candidate,
         session: AsyncSession,
+        workspace_id: int | None = None,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
     ) -> dict:
         from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_draft_service import (
             IssueRepairDraftService,
@@ -579,6 +597,8 @@ class IssueRepairService:
             issue_fingerprint=issue_fp,
             context_hash=context_hash,
             session=session,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
         )
         self._log_draft_created(
             project_id,
@@ -700,11 +720,12 @@ class IssueRepairService:
         project_id: int,
         stage: str,
         session: AsyncSession,
+        workspace_id: int | None = None,
     ) -> list[Issue]:
         detector = _STAGE_DETECTORS.get(stage)
         if detector is None:
             return []
-        return await detector.detect(project_id=project_id, session=session)
+        return await detector.detect(project_id=project_id, session=session, workspace_id=workspace_id)
 
     @staticmethod
     def _build_target(target: dict | None) -> IssueTarget | None:

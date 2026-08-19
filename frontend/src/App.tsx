@@ -13,12 +13,14 @@ import { Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { resolveLocalizedMessage, taskStatusTitleKey } from './core/localizedMessage';
 import { getStageCheckMessage } from './core/stageProgressText';
+import { BranchSwitchConfirmDialog } from './components/version-control/BranchSwitchConfirmDialog';
 
 const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })));
 const WhatToDo = lazy(() => import('./pages/WhatToDo').then((module) => ({ default: module.WhatToDo })));
 const HowItWorks = lazy(() => import('./pages/HowItWorks').then((module) => ({ default: module.HowItWorks })));
 const ScopeAndDelivery = lazy(() => import('./pages/ScopeAndDelivery').then((module) => ({ default: module.ScopeAndDelivery })));
 const Preview = lazy(() => import('./pages/Preview').then((module) => ({ default: module.Preview })));
+const Repository = lazy(() => import('./pages/Repository').then((module) => ({ default: module.Repository })));
 const ProjectOnboarding = lazy(() => import('./pages/ProjectOnboarding').then((module) => ({ default: module.ProjectOnboarding })));
 const Home = lazy(() => import('./pages/Home').then((module) => ({ default: module.Home })));
 const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
@@ -76,18 +78,44 @@ function ProjectRouteBootstrap() {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const openWorkspace = useWorkspaceStore((s) => s.openWorkspace);
+  const switchBranch = useWorkspaceStore((s) => s.switchBranch);
+  const branchRef = useWorkspaceStore((s) => s.branchRef);
   const ir = useWorkspaceStore((s) => s.ir);
   const isLoading = useWorkspaceStore((s) => s.isLoading);
   const error = useWorkspaceStore((s) => s.error);
   const setActivePage = useWorkspaceStore((s) => s.setActivePage);
   const workspacePage = extractWorkspacePage(location.pathname);
+  const urlBranch = new URLSearchParams(location.search).get('branch') || 'main';
 
+  // 初始加载：项目尚未打开时以 URL 分支打开工作区。
   useEffect(() => {
     if (!projectId) return;
     if (ir?.projectId === projectId) return;
-    void openWorkspace(projectId);
+    void openWorkspace(projectId, urlBranch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, ir?.projectId, openWorkspace]);
+
+  // 分支 URL 同步：地址栏 branch 变化时切换分支，保证刷新/复制链接仍打开同一分支。
+  // 浏览器前进/后退或手工改 URL 也走这里：若存在未保存编辑，先回退 URL 并弹统一确认。
+  const editDirty = useWorkspaceStore((s) => s.editDirty);
+  const pendingBranchRef = useWorkspaceStore((s) => s.pendingBranchRef);
+  const setPendingBranchRef = useWorkspaceStore((s) => s.setPendingBranchRef);
+  useEffect(() => {
+    if (ir?.projectId !== projectId) return;
+    if (urlBranch === branchRef) return;
+    if (editDirty && pendingBranchRef !== urlBranch) {
+      // 未保存编辑 + 未经确认的 URL 变化：回退到当前分支并等待确认。
+      setPendingBranchRef(urlBranch);
+      navigate(`?branch=${encodeURIComponent(branchRef)}`, { replace: true });
+      return;
+    }
+    if (pendingBranchRef === urlBranch) {
+      setPendingBranchRef(null);
+    }
+    void switchBranch(urlBranch);
+  }, [urlBranch, branchRef, pendingBranchRef, editDirty, projectId, ir?.projectId, switchBranch, setPendingBranchRef, navigate]);
 
   useEffect(() => {
     if (ir?.projectId !== projectId) return;
@@ -428,6 +456,7 @@ export function App() {
             }
           />
           <Route path="preview" element={<LazyRoute><Preview /></LazyRoute>} />
+          <Route path="repo" element={<LazyRoute><Repository /></LazyRoute>} />
           <Route path="knowledge" element={<LegacyProjectKnowledgeRedirect />} />
           <Route path="configuration" element={<LazyRoute><ProjectConfiguration /></LazyRoute>} />
         </Route>
@@ -446,6 +475,7 @@ export function App() {
       <GateCheckModal />
       <GlobalTaskStatus />
       <GlobalToast />
+      <BranchSwitchConfirmDialog />
     </BrowserRouter>
   );
 }

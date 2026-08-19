@@ -28,6 +28,10 @@ class _ProjectDetailSession:
     async def get(self, _model, _identifier):
         return self.perception_job
 
+    async def run_sync(self, fn, *args, **kwargs):
+        # get_project_detail 通过 run_sync 解析分支上下文；测试中直接同步执行回调。
+        return fn(self)
+
 
 def _node(timestamp, **values):
     return SimpleNamespace(
@@ -147,6 +151,10 @@ async def test_get_project_detail_preserves_nested_mapping_and_status():
         "backend.api.modules.diagnosis_quality.public."
         "FindingService.list_findings",
         new=AsyncMock(return_value=[gate]),
+    ), patch(
+        # get_project_detail 会按分支解析工作区；此测试只验证项目详情构建，因此跳过分支解析。
+        "backend.api.modules.version_control.public.resolve_branch_context",
+        return_value=(None, None, {}),
     ):
         detail = await service.get_project_detail(
             project.id,

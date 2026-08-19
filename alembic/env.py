@@ -39,9 +39,10 @@ if db_url:
     config.set_main_option("sqlalchemy.url", sync_url)
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# 禁用 disable_existing_loggers：默认 True 会把未在 alembic.ini 配置的 logger 置为 disabled，
+# 导致同进程内后续测试的 caplog 捕获失效（例如审计日志测试在迁移测试后组合运行失败）。
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -97,9 +98,32 @@ def run_migrations_online() -> None:
         connect_args=connect_args,
     )
 
+    from sqlalchemy import event
+
+    @event.listens_for(connectable, "connect")
+    def set_sqlite_autocommit(dbapi_connection, connection_record):
+        if hasattr(dbapi_connection, "isolation_level"):
+            dbapi_connection.isolation_level = None
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=OFF")
+            cursor.close()
+
+    @event.listens_for(connectable, "begin")
+    def set_sqlite_begin(conn):
+        if conn.dialect.name == "sqlite":
+            conn.exec_driver_sql("BEGIN")
+
     with connectable.connect() as connection:
+        raw_conn = connection.connection
+        if hasattr(raw_conn, "driver_connection"):
+            raw_conn = raw_conn.driver_connection
+        if hasattr(raw_conn, "isolation_level"):
+            raw_conn.isolation_level = None
+
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            transactional_ddl=True,
         )
 
         with context.begin_transaction():

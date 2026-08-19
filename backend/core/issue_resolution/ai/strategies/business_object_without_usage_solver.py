@@ -44,6 +44,7 @@ class BusinessObjectWithoutUsageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         target_id = None
         if target:
@@ -53,9 +54,9 @@ class BusinessObjectWithoutUsageSolver(BaseIssueAISolver):
         bo = None
         bo_attrs = []
         if target_id:
-            res = await session.execute(
+            res = await session.execute(self._scope(
                 select(BusinessObjectModel).where(BusinessObjectModel.id == target_id, BusinessObjectModel.project_id == project_id)
-            )
+            , BusinessObjectModel, workspace_id))
             bo = res.scalar_one_or_none()
 
             if bo:
@@ -72,9 +73,9 @@ class BusinessObjectWithoutUsageSolver(BaseIssueAISolver):
         project = project_res.scalar_one_or_none()
 
         # Load all flows and steps
-        flows_res = await session.execute(
+        flows_res = await session.execute(self._scope(
             select(FlowModel).where(FlowModel.project_id == project_id)
-        )
+        , FlowModel, workspace_id))
         flows = flows_res.scalars().all()
 
         flows_summary = []

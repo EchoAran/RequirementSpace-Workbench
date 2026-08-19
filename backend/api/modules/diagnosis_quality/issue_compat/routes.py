@@ -1,7 +1,8 @@
 from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel
-from fastapi import APIRouter, Depends, HTTPException
+from backend.database.model import ProjectModel, UserModel
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from backend.api.dependencies.auth import get_current_user
 
 from backend.api.modules.diagnosis_quality.issue_compat.schemas import (
     IssueResolutionResponse,
@@ -10,6 +11,7 @@ from backend.api.modules.diagnosis_quality.issue_compat.schemas import (
 from backend.api.modules.diagnosis_quality.issue_compat.application.issue_service import IssueService
 from backend.database.database import get_session
 from backend.api.dependencies.llm import get_llm_context
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 
 router = APIRouter(
@@ -65,12 +67,31 @@ ISSUE_ERRORS = {
 async def resolve_project_issue(
     project_id: str,
     request: IssueResolveRequest,
+    branch: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
     llm_ctx=Depends(get_llm_context),
- owned_project: ProjectModel = Depends(require_owned_project)):
+    user: UserModel = Depends(get_current_user),
+    commit_guard: None = Depends(reject_commit_write),
+):
+    from backend.api.dependencies.ownership import require_project_member
+    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
+    project = await require_project_member(project_id, user, session)
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    )
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    ws_id = ws_obj.id if ws_obj else None
+    branch_name = branch_obj.name if branch_obj else None
+    head_commit_id = branch_obj.head_commit.public_id if (branch_obj and branch_obj.head_commit) else "head"
+
     try:
         res = await issue_service.resolve_issue(
-            project_id=owned_project.id,
+            project_id=project.id,
             issue_id=request.issue_id,
             issue_code=request.issue_code,
             stage=request.stage,
@@ -81,21 +102,24 @@ async def resolve_project_issue(
             ),
             metadata=request.metadata,
             session=session,
+            workspace_id=ws_id,
+            branch_name=branch_name,
+            head_commit_id=head_commit_id,
         )
-        res["project_id"] = owned_project.public_id
+        res["project_id"] = project.public_id
         if "action" in res and isinstance(res["action"], dict):
             act = res["action"]
             if "route" in act and isinstance(act["route"], str):
-                act["route"] = act["route"].replace(f"/projects/{owned_project.id}", f"/projects/{owned_project.public_id}")
+                act["route"] = act["route"].replace(f"/projects/{project.id}", f"/projects/{project.public_id}")
             if "payload" in act and isinstance(act["payload"], dict):
-                if act["payload"].get("project_id") == owned_project.id:
-                    act["payload"]["project_id"] = owned_project.public_id
+                if act["payload"].get("project_id") == project.id:
+                    act["payload"]["project_id"] = project.public_id
                 if "draft" in act["payload"] and isinstance(act["payload"]["draft"], dict):
-                    if act["payload"]["draft"].get("project_id") == owned_project.id:
-                        act["payload"]["draft"]["project_id"] = owned_project.public_id
+                    if act["payload"]["draft"].get("project_id") == project.id:
+                        act["payload"]["draft"]["project_id"] = project.public_id
         if "draft" in res and isinstance(res["draft"], dict):
-            if res["draft"].get("project_id") == owned_project.id:
-                res["draft"]["project_id"] = owned_project.public_id
+            if res["draft"].get("project_id") == project.id:
+                res["draft"]["project_id"] = project.public_id
         return res
     except ValueError as error:
         if str(error) == "project_not_found":

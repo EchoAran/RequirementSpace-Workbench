@@ -17,6 +17,7 @@ from backend.services.binary_conversion_service import (
 
 def _build_actor(actor) -> ActorDetail:
     return ActorDetail(
+        logical_uuid=getattr(actor, "logical_uuid", ""),
         actor_id=actor.id,
         actor_name=actor.name,
         actor_description=actor.description,
@@ -29,6 +30,7 @@ def _build_scope(scope) -> ScopeDetail | None:
     if not scope:
         return None
     return ScopeDetail(
+        logical_uuid=getattr(scope, "logical_uuid", ""),
         scope_id=scope.id,
         scope_status=scope.status,
         reason=scope.reason,
@@ -59,6 +61,7 @@ def _build_acceptance_criterion(
     criterion,
 ) -> AcceptanceCriterionDetail:
     return AcceptanceCriterionDetail(
+        logical_uuid=getattr(criterion, "logical_uuid", ""),
         criterion_id=criterion.id,
         criterion_content=criterion.content,
         confirmation_status=criterion.confirmation_status,
@@ -68,6 +71,7 @@ def _build_acceptance_criterion(
 
 def _build_scenario(scenario) -> ScenarioDetail:
     return ScenarioDetail(
+        logical_uuid=getattr(scenario, "logical_uuid", ""),
         scenario_id=scenario.id,
         scenario_name=scenario.name,
         scenario_content=scenario.content,
@@ -84,6 +88,7 @@ def _build_scenario(scenario) -> ScenarioDetail:
 
 def _build_feature(feature) -> FeatureDetail:
     return FeatureDetail(
+        logical_uuid=getattr(feature, "logical_uuid", ""),
         feature_id=feature.id,
         feature_name=feature.name,
         feature_description=feature.description,
@@ -111,6 +116,7 @@ def _build_business_object_attribute(
     attribute,
 ) -> BusinessObjectAttributeDetail:
     return BusinessObjectAttributeDetail(
+        logical_uuid=getattr(attribute, "logical_uuid", ""),
         business_object_attribute_id=attribute.id,
         business_object_attribute_name=attribute.name,
         business_object_attribute_description=attribute.description,
@@ -123,6 +129,7 @@ def _build_business_object_attribute(
 
 def _build_business_object(business_object) -> BusinessObjectDetail:
     return BusinessObjectDetail(
+        logical_uuid=getattr(business_object, "logical_uuid", ""),
         business_object_id=business_object.id,
         business_object_name=business_object.name,
         business_object_description=business_object.description,
@@ -137,6 +144,7 @@ def _build_business_object(business_object) -> BusinessObjectDetail:
 
 def _build_flow_step(step) -> FlowStepDetail:
     return FlowStepDetail(
+        logical_uuid=getattr(step, "logical_uuid", ""),
         step_id=step.id,
         step_name=step.name,
         step_description=step.description,
@@ -159,6 +167,7 @@ def _build_flow_step(step) -> FlowStepDetail:
 
 def _build_flow(flow) -> FlowDetail:
     return FlowDetail(
+        logical_uuid=getattr(flow, "logical_uuid", ""),
         flow_id=flow.id,
         flow_name=flow.name,
         flow_description=flow.description,

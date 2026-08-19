@@ -43,8 +43,11 @@ class AuditService:
             payload=payload or {},
         )
         try:
+            # session.add 在同步与异步 Session 中均为同步注册；随后 flush 落库（异步需 await）。
             session.add(log_entry)
-            await session.flush()
+            flush_res = session.flush()
+            if hasattr(flush_res, "__await__"):
+                await flush_res
         except Exception as exc:
             log_event(
                 logger,

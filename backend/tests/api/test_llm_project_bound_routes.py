@@ -26,6 +26,19 @@ class _Session:
     async def execute(self, _statement):
         return _ScalarResult("en-US")
 
+    async def run_sync(self, fn, *args, **kwargs):
+        # 阶段 2 起路由通过 run_sync 解析分支上下文；测试中以同步回调执行。
+        return fn(self, *args, **kwargs)
+
+
+def _fake_resolve_branch_context(db, project_id, branch_ref=None, user_id=None):
+    # 测试只验证 content locale 解析，跳过真实分支解析：返回可写权限与空工作区。
+    return (
+        None,
+        None,
+        {"can_write": True, "can_delete": False, "can_rename": False, "is_protected": False},
+    )
+
 
 PROJECT_BOUND_ROUTES = [
     (feature_routes, "create_feature_generation_draft", "feature_generation_service", "create_draft"),
@@ -83,6 +96,18 @@ async def test_body_project_routes_resolve_project_content_locale(
         "require_owned_project",
         AsyncMock(return_value=project),
     )
+    # 阶段 2 起生成路由改为 require_project_member 并在 handler 内解析分支上下文；
+    # 这些单元测试直接调用 handler，因此打桩相关依赖。分支解析既可能经模块属性
+    # （from ...public import），也可能在 handler 内内联导入 branch_service。
+    if hasattr(route_module, "require_project_member"):
+        monkeypatch.setattr(route_module, "require_project_member", AsyncMock(return_value=project))
+    if hasattr(route_module, "resolve_branch_context"):
+        monkeypatch.setattr(route_module, "resolve_branch_context", _fake_resolve_branch_context)
+    from backend.api.modules.version_control.application import branch_service as vc_branch_service
+    monkeypatch.setattr(vc_branch_service, "resolve_branch_context", _fake_resolve_branch_context)
+    # 感知等路由在 handler 内从 version_control.public 内联导入分支解析。
+    from backend.api.modules.version_control import public as vc_public
+    monkeypatch.setattr(vc_public, "resolve_branch_context", _fake_resolve_branch_context)
 
     captured = {}
 
@@ -95,7 +120,13 @@ async def test_body_project_routes_resolve_project_content_locale(
     service = getattr(route_module, service_name)
     monkeypatch.setattr(service, method_name, capture_context)
 
-    await getattr(route_module, route_name)(request, user, session)
+    import inspect
+    handler = getattr(route_module, route_name)
+    if "branch" in inspect.signature(handler).parameters:
+        # 阶段 2 起部分生成路由在 request 后插入了 branch 查询参数。
+        await handler(request, branch=None, user=user, session=session)
+    else:
+        await handler(request, user=user, session=session)
 
     assert captured == {"locale": "en-US", "source": "project"}
 
@@ -197,7 +228,7 @@ async def test_ai_add_session_routes_resolve_session_project_content_locale(
 @pytest.mark.asyncio
 async def test_markdown_export_resolves_project_content_locale(monkeypatch):
     user = SimpleNamespace(id=7, preferred_locale="zh-CN")
-    project = SimpleNamespace(id=42)
+    project = SimpleNamespace(id=42, name="Test Project")
     session = _Session()
     monkeypatch.setattr(
         llm_dependency.llm_config_service,
@@ -224,13 +255,18 @@ async def test_markdown_export_resolves_project_content_locale(monkeypatch):
         "export_project_markdown",
         capture_context,
     )
+    # 阶段 2 起导出路由在 handler 内解析分支上下文；测试跳过真实分支解析。
+    from backend.api.modules.version_control.application import branch_service as vc_branch_service
+    monkeypatch.setattr(vc_branch_service, "resolve_branch_context", _fake_resolve_branch_context)
 
     result = await project_routes.export_project_markdown(
         "project-public-id",
-        project,
+        None,  # branch
         user,
         session,
+        project,
     )
 
-    assert result == "markdown"
+    # 阶段 2 起导出接口返回 PlainTextResponse；校验响应体与 content locale 解析结果。
+    assert result.body.decode() == "markdown"
     assert captured == {"locale": "en-US", "source": "project"}

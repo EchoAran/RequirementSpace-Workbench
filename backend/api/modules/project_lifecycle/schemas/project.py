@@ -55,6 +55,7 @@ class PerceptionSlotDetail(CamelModel):
 
 class ActorDetail(CamelModel):
     kind: str = "actor"
+    logical_uuid: str | None = None
     actor_id: int
     actor_name: str
     actor_description: str
@@ -63,6 +64,7 @@ class ActorDetail(CamelModel):
 
 class ScopeDetail(CamelModel):
     kind: str = "scope"
+    logical_uuid: str | None = None
     scope_id: int
     scope_status: str
     reason: str
@@ -77,6 +79,7 @@ class ScopeDetail(CamelModel):
 
 class AcceptanceCriterionDetail(CamelModel):
     kind: str = "acceptance_criterion"
+    logical_uuid: str | None = None
     criterion_id: int
     criterion_content: str
     confirmation_status: str | None = None
@@ -84,6 +87,7 @@ class AcceptanceCriterionDetail(CamelModel):
 
 class ScenarioDetail(CamelModel):
     kind: str = "scenario"
+    logical_uuid: str | None = None
     scenario_id: int
     scenario_name: str
     scenario_content: str
@@ -95,6 +99,7 @@ class ScenarioDetail(CamelModel):
 
 class FeatureDetail(CamelModel):
     kind: str = "feature"
+    logical_uuid: str | None = None
     feature_id: int
     feature_name: str
     feature_description: str
@@ -108,6 +113,7 @@ class FeatureDetail(CamelModel):
 
 class BusinessObjectAttributeDetail(CamelModel):
     kind: str = "business_object_attribute"
+    logical_uuid: str | None = None
     business_object_attribute_id: int
     business_object_attribute_name: str
     business_object_attribute_description: str
@@ -118,6 +124,7 @@ class BusinessObjectAttributeDetail(CamelModel):
 
 class BusinessObjectDetail(CamelModel):
     kind: str = "business_object"
+    logical_uuid: str | None = None
     business_object_id: int
     business_object_name: str
     business_object_description: str
@@ -127,6 +134,7 @@ class BusinessObjectDetail(CamelModel):
 
 class FlowStepDetail(CamelModel):
     kind: str = "flow_step"
+    logical_uuid: str | None = None
     step_id: int
     step_name: str
     step_description: str
@@ -141,6 +149,7 @@ class FlowStepDetail(CamelModel):
 
 class FlowDetail(CamelModel):
     kind: str = "flow"
+    logical_uuid: str | None = None
     flow_id: int
     flow_name: str
     flow_description: str

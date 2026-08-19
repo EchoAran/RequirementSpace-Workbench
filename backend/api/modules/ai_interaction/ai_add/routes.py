@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
@@ -17,6 +17,7 @@ from backend.api.modules.ai_interaction.ai_add.schemas import (
 from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 from backend.database.database import get_session
 from backend.api.dependencies.llm import llm_context_manager
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 router = APIRouter(
     prefix="/api/ai_add_sessions",
@@ -78,6 +79,7 @@ async def create_ai_add_session(
     request: AIAddSessionCreateRequest,
     user: UserModel = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """Create a new AI add session for a given target_type (actor, feature_leaf, etc.)."""
     try:
@@ -143,6 +145,7 @@ async def send_ai_add_message(
     user: UserModel = Depends(get_current_user),
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """Send a user message in an AI add session and get the assistant's reply."""
     try:
@@ -171,6 +174,7 @@ async def generate_ai_add_draft(
     user: UserModel = Depends(get_current_user),
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """Generate a draft from the interview summary (when session is ready)."""
     try:
@@ -205,16 +209,31 @@ draft_router = APIRouter(
 
 @draft_router.post("/{draft_id}/confirm", response_model=AIAddConfirmDraftResponse)
 async def confirm_ai_add_draft(
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     db_session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """Confirm and persist a generated draft."""
     try:
+        from backend.api.modules.version_control.public import resolve_branch_context
+        branch_obj, ws_obj, perms = await db_session.run_sync(
+            lambda s: resolve_branch_context(s, draft.project_id, branch, user.id)
+        )
+        if not perms.get("can_write", True):
+            raise HTTPException(
+                status_code=403,
+                detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+            )
+
+        ws_id = ws_obj.id if ws_obj else None
         service = _get_service()
         return await service.confirm_draft(
             draft_id=draft.draft_id,
             owner_user_id=draft.owner_user_id,
             db_session=db_session,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         error_str = str(error)
@@ -229,6 +248,7 @@ async def confirm_ai_add_draft(
 async def discard_ai_add_draft(
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     db_session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """Discard a draft without persisting it."""
     try:

@@ -49,6 +49,7 @@ class FindingService:
         session,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> list[Finding]:
         stage_clean, view_clean = normalize_finding_filters(
             stage,
@@ -62,7 +63,11 @@ class FindingService:
                 stage_clean,
                 view_clean,
                 session,
+                workspace_id=workspace_id,
             )
+            overrides = await self._load_overrides(project_id, session, workspace_id=workspace_id)
+            if overrides:
+                findings = [f for f in findings if f.findingId not in overrides]
 
         # 2. Process views
         if view_clean == "issues":
@@ -115,6 +120,7 @@ class FindingService:
         stage: str,
         view: str,
         session,
+        workspace_id: int | None = None,
     ) -> list[Finding]:
         findings: list[Finding] = []
         for current_stage in policy_stages(stage, self._policies):
@@ -131,10 +137,17 @@ class FindingService:
                 view=view,
             )
             try:
-                stage_findings = await policy.get_findings(
-                    project_id,
-                    session,
-                )
+                if hasattr(policy, "get_findings") and "workspace_id" in policy.get_findings.__code__.co_varnames:
+                    stage_findings = await policy.get_findings(
+                        project_id,
+                        session,
+                        workspace_id=workspace_id,
+                    )
+                else:
+                    stage_findings = await policy.get_findings(
+                        project_id,
+                        session,
+                    )
                 findings.extend(stage_findings)
             except Exception as error:
                 log_event(
@@ -180,6 +193,7 @@ class FindingService:
         finding_id: str,
         status: str,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         from backend.database.model import FindingOverrideModel, ProjectModel
 
@@ -188,9 +202,10 @@ class FindingService:
             raise ValueError("invalid_finding_status")
 
         # Verify project exists
-        project_result = await session.execute(
-            select(ProjectModel.id).where(ProjectModel.id == project_id)
-        )
+        stmt_p = select(ProjectModel.id).where(ProjectModel.id == project_id)
+        project_result = session.execute(stmt_p)
+        if hasattr(project_result, "__await__"):
+            project_result = await project_result
         if project_result.scalar_one_or_none() is None:
             raise ValueError("project_not_found")
 
@@ -214,12 +229,18 @@ class FindingService:
                 raise ValueError("invalid_finding_status")
 
         # Query existing override
-        existing_result = await session.execute(
-            select(FindingOverrideModel).where(
-                FindingOverrideModel.project_id == project_id,
-                FindingOverrideModel.finding_id == finding_id,
-            )
+        stmt_e = select(FindingOverrideModel).where(
+            FindingOverrideModel.project_id == project_id,
+            FindingOverrideModel.finding_id == finding_id,
         )
+        if workspace_id is not None:
+            stmt_e = stmt_e.where(FindingOverrideModel.workspace_id == workspace_id)
+        else:
+            stmt_e = stmt_e.where(FindingOverrideModel.workspace_id.is_(None))
+
+        existing_result = session.execute(stmt_e)
+        if hasattr(existing_result, "__await__"):
+            existing_result = await existing_result
         existing = existing_result.scalar_one_or_none()
 
         if status_clean == "open":
@@ -232,6 +253,7 @@ class FindingService:
                 session.add(
                     FindingOverrideModel(
                         project_id=project_id,
+                        workspace_id=workspace_id,
                         finding_id=finding_id,
                         finding_type=finding_type_val,
                         status=status_clean,
@@ -243,7 +265,9 @@ class FindingService:
                 existing.status = status_clean
                 existing.finding_type = finding_type_val
 
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         return {
             "project_id": project_id,
             "finding_id": finding_id,
@@ -256,13 +280,19 @@ class FindingService:
         finding_id: str,
         stage_val: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> str:
-        """通过重新检测确定 finding 的真实类型。
+        """通过 finding_id 前缀与重新检测确定 finding 的真实类型。
 
-        优先通过 policy 重新检测结构 finding。
-        再检查 suggestion finding。
-        仍找不到时返回 "unknown"，此时调用者只允许 `open` 状态写回。
+        常见 stage 级 issue/quality_hint 直接归类，避免为每次状态写回都全量重新检测；
+        但聚合 gate（{stage}:{CODE}:aggregate）不是 issue，必须走重新检测判定真实类型，
+        否则 gate 会被错误地允许 ignored/resolved。
         """
+        if stage_val in {"what", "how", "scope"}:
+            id_parts = (finding_id or "").split(":")
+            if not (len(id_parts) >= 3 and id_parts[-1] == "aggregate"):
+                return "issue"
+
         # Phase 1: structural findings (policies bypass overrides)
         findings = []
         stages_to_run = []
@@ -274,11 +304,13 @@ class FindingService:
         for s in stages_to_run:
             policy = self._policies[s]
             try:
-                s_findings = await policy.get_findings(project_id, session)
+                if hasattr(policy, "get_findings") and "workspace_id" in policy.get_findings.__code__.co_varnames:
+                    s_findings = await policy.get_findings(project_id, session, workspace_id=workspace_id)
+                else:
+                    s_findings = await policy.get_findings(project_id, session)
                 findings.extend(s_findings)
             except Exception as e:
-                logger.exception(f"Error re-detecting findings for stage {s}: {e}")
-                raise
+                logger.warning(f"Error re-detecting findings for stage {s}: {e}")
 
         match = next((f for f in findings if f.findingId == finding_id), None)
         if match:
@@ -292,13 +324,13 @@ class FindingService:
                 view="next_action",
                 action=None,
                 session=session,
+                workspace_id=workspace_id,
             )
             match = next((f for f in suggestions if f.findingId == finding_id), None)
             if match:
                 return match.type.value
         except Exception as e:
-            logger.exception(f"Error re-detecting suggestions: {e}")
-            raise
+            logger.warning(f"Error re-detecting suggestions: {e}")
 
         return "unknown"
 
@@ -320,12 +352,18 @@ class FindingService:
                 "enabled": cap.enabled,
             }
 
-    async def _load_overrides(self, project_id: int, session) -> set[str]:
+    async def _load_overrides(self, project_id: int, session, workspace_id: int | None = None) -> set[str]:
         from backend.database.model import FindingOverrideModel
-        result = await session.execute(
-            select(FindingOverrideModel.finding_id).where(
-                FindingOverrideModel.project_id == project_id,
-                FindingOverrideModel.status.in_({"ignored", "resolved"}),
-            )
+        stmt = select(FindingOverrideModel.finding_id).where(
+            FindingOverrideModel.project_id == project_id,
+            FindingOverrideModel.status.in_({"ignored", "resolved"}),
         )
-        return {finding_id for finding_id in result.scalars().all() if finding_id}
+        if workspace_id is not None:
+            stmt = stmt.where(FindingOverrideModel.workspace_id == workspace_id)
+        else:
+            stmt = stmt.where(FindingOverrideModel.workspace_id.is_(None))
+
+        res = session.execute(stmt)
+        if hasattr(res, "__await__"):
+            res = await res
+        return {finding_id for finding_id in res.scalars().all() if finding_id}

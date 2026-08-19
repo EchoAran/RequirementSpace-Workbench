@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from urllib.parse import quote
@@ -61,6 +61,7 @@ async def list_projects(
 async def get_project_detail(
     project_id: str,
     request: Request,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_project_member),
     session: AsyncSession = Depends(get_session),
@@ -69,6 +70,8 @@ async def get_project_detail(
         detail = await project_service.get_project_detail(
             project_id=owned_project.id,
             session=session,
+            branch_ref=branch,
+            user_id=user.id,
         )
         cache_key = f"project_member:{project_id}:{user.id}"
         cached = getattr(request.state, cache_key, None)
@@ -81,7 +84,10 @@ async def get_project_detail(
                 status_code=404,
                 detail="project_not_found",
             )
-        raise
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
 
 @router.post(
@@ -194,13 +200,32 @@ async def update_project(
 )
 async def export_project_json(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_member),
 ):
+    import re
+    from fastapi.responses import JSONResponse
+    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    )
     try:
-        return await project_service.get_project_detail(
-            project_id=owned_project.id,
+        detail = await project_service.get_project_detail(
+            project_id=project.id,
             session=session,
+            branch_ref=branch_obj.name if branch_obj else None,
+            user_id=user.id,
+        )
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", project.name or "").strip() or "requirement-space"
+        safe_branch = re.sub(r'[\\/*?:"<>|]', "_", branch_obj.name if branch_obj else "main")
+        commit_short = branch_obj.head_commit.public_id[:7] if (branch_obj and branch_obj.head_commit) else "head"
+        filename = f"{safe_name}_{safe_branch}_{commit_short}.json"
+
+        return JSONResponse(
+            content=detail.model_dump(),
+            headers={"Content-Disposition": _spl_attachment_disposition(filename)}
         )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -216,16 +241,33 @@ async def export_project_json(
 )
 async def export_project_markdown(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_member),
 ):
+    import re
+    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    )
     try:
-        async with llm_context_manager(user, session, project_id=owned_project.id):
-            return await project_service.export_project_markdown(
-                project_id=owned_project.id,
+        async with llm_context_manager(user, session, project_id=project.id):
+            md_text = await project_service.export_project_markdown(
+                project_id=project.id,
                 session=session,
+                branch_ref=branch_obj.name if branch_obj else None,
+                user_id=user.id,
             )
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", project.name or "").strip() or "requirement-space"
+        safe_branch = re.sub(r'[\\/*?:"<>|]', "_", branch_obj.name if branch_obj else "main")
+        commit_short = branch_obj.head_commit.public_id[:7] if (branch_obj and branch_obj.head_commit) else "head"
+        filename = f"{safe_name}_{safe_branch}_{commit_short}.md"
+
+        return PlainTextResponse(
+            content=md_text,
+            headers={"Content-Disposition": _spl_attachment_disposition(filename)}
+        )
     except ValueError as error:
         if str(error) == "project_not_found":
             raise HTTPException(
@@ -240,24 +282,31 @@ async def export_project_markdown(
 )
 async def export_project_spl_syntax(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_member),
 ):
     import re
+    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    )
     try:
         spl_text = await project_service.export_project_spl_syntax(
-            project_id=owned_project.id,
+            project_id=project.id,
             session=session,
             content_locale=resolve_effective_locale(
-                owned_project.content_locale,
+                project.content_locale,
                 user.preferred_locale,
             )[0],
+            branch_ref=branch_obj.name if branch_obj else None,
+            user_id=user.id,
         )
-        safe_name = re.sub(r'[\\/*?:"<>|]', "", owned_project.name or "").strip()
-        if not safe_name:
-            safe_name = "requirement-space"
-        filename = f"{safe_name}-spl-syntax.spl"
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", project.name or "").strip() or "requirement-space"
+        safe_branch = re.sub(r'[\\/*?:"<>|]', "_", branch_obj.name if branch_obj else "main")
+        commit_short = branch_obj.head_commit.public_id[:7] if (branch_obj and branch_obj.head_commit) else "head"
+        filename = f"{safe_name}_{safe_branch}_{commit_short}-syntax.spl"
         return PlainTextResponse(
             content=spl_text,
             headers={
@@ -280,26 +329,34 @@ async def export_project_spl_syntax(
 )
 async def export_project_spl_semantic(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_owned_project),
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    project: ProjectModel = Depends(require_project_member),
 ):
     import os
     import re
     if os.getenv("SPL_SEMANTIC_EXPORT_ENABLED", "true").lower() == "false":
         raise HTTPException(status_code=400, detail="spl_export_semantic_disabled")
 
+    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    )
+
     try:
-        async with llm_context_manager(user, session, project_id=owned_project.id) as llm_ctx:
+        async with llm_context_manager(user, session, project_id=project.id) as llm_ctx:
             spl_text = await project_service.export_project_spl_semantic(
-                project_id=owned_project.id,
+                project_id=project.id,
                 session=session,
                 llm_ctx=llm_ctx,
+                branch_ref=branch_obj.name if branch_obj else None,
+                user_id=user.id,
             )
-        safe_name = re.sub(r'[\\/*?:"<>|]', "", owned_project.name or "").strip()
-        if not safe_name:
-            safe_name = "requirement-space"
-        filename = f"{safe_name}-spl-semantic.spl"
+        safe_name = re.sub(r'[\\/*?:"<>|]', "", project.name or "").strip() or "requirement-space"
+        safe_branch = re.sub(r'[\\/*?:"<>|]', "_", branch_obj.name if branch_obj else "main")
+        commit_short = branch_obj.head_commit.public_id[:7] if (branch_obj and branch_obj.head_commit) else "head"
+        filename = f"{safe_name}_{safe_branch}_{commit_short}-semantic.spl"
         return PlainTextResponse(
             content=spl_text,
             headers={

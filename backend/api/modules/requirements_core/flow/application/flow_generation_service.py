@@ -34,15 +34,28 @@ class FlowGenerationService:
     def __init__(self):
         self._flows_generator = FlowsGenerator()
 
-    async def create_draft(self, project_id: int, owner_user_id: int, session) -> dict:
+    async def create_draft(
+        self,
+        project_id: int,
+        owner_user_id: int,
+        session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
+    ) -> dict:
         draft_id = uuid4().hex
         draft_payload, response_payload = await self._generate_preview(
             project_id=project_id,
             user_feedback=None,
             session=session,
+            workspace_id=workspace_id,
         )
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = branch_name
+        draft_payload["head_commit_id"] = head_commit_id
         response_payload["draft_id"] = draft_id
+        response_payload["branch_name"] = branch_name
+        response_payload["head_commit_id"] = head_commit_id
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.save_draft(
@@ -72,7 +85,11 @@ class FlowGenerationService:
         )
 
         draft_payload["draft_id"] = draft_id
+        draft_payload["branch_name"] = draft.get("branch_name")
+        draft_payload["head_commit_id"] = draft.get("head_commit_id")
         response_payload["draft_id"] = draft_id
+        response_payload["branch_name"] = draft.get("branch_name")
+        response_payload["head_commit_id"] = draft.get("head_commit_id")
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.save_draft(
@@ -91,12 +108,24 @@ class FlowGenerationService:
         draft_id: str,
         owner_user_id: int,
         session,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
+
+        draft_branch = draft.get("branch_name")
+        if draft_branch and branch_name and draft_branch != branch_name:
+            raise ValueError(f"draft_branch_mismatch: Draft created on branch '{draft_branch}' cannot be confirmed on '{branch_name}'")
+
+        draft_commit = draft.get("head_commit_id")
+        if draft_commit and head_commit_id and draft_commit != head_commit_id:
+            raise ValueError("branch_drift_detected: Branch head commit has advanced since draft creation")
 
         result = await self._persist_flow_generation_draft(
             draft=draft,
             session=session,
+            workspace_id=workspace_id,
         )
         await get_notifier().mark_stale(
             project_id=draft["project_id"],

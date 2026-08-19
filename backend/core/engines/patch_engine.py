@@ -13,7 +13,7 @@ from backend.database.model import (
 )
 
 class GraphPatchEngine:
-    async def apply_patch(self, project_id: int, patch: dict, session) -> None:
+    async def apply_patch(self, project_id: int, patch: dict, session, workspace_id: int | None = None) -> None:
         """
         Applies a Graph Patch JSON dynamically to the SQLite database.
         The operations are executed inside the current transaction block.
@@ -54,6 +54,7 @@ class GraphPatchEngine:
             temp_to_real_id,
             resolve_id,
             session,
+            workspace_id=workspace_id,
         )
 
         await self._update_nodes(
@@ -151,13 +152,14 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         for node in nodes:
             kind = node.get("kind")
             temp_id = node.get("temp_id") or node.get("tempId") or node.get("id")
             if kind == "actor":
                 await self._add_actor(
-                    project_id, node, temp_id, temp_to_real_id, session
+                    project_id, node, temp_id, temp_to_real_id, session, workspace_id=workspace_id
                 )
             elif kind == "feature":
                 await self._add_feature(
@@ -167,6 +169,7 @@ class GraphPatchEngine:
                     temp_to_real_id,
                     resolve_id,
                     session,
+                    workspace_id=workspace_id,
                 )
             elif kind == "scenario":
                 await self._add_scenario(
@@ -176,14 +179,15 @@ class GraphPatchEngine:
                     temp_to_real_id,
                     resolve_id,
                     session,
+                    workspace_id=workspace_id,
                 )
             elif kind == "business_object":
                 await self._add_business_object(
-                    project_id, node, temp_id, temp_to_real_id, session
+                    project_id, node, temp_id, temp_to_real_id, session, workspace_id=workspace_id
                 )
             elif kind == "flow":
                 await self._add_flow(
-                    project_id, node, temp_id, temp_to_real_id, session
+                    project_id, node, temp_id, temp_to_real_id, session, workspace_id=workspace_id
                 )
             elif kind == "business_object_attribute":
                 await self._add_business_object_attribute(
@@ -199,15 +203,19 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         actor = ActorModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=node.get("name") or node.get("actorName") or "",
             description=node.get("description") or node.get("actorDescription") or "",
             confirmation_status="ai_assumption",
         )
         session.add(actor)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         if temp_id:
             temp_to_real_id[temp_id] = actor.id
 
@@ -219,15 +227,19 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         feature = FeatureModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=node.get("name") or node.get("featureName") or "",
             description=node.get("description") or node.get("featureDescription") or "",
             confirmation_status="ai_assumption",
         )
         session.add(feature)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         if temp_id:
             temp_to_real_id[temp_id] = feature.id
 
@@ -235,11 +247,13 @@ class GraphPatchEngine:
         if parent_id_val is None:
             return
         parent_id = resolve_id(parent_id_val, "feature")
-        position_result = await session.execute(
+        position_result = session.execute(
             select(func.max(FeatureRelationModel.position)).where(
                 FeatureRelationModel.parent_feature_id == parent_id
             )
         )
+        if hasattr(position_result, "__await__"):
+            position_result = await position_result
         max_position = position_result.scalar()
         relation = FeatureRelationModel(
             parent_feature_id=parent_id,
@@ -247,7 +261,9 @@ class GraphPatchEngine:
             position=0 if max_position is None else max_position + 1,
         )
         session.add(relation)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
 
     @staticmethod
     async def _add_scenario(
@@ -257,6 +273,7 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         feature_id_val = node.get("feature_id") or node.get("featureId")
         actor_id_val = node.get("actor_id") or node.get("actorId")
@@ -266,6 +283,7 @@ class GraphPatchEngine:
             )
         scenario = ScenarioModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             feature_id=resolve_id(feature_id_val, "feature"),
             actor_id=resolve_id(actor_id_val, "actor"),
             name=node.get("name") or node.get("scenarioName") or "",
@@ -273,7 +291,9 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(scenario)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         if temp_id:
             temp_to_real_id[temp_id] = scenario.id
 
@@ -284,9 +304,11 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         business_object = BusinessObjectModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=(
                 node.get("name")
                 or node.get("businessObjectName")
@@ -302,7 +324,9 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(business_object)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         if temp_id:
             temp_to_real_id[temp_id] = business_object.id
 
@@ -313,15 +337,19 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         flow = FlowModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=node.get("name") or node.get("flowName") or "",
             description=node.get("description") or node.get("flowDescription") or "",
             confirmation_status="ai_assumption",
         )
         session.add(flow)
-        await session.flush()
+        flush_res = session.flush()
+        if hasattr(flush_res, "__await__"):
+            await flush_res
         if temp_id:
             temp_to_real_id[temp_id] = flow.id
 

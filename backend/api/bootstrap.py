@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 class BootstrapRegistry:
     def __init__(self):
         self.generation_backend = None
+        self.scope_generation_service = None
 
 
 registry = BootstrapRegistry()
@@ -113,6 +114,7 @@ def bootstrap_services():
     set_project_service(project_srv)
     
     registry.generation_backend = generation_backend
+    registry.scope_generation_service = scope_gen
 
     return registry
 

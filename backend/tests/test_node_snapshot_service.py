@@ -18,7 +18,7 @@ from backend.database.model import (
     ScenarioModel,
     ScopeModel,
 )
-from backend.api.modules.collaboration.application.node_snapshot_service import NodeSnapshotService
+from backend.api.modules.optimistic_lock.snapshot_service import NodeSnapshotService
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

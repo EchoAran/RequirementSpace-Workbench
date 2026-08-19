@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Target, Activity, CheckSquare, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Target, Activity, CheckSquare, Eye, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   useWorkspaceStore,
 } from '@/store/useWorkspaceStore';
-import { buildProjectRoute, buildReadiness, extractWorkspacePage } from '@/core/selectors';
+import { buildProjectRouteWithBranch, buildReadiness, extractWorkspacePage } from '@/core/selectors';
 import { useTranslation } from 'react-i18next';
 import { getStageCheckMessage, getStageStatusLabel } from '@/core/stageProgressText';
 
@@ -14,6 +14,7 @@ export function LeftNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const ir = useWorkspaceStore(s => s.ir);
+  const branchRef = useWorkspaceStore(s => s.branchRef);
   const activePage = useWorkspaceStore(s => s.activePage);
   const [collapsed, setCollapsed] = useState(false);
   const readinessScore = buildReadiness(ir).overallScore;
@@ -127,6 +128,16 @@ export function LeftNav() {
           disabled: false,
           disabledReason: ''
         };
+      } else if (path === '/repo') {
+        // 版本控制入口不依赖阶段解锁，始终可用。
+        return {
+          issueCount: 0,
+          hasBlockingSlot: false,
+          statusCode: 'overview_ready',
+          statusLabel: t('nav.status.playable'),
+          disabled: false,
+          disabledReason: ''
+        };
       }
       return {
         issueCount: 0,
@@ -154,6 +165,7 @@ export function LeftNav() {
     { page: '/flow' as const, label: t('nav.flow'), icon: Activity },
     { page: '/scope' as const, label: t('nav.scope'), icon: CheckSquare },
     { page: '/preview' as const, label: t('nav.preview'), icon: Eye },
+    { page: '/repo' as const, label: t('nav.repo'), icon: GitBranch },
   ];
 
   return (
@@ -177,7 +189,7 @@ export function LeftNav() {
           const isActive = resolvedActivePage === item.page;
           const Icon = item.icon;
           const { issueCount, hasBlockingSlot, statusCode, statusLabel, disabled, disabledReason } = getCounts(item.page);
-          const to = buildProjectRoute(ir?.projectId, item.page);
+          const to = buildProjectRouteWithBranch(ir?.projectId, item.page, branchRef);
           const statusKey = item.page === '/overview'
             ? `home.projectStatus.${statusCode}`
             : `nav.status.${statusCode}`;

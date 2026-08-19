@@ -284,20 +284,35 @@ export const projectionPath = (projection: string) => {
   return '/what';
 };
 
+export type WorkspaceRoutePage = '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge' | '/repo';
+
 export const buildProjectRoute = (
   projectId: string | null | undefined,
-  page: '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge'
+  page: WorkspaceRoutePage
 ): string => {
   if (projectId === null || projectId === undefined || projectId === '') return page;
   return `/projects/${projectId}${page}`;
 };
 
+/** 分支感知路由：非 main 分支时附加 ?branch=，保证导航后仍停留在同一分支。 */
+export const buildProjectRouteWithBranch = (
+  projectId: string | null | undefined,
+  page: WorkspaceRoutePage,
+  branchRef?: string
+): string => {
+  const base = buildProjectRoute(projectId, page);
+  if (branchRef && branchRef !== 'main') {
+    return `${base}?branch=${encodeURIComponent(branchRef)}`;
+  }
+  return base;
+};
+
 export const extractWorkspacePage = (
   pathname: string
-): '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge' | null => {
-  const match = pathname.match(/\/projects\/[^/]+(\/overview|\/what|\/flow|\/scope|\/preview|\/knowledge)$/);
+): WorkspaceRoutePage | null => {
+  const match = pathname.match(/\/projects\/[^/]+(\/overview|\/what|\/flow|\/scope|\/preview|\/knowledge|\/repo)$/);
   if (match) {
-    return match[1] as '/overview' | '/what' | '/flow' | '/scope' | '/preview' | '/knowledge';
+    return match[1] as WorkspaceRoutePage;
   }
 
   if (
@@ -306,7 +321,8 @@ export const extractWorkspacePage = (
     pathname === '/flow' ||
     pathname === '/scope' ||
     pathname === '/preview' ||
-    pathname === '/knowledge'
+    pathname === '/knowledge' ||
+    pathname === '/repo'
   ) {
     return pathname;
   }

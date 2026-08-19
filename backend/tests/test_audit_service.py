@@ -67,7 +67,10 @@ async def test_audit_service_explicit_actor(test_db, monkeypatch, caplog):
         actor = ActorContext.user(user_id=1, request_id="req-123")
         diff = {"name": {"before": "Old Name", "after": "New Name"}}
         
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(
+            logging.INFO,
+            logger="backend.services.audit_service",
+        ):
             await audit_service.record(
                 session=session,
                 project_id=project_id,

@@ -6,7 +6,10 @@ from backend.database.model import (
     ProjectMemberModel,
 )
 from backend.services.audit_service import AuditService
-from backend.api.modules.collaboration.application.node_snapshot_service import NodeSnapshotService
+from backend.api.modules.optimistic_lock.public import (
+    NodeSnapshotService,
+    snapshot_service,
+)
 from .task_creation_helpers import (
     add_assignment_notification,
     build_batch_confirmation_task,
@@ -22,8 +25,7 @@ from .task_creation_helpers import (
 )
 
 audit_service = AuditService()
-snapshot_service = NodeSnapshotService()
-
+# snapshot_service 由 optimistic_lock 模块提供并在此保持为模块级名称，兼容 collaboration 内部既有导入。
 SINGLE_TASK_TITLE_KEY = "collaboration.taskTitles.singleConfirmation"
 BATCH_TASK_TITLE_KEY = "collaboration.taskTitles.batchConfirmation"
 

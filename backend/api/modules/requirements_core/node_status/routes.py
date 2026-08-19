@@ -3,10 +3,12 @@
 允许前端通过 node_kind + node_id 任意修改任一节点的 confirmation_status。
 支持单节点更新和批量更新，每次变更自动记录审计日志。
 """
-from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import require_owned_project, require_project_member
+from backend.database.model import UserModel, ProjectModel
+from backend.api.modules.version_control.public import resolve_branch_context
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,7 @@ from backend.api.modules.project_lifecycle.public import ConfirmationStatusEnum
 from backend.api.dependencies.actor_context import get_actor_context
 from backend.core.actor_context import ActorContext
 from backend.services.audit_service import AuditService
+from backend.api.modules.version_control.dependencies import reject_commit_write
 
 audit_service = AuditService()
 
@@ -80,6 +83,7 @@ _NODE_KIND_LABEL = {
 
 async def _apply_status_update(
     model_class, project_id: int, node_id: int, new_status: str, session,
+    workspace_id: int | None = None,
 ) -> dict | None:
     """执行单个节点的状态更新，返回审计日志所需信息；节点不存在时返回 None。"""
     if model_class is ScopeModel:
@@ -91,6 +95,8 @@ async def _apply_status_update(
                 ScopeModel.id == node_id,
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
     elif model_class is ScenarioAcceptanceCriterionModel:
         stmt = (
             select(ScenarioAcceptanceCriterionModel)
@@ -100,6 +106,8 @@ async def _apply_status_update(
                 ScenarioAcceptanceCriterionModel.id == node_id,
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
     elif model_class is BusinessObjectAttributeModel:
         stmt = (
             select(BusinessObjectAttributeModel)
@@ -112,6 +120,8 @@ async def _apply_status_update(
                 BusinessObjectAttributeModel.id == node_id,
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     elif model_class is FlowStepModel:
         stmt = (
             select(FlowStepModel)
@@ -121,11 +131,15 @@ async def _apply_status_update(
                 FlowStepModel.id == node_id,
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
     else:
         stmt = select(model_class).where(
             model_class.project_id == project_id,
             model_class.id == node_id,
         )
+        if workspace_id is not None and hasattr(model_class, "workspace_id"):
+            stmt = stmt.where(model_class.workspace_id == workspace_id)
     result = await session.execute(stmt)
     obj = result.scalar_one_or_none()
     if obj is None:
@@ -148,6 +162,7 @@ async def _apply_status_update(
 async def _write_audit_log(
     project_id: int, node_kind: str, node_id: int,
     old_status: str, new_status: str, actor: ActorContext, session,
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """写入状态变更审计日志。"""
     kind_label = _NODE_KIND_LABEL.get(node_kind, node_kind)
@@ -209,16 +224,30 @@ async def _write_audit_log(
 async def update_node_status(
     project_id: str,
     req: UpdateNodeStatusRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project)
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
 ):
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+    )
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
     model_class = NODE_KIND_MODEL_MAP.get(req.node_kind)
     if not model_class:
         raise HTTPException(status_code=400, detail=f"Unknown node_kind: {req.node_kind}")
 
+    ws_id = ws_obj.id if ws_obj else None
     result = await _apply_status_update(
         model_class, owned_project.id, req.node_id, req.confirmation_status.value, session,
+        workspace_id=ws_id,
     )
     if result is None:
         raise HTTPException(
@@ -241,37 +270,63 @@ async def update_node_status(
 async def batch_update_node_status(
     project_id: str,
     req: BatchUpdateNodeStatusRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     actor: ActorContext = Depends(get_actor_context),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project)
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     """批量更新一组节点的确认状态为统一值。"""
+    branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+    )
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    ws_id = ws_obj.id if ws_obj else None
     results = []
     errors = []
 
     for node_req in req.nodes:
-        kind = node_req.node_kind
-        model_class = NODE_KIND_MODEL_MAP.get(kind)
+        model_class = NODE_KIND_MODEL_MAP.get(node_req.node_kind)
         if not model_class:
-            errors.append({"node_kind": kind, "node_id": node_req.node_id, "error": "unknown_kind"})
+            errors.append(
+                {"node_kind": node_req.node_kind, "node_id": node_req.node_id, "reason": "unknown_node_kind"}
+            )
             continue
 
         result = await _apply_status_update(
-            model_class, owned_project.id, node_req.node_id,
-            req.confirmation_status.value, session,
+            model_class, owned_project.id, node_req.node_id, req.confirmation_status.value, session,
+            workspace_id=ws_id,
         )
         if result is None:
-            errors.append({"node_kind": kind, "node_id": node_req.node_id, "error": "not_found"})
+            errors.append(
+                {"node_kind": node_req.node_kind, "node_id": node_req.node_id, "reason": "not_found"}
+            )
             continue
 
         if not result.get("skipped"):
             await _write_audit_log(
-                owned_project.id, kind, node_req.node_id,
+                owned_project.id, node_req.node_kind, node_req.node_id,
                 result["old_status"], result["new_status"], actor, session,
             )
-            results.append({"node_kind": kind, "node_id": node_req.node_id, "status": "updated"})
+            results.append(
+                {"node_kind": node_req.node_kind, "node_id": node_req.node_id, "status": "updated"}
+            )
         else:
-            results.append({"node_kind": kind, "node_id": node_req.node_id, "status": "skipped"})
+            results.append(
+                {"node_kind": node_req.node_kind, "node_id": node_req.node_id, "status": "skipped"}
+            )
 
     await session.commit()
-    return {"success": True, "updated_count": len(results) - len(errors), "results": results, "errors": errors}
+    # updated_count 保持既有契约：成功处理的节点数（含 skipped）减去错误数。
+    return {
+        "success": True,
+        "updated_count": len(results) - len(errors),
+        "results": results,
+        "errors": errors,
+    }

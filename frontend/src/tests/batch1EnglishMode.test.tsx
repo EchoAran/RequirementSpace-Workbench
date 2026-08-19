@@ -64,6 +64,7 @@ vi.mock('react-router-dom', () => ({
 // Mock workspace store selectors/helpers
 vi.mock('../core/selectors', () => ({
   buildProjectRoute: (id: string, path: string) => `/projects/${id}${path}`,
+  buildProjectRouteWithBranch: (id: string, path: string) => `/projects/${id}${path}`,
   buildReadiness: () => ({ overallScore: 75 }),
   extractWorkspacePage: () => '/overview',
 }));

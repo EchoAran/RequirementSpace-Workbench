@@ -24,9 +24,23 @@ class HttpError extends Error {
   }
 }
 
+export { HttpError };
+
 // 401 callback mechanism to avoid circular dependencies with stores
 type UnauthorizedCallback = () => void;
 const unauthorizedCallbacks: Set<UnauthorizedCallback> = new Set();
+
+// 分支请求上下文：整个项目工作区以 URL 的 branch 为唯一来源。Workspace Store 在切换分支时
+// 调用 setRequestBranch，所有随后发出的项目请求自动携带 ?branch=<ref>，无需逐个调用点改参。
+let activeBranch: string | undefined;
+
+export function setRequestBranch(branch?: string) {
+  activeBranch = branch;
+}
+
+export function getRequestBranch(): string | undefined {
+  return activeBranch;
+}
 
 export function onUnauthorized(callback: UnauthorizedCallback) {
   unauthorizedCallbacks.add(callback);
@@ -42,11 +56,17 @@ function triggerUnauthorized() {
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, body, timeout, ...restOptions } = options;
 
+  // 0. 注入分支请求上下文：调用点未显式指定 branch 时，自动携带当前激活分支。
+  const mergedParams: Record<string, unknown> = { ...(params || {}) };
+  if (activeBranch && mergedParams.branch === undefined) {
+    mergedParams.branch = activeBranch;
+  }
+
   // 1. Build Query String if params exist
   let queryString = '';
-  if (params) {
+  if (Object.keys(mergedParams).length > 0) {
     const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => {
+    Object.entries(mergedParams).forEach(([key, val]) => {
       if (val !== undefined && val !== null) {
         searchParams.append(key, String(val));
       }

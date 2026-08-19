@@ -20,6 +20,7 @@ except ImportError:
 
 
 import os
+import sys
 import urllib.parse
 
 from backend.core.config import DATABASE_URL as raw_db_url
@@ -41,6 +42,7 @@ from backend.core.logging.events import (
     DB_STAMP_COMPLETED,
     DB_STAMP_FAILED,
     DB_STAMP_STARTED,
+    VC_BASELINE_AUTO_DISABLED,
 )
 
 
@@ -528,6 +530,43 @@ def _validate_upgrade_schema(
         )
 
 
+def _ensure_version_control_baselines() -> None:
+    """Ensure all existing projects without a main branch are migrated to version control."""
+    # 特性开关 kill-switch：关闭时跳过自动迁移（不删除既有提交，仅停止新写入）。
+    # 函数内读取以便测试用 monkeypatch 关闭；放在 pytest 守卫之前保证测试可触发该路径。
+    from backend.core.config import VERSION_CONTROL_MIGRATION_ENABLED
+    if not VERSION_CONTROL_MIGRATION_ENABLED:
+        _log_db_event(
+            logging.INFO,
+            VC_BASELINE_AUTO_DISABLED,
+            "Version control baseline auto-migration disabled by feature flag",
+            db_engine=_db_engine_name(DATABASE_URL),
+        )
+        return
+    if "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ or os.environ.get("TESTING") == "1":
+        return
+    try:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from backend.api.modules.version_control.public import migrate_all_projects_to_version_control
+        sync_url = _sync_migration_url(DATABASE_URL)
+        sync_engine = create_engine(sync_url)
+        with Session(sync_engine) as db_session:
+            migrate_all_projects_to_version_control(db_session)
+            db_session.commit()
+        sync_engine.dispose()
+    except Exception as ex:
+        _log_db_event(
+            logging.ERROR,
+            DB_INIT_FAILED,
+            "Version control baseline auto-migration failed",
+            db_engine=_db_engine_name(DATABASE_URL),
+            error_type=type(ex).__name__,
+            error_message=sanitize_message(str(ex)),
+        )
+        raise
+
+
 async def init_db() -> None:
     """Initialize database: bootstrap from metadata if database is completely empty.
     If database contains existing tables but lacks 'users', raise an error to prevent partial schema generation."""
@@ -548,6 +587,10 @@ async def init_db() -> None:
         _validate_upgrade_schema(non_alembic_tables, project_columns)
         import asyncio
         await asyncio.to_thread(run_upgrade)
+
+    import asyncio
+    await asyncio.to_thread(_ensure_version_control_baselines)
+
     _log_db_event(
         logging.INFO,
         DB_INIT_COMPLETED,

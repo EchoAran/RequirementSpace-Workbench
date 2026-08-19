@@ -49,6 +49,13 @@ class BaseIssueAISolver(ABC):
     def __init__(self):
         self._llm_handler = LLMHandler()
 
+    @staticmethod
+    def _scope(stmt, model, workspace_id: int | None = None):
+        """把查询限定到指定分支工作区；未指定时保持项目级行为（迁移期兼容）。"""
+        if workspace_id is not None:
+            stmt = stmt.where(model.workspace_id == workspace_id)
+        return stmt
+
     @property
     @abstractmethod
     def supported_issue_codes(self) -> list[str]:
@@ -62,6 +69,7 @@ class BaseIssueAISolver(ABC):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         """Build the context dict for the LLM prompt."""
         ...
@@ -140,10 +148,11 @@ class BaseIssueAISolver(ABC):
         issue_code: str,
         target: dict | None,
         session,
+        workspace_id: int | None = None,
     ) -> RepairResult:
         """Main entry point: build context, call LLM, parse result."""
         try:
-            context = await self.build_prompt_context(project_id, issue_code, target, session)
+            context = await self.build_prompt_context(project_id, issue_code, target, session, workspace_id=workspace_id)
         except Exception:
             return self.fallback_result(localized_message("issue_context_failed"))
 

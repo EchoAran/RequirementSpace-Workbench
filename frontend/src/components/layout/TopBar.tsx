@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
-import { extractWorkspacePage } from '@/core/selectors';
+import { extractWorkspacePage, buildProjectRouteWithBranch } from '@/core/selectors';
 import { useAuthStore } from '@/store/useAuthStore';
-import { Settings, LogOut, User, Shield, Users, ClipboardList, Clock, Bell, ArrowLeft } from 'lucide-react';
+import { Settings, LogOut, User, Shield, Users, ClipboardList, Clock, Bell, ArrowLeft, GitBranch } from 'lucide-react';
 import ProjectMembersModal from '../project/ProjectMembersModal';
 import { TaskDecisionModal } from '../shared/TaskDecisionModal';
 import { workspaceApi } from '@/lib/api';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getCollaborationTaskTitle, getNotificationPresentation } from '@/core/collaborationPresentation';
+import { VersionControlBar } from '../version-control/VersionControlBar';
 
 
 
@@ -27,6 +28,7 @@ export function TopBar() {
       case '/flow': return 'topbar.subtitle.flow';
       case '/scope': return 'topbar.subtitle.scope';
       case '/preview': return 'topbar.subtitle.preview';
+      case '/repo': return 'topbar.subtitle.repo';
       default: return 'topbar.subtitle.overview';
     }
   };
@@ -108,11 +110,25 @@ export function TopBar() {
         ><ArrowLeft className="h-3.5 w-3.5" /> {t('nav.back')}</button>
         <div className="h-4 w-[1px] bg-slate-300"></div>
         <h1 className="text-lg font-bold text-slate-800">{ir?.projectName || (ir as any)?.name || t('home.unnamedProject')}</h1>
+        {/* 分支上下文：分支选择器 + 未提交摘要 + 提交按钮 */}
+        <VersionControlBar />
         <div className="h-4 w-[1px] bg-slate-300"></div>
         <span className="text-sm text-slate-500 italic">{t(getSubtitleKey(location.pathname))}</span>
       </div>
 
       <div className="flex items-center gap-4 relative">
+        {/* 版本控制入口：进入仓库总览（保留当前分支上下文） */}
+        {ir && (
+          <button
+            onClick={() => navigate(buildProjectRouteWithBranch(ir.projectId || (ir as any).id, '/repo', useWorkspaceStore.getState().branchRef))}
+            className="p-2 border rounded-xl shadow-sm transition-all relative cursor-pointer border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200"
+            title={t('nav.repo')}
+            aria-label={t('nav.repo')}
+          >
+            <GitBranch className="w-4 h-4" />
+          </button>
+        )}
+
         {/* User Badge */}
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full text-xs font-bold text-slate-700">
           {user?.role === 'admin' ? (

@@ -12,10 +12,8 @@ from backend.database.model import (
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.project_access import require_project_member, require_project_role
 from backend.api.modules.collaboration.application.task_service import TaskService
-from backend.api.modules.collaboration.application.node_snapshot_service import (
-    KIND_TO_MODEL,
-    NodeSnapshotService,
-)
+from backend.api.modules.optimistic_lock.snapshot_service import KIND_TO_MODEL
+from backend.api.modules.optimistic_lock.public import NodeSnapshotService
 from backend.api.modules.collaboration.application.confirmation_summary_query import (
     load_confirmation_summary,
 )

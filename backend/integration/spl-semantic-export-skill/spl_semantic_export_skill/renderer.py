@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List
+from typing import Any
+
 from .ir import SplSemanticIR, WorkerStepIR
 
 
@@ -122,7 +123,7 @@ class SplSemanticRenderer:
         lines.append(f"  [END_{name}]")
 
     @classmethod
-    def _render_step_list(cls, steps: List[WorkerStepIR], level: int, counters) -> List[str]:
+    def _render_step_list(cls, steps: list[WorkerStepIR], level: int, counters) -> list[str]:
         result = []
         indent = "  " * level
         sequential = any(step.branch_kind == "sequential" for step in steps)

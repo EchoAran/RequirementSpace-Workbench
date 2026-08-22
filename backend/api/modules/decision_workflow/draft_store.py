@@ -89,6 +89,11 @@ class GenerativeDraftStore:
             await flush_res
 
     @staticmethod
+    async def discard_draft(session, draft_id: str, owner_user_id: int) -> None:
+        """Deletes a draft from the database using the provided session."""
+        await GenerativeDraftStore.delete_draft(draft_id=draft_id, owner_user_id=owner_user_id, session=session)
+
+    @staticmethod
     async def discard_draft_locally(draft_id: str, owner_user_id: int) -> None:
         """Deletes a draft asynchronously using a localized database session."""
         async with AsyncSessionLocal() as session:

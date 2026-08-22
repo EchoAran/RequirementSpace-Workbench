@@ -1,16 +1,18 @@
-from sqlalchemy import select, func, delete
+from sqlalchemy import delete, func, select
+
 from backend.database.model import (
     ActorModel,
+    BusinessObjectAttributeModel,
+    BusinessObjectModel,
     FeatureModel,
     FeatureRelationModel,
-    ScenarioModel,
-    BusinessObjectModel,
-    BusinessObjectAttributeModel,
     FlowModel,
+    ScenarioModel,
     ScopeModel,
     feature_actor_table,
     flow_feature_table,
 )
+
 
 class GraphPatchEngine:
     async def apply_patch(self, project_id: int, patch: dict, session, workspace_id: int | None = None) -> None:
@@ -88,7 +90,7 @@ class GraphPatchEngine:
                         actor.name = node.get("name") or node.get("actorName")
                     if "description" in node or "actorDescription" in node:
                         actor.description = node.get("description") or node.get("actorDescription")
-            
+
             elif kind == "feature":
                 res = await session.execute(select(FeatureModel).where(FeatureModel.id == node_id, FeatureModel.project_id == project_id))
                 feature = res.scalar_one_or_none()
@@ -97,7 +99,7 @@ class GraphPatchEngine:
                         feature.name = node.get("name") or node.get("featureName")
                     if "description" in node or "featureDescription" in node:
                         feature.description = node.get("description") or node.get("featureDescription")
-            
+
             elif kind == "scenario":
                 res = await session.execute(select(ScenarioModel).where(ScenarioModel.id == node_id, ScenarioModel.project_id == project_id))
                 scenario = res.scalar_one_or_none()
@@ -112,7 +114,7 @@ class GraphPatchEngine:
                     if "actorId" in node or "actor_id" in node:
                         a_id = node.get("actor_id") or node.get("actorId")
                         scenario.actor_id = resolve_id(a_id, "actor")
-            
+
             elif kind == "business_object":
                 res = await session.execute(select(BusinessObjectModel).where(BusinessObjectModel.id == node_id, BusinessObjectModel.project_id == project_id))
                 bo = res.scalar_one_or_none()
@@ -121,7 +123,7 @@ class GraphPatchEngine:
                         bo.name = node.get("name") or node.get("businessObjectName") or node.get("boName")
                     if "description" in node or "businessObjectDescription" in node or "boDescription" in node:
                         bo.description = node.get("description") or node.get("businessObjectDescription") or node.get("boDescription")
-            
+
             elif kind == "flow":
                 res = await session.execute(select(FlowModel).where(FlowModel.id == node_id, FlowModel.project_id == project_id))
                 flow = res.scalar_one_or_none()

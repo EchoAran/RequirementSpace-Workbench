@@ -14,22 +14,25 @@ async def load_attribute_for_update(
     project_id: int,
     business_object_id: int,
     attribute_id: int,
+    workspace_id: int | None = None,
 ):
-    business_object_result = await session.execute(
-        select(BusinessObjectModel).where(
-            BusinessObjectModel.project_id == project_id,
-            BusinessObjectModel.id == business_object_id,
-        )
+    bo_stmt = select(BusinessObjectModel).where(
+        BusinessObjectModel.project_id == project_id,
+        BusinessObjectModel.id == business_object_id,
     )
+    if workspace_id is not None:
+        bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+    business_object_result = await session.execute(bo_stmt)
     if business_object_result.scalar_one_or_none() is None:
         raise ValueError("business_object_not_found")
-    attribute_result = await session.execute(
-        select(BusinessObjectAttributeModel).where(
-            BusinessObjectAttributeModel.business_object_id
-            == business_object_id,
-            BusinessObjectAttributeModel.id == attribute_id,
-        )
+    attr_stmt = select(BusinessObjectAttributeModel).where(
+        BusinessObjectAttributeModel.business_object_id
+        == business_object_id,
+        BusinessObjectAttributeModel.id == attribute_id,
     )
+    if workspace_id is not None:
+        attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
+    attribute_result = await session.execute(attr_stmt)
     attribute = attribute_result.scalar_one_or_none()
     if attribute is None:
         raise ValueError("attribute_not_found")

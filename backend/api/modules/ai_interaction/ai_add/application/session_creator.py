@@ -1,8 +1,10 @@
 import logging
+
 from sqlalchemy import select
+
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import AI_ADD_SESSION_CREATED
-from backend.database.model import AIAddSessionModel, ProjectModel, ProjectMemberModel, ProjectMemberStatus
+from backend.database.model import AIAddSessionModel, ProjectMemberModel, ProjectMemberStatus, ProjectModel
 
 logger = get_logger(__name__)
 
@@ -22,8 +24,9 @@ class AIAddSessionCreator:
 
     @staticmethod
     async def _load_project_feature_tree(project_id: int, session) -> list[dict]:
-        from backend.database.model import FeatureModel
         from sqlalchemy.orm import selectinload
+
+        from backend.database.model import FeatureModel
         result = await session.execute(
             select(FeatureModel)
             .where(FeatureModel.project_id == project_id)

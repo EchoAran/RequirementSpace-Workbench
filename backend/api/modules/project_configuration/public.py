@@ -1,26 +1,27 @@
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
 
-from backend.database.model import ProjectGenerationStrategyConfigModel
 from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
     DEFAULT_STRATEGIES,
     localize_generation_strategy,
     normalize_generation_strategy,
 )
 from backend.core.prompt_resolver import get_content_locale
+from backend.database.model import ProjectGenerationStrategyConfigModel
+
 
 @dataclass
 class ResolvedGenerationStrategy:
     id: str
     label: str
-    description: Optional[str]
-    instruction: Optional[str]
+    description: str | None
+    instruction: str | None
     order: int
 
-def _default_strategies_for(generation_type: str) -> List[ResolvedGenerationStrategy]:
+def _default_strategies_for(generation_type: str) -> list[ResolvedGenerationStrategy]:
     strategies = []
     for s in DEFAULT_STRATEGIES:
         if s.get("enabled", True):
@@ -42,9 +43,9 @@ async def resolve_generation_strategies(
     *,
     project_id: int,
     generation_type: str,
-    requested_count: Optional[int] = None,
+    requested_count: int | None = None,
     session: AsyncSession,
-) -> List[ResolvedGenerationStrategy]:
+) -> list[ResolvedGenerationStrategy]:
     """
     Resolve generation strategies for a project and generation type.
     1. Reads project-specific configuration from DB.

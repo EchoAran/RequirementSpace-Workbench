@@ -6,7 +6,6 @@ from backend.core.logging.config import load_logging_settings
 from backend.core.logging.filters import ContextFilter
 from backend.core.logging.formatter import JsonLogFormatter, TextLogFormatter
 
-
 _HANDLER_MARKER = "_requirementspace_logging_handler"
 
 

@@ -1,16 +1,16 @@
 import enum
-from typing import Literal, Set, TypeAlias, cast
+from typing import Literal, cast
 
-SupportedLocale: TypeAlias = Literal["zh-CN", "en-US"]
-ContentLocaleSource: TypeAlias = Literal["project", "user", "default"]
+type SupportedLocale = Literal["zh-CN", "en-US"]
+type ContentLocaleSource = Literal["project", "user", "default"]
 
-class LocaleCode(str, enum.Enum):
+class LocaleCode(enum.StrEnum):
     ZH_CN = "zh-CN"
     EN_US = "en-US"
 
 DEFAULT_LOCALE = LocaleCode.ZH_CN
 
-SUPPORTED_LOCALES: Set[str] = {locale.value for locale in LocaleCode}
+SUPPORTED_LOCALES: set[str] = {locale.value for locale in LocaleCode}
 
 LOCALE_DISPLAY_NAMES = {
     LocaleCode.ZH_CN: "简体中文",

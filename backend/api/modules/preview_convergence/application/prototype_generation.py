@@ -7,7 +7,6 @@ from typing import Any
 
 from sqlalchemy import select
 
-from backend.core.localized_messages import localized_message
 from backend.api.modules.preview_convergence.ports.preview_generator import (
     PrototypePageGeneratorPort,
     get_page_generator,
@@ -21,6 +20,7 @@ from backend.core.generators.prototype_generator import (
     PrototypeGeneratorInput,
     PrototypePageGeneratorInput,
 )
+from backend.core.localized_messages import localized_message
 from backend.core.security import sanitize_message
 from backend.database.model import GherkinSpecModel, ProjectModel, PrototypePreviewModel
 from backend.schemas import (
@@ -170,7 +170,7 @@ class PrototypeGenerationService:
             context = await self._load_generation_context(project_id, session)
 
         pages = await self._generate_pages(context.targets)
-        
+
         async with self.session_factory() as session:
             try:
                 preview = self._build_preview_model(
@@ -180,7 +180,7 @@ class PrototypeGenerationService:
                 )
                 session.add(preview)
                 await session.commit()
-                
+
                 from sqlalchemy.orm import selectinload
                 result = await session.execute(
                     select(PrototypePreviewModel)
@@ -216,7 +216,7 @@ class PrototypeGenerationService:
             generator_input=generator_input,
             detail=detail,
         )
-        
+
         input_snapshot = detail.model_dump(
             mode="json",
             by_alias=True,

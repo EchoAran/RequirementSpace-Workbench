@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -26,15 +25,15 @@ BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 def _beijing_now() -> datetime:
     return datetime.now(BEIJING_TZ)
 
+from backend.api.modules.ai_interaction.ai_add.application.generator_registry import (
+    EditGeneratorRegistry,
+    SingleObjectGeneratorRegistry,
+    create_default_edit_generator_registry,
+    create_default_generator_registry,
+)
 from backend.api.modules.ai_interaction.ai_add.application.interview_strategy import (
     InterviewStrategyRegistry,
     create_default_registry,
-)
-from backend.api.modules.ai_interaction.ai_add.application.generator_registry import (
-    SingleObjectGeneratorRegistry,
-    create_default_generator_registry,
-    EditGeneratorRegistry,
-    create_default_edit_generator_registry,
 )
 
 
@@ -52,8 +51,8 @@ class AIAddSessionService:
         self._edit_generator_registry = edit_generator_registry or create_default_edit_generator_registry()
 
         from .session_creator import AIAddSessionCreator
-        from .session_interactor import AIAddSessionInteractor
         from .session_draft_handler import AIAddDraftHandler
+        from .session_interactor import AIAddSessionInteractor
         self.creator = AIAddSessionCreator(self._strategy_registry)
         self.interactor = AIAddSessionInteractor(self._strategy_registry)
         self.draft_handler = AIAddDraftHandler(self)

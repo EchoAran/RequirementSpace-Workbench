@@ -7,10 +7,10 @@ import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { workspaceApi } from '@/lib/api';
 import { Sparkles, RefreshCw, CheckSquare } from 'lucide-react';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { useWorkspaceStore, withWorkspaceId } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 
-import { buildProjectRoute, groupScopeItems } from '@/core/selectors';
+import { buildProjectRouteWithBranch, groupScopeItems } from '@/core/selectors';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 
@@ -55,6 +55,8 @@ export function ScopeAndDelivery() {
       if (kind === 'scope') {
         const scopeItem = ir?.features?.find((feature: any) => feature.scope?.scopeId === id);
         if (scopeItem) setSelectedObject(buildScopeSelectionObject(scopeItem));
+
+
       }
     }, 200);
   }, [location.search]);
@@ -121,10 +123,10 @@ export function ScopeAndDelivery() {
             </p>
           </div>
           <button
-            onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
+            onClick={() => navigate(buildProjectRouteWithBranch(ir?.projectId, '/what', useWorkspaceStore.getState().branchRef))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
-          {t('scope.goToWhatBtn')}
+            {t('scope.goToWhatBtn')}
           </button>
         </div>
       </div>
@@ -190,7 +192,8 @@ export function ScopeAndDelivery() {
     setPreviewError(null);
 
     try {
-      const resp = await workspaceApi.impactPreview(ir.projectId, featureId, scopeStatus);
+      const pId = withWorkspaceId(useWorkspaceStore.getState());
+      const resp = await workspaceApi.impactPreview(pId, featureId, scopeStatus);
       setImpactGroups(buildImpactGroups(resp));
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : t('scope.impactAnalysisError'));

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.core.logging.context import LOG_CONTEXT_FIELDS
 
 
 def _timestamp(record: logging.LogRecord) -> str:
-    return datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(record.created, tz=UTC).isoformat()
 
 
 def _record_fields(record: logging.LogRecord) -> dict[str, Any]:

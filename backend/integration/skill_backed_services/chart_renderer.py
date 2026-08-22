@@ -7,7 +7,6 @@ import warnings
 from io import BytesIO
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
@@ -75,4 +74,4 @@ class KanoChartRenderer:
     def _resolve_y_max(counts: list[int], max_count: int | None) -> int:
         if max_count is not None and max_count > 0:
             return max_count
-        return max(sum(counts), max(counts + [1]), 1)
+        return max(sum(counts), max([*counts, 1]), 1)

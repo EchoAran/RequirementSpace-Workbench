@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.database.model import (
     ActorModel,
+    BranchWorkspaceModel,
     BusinessObjectModel,
     FeatureModel,
     FeatureRelationModel,
@@ -54,6 +55,7 @@ class StageProgressData:
     how: HowProgressData
     scoped_feature_ids: set[int]
     latest_jobs: dict[str, PerceptionJobModel] = field(default_factory=dict)
+    kano_status: str = "missing"
 
 
 def _append_value(mapping: dict[int, list[int]], key: int, value: int) -> None:
@@ -70,14 +72,11 @@ async def _load_project(project_id: int, session) -> ProjectModel:
     return project
 
 
-async def _load_feature_data(project_id: int, session):
-    features = (
-        await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id
-            )
-        )
-    ).scalars().all()
+async def _load_feature_data(project_id: int, session, workspace_id: int | None = None):
+    stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
+    if workspace_id is not None:
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+    features = (await session.execute(stmt)).scalars().all()
     feature_ids = [feature.id for feature in features]
     parent_ids = set()
     if feature_ids:
@@ -108,7 +107,10 @@ async def _load_feature_data(project_id: int, session):
                 FeatureModel,
                 FeatureModel.id == feature_actor_table.c.feature_id,
             )
-            .where(FeatureModel.project_id == project_id)
+            .where(
+                FeatureModel.project_id == project_id,
+                *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
+            )
         )
     ).all()
     feature_actor_map: dict[int, list[int]] = {}
@@ -117,12 +119,16 @@ async def _load_feature_data(project_id: int, session):
     return feature_ids, leaf_features, feature_actor_map
 
 
-async def _load_scenario_data(project_id: int, session):
-    result = await session.execute(
+async def _load_scenario_data(project_id: int, session, workspace_id: int | None = None):
+    stmt = (
         select(ScenarioModel)
         .join(FeatureModel, FeatureModel.id == ScenarioModel.feature_id)
-        .where(FeatureModel.project_id == project_id)
+        .where(
+            FeatureModel.project_id == project_id,
+            *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
+        )
     )
+    result = await session.execute(stmt)
     scenarios = result.scalars().all()
     scenario_ids = [scenario.id for scenario in scenarios]
     feature_scenario_map: dict[int, list[int]] = {}
@@ -158,23 +164,21 @@ async def _load_scenario_data(project_id: int, session):
 async def _load_what_data(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> tuple[WhatProgressData, list[int]]:
-    actor_ids = (
-        await session.execute(
-            select(ActorModel.id).where(
-                ActorModel.project_id == project_id
-            )
-        )
-    ).scalars().all()
+    actor_stmt = select(ActorModel.id).where(ActorModel.project_id == project_id)
+    if workspace_id is not None:
+        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+    actor_ids = (await session.execute(actor_stmt)).scalars().all()
     feature_ids, leaf_features, feature_actor_map = (
-        await _load_feature_data(project_id, session)
+        await _load_feature_data(project_id, session, workspace_id)
     )
     (
         scenario_ids,
         scenarios_map,
         feature_scenario_map,
         acceptance_scenario_ids,
-    ) = await _load_scenario_data(project_id, session)
+    ) = await _load_scenario_data(project_id, session, workspace_id)
     return (
         WhatProgressData(
             actor_ids=actor_ids,
@@ -239,12 +243,12 @@ async def _load_step_maps(step_ids: list[int], session):
 async def _load_how_data(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> HowProgressData:
-    flows = (
-        await session.execute(
-            select(FlowModel).where(FlowModel.project_id == project_id)
-        )
-    ).scalars().all()
+    flow_stmt = select(FlowModel).where(FlowModel.project_id == project_id)
+    if workspace_id is not None:
+        flow_stmt = flow_stmt.where(FlowModel.workspace_id == workspace_id)
+    flows = (await session.execute(flow_stmt)).scalars().all()
     flow_ids = [flow.id for flow in flows]
     steps = []
     if flow_ids:
@@ -259,11 +263,14 @@ async def _load_how_data(
         [step.id for step in steps],
         session,
     )
-    object_result = await session.execute(
+    bo_stmt = (
         select(BusinessObjectModel)
         .options(selectinload(BusinessObjectModel.attributes))
         .where(BusinessObjectModel.project_id == project_id)
     )
+    if workspace_id is not None:
+        bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+    object_result = await session.execute(bo_stmt)
     business_objects = object_result.scalars().all()
     return HowProgressData(
         flow_ids=flow_ids,
@@ -281,28 +288,36 @@ async def _load_how_data(
 async def _load_scoped_feature_ids(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> set[int]:
-    rows = (
-        await session.execute(
-            select(ScopeModel.feature_id)
-            .join(FeatureModel, FeatureModel.id == ScopeModel.feature_id)
-            .where(
-                FeatureModel.project_id == project_id,
-                ScopeModel.status != None,
-            )
+    stmt = (
+        select(ScopeModel.feature_id)
+        .join(FeatureModel, FeatureModel.id == ScopeModel.feature_id)
+        .where(
+            FeatureModel.project_id == project_id,
+            ScopeModel.status != None,
+            *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
         )
-    ).scalars().all()
+    )
+    rows = (await session.execute(stmt)).scalars().all()
     return set(rows)
 
 
-async def _load_latest_jobs(project_id: int, session) -> dict:
-    jobs = (
-        await session.execute(
-            select(PerceptionJobModel)
-            .where(PerceptionJobModel.project_id == project_id)
-            .order_by(PerceptionJobModel.id.desc())
-        )
-    ).scalars().all()
+async def _load_latest_jobs(
+    project_id: int,
+    session,
+    workspace_id: int | None = None,
+) -> dict:
+    stmt = (
+        select(PerceptionJobModel)
+        .where(PerceptionJobModel.project_id == project_id)
+    )
+    if workspace_id is not None:
+        stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
+    else:
+        stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
+    stmt = stmt.order_by(PerceptionJobModel.id.desc())
+    jobs = (await session.execute(stmt)).scalars().all()
     latest_jobs = {}
     for job in jobs:
         if job.stage not in latest_jobs:
@@ -313,22 +328,36 @@ async def _load_latest_jobs(project_id: int, session) -> dict:
 async def load_stage_progress_data(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> StageProgressData:
     project = await _load_project(project_id, session)
-    what, _feature_ids = await _load_what_data(project_id, session)
-    how = await _load_how_data(project_id, session)
+    what, _feature_ids = await _load_what_data(project_id, session, workspace_id)
+    how = await _load_how_data(project_id, session, workspace_id)
     scoped_feature_ids = await _load_scoped_feature_ids(
         project_id,
         session,
+        workspace_id,
     )
-    latest_jobs = await _load_latest_jobs(project_id, session)
+    latest_jobs = await _load_latest_jobs(project_id, session, workspace_id)
+    raw_unlocked = project.unlocked_stages
+    kano_status = project.kano_status or "missing"
+    if workspace_id is not None:
+        ws_row = (await session.execute(
+            select(BranchWorkspaceModel).where(
+                BranchWorkspaceModel.id == workspace_id
+            )
+        )).scalar_one_or_none()
+        if ws_row is not None:
+            raw_unlocked = ws_row.unlocked_stages or ""
+            kano_status = ws_row.kano_status or "missing"
+
     unlocked_stages = (
         {
             stage.strip().lower()
-            for stage in project.unlocked_stages.split(",")
+            for stage in raw_unlocked.split(",")
             if stage.strip()
         }
-        if project.unlocked_stages
+        if raw_unlocked
         else set()
     )
     return StageProgressData(
@@ -338,4 +367,5 @@ async def load_stage_progress_data(
         how=how,
         scoped_feature_ids=scoped_feature_ids,
         latest_jobs=latest_jobs,
+        kano_status=kano_status,
     )

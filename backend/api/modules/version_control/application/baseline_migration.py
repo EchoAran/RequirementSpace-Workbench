@@ -4,44 +4,45 @@ Baseline Version Migration Service.
 """
 import logging
 import time
-from typing import Any, Dict, List, Tuple
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from backend.core.logging.events import (
+    VC_MIGRATION_COMPLETED,
+    VC_MIGRATION_FAILED,
     VC_MIGRATION_PROJECT_COMPLETED,
     VC_MIGRATION_PROJECT_FAILED,
     VC_MIGRATION_PROJECT_SKIPPED,
     VC_MIGRATION_STARTED,
-    VC_MIGRATION_COMPLETED,
-    VC_MIGRATION_FAILED,
 )
 from backend.core.logging.logger import get_logger, log_event
 
 logger = get_logger("backend.version_control.baseline_migration")
 MIGRATION_CATEGORY = "domain"
 
+from backend.api.modules.version_control.application.migration_backfill import (
+    _backfill_actors,
+    _backfill_business_objects,
+    _backfill_choice_groups,
+    _backfill_features_and_relations,
+    _backfill_flows,
+    _backfill_scenarios,
+    _backfill_scopes,
+    _has_table,
+)
+from backend.api.modules.version_control.domain.serializer import (
+    compute_state_hash,
+    serialize_requirement_space,
+    to_deterministic_json,
+)
 from backend.database.model import (
-    UserModel,
+    BranchWorkspaceModel,
     ProjectModel,
     RequirementBranchModel,
     RequirementCommitModel,
-    BranchWorkspaceModel,
-)
-from backend.api.modules.version_control.domain.serializer import (
-    serialize_requirement_space,
-    to_deterministic_json,
-    compute_state_hash,
-)
-from backend.api.modules.version_control.application.migration_backfill import (
-    _has_table,
-    _backfill_actors,
-    _backfill_features_and_relations,
-    _backfill_scenarios,
-    _backfill_business_objects,
-    _backfill_flows,
-    _backfill_scopes,
-    _backfill_choice_groups,
+    UserModel,
 )
 
 TARGET_TABLES = [
@@ -64,7 +65,7 @@ def _create_main_branch_and_workspace(
     db: Session,
     project: ProjectModel,
     head_commit_id: int | None = None,
-) -> Tuple[RequirementBranchModel, BranchWorkspaceModel]:
+) -> tuple[RequirementBranchModel, BranchWorkspaceModel]:
     """创建主分支 main 及对应的 BranchWorkspace 实体。"""
     db.add(project)
     db.flush()
@@ -103,7 +104,7 @@ def _create_main_branch_and_workspace(
 def _create_baseline_commit(
     db: Session,
     project: ProjectModel,
-    raw_workspace_dict: Dict[str, Any],
+    raw_workspace_dict: dict[str, Any],
 ) -> RequirementCommitModel:
     """序列化规范化需求空间图谱，计算哈希并持久化首个基线 Commit。"""
     normalized_model = serialize_requirement_space(raw_workspace_dict)
@@ -143,7 +144,7 @@ def _create_baseline_commit(
 def migrate_project_to_version_control(
     db: Session,
     project: ProjectModel,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     针对单个项目执行版本控制基线初始化迁移（主控制流）。
     """
@@ -256,7 +257,7 @@ def migrate_project_to_version_control(
     }
 
 
-def migrate_all_projects_to_version_control(db: Session) -> List[Dict[str, Any]]:
+def migrate_all_projects_to_version_control(db: Session) -> list[dict[str, Any]]:
     """
     遍历系统中所有 Project，批量执行版本控制基线迁移。
     使用 Savepoint 隔离每个项目的迁移，若任何项目迁移失败则回滚该项目变更并抛出异常，
@@ -298,7 +299,7 @@ def migrate_all_projects_to_version_control(db: Session) -> List[Dict[str, Any]]
                 "status": "failed",
                 "project_id": project.id,
                 "error": str(ex),
-                "message": f"Project {project.id} baseline migration failed: {str(ex)}",
+                "message": f"Project {project.id} baseline migration failed: {ex!s}",
             })
 
     success_count = sum(1 for r in results if r.get("status") == "success")

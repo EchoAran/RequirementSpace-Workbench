@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.prompts import scenarios_perceive_prompt
 from backend.core.perceptrons.base_perceptron import BasePerceptron, PerceptronInput
+from backend.core.perceptrons.prompts import scenarios_perceive_prompt
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
 
 
@@ -13,10 +12,10 @@ class ScenariosPerceptronInput(PerceptronInput):
     user_requirements: str
     actor: ActorNode
     feature: FeatureNode
-    scenarios: List[ScenarioNode]
+    scenarios: list[ScenarioNode]
 
 class ScenariosPerceptron(BasePerceptron[ScenariosPerceptronInput]):
-    async def perceive(self, input_data: ScenariosPerceptronInput) -> Dict:
+    async def perceive(self, input_data: ScenariosPerceptronInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         actor_ = ActorNode.schema(

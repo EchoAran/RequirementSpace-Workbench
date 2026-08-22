@@ -1,9 +1,9 @@
-from dataclasses import dataclass
 import json
-from typing import Dict
+from dataclasses import dataclass
 
-from backend.core.generators.prompts import blank_project_generate_prompt
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
+from backend.core.generators.prompts import blank_project_generate_prompt
+
 
 # 为参与者生成器定义专属的输入类型
 @dataclass
@@ -12,7 +12,7 @@ class BlankProjectGeneratorInput(GenerateInput):
     knowledge_context: str | None = None
 
 class BlankProjectGenerator(BaseGenerator[BlankProjectGeneratorInput]):
-    async def generate(self, input_data: BlankProjectGeneratorInput) -> Dict:
+    async def generate(self, input_data: BlankProjectGeneratorInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         prompt = blank_project_generate_prompt.replace(

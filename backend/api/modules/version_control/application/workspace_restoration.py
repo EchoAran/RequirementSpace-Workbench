@@ -3,37 +3,38 @@ Workspace Model Restoration & Copying Service.
 负责从 Commit 快照 state_dict 恢复工作区，或在创建分支时复制现有 BranchWorkspace，
 确保物理主键重构、逻辑 UUID 继承以及所有跨实体关系在目标工作区内正确闭合。
 """
-from typing import Any, Dict
-from sqlalchemy.orm import Session
+from typing import Any
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from backend.database.model import (
-    BranchWorkspaceModel,
     ActorModel,
-    FeatureModel,
-    FeatureRelationModel,
-    ScenarioModel,
-    ScenarioAcceptanceCriterionModel,
-    BusinessObjectModel,
+    BranchWorkspaceModel,
     BusinessObjectAttributeModel,
-    FlowModel,
-    FlowStepModel,
-    ScopeModel,
+    BusinessObjectModel,
     ChoiceGroupModel,
     ChoiceModel,
+    FeatureModel,
+    FeatureRelationModel,
+    FlowModel,
+    FlowStepModel,
+    ScenarioAcceptanceCriterionModel,
+    ScenarioModel,
+    ScopeModel,
     feature_actor_table,
     flow_feature_table,
     flow_step_actor_table,
     flow_step_input_business_object_table,
-    flow_step_output_business_object_table,
     flow_step_next_table,
+    flow_step_output_business_object_table,
 )
 
 
 def restore_workspace_from_state(
     db: Session,
     target_workspace: BranchWorkspaceModel,
-    state_dict: Dict[str, Any],
+    state_dict: dict[str, Any],
 ) -> None:
     """
     根据规范化的 state_dict 快照字典，在目标 BranchWorkspace 中重建完整的需求模型图谱。
@@ -49,7 +50,7 @@ def restore_workspace_from_state(
     target_workspace.unlocked_stages = meta.get("unlocked_stages", "")
 
     # 1. 恢复 Actors
-    actor_uuid_map: Dict[str, ActorModel] = {}
+    actor_uuid_map: dict[str, ActorModel] = {}
     for a_data in state_dict.get("actors", []):
         actor = ActorModel(
             project_id=proj_id,
@@ -64,7 +65,7 @@ def restore_workspace_from_state(
     db.flush()
 
     # 2. 恢复 Features
-    feat_uuid_map: Dict[str, FeatureModel] = {}
+    feat_uuid_map: dict[str, FeatureModel] = {}
     for f_data in state_dict.get("features", []):
         feat = FeatureModel(
             project_id=proj_id,
@@ -150,7 +151,7 @@ def restore_workspace_from_state(
         db.flush()
 
     # 5. 恢复 BusinessObjects & Attributes
-    bo_uuid_map: Dict[str, BusinessObjectModel] = {}
+    bo_uuid_map: dict[str, BusinessObjectModel] = {}
     for bo_data in state_dict.get("business_objects", []):
         bo = BusinessObjectModel(
             project_id=proj_id,
@@ -179,7 +180,7 @@ def restore_workspace_from_state(
         db.flush()
 
     # 6. 恢复 Flows & Steps
-    step_uuid_map: Dict[str, FlowStepModel] = {}
+    step_uuid_map: dict[str, FlowStepModel] = {}
     for fl_data in state_dict.get("flows", []):
         flow = FlowModel(
             project_id=proj_id,
@@ -287,7 +288,7 @@ def copy_workspace(
 
     # 1. 复制 Actors
     src_actors = db.scalars(select(ActorModel).where(ActorModel.workspace_id == src_ws_id)).all()
-    actor_id_map: Dict[int, ActorModel] = {}
+    actor_id_map: dict[int, ActorModel] = {}
     for a in src_actors:
         new_a = ActorModel(
             project_id=proj_id,
@@ -303,7 +304,7 @@ def copy_workspace(
 
     # 2. 复制 Features
     src_features = db.scalars(select(FeatureModel).where(FeatureModel.workspace_id == src_ws_id)).all()
-    feat_id_map: Dict[int, FeatureModel] = {}
+    feat_id_map: dict[int, FeatureModel] = {}
     for f in src_features:
         new_f = FeatureModel(
             project_id=proj_id,
@@ -371,7 +372,7 @@ def copy_workspace(
 
     # 5. 复制 BusinessObjects & Attributes
     src_bos = db.scalars(select(BusinessObjectModel).where(BusinessObjectModel.workspace_id == src_ws_id)).all()
-    bo_id_map: Dict[int, BusinessObjectModel] = {}
+    bo_id_map: dict[int, BusinessObjectModel] = {}
     for bo in src_bos:
         new_bo = BusinessObjectModel(
             project_id=proj_id,
@@ -402,7 +403,7 @@ def copy_workspace(
 
     # 6. 复制 Flows & Steps
     src_flows = db.scalars(select(FlowModel).where(FlowModel.workspace_id == src_ws_id)).all()
-    step_id_map: Dict[int, FlowStepModel] = {}
+    step_id_map: dict[int, FlowStepModel] = {}
     for fl in src_flows:
         new_fl = FlowModel(
             project_id=proj_id,

@@ -1,7 +1,8 @@
 from datetime import datetime
-from pydantic import Field
-from backend.api.base_schema import CamelModel
 
+from pydantic import Field
+
+from backend.api.base_schema import CamelModel
 
 
 class ChoiceResponse(CamelModel):

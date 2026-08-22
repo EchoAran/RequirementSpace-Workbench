@@ -1,7 +1,7 @@
+import contextlib
+from collections.abc import Generator
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Generator
-import contextlib
 
 
 @dataclass
@@ -29,14 +29,15 @@ class ActorContext:
 
 
 # ContextVar to store the current actor context
-_current_actor_context: ContextVar[ActorContext] = ContextVar(
-    "current_actor_context", default=ActorContext.system()
+_current_actor_context: ContextVar[ActorContext | None] = ContextVar(
+    "current_actor_context", default=None
 )
 
 
 def get_current_actor() -> ActorContext:
     """Get the current actor context from the context variables, defaulting to system."""
-    return _current_actor_context.get()
+    ctx = _current_actor_context.get()
+    return ctx if ctx is not None else ActorContext.system()
 
 
 @contextlib.contextmanager

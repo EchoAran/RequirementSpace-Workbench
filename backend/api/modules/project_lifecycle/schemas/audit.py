@@ -1,6 +1,7 @@
-from pydantic import Field
 from datetime import datetime
-from typing import Optional
+
+from pydantic import Field
+
 from backend.api.base_schema import CamelModel
 
 
@@ -11,16 +12,16 @@ class AuditLogResponse(CamelModel):
     summary: str
     target_type: str
     target_id: str
-    payload: Optional[dict] = None
+    payload: dict | None = None
     created_at: datetime
     updated_at: datetime
-    
-    actor_user_id: Optional[int] = None
+
+    actor_user_id: int | None = None
     actor_type: str = "system"
-    actor_email: Optional[str] = None
-    diff: Optional[dict | list] = None
-    request_id: Optional[str] = None
-    task_id: Optional[int] = None
+    actor_email: str | None = None
+    diff: dict | list | None = None
+    request_id: str | None = None
+    task_id: int | None = None
 
 
 class UserRequirementsUpdateRequest(CamelModel):
@@ -28,7 +29,7 @@ class UserRequirementsUpdateRequest(CamelModel):
 
 
 class UserRequirementsRefineRequest(CamelModel):
-    user_feedback: Optional[str] = Field(None, description="Optional extra user suggestions or feedback to guide requirement refinement")
+    user_feedback: str | None = Field(None, description="Optional extra user suggestions or feedback to guide requirement refinement")
 
 
 class UserRequirementsResponse(CamelModel):

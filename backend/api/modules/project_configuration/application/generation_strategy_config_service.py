@@ -1,12 +1,14 @@
 import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database.model import ProjectGenerationStrategyConfigModel
+
 from backend.api.modules.project_configuration.schemas import (
     GenerationStrategyConfigResponse,
     GenerationStrategyConfigUpdate,
     GenerationStrategyItemSchema,
 )
+from backend.database.model import ProjectGenerationStrategyConfigModel
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +173,7 @@ class GenerationStrategyConfigService:
                 source="project",
                 strategies=strategies_list
             )
-        
+
         return self.get_default_config()
 
     async def save_for_project(
@@ -258,7 +260,7 @@ class GenerationStrategyConfigService:
                 raise ValueError("invalid_strategy_label_length")
             if len(instruction) < 20 or len(instruction) > 800:
                 raise ValueError("invalid_strategy_instruction_length")
-            
+
             if CONTROL_CHAR_RE.search(instruction):
                 raise ValueError("control_characters_detected")
 

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, Target, Activity, CheckSquare, Eye, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   useWorkspaceStore,
 } from '@/store/useWorkspaceStore';
+import { workspaceApi } from '@/lib/api';
 import { buildProjectRouteWithBranch, buildReadiness, extractWorkspacePage } from '@/core/selectors';
 import { useTranslation } from 'react-i18next';
 import { getStageCheckMessage, getStageStatusLabel } from '@/core/stageProgressText';
@@ -17,11 +18,42 @@ export function LeftNav() {
   const branchRef = useWorkspaceStore(s => s.branchRef);
   const activePage = useWorkspaceStore(s => s.activePage);
   const [collapsed, setCollapsed] = useState(false);
-  const readinessScore = buildReadiness(ir).overallScore;
+  const [hasCompiledPrototype, setHasCompiledPrototype] = useState(false);
+  const stageProgress = useWorkspaceStore(s => s.stageProgress);
+  const readinessScore = buildReadiness(ir, stageProgress).overallScore;
   const locationPage = extractWorkspacePage(location.pathname);
   const resolvedActivePage = locationPage || activePage;
 
-  const stageProgress = useWorkspaceStore(s => s.stageProgress);
+  useEffect(() => {
+    let cancelled = false;
+    const projectId = ir?.projectId;
+    if (!projectId) {
+      setHasCompiledPrototype(false);
+      return;
+    }
+
+    workspaceApi.getLatestPrototypePreview(projectId)
+      .then((res) => {
+        if (!cancelled) {
+          const isCompiled = Boolean(
+            res &&
+            !('detail' in res) &&
+            res.prototypeId &&
+            res.message !== 'prototype_preview_not_found' &&
+            res.status !== 'failed' &&
+            res.status !== 'generating'
+          );
+          setHasCompiledPrototype(isCompiled);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHasCompiledPrototype(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ir?.projectId, branchRef]);
 
   const handleNavClick = (
     event: React.MouseEvent<HTMLAnchorElement>,
@@ -87,9 +119,9 @@ export function LeftNav() {
       if (stageKey) {
         const item = stageProgress.stages.find((s: any) => s.stage === stageKey);
         if (item) {
-          const issueCount = item.blockingFindings ? item.blockingFindings.length : 0;
-          const hasBlockingSlot = item.statusCode === 'blocked';
           const disabled = !item.unlocked;
+          const issueCount = disabled ? 0 : (item.blockingFindings ? item.blockingFindings.length : 0);
+          const hasBlockingSlot = disabled ? false : item.statusCode === 'blocked';
 
           let disabledReason = '';
           if (disabled) {
@@ -120,11 +152,46 @@ export function LeftNav() {
           };
         }
       } else if (path === '/preview') {
+        const whatStage = stageProgress?.stages?.find((s: any) => s.stage === 'what');
+        const howStage = stageProgress?.stages?.find((s: any) => s.stage === 'how');
+        const scopeStage = stageProgress?.stages?.find((s: any) => s.stage === 'scope');
+
+        const isWhatDone = Boolean(
+          whatStage
+            ? whatStage.unlocked && (whatStage.statusCode === 'ready' || whatStage.statusCode === 'ready_to_advance' || whatStage.content_complete || ((ir?.actors || []).length > 0 && (ir?.features || []).length > 0))
+            : ((ir?.actors || []).length > 0 && (ir?.features || []).length > 0)
+        );
+
+        const isHowDone = Boolean(
+          howStage
+            ? howStage.unlocked && (howStage.statusCode === 'ready' || howStage.statusCode === 'ready_to_advance' || howStage.content_complete || ((ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0))
+            : ((ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0)
+        );
+
+        const isScopeDone = Boolean(
+          scopeStage
+            ? scopeStage.unlocked && (scopeStage.statusCode === 'ready' || scopeStage.statusCode === 'ready_to_advance' || scopeStage.content_complete || (ir?.features || []).some((f: any) => f.scope !== null && f.scope !== undefined))
+            : (ir?.features || []).some((f: any) => f.scope !== null && f.scope !== undefined)
+        );
+
+        const isAllDone = isWhatDone && isHowDone && isScopeDone;
+
+        if (!isAllDone) {
+          return {
+            issueCount: 0,
+            hasBlockingSlot: false,
+            statusCode: 'shadow_available',
+            statusLabel: t('nav.status.shadow_available'),
+            disabled: false,
+            disabledReason: ''
+          };
+        }
+
         return {
           issueCount: 0,
           hasBlockingSlot: false,
-          statusCode: 'shadow_available',
-          statusLabel: t('nav.status.playable'),
+          statusCode: hasCompiledPrototype ? 'ready' : 'in_progress',
+          statusLabel: hasCompiledPrototype ? t('nav.status.ready') : t('nav.status.in_progress'),
           disabled: false,
           disabledReason: ''
         };
@@ -159,13 +226,36 @@ export function LeftNav() {
     };
   };
 
+  const whatStage = stageProgress?.stages?.find((s: any) => s.stage === 'what');
+  const howStage = stageProgress?.stages?.find((s: any) => s.stage === 'how');
+  const scopeStage = stageProgress?.stages?.find((s: any) => s.stage === 'scope');
+
+  const isWhatComplete = Boolean(
+    whatStage
+      ? whatStage.unlocked && (whatStage.statusCode === 'ready' || whatStage.statusCode === 'ready_to_advance' || whatStage.content_complete || ((ir?.actors || []).length > 0 && (ir?.features || []).length > 0))
+      : ((ir?.actors || []).length > 0 && (ir?.features || []).length > 0)
+  );
+
+  const isHowComplete = Boolean(
+    howStage
+      ? howStage.unlocked && (howStage.statusCode === 'ready' || howStage.statusCode === 'ready_to_advance' || howStage.content_complete || ((ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0))
+      : ((ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0)
+  );
+
+  const isScopeComplete = Boolean(
+    scopeStage
+      ? scopeStage.unlocked && (scopeStage.statusCode === 'ready' || scopeStage.statusCode === 'ready_to_advance' || scopeStage.content_complete || (ir?.features || []).some((f: any) => f.scope !== null && f.scope !== undefined))
+      : (ir?.features || []).some((f: any) => f.scope !== null && f.scope !== undefined)
+  );
+
+  const isAllComplete = isWhatComplete && isHowComplete && isScopeComplete;
+
   const NavItems = [
     { page: '/overview' as const, label: t('nav.overview'), icon: LayoutDashboard },
     { page: '/what' as const, label: t('nav.what'), icon: Target },
     { page: '/flow' as const, label: t('nav.flow'), icon: Activity },
     { page: '/scope' as const, label: t('nav.scope'), icon: CheckSquare },
-    { page: '/preview' as const, label: t('nav.preview'), icon: Eye },
-    { page: '/repo' as const, label: t('nav.repo'), icon: GitBranch },
+    { page: '/preview' as const, label: isAllComplete ? t('nav.preview') : t('nav.shadowPreview'), icon: Eye },
   ];
 
   return (
@@ -212,7 +302,7 @@ export function LeftNav() {
                   {hasBlockingSlot && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap shadow-sm border",
-                    statusCode === 'ready' || statusCode === 'real_ready' || statusCode === 'converged' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                    statusCode === 'ready' || statusCode === 'real_ready' || statusCode === 'converged' || statusCode === 'ready_to_advance' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
                     statusCode === 'shadow_available' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
                     statusCode === 'needs_attention' || statusCode === 'has_issues' ? "bg-rose-50 text-rose-700 border-rose-100" :
                     statusCode === 'in_progress' || statusCode === 'scope_pending' ? "bg-amber-50 text-amber-700 border-amber-100" :
@@ -226,7 +316,11 @@ export function LeftNav() {
               </div>
 
               <div className="pl-6 min-h-[14px] flex items-center">
-                {(issueCount > 0 || hasBlockingSlot) ? (
+                {disabled ? (
+                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
+                    {disabledReason}
+                  </span>
+                ) : (issueCount > 0 || hasBlockingSlot) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
                     {item.page === '/preview' ? (
                       t(statusKey) === statusKey ? statusLabel : t(statusKey)
@@ -237,10 +331,6 @@ export function LeftNav() {
                         {hasBlockingSlot && t('nav.blockingSuggestions')}
                       </>
                     )}
-                  </span>
-                ) : disabled ? (
-                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
-                    {disabledReason}
                   </span>
                 ) : null}
               </div>
@@ -262,6 +352,31 @@ export function LeftNav() {
             </Link>
           );
         })}
+      </div>
+
+      {/* 独立版本控制/需求仓库入口 */}
+      <div className={cn("border-t border-slate-200", collapsed ? "p-2" : "p-3")}>
+        <Link
+          to={buildProjectRouteWithBranch(ir?.projectId, '/repo', branchRef)}
+          className={cn(
+            "flex items-center rounded-xl transition-all font-medium text-xs",
+            collapsed ? "p-3 justify-center" : "px-3 py-2.5 gap-2.5",
+            resolvedActivePage === '/repo'
+              ? "bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100"
+              : "text-slate-600 hover:bg-slate-100 border border-transparent"
+          )}
+          title={t('nav.repo')}
+        >
+          <GitBranch className={cn("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4 text-indigo-600")} />
+          {!collapsed && (
+            <div className="flex items-center justify-between w-full min-w-0">
+              <span className="truncate font-semibold">{t('nav.repo')}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono truncate max-w-[80px]" title={branchRef}>
+                {branchRef}
+              </span>
+            </div>
+          )}
+        </Link>
       </div>
 
       {!collapsed && (

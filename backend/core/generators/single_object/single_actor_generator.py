@@ -1,7 +1,6 @@
 """SingleActorGenerator — generates exactly one actor from interview summary."""
 
 import json
-from typing import Dict
 
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
@@ -20,7 +19,7 @@ class SingleActorGenerator(BaseSingleObjectGenerator):
     Produces: {"actor": {"name": "...", "description": "..."}, "rationale": "..."}
     """
 
-    async def generate(self, input_data: SingleObjectGeneratorInput) -> Dict:
+    async def generate(self, input_data: SingleObjectGeneratorInput) -> dict:
         existing_actors = input_data.project_context.get("actors", [])
         existing_actors_str = serialize_prompt_data(existing_actors)
 

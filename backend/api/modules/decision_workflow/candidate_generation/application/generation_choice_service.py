@@ -13,8 +13,9 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, TypeAlias
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,9 +24,9 @@ from sqlalchemy.orm import selectinload
 from backend.api.modules.decision_workflow.ports.ports import (
     BaseGenerationChoiceAdapter,
     CandidateContext,
-    GenerationCandidate,
     CandidateError,
     CandidateRunResult,
+    GenerationCandidate,
 )
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import (
@@ -106,7 +107,7 @@ def _strategy_for_index(index: int) -> str:
 
 # 进度回调: (index, phase, message)
 # phase: "start" | "complete" | "fail"
-ProgressCallback: TypeAlias = Callable[[int, str, str], None]
+type ProgressCallback = Callable[[int, str, str], None]
 
 
 def _resolve_candidate_strategy(
@@ -204,7 +205,7 @@ async def _run_candidate(
             results[index] = candidate
             if progress_callback:
                 progress_callback(index, "complete", candidate.title)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             results[index] = TimeoutError(
                 f"候选 {index+1} ({strategy_label}) 生成超时 ({timeout_seconds}s)"
             )
@@ -369,6 +370,7 @@ class GenerationChoiceService:
         source_type: str | None = None,
         source_id: str | None = None,
         context_hash: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         """Create and persist a generation choice group."""
         from .choice_group_creator import create_choice_group
@@ -390,6 +392,7 @@ class GenerationChoiceService:
                 "source_id": source_id,
                 "context_hash": context_hash,
             },
+            workspace_id=workspace_id,
             get_adapter=get_adapter,
             run_candidate_generation=run_candidate_generation,
             build_choice_group_response=_build_choice_group_response,
@@ -442,6 +445,7 @@ class GenerationChoiceService:
             user_feedback=user_feedback,
             session=session,
             progress_callback=progress_callback,
+            workspace_id=old_group.workspace_id,
         )
         log_event(
             logger,
@@ -485,6 +489,7 @@ class GenerationChoiceService:
             project_id=project_id,
             user_feedback=user_feedback,
             progress_callback=progress_callback,
+            session=session,
         )
         self._add_regenerated_choice(
             group,
@@ -572,6 +577,7 @@ class GenerationChoiceService:
         project_id: int,
         user_feedback: str | None,
         progress_callback: ProgressCallback | None,
+        session: AsyncSession | None = None,
     ) -> GenerationCandidate:
         strategy_id, label, description, instruction = strategy
         base_ctx = CandidateContext(
@@ -580,6 +586,8 @@ class GenerationChoiceService:
             user_feedback=user_feedback,
             target=group.target,
             project_id=project_id,
+            session=session,
+            workspace_id=group.workspace_id,
             strategy_id=strategy_id,
             strategy_label=label,
             strategy_description=description,
@@ -679,7 +687,7 @@ def _build_choice_group_response(
         proj_pub_id = group.project.public_id
     if proj_pub_id is None:
         proj_pub_id = str(group.project_id)
- 
+
     return {
         "id": group.id,
         "project_id": proj_pub_id,

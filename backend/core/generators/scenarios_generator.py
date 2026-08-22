@@ -1,10 +1,10 @@
-from dataclasses import dataclass
 import json
-from typing import Dict
+from dataclasses import dataclass
 
-from backend.core.generators.prompts import scenarios_generate_prompt
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
-from backend.schemas import FeatureNode, ActorNode
+from backend.core.generators.prompts import scenarios_generate_prompt
+from backend.schemas import ActorNode, FeatureNode
+
 
 # 为场景生成器定义专属的输入类型
 @dataclass
@@ -15,7 +15,7 @@ class ScenariosGeneratorInput(GenerateInput):
     user_feedback: str | None = None
 
 class ScenariosGenerator(BaseGenerator[ScenariosGeneratorInput]):
-    async def generate(self, input_data: ScenariosGeneratorInput) -> Dict:
+    async def generate(self, input_data: ScenariosGeneratorInput) -> dict:
         user_requirements_ = input_data.user_requirements
         feedback = input_data.user_feedback or ""
 

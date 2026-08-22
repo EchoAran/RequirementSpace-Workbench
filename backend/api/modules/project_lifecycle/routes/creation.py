@@ -1,20 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_generative_draft
-from backend.api.dependencies.llm import get_llm_context
-from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.base_schema import DraftRegenerateRequest
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.ownership import require_owned_generative_draft
+from backend.api.modules.project_lifecycle.ports import get_project_creation_service
 from backend.api.modules.project_lifecycle.schemas.creation import (
     ProjectCreationConfirmResponse,
     ProjectCreationDraftCreateRequest,
     ProjectCreationDraftDiscardResponse,
     ProjectCreationDraftResponse,
 )
-from backend.api.modules.project_lifecycle.ports import get_project_creation_service
 from backend.database.database import get_session
-
+from backend.database.model import GenerativeDraftModel, UserModel
 
 FEATURE_GENERATION_ERRORS = {
     "empty_features",
@@ -132,8 +131,10 @@ async def confirm_project_creation_draft(
 )
 async def discard_project_creation_draft(
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
+    session: AsyncSession = Depends(get_session),
 ):
     return await get_project_creation_service().discard_draft(
         draft_id=draft.draft_id,
         owner_user_id=draft.owner_user_id,
+        session=session,
     )

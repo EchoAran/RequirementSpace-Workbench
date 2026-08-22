@@ -157,7 +157,7 @@ class KnowledgeChunkingService:
                 return
 
             try:
-                with open(doc.markdown_path, "r", encoding="utf-8") as markdown_file:
+                with open(doc.markdown_path, encoding="utf-8") as markdown_file:
                     content = markdown_file.read()
             except Exception as error:
                 logger.error(

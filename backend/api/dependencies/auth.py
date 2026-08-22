@@ -2,14 +2,14 @@ import logging
 
 from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from backend.core.security import hash_session_token
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import AUTH_PERMISSION_DENIED
+from backend.core.security import hash_session_token
 from backend.database.database import get_session
-from backend.database.model import UserModel, AuthSessionModel, UserRole, beijing_now
+from backend.database.model import AuthSessionModel, UserModel, UserRole, beijing_now
 
 logger = get_logger(__name__)
 

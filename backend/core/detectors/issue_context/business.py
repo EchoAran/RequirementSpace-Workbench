@@ -59,10 +59,9 @@ async def load_issue_business_objects(
     workspace_id: int | None = None,
 ) -> list[BusinessObjectIssueItem]:
     stmt = select(BusinessObjectModel).where(
-        BusinessObjectModel.project_id == project_id
+        BusinessObjectModel.project_id == project_id,
+        BusinessObjectModel.workspace_id == workspace_id,
     )
-    if workspace_id is not None:
-        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     result = await session.execute(stmt)
     object_models = result.scalars().all()
     attribute_counts, usage_counts = await _load_business_object_counts(

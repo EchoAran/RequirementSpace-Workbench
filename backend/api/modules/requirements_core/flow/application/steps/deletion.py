@@ -3,13 +3,19 @@ from sqlalchemy import insert, select
 from backend.database.model import FlowStepModel, flow_step_next_table
 
 
-async def load_flow_step_to_delete(session, flow_id: int, step_id: int):
-    result = await session.execute(
-        select(FlowStepModel).where(
-            FlowStepModel.flow_id == flow_id,
-            FlowStepModel.id == step_id,
-        )
+async def load_flow_step_to_delete(
+    session,
+    flow_id: int,
+    step_id: int,
+    workspace_id: int | None = None,
+):
+    stmt = select(FlowStepModel).where(
+        FlowStepModel.flow_id == flow_id,
+        FlowStepModel.id == step_id,
     )
+    if workspace_id is not None:
+        stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     step = result.scalar_one_or_none()
     if step is None:
         raise ValueError("flow_step_not_found")

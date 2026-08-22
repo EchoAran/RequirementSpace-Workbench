@@ -1,21 +1,21 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.generators.prompts import features_generate_prompt
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
+from backend.core.generators.prompts import features_generate_prompt
 from backend.schemas import ActorNode
+
 
 # 为特征树生成器定义专属的输入类型
 @dataclass
 class FeaturesGeneratorInput(GenerateInput):
     user_requirements: str
-    actors: List[ActorNode]
+    actors: list[ActorNode]
     user_feedback: str | None = None
     knowledge_context: str | None = None
 
 class FeaturesGenerator(BaseGenerator[FeaturesGeneratorInput]):
-    async def generate(self, input_data: FeaturesGeneratorInput) -> Dict:
+    async def generate(self, input_data: FeaturesGeneratorInput) -> dict:
         user_requirements_ = input_data.user_requirements
         feedback = input_data.user_feedback or ""
 

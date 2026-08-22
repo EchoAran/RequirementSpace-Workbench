@@ -1,14 +1,14 @@
 from backend.core.detectors import ScopeIssueDetector
 from backend.core.findings.finding_factory import make_finding
-from backend.schemas import Finding, FindingType, BlockingScope, IssueStage, IssueSeverity
+from backend.schemas import BlockingScope, Finding, FindingType, IssueSeverity, IssueStage
 
 
 class ScopeFindingPolicy:
     def __init__(self):
         self.detector = ScopeIssueDetector()
 
-    async def get_findings(self, project_id: int, session) -> list[Finding]:
-        issues = await self.detector.detect(project_id, session)
+    async def get_findings(self, project_id: int, session, workspace_id: int | None = None) -> list[Finding]:
+        issues = await self.detector.detect(project_id, session, workspace_id=workspace_id)
         findings: list[Finding] = []
 
         # Separate LEAF_FEATURE_WITHOUT_SCOPE for aggregation

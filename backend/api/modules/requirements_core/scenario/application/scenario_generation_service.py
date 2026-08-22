@@ -11,6 +11,7 @@ from backend.core.generators.scenarios_generator import (
 )
 from backend.core.notifier import get_notifier
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
+
 from .scenario_generation_context import load_scenario_generation_context
 
 
@@ -234,6 +235,7 @@ class ScenarioGenerationService:
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
         result.pop("scenario_ids", None)
 

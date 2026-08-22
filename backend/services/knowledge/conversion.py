@@ -1,10 +1,11 @@
-﻿import os
-import re
-import time
+﻿import asyncio
 import logging
-import asyncio
+import os
+import re
 import sys
+import time
 import types
+
 from backend.database.database import AsyncSessionLocal
 from backend.database.model import KnowledgeDocumentModel
 
@@ -17,7 +18,7 @@ except ImportError:
         def convert(self, file_path: str):
             if os.path.splitext(file_path)[1].lower() not in {".txt", ".md", ".csv", ".json", ".html"}:
                 raise ImportError("No module named 'markitdown'")
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
                 return types.SimpleNamespace(text_content=f.read())
 
     markitdown_stub = types.ModuleType("markitdown")
@@ -113,7 +114,7 @@ class KnowledgeConversionService:
         )
         cleaned_content = KnowledgeConversionService._clean_markdown(md_content)
         import datetime
-        iso_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        iso_time = datetime.datetime.now(datetime.UTC).isoformat()
         metadata_header = f"---\noriginal_filename: {original_filename}\nconverted_at: {iso_time}\n---\n\n"
         md_path = os.path.join(
             os.path.dirname(storage_path),

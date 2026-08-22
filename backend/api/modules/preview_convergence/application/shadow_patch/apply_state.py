@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 
-
 TEMP_ID_COLLECTIONS = (
     "actors_added",
     "features_added",

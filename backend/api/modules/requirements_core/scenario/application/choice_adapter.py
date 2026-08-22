@@ -2,13 +2,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
 from backend.api.modules.requirements_core.ports import get_scenario_generation_service
-from backend.database.model import ScenarioModel
 from backend.core.prompt_resolver import get_content_locale
+from backend.database.model import ScenarioModel
 
 
 class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -53,6 +53,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             actor_id=None,
             generation_mode="full",
             session=context.session,
+            workspace_id=context.workspace_id,
         )
         selected_feature_ids = set(feature_ids)
         target_pairs = [
@@ -99,6 +100,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             generation_mode=generation_mode,
             user_feedback=feedback,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
         scenarios = response.get("scenarios", [])
         feature_name = (
@@ -292,8 +294,11 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         project_id = payload["project_id"]
+        workspace_id = kwargs.get("workspace_id")
         feature_ids = payload.get("feature_ids") or ([payload["feature_id"]] if payload.get("feature_id") else [])
         statement = select(ScenarioModel).where(ScenarioModel.project_id == project_id)
+        if workspace_id is not None:
+            statement = statement.where(ScenarioModel.workspace_id == workspace_id)
         if feature_ids:
             statement = statement.where(ScenarioModel.feature_id.in_(feature_ids))
         if payload.get("actor_id"):
@@ -306,6 +311,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,
             session=session,
+            workspace_id=workspace_id,
         )
 
         # Invalidate perception jobs
@@ -315,6 +321,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return result
@@ -330,7 +337,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def is_context_stale(self, choice, session) -> tuple[bool, str | None]:
         """Check if feature/actor has been deleted or changed since generation."""
-        from backend.database.model import FeatureModel, ActorModel
+        from backend.database.model import ActorModel, FeatureModel
         payload = choice.payload or {}
         feature_id = payload.get("feature_id") or (choice.choice_group.target or {}).get("feature_id")
         actor_id = payload.get("actor_id") or (choice.choice_group.target or {}).get("actor_id")

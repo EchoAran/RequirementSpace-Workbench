@@ -5,24 +5,26 @@
 """
 import hashlib
 import json
+
 import sqlalchemy as sa
 from sqlalchemy.orm import selectinload
-from backend.database.model import (
-    ActorModel,
-    FeatureModel,
-    ScenarioModel,
-    ScenarioAcceptanceCriterionModel,
-    BusinessObjectModel,
-    BusinessObjectAttributeModel,
-    FlowModel,
-    FlowStepModel,
-    ScopeModel,
-)
+
 from backend.api.modules.optimistic_lock.node_snapshot_builders import (
     build_node_snapshot,
 )
 from backend.api.modules.optimistic_lock.superseder import (
     supersede_tasks_for_node_update,
+)
+from backend.database.model import (
+    ActorModel,
+    BusinessObjectAttributeModel,
+    BusinessObjectModel,
+    FeatureModel,
+    FlowModel,
+    FlowStepModel,
+    ScenarioAcceptanceCriterionModel,
+    ScenarioModel,
+    ScopeModel,
 )
 
 KIND_TO_MODEL = {

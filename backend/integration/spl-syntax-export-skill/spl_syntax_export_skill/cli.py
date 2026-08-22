@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
 from .core import SplSyntaxExportSkill
 
 
@@ -31,10 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         input_path = Path(args.input_json)
         payload = json.loads(input_path.read_text(encoding="utf-8"))
-        
+
         skill = SplSyntaxExportSkill()
         result = skill.export(payload)
-        
+
         if args.output_file:
             out_path = Path(args.output_file)
             out_path.write_text(result["spl_text"], encoding="utf-8")

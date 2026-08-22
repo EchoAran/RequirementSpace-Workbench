@@ -1,3 +1,4 @@
+from backend.core.issue_capabilities import KNOWN_ISSUE_CODES as KNOWN_ISSUE_CODES
 from backend.core.issue_resolution.base_solver import (
     BaseIssueSolver,
 )
@@ -7,10 +8,9 @@ from backend.core.issue_resolution.generation_draft_solver import (
 from backend.core.issue_resolution.open_panel_solver import (
     OpenPanelIssueSolver,
 )
-from backend.core.issue_capabilities import KNOWN_ISSUE_CODES as KNOWN_ISSUE_CODES
 from backend.schemas import IssueResolution, IssueTarget
 
-__all__ = ["IssueSolverRegistry", "KNOWN_ISSUE_CODES"]
+__all__ = ["KNOWN_ISSUE_CODES", "IssueSolverRegistry"]
 
 
 class IssueSolverRegistry:
@@ -31,6 +31,8 @@ class IssueSolverRegistry:
             "FLOW_WITHOUT_FEATURE": open_panel_solver,
             "FLOW_WITHOUT_STEPS": open_panel_solver,
             "ACTOR_ACTION_STEP_WITHOUT_ACTOR": open_panel_solver,
+            "INVALID_STEP_ACTOR": open_panel_solver,
+            "INVALID_STEP_BUSINESS_OBJECT": open_panel_solver,
             "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": open_panel_solver,
             "UNREACHABLE_FLOW_STEP": open_panel_solver,
             "BUSINESS_OBJECT_WITHOUT_USAGE": open_panel_solver,

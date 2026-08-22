@@ -2,15 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.model import UserModel
+from backend.api.dependencies.llm import llm_context_manager
+from backend.api.modules.project_lifecycle.application.blank_service import BlankProjectService
 from backend.api.modules.project_lifecycle.schemas.blank import (
     BlankProjectCreateRequest,
     BlankProjectCreateResponse,
 )
-from backend.api.modules.project_lifecycle.application.blank_service import BlankProjectService
 from backend.database.database import get_session
-from backend.api.dependencies.llm import llm_context_manager
-
+from backend.database.model import UserModel
 
 router = APIRouter(
     prefix="/api/blank_projects",

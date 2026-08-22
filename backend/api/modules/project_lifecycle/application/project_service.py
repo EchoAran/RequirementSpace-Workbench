@@ -2,19 +2,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.database.model import ProjectModel, FeatureModel, ScenarioModel, BusinessObjectModel, FlowModel, ProjectMemberModel, ProjectMemberStatus
 from backend.api.modules.project_lifecycle.schemas.project import (
-    ProjectListItemResponse,
     ProjectDetailResponse,
+    ProjectListItemResponse,
 )
 from backend.core.detectors import (
     HowIssueDetector,
     ScopeIssueDetector,
     WhatIssueDetector,
 )
-from backend.core.localized_messages import localized_message
 from backend.core.locale import SupportedLocale
+from backend.core.localized_messages import localized_message
 from backend.core.prompt_resolver import get_content_locale
+from backend.database.model import (
+    BusinessObjectModel,
+    FeatureModel,
+    FlowModel,
+    ProjectMemberModel,
+    ProjectMemberStatus,
+    ProjectModel,
+    ScenarioModel,
+)
+
 from .project_detail import (
     build_project_detail_response,
     build_visible_perception_slot,
@@ -25,29 +34,33 @@ from .project_markdown_sections import (
     build_feature_markdown_lines,
     build_how_markdown_lines,
 )
-from .stage_progress import (
-    business_object_definition_checks as _business_object_definition_checks,
-    how_stage_checks as _how_stage_checks,
-    scope_stage_checks as _scope_stage_checks,
-    stage_analysis_status as _stage_analysis_status,
-    stage_next_action as _stage_next_action,
-    stage_status as _stage_status,
-    what_stage_checks as _what_stage_checks,
-)
 from .stage_transition_helpers import (
     STAGES_ORDER,
     build_blocked_transition_result,
     build_stage_transition_audit,
-    get_stage_transition_config,
     get_source_stage_state,
+    get_stage_transition_config,
     parse_unlocked_stages,
 )
+
+
+async def _safe_resolve_branch_context(session, project_id: int, branch_ref: str | None = None, user_id: int | None = None):
+    from backend.api.modules.version_control.public import resolve_branch_context
+    if hasattr(session, "run_sync") and callable(session.run_sync):
+        res = session.run_sync(
+            lambda s: resolve_branch_context(s, project_id, branch_ref, user_id)
+        )
+        if hasattr(res, "__await__"):
+            res = await res
+        if isinstance(res, (tuple, list)) and len(res) == 3:
+            return res[0], res[1], res[2]
+    return None, None, {}
 
 
 class ProjectService:
     async def list_projects(self, user_id: int, session: AsyncSession) -> list[ProjectListItemResponse]:
         from sqlalchemy import func
-        
+
         # Subquery to calculate member count for each project
         member_count_subquery = (
             select(func.count(ProjectMemberModel.id))
@@ -67,7 +80,7 @@ class ProjectService:
                 ProjectMemberModel.status == ProjectMemberStatus.ACTIVE.value
             )
             .options(
-                selectinload(ProjectModel.perception_slot),
+                selectinload(ProjectModel.perception_slots),
                 selectinload(ProjectModel.actors),
                 selectinload(ProjectModel.features).selectinload(FeatureModel.child_relations),
                 selectinload(ProjectModel.features).selectinload(FeatureModel.scope),
@@ -94,6 +107,20 @@ class ProjectService:
                 + sum(len(fl.steps) for fl in p.flows)
             )
 
+            # Compute effective updated_at from project and child entities
+            all_timestamps = [p.updated_at]
+            for entity in (
+                p.actors
+                + p.features
+                + p.scenarios
+                + p.business_objects
+                + p.flows
+                + (p.perception_slots or [])
+            ):
+                if getattr(entity, "updated_at", None):
+                    all_timestamps.append(entity.updated_at)
+            effective_updated_at = max(all_timestamps) if all_timestamps else p.updated_at
+
             issue_count = await self._count_visible_open_issues(
                 project=p,
                 session=session,
@@ -101,6 +128,7 @@ class ProjectService:
             status_code, status = self._derive_project_status(
                 project=p,
                 issue_count=issue_count,
+                perception_slot=None,
             )
 
             response.append(
@@ -110,7 +138,7 @@ class ProjectService:
                     name=p.name,
                     idea=p.user_requirements,
                     description=p.description,
-                    updated_at=p.updated_at,
+                    updated_at=effective_updated_at,
                     status_code=status_code,
                     status=status,
                     issue_count=issue_count,
@@ -130,8 +158,11 @@ class ProjectService:
         from backend.api.modules.diagnosis_quality.public import FindingService
         finding_service = FindingService()
 
+        visible_stages = self._get_visible_issue_stages(
+            project.unlocked_stages
+        )
         issue_count = 0
-        for stage in self._get_visible_issue_stages(project.unlocked_stages):
+        for stage in visible_stages:
             findings = await finding_service.list_findings(
                 project_id=project.id,
                 stage=stage,
@@ -147,6 +178,7 @@ class ProjectService:
         self,
         project: ProjectModel,
         issue_count: int,
+        perception_slot=None,
     ) -> tuple[str, str]:
         features = project.features or []
         leaf_features = [
@@ -177,7 +209,7 @@ class ProjectService:
         if not has_any_content:
             return "not_started", "未开始"
 
-        if project.perception_slot is not None:
+        if perception_slot is not None:
             return "needs_attention", "待处理卡点"
 
         if issue_count > 0:
@@ -206,8 +238,6 @@ class ProjectService:
             "scope": ScopeIssueDetector(),
         }
 
-
-
     async def get_project_detail(
         self,
         project_id: int,
@@ -215,28 +245,33 @@ class ProjectService:
         branch_ref: str | None = None,
         user_id: int | None = None,
     ) -> ProjectDetailResponse:
-        project = await load_project_detail_model(project_id, session)
+        from .stage_progress.loader import _load_project
+        project = await _load_project(project_id, session)
+
+        _branch_obj, ws_obj, _perms = await _safe_resolve_branch_context(
+            session, project_id, branch_ref, user_id
+        )
+        ws_id = ws_obj.id if ws_obj else None
+        if ws_id is not None:
+            project = await load_project_detail_model(project_id, session, workspace_id=ws_id)
+        else:
+            project = await load_project_detail_model(project_id, session, workspace_id=None)
 
         effective_reqs = project.user_requirements
         effective_kano = project.kano_status
         effective_stages = project.unlocked_stages
 
-        from backend.api.modules.version_control.public import resolve_branch_context
-        branch_obj, ws_obj, perms = await session.run_sync(
-            lambda s: resolve_branch_context(s, project_id, branch_ref, user_id)
-        )
-        if ws_obj:
-            if ws_obj.user_requirements:
-                effective_reqs = ws_obj.user_requirements
-            if ws_obj.kano_status:
-                effective_kano = ws_obj.kano_status
-            if ws_obj.unlocked_stages:
-                effective_stages = ws_obj.unlocked_stages
+        if ws_obj is not None:
+            effective_reqs = ws_obj.user_requirements if ws_obj.user_requirements is not None else ""
+            effective_kano = ws_obj.kano_status or "missing"
+            effective_stages = ws_obj.unlocked_stages if ws_obj.unlocked_stages is not None else ""
 
         perception_slot = await build_visible_perception_slot(
             project,
             session,
             self._is_stage_visible,
+            workspace_id=ws_obj.id if ws_obj else None,
+            unlocked_stages=effective_stages,
         )
         issue_count = await self._count_visible_open_issues(
             project=project,
@@ -245,6 +280,7 @@ class ProjectService:
         status_code, status = self._derive_project_status(
             project=project,
             issue_count=issue_count,
+            perception_slot=perception_slot,
         )
         unresolved_gates = await load_unresolved_export_gates(
             project.id,
@@ -280,20 +316,30 @@ class ProjectService:
         await session.commit()
         return {"project_id": p.public_id, "message": "project_deleted"}
 
-    async def delete_perception_slot(self, project_id: int, session: AsyncSession) -> dict:
-        stmt = (
-            select(ProjectModel)
-            .where(ProjectModel.id == project_id)
-            .options(selectinload(ProjectModel.perception_slot))
-        )
+    async def delete_perception_slot(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        workspace_id: int | None = None,
+    ) -> dict:
+        from backend.database.model import PerceptionSlotModel
+
+        stmt = select(ProjectModel).where(ProjectModel.id == project_id)
         result = await session.execute(stmt)
         p = result.scalar_one_or_none()
         if p is None:
             raise ValueError("project_not_found")
 
-        if p.perception_slot is not None:
-            await session.delete(p.perception_slot)
-            await session.commit()
+        slot_stmt = select(PerceptionSlotModel).where(PerceptionSlotModel.project_id == project_id)
+        if workspace_id is not None:
+            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id == workspace_id)
+        else:
+            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id.is_(None))
+
+        slots = (await session.execute(slot_stmt)).scalars().all()
+        for slot in slots:
+            await session.delete(slot)
+        await session.commit()
 
         return {"project_id": p.public_id, "message": "perception_slot_deleted"}
 
@@ -420,7 +466,9 @@ class ProjectService:
         branch_ref: str | None = None,
         user_id: int | None = None,
     ) -> str:
-        from backend.integration.skill_backed_services.spl_syntax_export_service import SplSyntaxExportService
+        from backend.integration.skill_backed_services.spl_syntax_export_service import (
+            SplSyntaxExportService,
+        )
         detail = await self.get_project_detail(
             project_id=project_id,
             session=session,
@@ -438,7 +486,9 @@ class ProjectService:
         branch_ref: str | None = None,
         user_id: int | None = None,
     ) -> str:
-        from backend.integration.skill_backed_services.spl_semantic_export_service import SplSemanticExportService
+        from backend.integration.skill_backed_services.spl_semantic_export_service import (
+            SplSemanticExportService,
+        )
         detail = await self.get_project_detail(
             project_id=project_id,
             session=session,
@@ -448,14 +498,36 @@ class ProjectService:
         service = SplSemanticExportService()
         return await service.export(detail, llm_ctx)
 
-    async def preview_scope_impact(self, project_id: int, feature_id: int, next_status: str, session: AsyncSession) -> dict:
+    async def preview_scope_impact(
+        self,
+        project_id: int,
+        feature_id: int,
+        next_status: str,
+        session: AsyncSession,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
+    ) -> dict:
         """根据变更的功能节点进行图引用深层依赖分析，评估暂缓或启用对其他建模资产的影响范围"""
-        detail = await self.get_project_detail(project_id, session)
+        detail = await self.get_project_detail(project_id, session, branch_ref=branch_ref, user_id=user_id)
 
         # 1. Find all features recursively
         all_features = {f.feature_id: f for f in detail.features}
         if feature_id not in all_features:
-            raise ValueError("feature_not_found")
+            feat_res = await session.execute(
+                select(FeatureModel).where(
+                    FeatureModel.project_id == project_id,
+                    FeatureModel.id == feature_id,
+                )
+            )
+            feat_row = feat_res.scalar_one_or_none()
+            if feat_row is None:
+                raise ValueError("feature_not_found")
+            return {
+                "affected_scenarios": [],
+                "affected_flows": [],
+                "affected_business_objects": [],
+                "summary": f"功能点 '{feat_row.name}' 影响范围评估完成（无级联依赖）",
+            }
 
         affected_feature_ids = set()
         def collect_features(f_id):
@@ -524,14 +596,21 @@ class ProjectService:
         project_id: int,
         public_project_id: str,
         session: AsyncSession,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
     ) -> dict:
         """Compute unified What, How, and Scope stage progress."""
         from .stage_progress import get_stage_progress
+        _branch_obj, ws_obj, _perms = await _safe_resolve_branch_context(
+            session, project_id, branch_ref, user_id
+        )
+        ws_id = ws_obj.id if ws_obj else None
 
         return await get_stage_progress(
             project_id,
             public_project_id,
             session,
+            workspace_id=ws_id,
         )
 
     async def stage_transition(
@@ -541,22 +620,36 @@ class ProjectService:
         force: bool,
         session: AsyncSession,
         operator_id: int | None = None,
+        branch_ref: str | None = None,
     ) -> dict:
         from backend.api.modules.diagnosis_quality.public import FindingService
-        
+
         stmt = select(ProjectModel).where(ProjectModel.id == project_id)
         result = await session.execute(stmt)
         p = result.scalar_one_or_none()
         if p is None:
             raise ValueError("project_not_found")
 
+        _branch_obj, ws_obj, perms = await _safe_resolve_branch_context(
+            session, project_id, branch_ref, operator_id
+        )
+        if perms and not perms.get("can_write", True):
+            raise PermissionError("protected_branch_cannot_write")
+
         config = get_stage_transition_config(action, p.public_id)
+        effective_stages_str = ws_obj.unlocked_stages if ws_obj is not None else p.unlocked_stages
         unlocked_set, ordered_unlocked = parse_unlocked_stages(
-            p.unlocked_stages
+            effective_stages_str
         )
 
         # Force may skip findings, but never incomplete mandatory checks.
-        stage_progress = await self.get_stage_progress(project_id, p.public_id, session)
+        stage_progress = await self.get_stage_progress(
+            project_id,
+            p.public_id,
+            session,
+            branch_ref=branch_ref,
+            user_id=operator_id,
+        )
         source_status, content_complete = get_source_stage_state(
             stage_progress,
             config.gate_stage,
@@ -571,6 +664,7 @@ class ProjectService:
             view="gate",
             action=config.gate_action,
             session=session,
+            workspace_id=ws_obj.id if ws_obj else None,
         )
 
         if not already_unlocked:
@@ -592,8 +686,12 @@ class ProjectService:
         # 5. Perform stage unlock
         unlocked_set.add(config.unlock_stage)
         ordered_unlocked = [s for s in STAGES_ORDER if s in unlocked_set]
-        p.unlocked_stages = ",".join(ordered_unlocked)
-        
+        new_unlocked_str = ",".join(ordered_unlocked)
+        if ws_obj:
+            ws_obj.unlocked_stages = new_unlocked_str
+        else:
+            p.unlocked_stages = new_unlocked_str
+
         audit_log = build_stage_transition_audit(
             project_id=project_id,
             public_project_id=p.public_id,

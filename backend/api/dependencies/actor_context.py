@@ -1,8 +1,10 @@
 import uuid
+
 from fastapi import Depends, Request
+
 from backend.api.dependencies.auth import get_optional_user
-from backend.database.model import UserModel
 from backend.core.actor_context import ActorContext, _current_actor_context
+from backend.database.model import UserModel
 
 
 async def get_actor_context(

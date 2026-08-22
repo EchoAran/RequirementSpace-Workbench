@@ -2,9 +2,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
 from backend.api.modules.requirements_core.actor.application.actor_generation_service import ActorGenerationService
 from backend.database.model import ActorModel
@@ -61,20 +61,23 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         """Persist actor payload to ActorModel, clearing existing actors first (overwrite)."""
         project_id = payload.get("project_id")
-        existing = await session.execute(
-            select(ActorModel).where(ActorModel.project_id == project_id)
-        )
+        workspace_id = kwargs.get("workspace_id")
+
+        stmt = select(ActorModel).where(ActorModel.project_id == project_id)
+        if workspace_id is not None:
+            stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+        existing = await session.execute(stmt)
         existing_actors = existing.scalars().all()
 
         # UX-6: delete existing actors (overwrite mode)
         for actor in existing_actors:
             await session.delete(actor)
         await session.flush()
-
         # Persist new actors
         for item in payload.get("actors", []):
             session.add(ActorModel(
                 project_id=project_id,
+                workspace_id=workspace_id,
                 name=item["actor_name"],
                 description=item.get("actor_description", ""),
                 confirmation_status="ai_assumption",
@@ -88,6 +91,7 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"what", "how"},
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {

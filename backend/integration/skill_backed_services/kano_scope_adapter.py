@@ -7,7 +7,6 @@ from backend.core.prompt_resolver import get_content_locale
 from backend.integration.skill_backed_services.chart_renderer import KanoChartRenderer
 from backend.schemas import FeatureNode
 
-
 ROLE_TAG_PATTERN = re.compile(r"\s*\[Role:\s*[^\]]+\]\s*$", re.IGNORECASE)
 
 
@@ -46,16 +45,31 @@ class KanoScopeAdapter:
             _canon(feature.featureName): feature
             for feature in leaf_features
         }
+        feature_by_id = {
+            feature.featureId: feature
+            for feature in leaf_features
+        }
         scopes = []
+        seen_feature_ids = set()
 
         for item in results:
             if not isinstance(item, dict):
-                raise ValueError("invalid_scope_payload")
+                continue
 
             feature_name = str(item.get("feature", "")).strip()
             feature = feature_by_name.get(_canon(feature_name))
             if feature is None:
-                raise ValueError("invalid_feature_reference")
+                raw_fid = item.get("feature_id", item.get("featureId"))
+                if raw_fid is not None:
+                    try:
+                        feature = feature_by_id.get(int(raw_fid))
+                    except (ValueError, TypeError):
+                        pass
+
+            if feature is None or feature.featureId in seen_feature_ids:
+                continue
+
+            seen_feature_ids.add(feature.featureId)
 
             category = str(item.get("kano_category", "I")).strip().upper() or "I"
             better_worse = item.get("better_worse", {}) if isinstance(item.get("better_worse"), dict) else {}
@@ -96,6 +110,23 @@ class KanoScopeAdapter:
                     "kano_category_name": item.get("kano_category_name"),
                 }
             )
+
+        # Ensure all leaf features are present in output
+        for lf in leaf_features:
+            if lf.featureId not in seen_feature_ids:
+                scopes.append(
+                    {
+                        "feature_id": lf.featureId,
+                        "scope_status": "CURRENT",
+                        "reason": f"Kano 分析默认纳入当前范围：{lf.featureName}",
+                        "positive_summary": None,
+                        "negative_summary": None,
+                        "positive_picture_base64": None,
+                        "negative_picture_base64": None,
+                        "kano_category": "O",
+                        "kano_category_name": "期望型 (One-dimensional)",
+                    }
+                )
 
         return scopes
 

@@ -1,4 +1,5 @@
-from typing import Protocol, Any
+from typing import Any, Protocol
+
 
 class ChoiceGroupCreator(Protocol):
     async def create_choice_group(

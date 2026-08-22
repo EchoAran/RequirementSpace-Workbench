@@ -17,13 +17,15 @@ async def ensure_flow_exists(
     session,
     project_id: int,
     flow_id: int,
+    workspace_id: int | None = None,
 ) -> None:
-    result = await session.execute(
-        select(FlowModel).where(
-            FlowModel.project_id == project_id,
-            FlowModel.id == flow_id,
-        )
+    stmt = select(FlowModel).where(
+        FlowModel.project_id == project_id,
+        FlowModel.id == flow_id,
     )
+    if workspace_id is not None:
+        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
         raise ValueError("flow_not_found")
 
@@ -56,15 +58,19 @@ async def _write_actor_links(
     project_id: int,
     step_id: int,
     actor_ids: list[int],
+    workspace_id: int | None = None,
 ) -> None:
     if not actor_ids:
         return
+    stmt = select(ActorModel.id).where(
+        ActorModel.project_id == project_id,
+        ActorModel.id.in_(actor_ids),
+    )
+    if workspace_id is not None:
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
     valid_ids = await _validated_ids(
         session,
-        select(ActorModel.id).where(
-            ActorModel.project_id == project_id,
-            ActorModel.id.in_(actor_ids),
-        ),
+        stmt,
         actor_ids,
         "invalid_actor_ids",
     )
@@ -85,15 +91,19 @@ async def _write_business_object_links(
     business_object_ids: list[int],
     table,
     error_code: str,
+    workspace_id: int | None = None,
 ) -> None:
     if not business_object_ids:
         return
+    stmt = select(BusinessObjectModel.id).where(
+        BusinessObjectModel.project_id == project_id,
+        BusinessObjectModel.id.in_(business_object_ids),
+    )
+    if workspace_id is not None:
+        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     valid_ids = await _validated_ids(
         session,
-        select(BusinessObjectModel.id).where(
-            BusinessObjectModel.project_id == project_id,
-            BusinessObjectModel.id.in_(business_object_ids),
-        ),
+        stmt,
         business_object_ids,
         error_code,
     )
@@ -148,12 +158,14 @@ async def write_flow_step_links(
     input_business_object_ids: list[int],
     output_business_object_ids: list[int],
     next_step_ids: list[int],
+    workspace_id: int | None = None,
 ) -> None:
     await _write_actor_links(
         session,
         project_id,
         step_id,
         actor_ids,
+        workspace_id=workspace_id,
     )
     await _write_business_object_links(
         session,
@@ -162,6 +174,7 @@ async def write_flow_step_links(
         business_object_ids=input_business_object_ids,
         table=flow_step_input_business_object_table,
         error_code="invalid_input_business_object_ids",
+        workspace_id=workspace_id,
     )
     await _write_business_object_links(
         session,
@@ -170,6 +183,7 @@ async def write_flow_step_links(
         business_object_ids=output_business_object_ids,
         table=flow_step_output_business_object_table,
         error_code="invalid_output_business_object_ids",
+        workspace_id=workspace_id,
     )
     await _write_next_step_links(
         session,
@@ -193,8 +207,13 @@ async def load_flow_step(session, step_id: int):
     return result.scalar_one()
 
 
-async def load_flow_step_for_update(session, flow_id: int, step_id: int):
-    result = await session.execute(
+async def load_flow_step_for_update(
+    session,
+    flow_id: int,
+    step_id: int,
+    workspace_id: int | None = None,
+):
+    stmt = (
         select(FlowStepModel)
         .where(
             FlowStepModel.flow_id == flow_id,
@@ -207,6 +226,9 @@ async def load_flow_step_for_update(session, flow_id: int, step_id: int):
             selectinload(FlowStepModel.next_steps),
         )
     )
+    if workspace_id is not None:
+        stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     step = result.scalar_one_or_none()
     if step is None:
         raise ValueError("flow_step_not_found")
@@ -296,42 +318,57 @@ async def apply_flow_step_relationship_updates(
     flow_id: int,
     step,
     request,
+    workspace_id: int | None = None,
 ) -> None:
+    actor_stmt = select(ActorModel).where(
+        ActorModel.project_id == project_id,
+        ActorModel.id.in_(request.actor_ids or []),
+    )
+    if workspace_id is not None:
+        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+
     await _replace_relationship(
         session,
         step=step,
         attribute="actors",
         requested_ids=request.actor_ids,
-        statement=select(ActorModel).where(
-            ActorModel.project_id == project_id,
-            ActorModel.id.in_(request.actor_ids or []),
-        ),
+        statement=actor_stmt,
         error_code="invalid_actor_ids",
     )
+
+    in_bo_stmt = select(BusinessObjectModel).where(
+        BusinessObjectModel.project_id == project_id,
+        BusinessObjectModel.id.in_(
+            request.input_business_object_ids or []
+        ),
+    )
+    if workspace_id is not None:
+        in_bo_stmt = in_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+
     await _replace_relationship(
         session,
         step=step,
         attribute="input_business_objects",
         requested_ids=request.input_business_object_ids,
-        statement=select(BusinessObjectModel).where(
-            BusinessObjectModel.project_id == project_id,
-            BusinessObjectModel.id.in_(
-                request.input_business_object_ids or []
-            ),
-        ),
+        statement=in_bo_stmt,
         error_code="invalid_input_business_object_ids",
     )
+
+    out_bo_stmt = select(BusinessObjectModel).where(
+        BusinessObjectModel.project_id == project_id,
+        BusinessObjectModel.id.in_(
+            request.output_business_object_ids or []
+        ),
+    )
+    if workspace_id is not None:
+        out_bo_stmt = out_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+
     await _replace_relationship(
         session,
         step=step,
         attribute="output_business_objects",
         requested_ids=request.output_business_object_ids,
-        statement=select(BusinessObjectModel).where(
-            BusinessObjectModel.project_id == project_id,
-            BusinessObjectModel.id.in_(
-                request.output_business_object_ids or []
-            ),
-        ),
+        statement=out_bo_stmt,
         error_code="invalid_output_business_object_ids",
     )
     await _replace_relationship(

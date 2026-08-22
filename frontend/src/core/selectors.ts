@@ -36,13 +36,16 @@ export type ReadinessSummary = {
   dimensions: ReadinessDimension[];
 };
 
-export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary => {
+export const buildReadiness = (space: RequirementSpace | null, stageProgress?: any): ReadinessSummary => {
   if (!space) return { overallScore: 0, dimensions: [] };
 
   const features = space.features || [];
   const actors = space.actors || [];
   const flows = space.flows || [];
   const businessObjects = space.businessObjects || [];
+
+  const howStage = stageProgress?.stages?.find((s: any) => s.stage === 'how');
+  const isHowUnlocked = howStage ? Boolean(howStage.unlocked) : true;
 
   // Calculate scores for each dimension
   // 1. Goal (Features) - ratio of features with defined descriptions/names
@@ -57,14 +60,20 @@ export const buildReadiness = (space: RequirementSpace | null): ReadinessSummary
   // 3. System - ratio of leaf features with flows
   const leafFeatures = features.filter(f => f.parentId !== null && (f.childrenIds || []).length === 0);
   const flowsLinkedFeatures = new Set(flows.flatMap(f => f.featureIds || []));
-  const systemScore = leafFeatures.length > 0
+  const systemScore = !isHowUnlocked
+    ? 0
+    : leafFeatures.length > 0
     ? Math.floor((leafFeatures.filter(f => flowsLinkedFeatures.has(f.featureId)).length / leafFeatures.length) * 100)
     : 0;
 
   // 4. Data - Business object attribute completeness
   const totalBOs = businessObjects.length;
   const completeBOs = businessObjects.filter(b => (b.businessObjectAttributes || []).length > 0).length;
-  const dataScore = totalBOs > 0 ? Math.floor((completeBOs / totalBOs) * 100) : 0;
+  const dataScore = !isHowUnlocked
+    ? 0
+    : totalBOs > 0
+    ? Math.floor((completeBOs / totalBOs) * 100)
+    : 0;
 
   // 5. UI / Acceptance - scenarios with acceptance criteria ratio
   const totalScenarios = features.flatMap(f => f.scenarios || []);
@@ -154,8 +163,9 @@ export const buildOverviewModel = (
   space: RequirementSpace | null,
   auditLogs: any[] = [],
   stageProgress?: any,
+  backendFindings: Finding[] = [],
 ): OverviewModel => {
-  const readiness = buildReadiness(space);
+  const readiness = buildReadiness(space, stageProgress);
   if (!space) {
     return {
       readiness,
@@ -171,8 +181,8 @@ export const buildOverviewModel = (
     };
   }
 
-  const allIssues = selectAllIssues(space);
-  const openIssues = allIssues.filter((finding) => (finding.status || 'open') === 'open');
+  const allIssues = backendFindings.length > 0 ? backendFindings : selectAllIssues(space);
+  const openIssues = allIssues.filter((finding) => (finding.status || 'open') === 'open' && isCountableFinding(finding));
   const highRiskIssues = openIssues.filter((finding) => finding.severity === 'blocking');
 
   const dq: any[] = [];

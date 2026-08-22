@@ -7,16 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_project_member
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel
-from backend.api.modules.version_control.schemas import (
-    BranchSummaryResponse,
-    BranchDetailResponse,
-    BranchCreateRequest,
-    BranchUpdateRequest,
-)
+from backend.api.dependencies.project_access import require_project_writer
 from backend.api.modules.version_control.application import branch_service
 from backend.api.modules.version_control.audit import record_vc_event
+from backend.api.modules.version_control.schemas import (
+    BranchCreateRequest,
+    BranchDetailResponse,
+    BranchSummaryResponse,
+    BranchUpdateRequest,
+)
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/branches",
@@ -73,7 +74,7 @@ async def create_branch(
     project_id: str,
     request: BranchCreateRequest,
     user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_project_member),
+    owned_project: ProjectModel = Depends(require_project_writer),
     session: AsyncSession = Depends(get_session),
 ):
     """从指定 Commit 或源分支创建新分支。"""
@@ -96,6 +97,8 @@ async def create_branch(
         )
         await session.commit()
         return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

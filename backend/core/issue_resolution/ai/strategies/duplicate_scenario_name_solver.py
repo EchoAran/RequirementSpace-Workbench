@@ -4,6 +4,7 @@ Recommends unique names for scenarios with duplicate names under the same featur
 """
 
 import json
+
 from sqlalchemy import select
 
 from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver

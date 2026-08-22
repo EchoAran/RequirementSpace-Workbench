@@ -1,6 +1,9 @@
-from uuid import uuid4
 import logging
+from uuid import uuid4
 
+from backend.api.modules.diagnosis_quality.perception.application.preview_builders import (
+    PerceptionPreviewBuilder,
+)
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import PERCEPTION_SLOT_FILLING_DRAFT_CREATED
 from backend.core.perceptrons.slot_fillers.acceptance_criteria_filler import (
@@ -17,9 +20,6 @@ from backend.core.perceptrons.slot_fillers.flows_filler import (
 )
 from backend.core.perceptrons.slot_fillers.scenarios_filler import (
     ScenariosFiller,
-)
-from backend.api.modules.diagnosis_quality.perception.application.preview_builders import (
-    PerceptionPreviewBuilder,
 )
 
 logger = get_logger(__name__)
@@ -157,6 +157,7 @@ class PerceptionDraftCreator:
             filler_kind=filler_kind,
             user_feedback=None,
             session=session,
+            workspace_id=workspace_id,
         )
 
         draft_payload["draft_id"] = draft_id
@@ -205,6 +206,7 @@ class PerceptionDraftCreator:
             filler_kind=draft["filler_kind"],
             user_feedback=user_feedback,
             session=session,
+            workspace_id=workspace_id,
         )
 
         draft_payload["draft_id"] = draft_id
@@ -251,6 +253,7 @@ class PerceptionDraftCreator:
         filler_kind: str,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         if filler_kind == "actor":
             return await PerceptionPreviewBuilder.generate_actor_preview(
@@ -259,6 +262,7 @@ class PerceptionDraftCreator:
                 perception_job_id=perception_job_id,
                 user_feedback=user_feedback,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         if filler_kind == "feature":
@@ -268,6 +272,7 @@ class PerceptionDraftCreator:
                 perception_job_id=perception_job_id,
                 user_feedback=user_feedback,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         if filler_kind == "scenario":
@@ -277,6 +282,7 @@ class PerceptionDraftCreator:
                 perception_job_id=perception_job_id,
                 user_feedback=user_feedback,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         if filler_kind == "acceptance_criteria":
@@ -286,6 +292,7 @@ class PerceptionDraftCreator:
                 perception_job_id=perception_job_id,
                 user_feedback=user_feedback,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         if filler_kind == "flow":
@@ -295,6 +302,7 @@ class PerceptionDraftCreator:
                 perception_job_id=perception_job_id,
                 user_feedback=user_feedback,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         raise ValueError("unsupported_filler_kind")

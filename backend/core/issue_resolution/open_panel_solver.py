@@ -62,6 +62,20 @@ class OpenPanelIssueSolver(BaseIssueSolver):
             "route_pattern": "/projects/{project_id}/how/flow-steps/{target_id}",
             "panel": "flow_step_actor_relation",
         },
+        "INVALID_STEP_ACTOR": {
+            "title": "修复步骤参与者",
+            "description": "部分流程步骤关联了无效或已删除的角色，请重新关联有效参与者。",
+            "stage": "how",
+            "route_pattern": "/projects/{project_id}/how/flow-steps/{target_id}",
+            "panel": "flow_step_actor_relation",
+        },
+        "INVALID_STEP_BUSINESS_OBJECT": {
+            "title": "修复步骤业务对象",
+            "description": "部分流程步骤关联了无效或已删除的业务对象，请重新关联有效业务对象。",
+            "stage": "how",
+            "route_pattern": "/projects/{project_id}/how/flow-steps/{target_id}",
+            "panel": "flow_step_object_relation",
+        },
         "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": {
             "title": "补充分支",
             "description": "请为判断步骤补充后继分支。",

@@ -3,18 +3,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.database import get_session
-from backend.database.model import (
-    UserModel,
-    ProjectModel,
-    GenerativeDraftModel,
-    ChoiceGroupModel,
-    ChoiceModel,
-    AIAddSessionModel,
-)
 from backend.api.dependencies.project_access import (
     require_project_member,
     require_project_role,
+)
+from backend.database.database import get_session
+from backend.database.model import (
+    AIAddSessionModel,
+    ChoiceGroupModel,
+    ChoiceModel,
+    GenerativeDraftModel,
+    ProjectModel,
+    UserModel,
 )
 
 

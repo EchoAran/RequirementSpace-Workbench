@@ -1,8 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+
 from backend.database.model import (
-    BusinessObjectModel,
     BusinessObjectAttributeModel,
+    BusinessObjectModel,
     ConfirmationStatus,
     flow_step_input_business_object_table,
     flow_step_output_business_object_table,
@@ -10,15 +11,16 @@ from backend.database.model import (
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.business_object.schemas import (
-    BusinessObjectCreateRequest,
-    BusinessObjectUpdateRequest,
-    BusinessObjectResponse,
     BusinessObjectAttributeCreateRequest,
-    BusinessObjectAttributeUpdateRequest,
     BusinessObjectAttributeResponse,
+    BusinessObjectAttributeUpdateRequest,
+    BusinessObjectCreateRequest,
+    BusinessObjectResponse,
+    BusinessObjectUpdateRequest,
 )
+from backend.core.notifier import get_notifier
+
 from .business_object_attribute_writer import (
     apply_attribute_updates,
     build_attribute_update_diff,
@@ -72,6 +74,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return BusinessObjectResponse(
@@ -143,6 +146,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -222,6 +226,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {
@@ -235,18 +240,21 @@ class BusinessObjectService:
         bo_id: int,
         req: BusinessObjectAttributeCreateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> BusinessObjectAttributeResponse:
-        # Verify BO belongs to project
-        bo_res = await session.execute(
-            select(BusinessObjectModel).where(
-                BusinessObjectModel.project_id == project_id,
-                BusinessObjectModel.id == bo_id,
-            )
+        # Verify BO belongs to project and workspace
+        bo_stmt = select(BusinessObjectModel).where(
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.id == bo_id,
         )
+        if workspace_id is not None:
+            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        bo_res = await session.execute(bo_stmt)
         if bo_res.scalar_one_or_none() is None:
             raise ValueError("business_object_not_found")
 
         attr = BusinessObjectAttributeModel(
+            workspace_id=workspace_id,
             business_object_id=bo_id,
             name=req.name,
             description=req.description,
@@ -273,6 +281,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return BusinessObjectAttributeResponse(
@@ -292,12 +301,14 @@ class BusinessObjectService:
         attr_id: int,
         req: BusinessObjectAttributeUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> BusinessObjectAttributeResponse:
         attr = await load_attribute_for_update(
             session,
             project_id,
             bo_id,
             attr_id,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -327,6 +338,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -340,23 +352,26 @@ class BusinessObjectService:
         bo_id: int,
         attr_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        # Verify BO belongs to project
-        bo_res = await session.execute(
-            select(BusinessObjectModel).where(
-                BusinessObjectModel.project_id == project_id,
-                BusinessObjectModel.id == bo_id,
-            )
+        # Verify BO belongs to project and workspace
+        bo_stmt = select(BusinessObjectModel).where(
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.id == bo_id,
         )
+        if workspace_id is not None:
+            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        bo_res = await session.execute(bo_stmt)
         if bo_res.scalar_one_or_none() is None:
             raise ValueError("business_object_not_found")
 
-        attr_res = await session.execute(
-            select(BusinessObjectAttributeModel).where(
-                BusinessObjectAttributeModel.business_object_id == bo_id,
-                BusinessObjectAttributeModel.id == attr_id,
-            )
+        attr_stmt = select(BusinessObjectAttributeModel).where(
+            BusinessObjectAttributeModel.business_object_id == bo_id,
+            BusinessObjectAttributeModel.id == attr_id,
         )
+        if workspace_id is not None:
+            attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
+        attr_res = await session.execute(attr_stmt)
         attr = attr_res.scalar_one_or_none()
 
         if attr is None:
@@ -381,6 +396,7 @@ class BusinessObjectService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {

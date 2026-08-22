@@ -12,14 +12,15 @@ from backend.database.model import (
     beijing_now,
 )
 
-from .common import _CommitIdMaps
-from .entity_writer import _write_patch_entities
-from .prototype_writer import _copy_prototype_preview
-from .scope_writer import _ensure_leaf_scopes, _upsert_scopes
 from ..shadow_project_creator import (
     build_project_snapshot,
     calculate_stable_snapshot_hash,
 )
+from .common import _CommitIdMaps
+from .entity_writer import _write_patch_entities
+from .prototype_writer import _copy_prototype_preview
+from .scope_writer import _ensure_leaf_scopes, _upsert_scopes
+
 
 async def _load_ready_draft(
     draft_id: str,

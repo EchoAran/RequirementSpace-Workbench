@@ -1,5 +1,8 @@
 from sqlalchemy import select
 
+from backend.api.modules.diagnosis_quality.perception.application.normalizers import (
+    PerceptionDraftNormalizer,
+)
 from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
     load_issue_project_context,
@@ -33,9 +36,6 @@ from backend.schemas import (
     PerceptionSlot,
     ScenarioNode,
 )
-from backend.api.modules.diagnosis_quality.perception.application.normalizers import (
-    PerceptionDraftNormalizer,
-)
 
 
 class PerceptionPreviewBuilder:
@@ -46,16 +46,19 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         _job, perception_slot = await PerceptionPreviewBuilder._load_perception_job_and_slot(
             project_id=project_id,
             perception_job_id=perception_job_id,
             expected_kinds={"ACTOR"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         raw = await creator._actors_filler.fill(
@@ -84,10 +87,12 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         _job, perception_slot = await PerceptionPreviewBuilder._load_perception_job_and_slot(
             project_id=project_id,
@@ -97,6 +102,7 @@ class PerceptionPreviewBuilder:
                 "FEATURE_LEAF",
             },
             session=session,
+            workspace_id=workspace_id,
         )
 
         raw = await creator._features_filler.fill(
@@ -128,16 +134,19 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         job, perception_slot = await PerceptionPreviewBuilder._load_perception_job_and_slot(
             project_id=project_id,
             perception_job_id=perception_job_id,
             expected_kinds={"SCENARIO"},
             session=session,
+            workspace_id=workspace_id,
         )
         actor, feature, scenarios = PerceptionPreviewBuilder._load_pair_nodes(
             target_id=job.target_id,
@@ -176,16 +185,19 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         job, perception_slot = await PerceptionPreviewBuilder._load_perception_job_and_slot(
             project_id=project_id,
             perception_job_id=perception_job_id,
             expected_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         try:
@@ -194,23 +206,31 @@ class PerceptionPreviewBuilder:
             raise ValueError("invalid_scenario_reference") from error
 
         from backend.database.model import ScenarioModel
-        scenario_result = await session.execute(
-            select(ScenarioModel).where(
-                ScenarioModel.id == scenario_id,
-                ScenarioModel.project_id == project_id,
-            )
+        scenario_stmt = select(ScenarioModel).where(
+            ScenarioModel.id == scenario_id,
+            ScenarioModel.project_id == project_id,
         )
+        if workspace_id is not None:
+            scenario_stmt = scenario_stmt.where(ScenarioModel.workspace_id == workspace_id)
+        else:
+            scenario_stmt = scenario_stmt.where(ScenarioModel.workspace_id.is_(None))
+
+        scenario_result = await session.execute(scenario_stmt)
         scenario_model = scenario_result.scalar_one_or_none()
 
         if scenario_model is None:
             raise ValueError("invalid_scenario_reference")
 
         from backend.database.model import ScenarioAcceptanceCriterionModel
-        ac_result = await session.execute(
-            select(ScenarioAcceptanceCriterionModel).where(
-                ScenarioAcceptanceCriterionModel.scenario_id == scenario_id
-            )
+        ac_stmt = select(ScenarioAcceptanceCriterionModel).where(
+            ScenarioAcceptanceCriterionModel.scenario_id == scenario_id
         )
+        if workspace_id is not None:
+            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
+        else:
+            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id.is_(None))
+
+        ac_result = await session.execute(ac_stmt)
         existing_ac = ac_result.scalars().all()
 
         scenarios_input = [
@@ -258,16 +278,19 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         context, business_object_nodes = await PerceptionPreviewBuilder._load_flow_filling_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         _job, perception_slot = await PerceptionPreviewBuilder._load_perception_job_and_slot(
             project_id=project_id,
             perception_job_id=perception_job_id,
             expected_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         raw = await creator._flows_filler.fill(
@@ -305,15 +328,20 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         expected_kinds: set[str],
         session,
+        workspace_id: int | None = None,
     ) -> tuple[object, PerceptionSlot]:
         from backend.database.model import PerceptionJobModel
 
-        result = await session.execute(
-            select(PerceptionJobModel).where(
-                PerceptionJobModel.id == perception_job_id,
-                PerceptionJobModel.project_id == project_id,
-            )
+        stmt = select(PerceptionJobModel).where(
+            PerceptionJobModel.id == perception_job_id,
+            PerceptionJobModel.project_id == project_id,
         )
+        if workspace_id is not None:
+            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
+        else:
+            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
+
+        result = await session.execute(stmt)
         job = result.scalar_one_or_none()
 
         if job is None:
@@ -350,6 +378,7 @@ class PerceptionPreviewBuilder:
     async def _load_flow_filling_context(
         project_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[IssueProjectContext, list[BusinessObjectNode]]:
         from backend.database.model import (
             BusinessObjectAttributeModel,
@@ -359,12 +388,17 @@ class PerceptionPreviewBuilder:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
-        business_object_result = await session.execute(
-            select(BusinessObjectModel).where(
-                BusinessObjectModel.project_id == project_id
-            )
+        bo_stmt = select(BusinessObjectModel).where(
+            BusinessObjectModel.project_id == project_id
         )
+        if workspace_id is not None:
+            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        else:
+            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id.is_(None))
+
+        business_object_result = await session.execute(bo_stmt)
         business_object_models = business_object_result.scalars().all()
         business_object_ids = [
             business_object.id
@@ -374,13 +408,17 @@ class PerceptionPreviewBuilder:
         attributes_map: dict[int, list[BusinessObjectAttributeNode]] = {}
 
         if business_object_ids:
-            attribute_result = await session.execute(
-                select(BusinessObjectAttributeModel).where(
-                    BusinessObjectAttributeModel.business_object_id.in_(
-                        business_object_ids
-                    )
+            attr_stmt = select(BusinessObjectAttributeModel).where(
+                BusinessObjectAttributeModel.business_object_id.in_(
+                    business_object_ids
                 )
             )
+            if workspace_id is not None:
+                attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
+            else:
+                attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id.is_(None))
+
+            attribute_result = await session.execute(attr_stmt)
 
             for attribute in attribute_result.scalars().all():
                 attributes_map.setdefault(

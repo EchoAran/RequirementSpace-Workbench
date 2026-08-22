@@ -3,32 +3,38 @@
 允许前端通过 node_kind + node_id 任意修改任一节点的 confirmation_status。
 支持单节点更新和批量更新，每次变更自动记录审计日志。
 """
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_project, require_project_member
-from backend.database.model import UserModel, ProjectModel
-from backend.api.modules.version_control.public import resolve_branch_context
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.api.dependencies.actor_context import get_actor_context
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import (
+    require_owned_project as require_owned_project,
+    require_project_member,
+)
+from backend.api.modules.project_lifecycle.public import ConfirmationStatusEnum
+from backend.api.modules.version_control.dependencies import reject_commit_write
+from backend.api.modules.version_control.public import resolve_branch_context
+from backend.core.actor_context import ActorContext
 from backend.database.database import get_session
 from backend.database.model import (
     ActorModel,
-    FeatureModel,
-    ScopeModel,
-    ScenarioModel,
-    ScenarioAcceptanceCriterionModel,
-    BusinessObjectModel,
     BusinessObjectAttributeModel,
+    BusinessObjectModel,
+    FeatureModel,
     FlowModel,
     FlowStepModel,
+    ProjectModel,
+    ScenarioAcceptanceCriterionModel,
+    ScenarioModel,
+    ScopeModel,
+    UserModel,
 )
-from backend.api.modules.project_lifecycle.public import ConfirmationStatusEnum
-from backend.api.dependencies.actor_context import get_actor_context
-from backend.core.actor_context import ActorContext
 from backend.services.audit_service import AuditService
-from backend.api.modules.version_control.dependencies import reject_commit_write
 
 audit_service = AuditService()
 
@@ -168,14 +174,14 @@ async def _write_audit_log(
     kind_label = _NODE_KIND_LABEL.get(node_kind, node_kind)
     old_label = _CONFIRMATION_STATUS_LABEL.get(old_status, old_status)
     new_label = _CONFIRMATION_STATUS_LABEL.get(new_status, new_status)
-    
+
     if new_status == "confirmed":
         summary = f"直接确认{kind_label}(id={node_id}): {old_label} → {new_label}"
     else:
         summary = f"节点确认状态变更: {kind_label}(id={node_id}) {old_label} → {new_label}"
-        
+
     diff = {"confirmation_status": {"before": old_status, "after": new_status}}
-    
+
     await audit_service.record(
         session=session,
         project_id=project_id,
@@ -194,9 +200,10 @@ async def _write_audit_log(
     )
 
     if new_status == "confirmed":
+        from datetime import datetime
+
         from backend.database.model import CollaborationTaskModel
-        from datetime import datetime, timezone
-        
+
         query = select(CollaborationTaskModel).where(
             CollaborationTaskModel.project_id == project_id,
             CollaborationTaskModel.target_type == node_kind,
@@ -207,7 +214,7 @@ async def _write_audit_log(
         open_tasks = res.scalars().all()
         for task in open_tasks:
             task.status = "superseded"
-            task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            task.completed_at = datetime.now(UTC).replace(tzinfo=None)
             await audit_service.record(
                 session=session,
                 project_id=project_id,
@@ -231,9 +238,14 @@ async def update_node_status(
     owned_project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
-    )
+    from backend.api.modules.version_control.public import map_branch_error
+    try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except Exception as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,
@@ -278,9 +290,14 @@ async def batch_update_node_status(
     commit_guard: None = Depends(reject_commit_write),
 ):
     """批量更新一组节点的确认状态为统一值。"""
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
-    )
+    from backend.api.modules.version_control.public import map_branch_error
+    try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except Exception as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,

@@ -8,7 +8,6 @@ from typing import Any
 
 from .core import KanoSkill
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 

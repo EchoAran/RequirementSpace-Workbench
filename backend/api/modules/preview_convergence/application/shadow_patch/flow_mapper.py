@@ -1,9 +1,9 @@
-from typing import Any
 
 from .common import (
     _resolve_generated_reference,
     _resolve_next_step_refs,
 )
+
 
 def _resolve_preserved_actor_refs(actor_ids: list) -> list[str]:
     actor_refs = []

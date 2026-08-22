@@ -115,9 +115,7 @@ async def decide_single_task(
         )
 
     old_status = node.confirmation_status
-    if decision == "approve":
-        node.confirmation_status = new_status
-    elif old_status != new_status:
+    if decision == "approve" or old_status != new_status:
         node.confirmation_status = new_status
     await _record_task_decision(
         audit_service,

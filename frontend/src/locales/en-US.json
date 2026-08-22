@@ -240,7 +240,8 @@
   "shell": {
     "loading": "Loading Project Workspace",
     "loadingProgress": "Restoring project context, please wait...",
-    "loadingBackup": "Preparing project data..."
+    "loadingBackup": "Preparing project data...",
+    "retry": "Retry"
   },
   "nav": {
     "overview": "Overview",
@@ -248,6 +249,7 @@
     "flow": "How it works",
     "scope": "Scope & Delivery",
     "preview": "Preview",
+    "shadowPreview": "Shadow Preview",
     "configuration": "Project Config",
     "settings": "Settings",
     "back": "Back",
@@ -653,7 +655,15 @@
     "guard": {
       "loadingSession": "Loading secure session",
       "loadingSessionDesc": "Validating credentials, keeping your workspace secure...",
-      "loadingSessionGuestDesc": "Checking your authentication credentials, please wait..."
+      "loadingSessionGuestDesc": "Checking your authentication credentials, please wait...",
+      "connectionDiagnoseTitle": "Service unreachable or disconnected",
+      "connectionDiagnoseDesc": "The frontend cannot communicate with the backend API. The backend service might not be started.",
+      "troubleshootTitle": "Troubleshooting suggestions:",
+      "troubleshootBackend": "Confirm the backend service (uvicorn / FastAPI) is started and running",
+      "troubleshootPort": "Check if Vite reverse proxy or backend port (default 8000) is accessible",
+      "troubleshootNetwork": "Check local network, proxy, or firewall configuration",
+      "backToLogin": "Back to Login",
+      "retrying": "Retrying..."
     }
   },
   "nodeKind": {
@@ -884,6 +894,8 @@
     "addFeaturePlaceholder": "e.g. 'Face ID Login' (optional)"
   },
   "what": {
+    "confirmAddActor": "Add Actor",
+    "confirmAddFeature": "Add Feature",
     "structuredEdit": "Structured Edit",
     "confirmSave": "Confirm Save",
     "userStory": {
@@ -1109,6 +1121,9 @@
     "stepOutputBoLabel": "Output Object",
     "stepOutputBoEmpty": "No business objects available",
     "stepUserPerformerSelectTip": "User action steps must select at least one Performer actor role!",
+    "confirmAddBo": "Add Object",
+    "confirmAddFlow": "Add Flow",
+    "confirmAddStep": "Add Step",
     "stepAdoptText": "Adopt",
     "stepAdoptTitle": "Adopt as Draft",
     "stepAdoptDesc": "Successfully adopted this recommended asset as a draft.",
@@ -1119,6 +1134,26 @@
     "dependenciesDescription": "In the How stage, actors evolve system feature behavior through business workflows.",
     "dependenciesAction": "Define at least one actor and system feature in What before defining workflow steps and business object relationships here.",
     "goToWhat": "Go to What to model actors and capabilities",
+    "focusMode": "Focus Canvas",
+    "focusCanvasBtn": "Focus Canvas Editor",
+    "focusModeTooltip": "Maximize to standalone canvas to edit steps and connection links",
+    "openFocusCanvas": "Focus Canvas Mode",
+    "stepsCount": "Steps",
+    "linksCount": "Links",
+    "autoLayout": "Auto Layout",
+    "autoLayoutTitle": "Auto-arrange all steps into clean DAG hierarchy",
+    "fitViewTitle": "Fit and center view to screen",
+    "canvasTips": "💡 Tip: Drag right connector port to link steps; click link to disconnect; drag cards to reposition",
+    "inputPort": "Input Port",
+    "outputPort": "Drag to create link to next step",
+    "stepInspector": "Step Inspector",
+    "assignedActorsLabel": "Assigned Actors",
+    "businessObjectsLabel": "Input / Output Business Objects",
+    "nextStepsLabel": "Next Steps (Branches)",
+    "linkInspector": "Connection Link Inspector",
+    "disconnectLink": "Disconnect Link",
+    "flowOverview": "Flow Overview",
+    "addNewStepModalTitle": "Add New Flow Step",
     "generatedDraftTitle": "AI-Recommended Workflow and Entity Draft Generated",
     "generatedDraftDescription": "AI designed swimlane steps and related business objects that fit the system model.",
     "generatedDraftFeedbackPlaceholder": "Add workflow adjustment feedback (optional)",
@@ -1276,18 +1311,25 @@
       "kanoEvaluated": "Kano scope evaluated",
       "feedbackPlaceholder": "Enter adjustment feedback, for example: add administrator approval...",
       "regenerate": "Regenerate",
-      "discard": "Discard Shadow Draft",
       "commit": "Adopt and Merge into Project",
-      "quickPrototype": "Quick Prototype",
+      "quickPrototype": "Interactive Prototype Simulation",
       "openPrototype": "Open Prototype in New Window",
       "regeneratePrototype": "Regenerate Prototype",
       "generatePrototype": "Generate Prototype",
+      "readyToCompileTitle": "Prerequisites Complete: Ready to Compile Prototype",
+      "readyToCompileDesc": "Actors, feature tree, workflow swimlanes, and scope decisions have converged. Click the button below to compile and simulate full multi-role interactive prototypes.",
+      "noPrototypeTitle": "No Interactive Prototype Compiled Yet",
+      "incompleteCompileDesc": "Prerequisite modeling stages are not yet fully converged. Click below to generate a temporary shadow prototype or complete the prerequisite stages.",
+      "compilePrototypeBtn": "Compile & Generate Interactive Prototype",
+      "actorBadgeCount": "{{count}} Roles",
+      "featureBadgeCount": "{{count}} Features",
+      "flowBadgeCount": "{{count}} Workflows",
       "compilingCommitted": "AI is assembling the formal high-fidelity prototype",
       "generatingPrototype": "AI is generating the preview prototype",
-      "compilingCommittedDescription": "The adopted design assets are being converted to a formal web prototype and will load automatically.",
-      "generatingPrototypeDescription": "The interactive prototype will appear here automatically after generation.",
-      "assemblyFailure": "Prototype assembly failed. Ensure the feature tree and workflows are complete.",
-      "noPrototype": "This project has no prototype yet. Select Generate Prototype in the upper right.",
+      "compilingCommittedDescription": "Converting adopted design assets into a formal high-fidelity web prototype; it will load automatically when finished.",
+      "generatingPrototypeDescription": "Once generated, the interactive prototype will appear here automatically.",
+      "assemblyFailure": "Prototype assembly failed. Verify the completeness of the feature tree and workflows.",
+      "noPrototype": "No prototype generated yet. Click 'Compile & Generate Interactive Prototype' below.",
       "roleSpecs": "Role UI and Interaction Specifications",
       "pageCount": "{{count}} page definition(s)",
       "noRolePreview": "This role has no related page preview",
@@ -2882,12 +2924,33 @@
       "changeSummary": "{{added}} added / {{removed}} removed / {{modified}} modified",
       "mergeRequests": "Merge Requests",
       "loadMore": "Load more",
-      "viewFullModel": "View full model"
+      "viewFullModel": "View full model",
+      "revertCommit": "Revert to this commit",
+      "revertSuccess": "Successfully reverted to commit and restored workspace",
+      "revertDialogTitle": "Revert to Historical Commit",
+      "revertDialogDesc": "A new revert commit will be created on the current branch to safely restore all requirement models (actors, features, scenarios, business objects, flows, scopes) to this point in time.",
+      "revertBranchTarget": "Target Branch",
+      "revertCommitTarget": "Snapshot Commit",
+      "revertMessageLabel": "Commit Message",
+      "revertConfirmButton": "Confirm Revert",
+      "reverting": "Reverting..."
+    },
+    "protectedBranchBanner": "You are viewing the protected main branch (read-only mode). To make structural changes or edit the model, please create a new branch from this version.",
+    "viewerReadOnlyBanner": "You have read-only permissions for this project and cannot make changes or commits.",
+    "readOnlyToast": "Current branch is in read-only mode, modifications are not allowed",
+    "sessionUnavailableTitle": "Unable to connect to server",
+    "sessionUnavailableDesc": "Network error or service unavailable. Your session has been preserved.",
+    "retryConnect": "Retry Connection",
+    "createBranchFromHere": "Create branch from this version",
+    "compare": {
+      "noCommits": "No commits available to compare"
     },
     "commitDetail": {
       "title": "Commit snapshot",
       "empty": "No model data in this snapshot",
-      "close": "Close"
+      "close": "Close",
+      "items": "items",
+      "searchPlaceholder": "Search objects in this commit snapshot..."
     },
     "createBranch": {
       "title": "Create branch",
@@ -2903,6 +2966,8 @@
       "title": "Diff",
       "base": "Base",
       "target": "Compare",
+      "paginationCount": "Showing {{shown}} of {{total}} changes",
+      "loadMore": "Load More ({{remaining}} remaining)",
       "jumpToWhat": "View in What",
       "jumpToFlow": "View in Flow",
       "jumpToScope": "View in Scope",
@@ -2927,6 +2992,52 @@
       "parent": "Parent",
       "related": "Related",
       "textChanges": "Text changes",
+      "ac": "Acceptance criteria",
+      "steps": "Steps sequence",
+      "viewRawJson": "View Raw Data (JSON)",
+      "hideRawJson": "Collapse Raw Data (JSON)",
+      "stepNumber": "Step {{num}}",
+      "stepInput": "Input Objects",
+      "stepOutput": "Output Objects",
+      "stepActors": "Exec Actors",
+      "noAttributes": "No attributes defined",
+      "noSteps": "No steps defined",
+      "noAc": "No acceptance criteria",
+      "changedFieldsSummary": "Changed Fields Comparison",
+      "fieldName": "Field",
+      "fieldBefore": "Before",
+      "fieldAfter": "After",
+      "fields": {
+        "name": "Name",
+        "title": "Title",
+        "description": "Description",
+        "content": "Content",
+        "status": "Scope Status",
+        "scope_status": "Scope Status",
+        "kano_category": "Kano Category",
+        "kano_category_name": "Kano Category",
+        "positive_summary": "In Scope Rationale",
+        "negative_summary": "Out of Scope Impact",
+        "reason": "Decision Reason",
+        "step_type": "Step Type",
+        "position": "Position",
+        "data_type": "Data Type",
+        "example": "Example Data",
+        "attributes": "Attributes",
+        "steps": "Flow Steps",
+        "acceptance_criteria": "Acceptance Criteria",
+        "parent_feature": "Parent Feature",
+        "parent_id": "Parent Feature",
+        "actor_ids": "Related Actors",
+        "actors": "Related Actors",
+        "feature_id": "Belonging Feature",
+        "actor_id": "Executing Actor",
+        "input_business_objects": "Input Business Objects",
+        "output_business_objects": "Output Business Objects",
+        "user_requirements": "User Requirements",
+        "confirmation_status": "Confirmation Status",
+        "unlocked_stages": "Unlocked Stages"
+      },
       "entityType": {
         "actor": "Actor",
         "feature": "Feature",
@@ -2942,10 +3053,11 @@
       }
     },
     "errors": {
-      "loadBranchesFailed": "Failed to load branches",
-      "loadCommitsFailed": "Failed to load commits",
-      "loadDiffFailed": "Failed to load diff",
-      "createBranchFailed": "Failed to create branch"
+      "source_branch_empty": "The source branch has no commits yet. Please commit your changes before creating a merge request.",
+      "source_target_same": "Source and target branches cannot be the same.",
+      "duplicate_open_mr": "An open merge request already exists between these branches.",
+      "source_branch_not_found": "Source branch not found.",
+      "target_branch_not_found": "Target branch not found."
     },
     "discardConfirmTitle": "Discard unsaved edits?",
     "discardConfirmMessage": "Switching branches will discard your unsaved edits. Continue?",
@@ -2957,6 +3069,14 @@
       "headChanged": "Target branch has new commits — refresh and retry",
       "listTitle": "Merge Requests",
       "total": "{{count}} total",
+      "filter": {
+        "all": "All",
+        "open": "Open",
+        "merged": "Merged",
+        "closed": "Closed"
+      },
+      "paginationCount": "Showing {{shown}} of {{total}}",
+      "loadMore": "Load More ({{remaining}} remaining)",
       "newMr": "New MR",
       "openMrs": "Open MRs",
       "noMrs": "No Merge Requests",
@@ -3079,6 +3199,415 @@
         "body": "This version control does not offer rebase, cherry-pick, tags, remote repository sync, or command-line compatibility. Organize changes through branches and merge requests instead."
       },
       "protectedAction": "Create branch / Open Merge Request"
+    }
+  },
+  "systemGuide": {
+    "title": "Workbench User Guide & Specification Manual",
+    "subtitle": "Complete manual for formal specifications, branch collaboration, version rollback, and prototype compilation",
+    "trigger": "User Guide",
+    "manualBadge": "Manual",
+    "searchPlaceholder": "Search features, concepts, or guides...",
+    "directoryTitle": "Table of Contents",
+    "noResults": "No matching guide content found",
+    "designAndRationale": "Core Design & Concepts",
+    "workflowSteps": "Standard Workflow Steps",
+    "faqTitle": "Frequently Asked Questions & Tips",
+    "categories": {
+      "workflow": "Specification Workflow",
+      "version_control": "Version Control",
+      "collaboration": "Collaboration & Decisions"
+    },
+    "sections": {
+      "lifecycle": {
+        "title": "Full Specification Evolution Lifecycle",
+        "category": "workflow",
+        "badge": "Core Lifecycle",
+        "summary": "RequirementSpace employs a formal specification architecture that transforms unstructured requirements into high-fidelity structured models. It strictly enforces a 3-stage progression gate check before enabling interactive prototype compilation.",
+        "highlights": [
+          {
+            "title": "Strict 3-Stage Progression",
+            "desc": "Specifications must advance sequentially through What (Actors & Features) → Flow (Business Flows) → Scope (Scope & Acceptance). Each stage builds on the previous one."
+          },
+          {
+            "title": "Isolated Branch Workspace State",
+            "desc": "Each branch maintains an entirely isolated workspace model and stage progression status. Progress on one branch never affects other branches."
+          },
+          {
+            "title": "Shadow Preview vs. Real Prototype",
+            "desc": "When prerequisite stages are incomplete, the preview displays a shadow skeleton. Once all 3 stages are fully ready, sandbox prototype compilation is unlocked."
+          },
+          {
+            "title": "Formal Traceability Graph",
+            "desc": "Actors, features, flow steps, business objects, Gherkin scenarios, and acceptance criteria are linked via logical UUIDs, supporting bidirectional traceability."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Stage 1: What - Actors & Features",
+            "desc": "Identify system actors, organize hierarchical feature trees, assign KANO value categories, and confirm AI assumptions."
+          },
+          {
+            "step": 2,
+            "title": "Stage 2: Flow - Business Flow Orchestration",
+            "desc": "Design swimlane diagrams for core features, assign acting roles to steps, and define input/output business objects."
+          },
+          {
+            "step": 3,
+            "title": "Stage 3: Scope - Scope & Acceptance",
+            "desc": "Determine In-Scope/Out-of-Scope boundaries, write executable Gherkin scenarios (Given-When-Then), and pass gate check."
+          },
+          {
+            "step": 4,
+            "title": "Stage 4: Interactive Prototype Compilation",
+            "desc": "Trigger sandbox compilation once prerequisite specifications are complete, generating a high-fidelity interactive prototype."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Why does the preview page still show a shadow skeleton after completing the What stage?",
+            "a": "Because interactive prototypes depend on complete actors, features, flows, and Gherkin scenarios. All three stages (What, Flow, Scope) must be completed before compilation begins."
+          },
+          {
+            "q": "Why do different branches show different preview states?",
+            "a": "Each branch is an independent requirement workspace. For instance, the main branch might have just finished What, while a feature branch has finished all 3 stages."
+          }
+        ]
+      },
+      "what": {
+        "title": "What Stage: Actors & Features",
+        "category": "workflow",
+        "badge": "Capability Definition",
+        "summary": "The What stage establishes the foundation of requirements engineering, defining system actor boundaries, hierarchical feature trees, and KANO value classifications.",
+        "highlights": [
+          {
+            "title": "Actor Roles & Boundaries",
+            "desc": "Define real users or external systems interacting with the product, specifying descriptions and permission boundaries."
+          },
+          {
+            "title": "Hierarchical Feature Decomposition",
+            "desc": "Deconstruct product capabilities into root and nested feature nodes with detailed descriptions and dependencies."
+          },
+          {
+            "title": "KANO Value Categorization",
+            "desc": "Classify features into Must-be, One-dimensional, and Attractive attributes to guide project roadmap priorities."
+          },
+          {
+            "title": "AI Assumption Confirmation",
+            "desc": "Assumptions inferred by AI during document analysis are marked as pending and can be batch-reviewed in the Decision Center."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Add & Confirm System Actors",
+            "desc": "Define system roles in the actors panel or approve AI-inferred actor assumptions."
+          },
+          {
+            "step": 2,
+            "title": "Build Feature Trees",
+            "desc": "Create root and child features, maintaining structured descriptions and parent-child hierarchies."
+          },
+          {
+            "step": 3,
+            "title": "Evaluate KANO & Gate Check",
+            "desc": "Classify features and complete checklist requirements to unlock the Flow stage."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "How do I edit or remove a feature node?",
+            "a": "Select the node in the feature tree to edit its properties in the right inspector panel or click delete in the toolbar."
+          }
+        ]
+      },
+      "flow": {
+        "title": "Flow Stage: Business Flow Orchestration",
+        "category": "workflow",
+        "badge": "Behavioral Dynamics",
+        "summary": "The Flow stage turns static capabilities into dynamic business execution flows, visualizing role interactions, sequences, and data transitions via swimlane diagrams.",
+        "highlights": [
+          {
+            "title": "Step Assignment & Sequences",
+            "desc": "Assign acting roles and parent features to each step, configuring sequential transitions and branch conditions."
+          },
+          {
+            "title": "Business Objects & Data Flow",
+            "desc": "Define input business objects consumed and output business objects produced by each step to ensure data consistency."
+          },
+          {
+            "title": "Interactive Swimlane Visualization",
+            "desc": "Automatically renders swimlane diagrams grouped by actors, supporting node layout adjustments and focus views."
+          },
+          {
+            "title": "State Machine Foundation",
+            "desc": "Flow definitions directly map to finite state machines, serving as the code generation blueprint for prototype UI events."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Create Business Flow",
+            "desc": "Create a new flow, associate it with core features, and define the business goal."
+          },
+          {
+            "step": 2,
+            "title": "Orchestrate Steps & Roles",
+            "desc": "Add step nodes, assign responsible actors, and connect directional transitions."
+          },
+          {
+            "step": 3,
+            "title": "Bind Input/Output Data Objects",
+            "desc": "Attach relevant business entities and attributes to each step to form an end-to-end data pipeline."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "How do I connect transitions between steps?",
+            "a": "Specify 'Next Steps' in the step inspector, and the system will automatically draw directional arrows in the swimlane diagram."
+          }
+        ]
+      },
+      "scope": {
+        "title": "Scope Stage: Scope & Acceptance Criteria",
+        "category": "workflow",
+        "badge": "Acceptance & Gate Check",
+        "summary": "The Scope stage establishes product acceptance criteria through rigorous Gherkin scenarios and scope boundaries, unlocking prototype compilation.",
+        "highlights": [
+          {
+            "title": "Standardized Gherkin Scenarios",
+            "desc": "Structure testable acceptance criteria using Given (prerequisites), When (triggers), and Then (expected outcomes)."
+          },
+          {
+            "title": "Scope Boundary Definition",
+            "desc": "Classify features as In-Scope (current release) or Out-of-Scope (deferred) with detailed rationale."
+          },
+          {
+            "title": "Precise Acceptance Mapping",
+            "desc": "Bind acceptance rules to specific features, business objects, and steps to eliminate ambiguity."
+          },
+          {
+            "title": "Gate Check Verification",
+            "desc": "Completing scope criteria triggers the full specification Gate Check, unlocking prototype sandbox compilation."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Define Feature Scope",
+            "desc": "Mark features as In-Scope or Out-of-Scope and document business rationale."
+          },
+          {
+            "step": 2,
+            "title": "Author Gherkin Scenarios",
+            "desc": "Write Given-When-Then rules for key scenarios, covering both positive flows and edge cases."
+          },
+          {
+            "step": 3,
+            "title": "Execute Gate Check & Unlock Prototype",
+            "desc": "Run the Gate Check to verify specification completeness and finalize the 3 prerequisite stages."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "How do Gherkin scenarios manifest in the prototype?",
+            "a": "The compilation engine maps Given-When-Then rules directly into interactive prototype event handlers, validation logic, and view transitions."
+          }
+        ]
+      },
+      "preview": {
+        "title": "Shadow Preview & Prototype Sandbox",
+        "category": "workflow",
+        "badge": "Interactive Compilation",
+        "summary": "Provides a live sandbox environment compiling formal specifications into clickable, interactive high-fidelity prototype views.",
+        "highlights": [
+          {
+            "title": "Dual-State Presentation",
+            "desc": "Displays a shadow skeleton when prerequisite stages are in progress, and an interactive prototype when all 3 stages are complete."
+          },
+          {
+            "title": "Bidirectional Traceability",
+            "desc": "Clicking any UI component in the prototype inspects its underlying feature, actor permissions, and Gherkin scenarios."
+          },
+          {
+            "title": "Sandbox Hot-Reloading",
+            "desc": "When specification models are updated and committed, the sandbox automatically triggers hot incremental compilation."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "What should I do if a prototype interaction doesn't match expectations?",
+            "a": "Navigate back to the respective What/Flow/Scope stage to update actor attributes, flow links, or Gherkin assertions, then commit changes."
+          }
+        ]
+      },
+      "branching": {
+        "title": "Branch Management & Protection",
+        "category": "version_control",
+        "badge": "Parallel Exploration",
+        "summary": "A Git-like branch management system supporting parallel exploration across team members with strict main branch protection and workspace isolation.",
+        "highlights": [
+          {
+            "title": "Protected Main Branch",
+            "desc": "The main branch represents the production baseline. Direct unreviewed writes are prohibited; changes must be merged via Merge Requests."
+          },
+          {
+            "title": "Isolated Feature Branches",
+            "desc": "Branch off from any historical commit or branch to explore designs with fully independent workspace models and stage progression."
+          },
+          {
+            "title": "Lossless Branch Switching",
+            "desc": "Switch branches seamlessly from the top bar or repository overview without losing uncommitted progress."
+          },
+          {
+            "title": "Standard Branch Naming",
+            "desc": "Recommended naming prefixes include feature/xxx, fix/xxx, and explore/xxx."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Create Branch from Baseline",
+            "desc": "Select the source branch or commit in the repository overview and click 'Create Branch'."
+          },
+          {
+            "step": 2,
+            "title": "Iterate in Branch Workspace",
+            "desc": "Switch to your branch to advance stages, edit entities, or orchestrate flows independently."
+          },
+          {
+            "step": 3,
+            "title": "Commit Changes & Open MR",
+            "desc": "Commit workspace changes and open a Merge Request to merge back into the target branch."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Why can't I edit specifications directly on the main branch?",
+            "a": "Main is the protected baseline for the entire team. Create a feature branch to make modifications and merge via MR review."
+          }
+        ]
+      },
+      "commit_revert": {
+        "title": "Commit Graph & Version Rollback",
+        "category": "version_control",
+        "badge": "Immutable Snapshots & Revert",
+        "summary": "Every commit seals an immutable full-state snapshot (state_json) with SHA-256 integrity; supports 1-click safe rollback for any commit or merge commit.",
+        "highlights": [
+          {
+            "title": "Deterministic Full Snapshots",
+            "desc": "Unlike text-based diff patches, each commit records a complete normalized specification graph, ensuring rock-solid consistency."
+          },
+          {
+            "title": "Git-Style Revert Commit",
+            "desc": "Clicking 'Revert to this commit' restores workspace models from historical snapshots and generates a new revert commit to maintain linear history."
+          },
+          {
+            "title": "Merge Commit Rollback Support",
+            "desc": "Merge commits can also be safely reverted back to their pre-merge baseline, guarding against unintended merges."
+          },
+          {
+            "title": "Lossless Historical Safety",
+            "desc": "Since rollback creates a new commit, all previous commits remain intact in the graph and can be re-reverted at any time."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Locate Target Historical Commit",
+            "desc": "Select the target historical version in the commit timeline or commit graph."
+          },
+          {
+            "step": 2,
+            "title": "Click 'Revert to this commit'",
+            "desc": "Click the revert button in the right commit inspector to open the confirmation dialog."
+          },
+          {
+            "step": 3,
+            "title": "Confirm & Generate Revert Commit",
+            "desc": "Review the commit message and confirm; the system resets workspace entities and advances branch Head."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Will rolling back delete my existing commit history?",
+            "a": "No. The system strictly adheres to immutable history principles. Rollback creates a new Revert commit, keeping all historical records safe."
+          }
+        ]
+      },
+      "merge_request": {
+        "title": "Merge Requests & Semantic 3-Way Merge",
+        "category": "version_control",
+        "badge": "Review & Conflict Resolution",
+        "summary": "Merge Requests (MR) facilitate collaborative review with semantic diffs, inline comment threads, and a dedicated 3-way conflict resolution workbench.",
+        "highlights": [
+          {
+            "title": "Entity-Level Semantic Diff",
+            "desc": "Intelligently contrasts added, modified, and removed attributes for actors, features, flows, and scenarios rather than raw text lines."
+          },
+          {
+            "title": "Approval & Inline Reviews",
+            "desc": "Submit Approve or Request Changes decisions and leave blocking inline review comments on specific entity fields."
+          },
+          {
+            "title": "2-Column Conflict Resolution Workbench",
+            "desc": "When concurrent modifications occur on the same attribute, an interactive workbench allows item-by-item selection of source vs. target values."
+          },
+          {
+            "title": "Automatic Post-Merge Refresh",
+            "desc": "Upon successful merge, the system immediately refreshes branches, commit graphs, MR status, and current workspace without manual F5."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Create Merge Request",
+            "desc": "Click 'New MR', choose source and target branches (e.g. main), and provide title and description."
+          },
+          {
+            "step": 2,
+            "title": "Review Diff & Submit Approval",
+            "desc": "Inspect semantic diffs in the 'Changes' tab and leave comments or submit Approve decisions in 'Overview & Reviews'."
+          },
+          {
+            "step": 3,
+            "title": "Execute Merge & Resolve Conflicts",
+            "desc": "Click 'Merge' when approved and unblocked. If semantic conflicts exist, resolve them in the interactive modal."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Why is the Merge button disabled after creating an MR?",
+            "a": "Check that: 1) At least one maintainer has submitted an Approved review; 2) All blocking required comments are resolved; 3) Source branch has new commits."
+          }
+        ]
+      },
+      "collaboration": {
+        "title": "Team Collaboration & Decision Center",
+        "category": "collaboration",
+        "badge": "Permissions & Decision Flow",
+        "summary": "Provides role-based member permission control, AI decision task assignment, and real-time notification feeds for agile teams.",
+        "highlights": [
+          {
+            "title": "4-Tier Role Permissions",
+            "desc": "Supports fine-grained permissions for Owner, Admin, Member, and Viewer roles."
+          },
+          {
+            "title": "Decision Task Center",
+            "desc": "AI-inferred assumptions, conflict resolutions, and transition reviews are assigned as actionable tasks."
+          },
+          {
+            "title": "Real-Time Notification Feed",
+            "desc": "Receive real-time alerts for task assignments, MR reviews, and merge events with 1-click mark-as-read."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "How do I invite new members to a project?",
+            "a": "Project Owners or Admins can click the 'Members' icon in the top navigation bar, enter member emails, and assign roles."
+          }
+        ]
+      }
     }
   }
 }

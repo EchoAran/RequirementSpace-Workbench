@@ -1,7 +1,7 @@
 """EditFlowGenerator — produces edit diff for an existing flow."""
 
 import json
-from typing import Dict, Any
+from typing import Any
 
 from backend.core.generators.single_object.base_edit_generator import (
     BaseEditGenerator,
@@ -11,7 +11,6 @@ from backend.core.generators.single_object.base_single_object_generator import (
     inject_generator_knowledge_context,
     serialize_prompt_data,
 )
-
 from backend.core.generators.single_object.prompts.edit_flow_prompt import (
     EDIT_FLOW_GENERATE_PROMPT,
 )
@@ -29,7 +28,7 @@ class EditFlowGenerator(BaseEditGenerator):
     target_object_type = "flow"
     editable_fields = EDITABLE_FIELDS.get("flow", [])
 
-    async def generate(self, input_data: EditGeneratorInput) -> Dict[str, Any]:
+    async def generate(self, input_data: EditGeneratorInput) -> dict[str, Any]:
         existing_features = input_data.project_context.get("features", [])
         existing_flows = input_data.project_context.get("flows", [])
 

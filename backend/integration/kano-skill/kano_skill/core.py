@@ -4,12 +4,12 @@ import json
 import os
 import re
 from collections import Counter, namedtuple
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from importlib import resources
 from pathlib import Path
-from typing import Any, Callable, TypeVar
-
+from typing import Any, TypeVar
 
 FIXED_PARTICIPANT_COUNT = 5
 DEFAULT_MAX_CONCURRENCY = 5
@@ -85,7 +85,7 @@ def _resource_text(package_path: str, filename: str) -> str:
 
 def _load_config(config_path: str | None = None) -> Any:
     if config_path:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config_dict = json.load(f)
     else:
         config_dict = json.loads(
@@ -134,7 +134,7 @@ def _max_concurrency() -> int:
     return max(1, value)
 
 
-def _parallel_map(items: list[T], worker: Callable[[T], R]) -> list[R]:
+def _parallel_map[T, R](items: list[T], worker: Callable[[T], R]) -> list[R]:
     if len(items) <= 1:
         return [worker(item) for item in items]
 
@@ -308,7 +308,7 @@ class KanoSkill:
         else:
             level_keys = {
                 str(key)
-                for key in feature_tree_obj.keys()
+                for key in feature_tree_obj
                 if re.fullmatch(r"L\d+(?:\.[\d.]+)?", str(key))
             }
 

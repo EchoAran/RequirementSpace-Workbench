@@ -28,6 +28,7 @@ import {
   CommitCreateRequest,
 } from '@/core/versionControl';
 import i18n from '@/i18n';
+import { buildProjectRouteWithBranch } from '@/core/selectors';
 import { getNextSuggestionPresentation } from '@/core/nextSuggestionPresentation';
 import { getGenerationStrategyPresentation } from '@/core/generationStrategyPresentation';
 import type { MessageInterpolation } from '@/core/localizedMessage';
@@ -723,6 +724,7 @@ export interface WorkspaceState {
   loadCommits: (opts?: { all?: boolean; append?: boolean }) => Promise<void>;
   switchBranch: (branchRef: string) => Promise<boolean>;
   createCommit: (message: string, expectedHead: CommitCreateRequest['expected_head_commit_public_id'] | number) => Promise<boolean>;
+  workspaceCanWrite: () => boolean;
 
   // Project Lifecycles
   loadWorkspaces: () => Promise<void>;
@@ -899,16 +901,13 @@ export interface WorkspaceState {
   rewrite: (scope: any, instruction: string) => Promise<void>;
   explainImpact: (scope: any, patch?: GraphPatch, choiceId?: string) => Promise<void>;
   updateNodeAttributes: (nodeId: string, updates: Partial<BaseNode> & Record<string, any>) => Promise<void>;
-  createIssue: (payload: any) => Promise<void>;
   updateIssueAttributes: (issueId: string, updates: any) => Promise<void>;
-  updateChoiceAttributes: (choiceId: string, updates: any) => Promise<void>;
 
   // P5 Audit and Impact
   auditLogs: any[];
   lastImpactPreview: any | null;
   loadAuditLogs: (projectId: string) => Promise<void>;
   getImpactPreview: (featureId: number, nextStatus: string) => Promise<any>;
-  addChoiceToGroup: (choiceGroupId: string, payload: any) => Promise<void>;
 
   // P5 Shadow Preview Draft Actions
   activeShadowDraft: any | null;
@@ -1061,7 +1060,7 @@ const findSelectedObjectInIr = (
   return null;
 };
 
-const withWorkspaceId = (state: WorkspaceState): string => {
+export const withWorkspaceId = (state: WorkspaceState): string => {
   if (!state.ir?.projectId) {
     throw new Error('store.errors.loadWorkspaceFailed');
   }
@@ -1330,10 +1329,14 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const route = action.route || '';
       const page = resolveProcessorActionPage(route);
       const projectId = get().ir?.projectId;
+      const branchRef = get().branchRef || get().currentBranch?.public_id || get().currentBranch?.name;
       if (projectId && route) {
         let resolvedRoute = route;
         if (page) {
-          resolvedRoute = `/projects/${projectId}${page}`;
+          resolvedRoute = buildProjectRouteWithBranch(projectId, page, branchRef);
+        } else if (branchRef && branchRef !== 'main' && !resolvedRoute.includes('branch=')) {
+          const sep = resolvedRoute.includes('?') ? '&' : '?';
+          resolvedRoute = `${resolvedRoute}${sep}branch=${encodeURIComponent(branchRef)}`;
         }
         if (options?.navigate) {
           options.navigate(resolvedRoute);
@@ -1448,7 +1451,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       }
     }
     if (!found && (panel === 'flow' || panel === 'flow_editor')) {
-      const route = `/projects/${get().ir?.projectId}/flow`;
+      const branchRef = get().currentBranch?.public_id || get().currentBranch?.name;
+      const route = buildProjectRouteWithBranch(get().ir?.projectId, '/flow', branchRef);
       if (options?.navigate) options.navigate(route);
       else get().setActivePage('/flow');
       found = true;
@@ -1457,7 +1461,8 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const page = resolveProcessorActionPage(action.route || '');
       if (page) {
         if (options?.navigate) {
-          options.navigate(`/projects/${get().ir?.projectId}${page}`);
+          const branchRef = get().currentBranch?.public_id || get().currentBranch?.name;
+          options.navigate(buildProjectRouteWithBranch(get().ir?.projectId, page, branchRef));
         } else {
           get().setActivePage(page);
         }
@@ -1693,6 +1698,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     set((state: WorkspaceState) => ({
       ...syncChoiceGroupToWorkspace(group, state),
       isGeneratingChoices: false,
+      generatingChoiceGroupType: null,
       activeDraft: null,
       activeDraftType: null,
       pendingGenerationConflict: null,
@@ -1805,6 +1811,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   activeChoiceGroup: null,
   choiceGroupGenerationProgress: null,
   isGeneratingChoices: false,
+  generatingChoiceGroupType: null,
   openOnboardingChoiceGroups: [],
   pendingGenerationConflict: null,
   activeStaleChoice: null,
@@ -1867,7 +1874,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const effectiveBranch = branchRef || 'main';
     // 把 URL 分支写入请求上下文，使后续所有项目读写在缺省时自动携带该分支。
     setRequestBranch(effectiveBranch);
-    set({ sessionVersion: version, stageProgress: null, isLoading: true, error: null });
+    set({
+      sessionVersion: version,
+      stageProgress: null,
+      branches: [],
+      currentBranch: null,
+      branchLoading: true,
+      isLoading: true,
+      error: null,
+    });
     try {
       const space = await workspaceApi.getById(workspaceId);
       if (get().sessionVersion !== version) return false;
@@ -1927,7 +1942,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ branches, currentBranch: current, branchLoading: false });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ branchLoading: false });
+      set({ branchLoading: false, branches: [], currentBranch: null });
     }
   },
   loadCommits: async (opts?: { all?: boolean; append?: boolean }) => {
@@ -1959,7 +1974,17 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (!id) return false;
     // 分支切换是全局操作：更新请求上下文并使后续加载失效。
     setRequestBranch(branchRef);
-    set({ sessionVersion: version, branchRef, isLoading: true, error: null, commitError: null });
+    set({
+      sessionVersion: version,
+      branchRef,
+      branches: [],
+      currentBranch: null,
+      branchLoading: true,
+      isLoading: true,
+      error: null,
+      commitError: null,
+      activeShadowDraft: null,
+    });
     try {
       const space = await workspaceApi.getById(id);
       if (get().sessionVersion !== version) return false;
@@ -2021,6 +2046,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return false;
     }
   },
+  workspaceCanWrite: () => {
+    const ir = get().ir;
+    if (!ir?.projectId) return false;
+    if (get().branchLoading) return false;
+    const current = get().currentBranch;
+    if (!current) return false;
+    if (current.is_protected || current.is_default || current.name === 'main') return false;
+    return Boolean(current.permissions?.can_write);
+  },
   loadStageProgress: async (projectId?: string) => {
     const version = get().sessionVersion;
     const id = projectId || get().ir?.projectId;
@@ -2046,16 +2080,18 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const projectId = get().ir?.projectId;
     if (!projectId) return;
 
-    let targetRoute = '';
+    const currentBranchRef = get().branchRef;
+    let targetPage: '/flow' | '/scope' | '/preview' | null = null;
     if (action === 'enter_how') {
-      targetRoute = `/projects/${projectId}/flow`;
+      targetPage = '/flow';
     } else if (action === 'enter_scope') {
-      targetRoute = `/projects/${projectId}/scope`;
+      targetPage = '/scope';
     } else if (action === 'enter_preview') {
-      targetRoute = `/projects/${projectId}/preview`;
+      targetPage = '/preview';
     } else {
       return;
     }
+    const targetRoute = buildProjectRouteWithBranch(projectId, targetPage, currentBranchRef);
 
     set({ stageTransitionInFlight: true, isLoading: true, error: null });
 
@@ -2219,6 +2255,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 /** Build a target from aggregate gate metadata for the resolve API. */
 
   executeGateFindingAction: async (finding: Finding) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -2473,6 +2513,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     set({
       isGeneratingChoices: true,
+      generatingChoiceGroupType: 'project',
       error: null,
       lastActionMessageToken: 'store.project.generatingPlans',
       choiceGroupGenerationProgress: null,
@@ -2487,6 +2528,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({
         activeChoiceGroup: group,
         isGeneratingChoices: false,
+        generatingChoiceGroupType: null,
         choiceGroupGenerationProgress: null,
         activeDraft: null,
         activeDraftType: null,
@@ -2505,6 +2547,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({
         error: err instanceof Error ? err.message : 'store.project.generatingPlansFailed',
         isGeneratingChoices: false,
+        generatingChoiceGroupType: null,
         choiceGroupGenerationProgress: null,
       });
     }
@@ -2696,6 +2739,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     set({
       isGeneratingChoices: true,
+      generatingChoiceGroupType: generationType,
       error: null,
       choiceGroupGenerationProgress: buildInitialChoiceProgress(effectiveCandidateCount, candidateLabels),
       lastActionMessageToken: 'store.project.generatingCandidates',
@@ -2723,12 +2767,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     } catch (err) {
       if (get().sessionVersion !== version) return null;
       if (err instanceof Error && err.message === GENERATION_CONFLICT_PENDING_ERROR) {
-        set({ isGeneratingChoices: false, choiceGroupGenerationProgress: null });
+        set({ isGeneratingChoices: false, generatingChoiceGroupType: null, choiceGroupGenerationProgress: null });
         return null;
       }
       set({
         error: err instanceof Error ? err.message : 'store.project.generatingCandidatesFailed',
         isGeneratingChoices: false,
+        generatingChoiceGroupType: null,
         choiceGroupGenerationProgress: null,
       });
       return null;
@@ -3026,6 +3071,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmActors: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
@@ -3109,6 +3158,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmFeatures: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
@@ -3189,6 +3242,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmFlowsAndObjects: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft) return;
@@ -3314,6 +3371,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmScenarios: async (generateAc) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft) return;
@@ -3410,6 +3471,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmAcceptanceCriteria: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || (!draft.draft_id && !draft.draftId)) return;
@@ -3487,6 +3552,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   confirmScope: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft || !draft.draft_id) return;
@@ -3536,6 +3605,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   skipKano: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const ir = get().ir;
     if (!ir || !ir.projectId) return;
@@ -3555,6 +3628,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   resetKano: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const ir = get().ir;
     if (!ir || !ir.projectId) return;
@@ -3579,6 +3656,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Actors
   addActor: async (name, description) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3597,6 +3678,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateActor: async (actorId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const actor = (get().ir?.actors || []).find((x: any) => x.actorId === actorId);
@@ -3621,6 +3706,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteActor: async (actorId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3644,6 +3733,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Features Tree CRUD
   addFeature: async (name, description, parentId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let finalParentId = parentId;
@@ -3673,6 +3766,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateFeature: async (featureId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const original = get().ir?.features?.find((f: any) => f.featureId === featureId);
@@ -3698,6 +3795,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteFeature: async (featureId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3721,6 +3822,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Scenarios CRUD
   addScenario: async (featureId, actorId, name, content) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3744,6 +3849,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateScenario: async (_featureId, scenarioId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalScenario: any = null;
@@ -3775,6 +3884,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteScenario: async (_featureId, scenarioId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3798,6 +3911,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Acceptance Criteria CRUD
   addAcceptanceCriterion: async (_featureId, scenarioId, content) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3813,6 +3930,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateAcceptanceCriterion: async (_featureId, scenarioId, criterionId, content) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalAc: any = null;
@@ -3845,6 +3966,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteAcceptanceCriterion: async (_featureId, scenarioId, criterionId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3868,6 +3993,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Business Objects CRUD
   addBusinessObject: async (name, description) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3883,6 +4012,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateBusinessObject: async (id, name, description) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const bo = (get().ir?.businessObjects || []).find((x: any) => x.businessObjectId === id);
@@ -3907,6 +4040,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteBusinessObject: async (id) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const ir = get().ir;
@@ -3948,6 +4085,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   addBusinessObjectAttribute: async (boId, name, description, type, example) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -3971,6 +4112,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateBusinessObjectAttribute: async (boId, attrId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalAttr: any = null;
@@ -4004,6 +4149,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteBusinessObjectAttribute: async (boId, attrId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4027,6 +4176,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Flows CRUD
   addFlow: async (name, description, featureIds) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4049,6 +4202,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateFlow: async (flowId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const flow = (get().ir?.flows || []).find((x: any) => x.flowId === flowId);
@@ -4074,6 +4231,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteFlow: async (flowId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4095,31 +4256,56 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  addFlowStep: async (flowId, step) => {
+  addFlowStep: async (flowId, step: any) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
+      const stepName = step.stepName || step.name || '';
+      const stepDescription = step.stepDescription || step.description || '';
+      const stepType = step.stepType || step.step_type || 'actorAction';
+      const actorIds = step.actorIds || step.actor_ids || [];
+      const inputBusinessObjectIds = step.inputBusinessObjectIds || step.input_business_object_ids || [];
+      const outputBusinessObjectIds = step.outputBusinessObjectIds || step.output_business_object_ids || [];
+      const connectFromStepId = step.connectFromStepId || step.connect_from_step_id;
+
       // 1. Create the new flow step
       const newStep = await workspaceApi.createFlowStep(pId, flowId, {
-        name: step.stepName,
-        description: step.stepDescription,
-        step_type: step.stepType,
-        actor_ids: step.actorIds,
-        input_business_object_ids: step.inputBusinessObjectIds,
-        output_business_object_ids: step.outputBusinessObjectIds,
+        name: stepName,
+        description: stepDescription,
+        step_type: stepType,
+        actor_ids: actorIds,
+        input_business_object_ids: inputBusinessObjectIds,
+        output_business_object_ids: outputBusinessObjectIds,
         next_step_ids: []
       });
       if (get().sessionVersion !== version) return;
 
-      // 2. Sequential binding for nextStepIds from previous step
+      // 2. Sequential/Targeted binding for nextStepIds
+      const newStepId = newStep.step_id || newStep.stepId;
       const flow = get().ir?.flows.find(f => f.flowId === flowId);
-      if (flow && flow.flowSteps.length > 0) {
-        const prevStep = flow.flowSteps[flow.flowSteps.length - 1];
-        const newStepId = newStep.step_id || newStep.stepId;
-        await workspaceApi.updateFlowStep(pId, flowId, prevStep.stepId, {
-          next_step_ids: [newStepId]
-        });
-        if (get().sessionVersion !== version) return;
+      if (flow) {
+        if (connectFromStepId) {
+          const fromStep = flow.flowSteps.find(s => s.stepId === connectFromStepId);
+          if (fromStep) {
+            const currentNext = fromStep.nextStepIds || [];
+            if (!currentNext.includes(newStepId)) {
+              await workspaceApi.updateFlowStep(pId, flowId, fromStep.stepId, {
+                next_step_ids: [...currentNext, newStepId]
+              });
+              if (get().sessionVersion !== version) return;
+            }
+          }
+        } else if (flow.flowSteps.length > 0) {
+          const prevStep = flow.flowSteps[flow.flowSteps.length - 1];
+          await workspaceApi.updateFlowStep(pId, flowId, prevStep.stepId, {
+            next_step_ids: [newStepId]
+          });
+          if (get().sessionVersion !== version) return;
+        }
       }
 
       await get().refreshWorkspace();
@@ -4132,6 +4318,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   updateFlowStep: async (flowId, stepId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     let originalStep: any = null;
@@ -4168,6 +4358,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   deleteFlowStep: async (flowId, stepId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4190,6 +4384,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   reorderFlowSteps: async (flowId, stepIds) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
@@ -4206,6 +4404,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // Scope (Kano) CRUD
   updateScope: async (featureId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const feature = (get().ir?.features || []).find((x: any) => x.featureId === featureId);
@@ -4233,6 +4435,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // PerceptionSlot
   clearPerceptionSlot: async () => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4309,6 +4515,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   acceptChoice: async (choiceId, force) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4342,38 +4552,44 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
-    set({ isGeneratingChoices: true, error: null, lastActionMessageToken: 'store.finding.regeneratingPlan' });
+    const genType = get().activeChoiceGroup?.generationType || null;
+    set({ isGeneratingChoices: true, generatingChoiceGroupType: genType, error: null, lastActionMessageToken: 'store.finding.regeneratingPlan' });
     try {
       const newGroup = await workspaceApi.regenerateChoiceGroup(projectId, groupId, feedback);
       if (get().sessionVersion !== version) return;
-      set({ activeChoiceGroup: newGroup, isGeneratingChoices: false, activeDraft: null, activeDraftType: null,
+      set({ activeChoiceGroup: newGroup, isGeneratingChoices: false, generatingChoiceGroupType: null, activeDraft: null, activeDraftType: null,
         lastActionMessageToken: 'store.finding.planGroupRegenerated',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : 'store.finding.regenerateFailed', isGeneratingChoices: false });
+      set({ error: err instanceof Error ? err.message : 'store.finding.regenerateFailed', isGeneratingChoices: false, generatingChoiceGroupType: null });
     }
   },
   regenerateChoice: async (choiceId, feedback) => {
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
-    set({ isGeneratingChoices: true, error: null, lastActionMessageToken: 'store.finding.regeneratingPlan' });
+    const genType = get().activeChoiceGroup?.generationType || null;
+    set({ isGeneratingChoices: true, generatingChoiceGroupType: genType, error: null, lastActionMessageToken: 'store.finding.regeneratingPlan' });
     try {
       const updatedGroup = await workspaceApi.regenerateChoice(projectId, choiceId, feedback);
       if (get().sessionVersion !== version) return;
-      set({ activeChoiceGroup: updatedGroup, isGeneratingChoices: false,
+      set({ activeChoiceGroup: updatedGroup, isGeneratingChoices: false, generatingChoiceGroupType: null,
         lastActionMessageToken: 'store.finding.planRegenerated',
       });
     } catch (err) {
       if (get().sessionVersion !== version) return;
-      set({ error: err instanceof Error ? err.message : 'store.finding.regenerateFailed', isGeneratingChoices: false });
+      set({ error: err instanceof Error ? err.message : 'store.finding.regenerateFailed', isGeneratingChoices: false, generatingChoiceGroupType: null });
     }
   },
   clearStaleChoice: () => {
     set({ activeStaleChoice: null });
   },
   rejectChoice: async (choiceId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4393,6 +4609,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   discardChoiceGroup: async (groupId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) {
@@ -4414,6 +4634,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   executeFindingIssueResolution: async (issueId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return null;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return null;
@@ -4449,6 +4673,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   confirmRepairDraft: async (draftId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return null;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4520,6 +4748,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   setNodeStatus: async (nodeId: string, nodeKind: string, status: NodeStatus) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4715,8 +4947,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return;
     }
   },
-  createIssue: async () => {},
   updateIssueAttributes: async (issueId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
 
@@ -4767,8 +5002,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
             : 'store.finding.issueUpdated'
     });
   },
-  updateChoiceAttributes: async () => {},
-  addChoiceToGroup: async () => {},
 
   // P5 Shadow Preview Draft Actions
   activeShadowDraft: null,
@@ -4841,6 +5074,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   commitShadowDraft: async (draftId: string) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = withWorkspaceId(get());
     set({ isLoading: true });

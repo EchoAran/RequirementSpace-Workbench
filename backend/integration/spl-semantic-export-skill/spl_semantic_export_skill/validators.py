@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Set
-from .ir import SplSemanticIR, SplExportWarningIR, WarningSourceIR, WorkerStepIR
+from typing import Any
+
+from .ir import SplExportWarningIR, SplSemanticIR, WarningSourceIR
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +17,9 @@ class SplSemanticValidator:
     def __init__(self) -> None:
         pass
 
-    def validate(self, ir: SplSemanticIR) -> Dict[str, Any]:
-        warnings: List[SplExportWarningIR] = []
-        semantic_risks: List[str] = []
+    def validate(self, ir: SplSemanticIR) -> dict[str, Any]:
+        warnings: list[SplExportWarningIR] = []
+        semantic_risks: list[str] = []
         is_english = ir.raw.get("export_options", {}).get("language") == "en-US"
         def text(zh_cn: str, en_us: str) -> str:
             return en_us if is_english else zh_cn
@@ -38,8 +39,8 @@ class SplSemanticValidator:
         ir.warnings.extend(warnings)
         has_judgment_unresolved = any(w.code == "judgment_branch_unresolved" for w in warnings)
         has_duplicate_identifier = any(w.code == "duplicate_semantic_identifier" for w in warnings)
-        coverage_passed = (len(missing_feat_ids) == 0 and 
-                           len(unmapped_flow_ids) == 0 and 
+        coverage_passed = (len(missing_feat_ids) == 0 and
+                           len(unmapped_flow_ids) == 0 and
                            len(unmapped_ac_ids) == 0 and
                            not has_judgment_unresolved and
                            not has_duplicate_identifier)

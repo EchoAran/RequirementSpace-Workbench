@@ -1,11 +1,12 @@
 from datetime import datetime
-from enum import Enum
-from typing import Optional, Literal
+from enum import StrEnum
+from typing import Literal
+
 from backend.api.base_schema import CamelModel
 from backend.api.modules.diagnosis_quality.public import FindingResponse
 
 
-class ConfirmationStatusEnum(str, Enum):
+class ConfirmationStatusEnum(StrEnum):
     ai_assumption = "ai_assumption"
     needs_confirmation = "needs_confirmation"
     confirmed = "confirmed"
@@ -182,8 +183,8 @@ class ProjectDetailResponse(CamelModel):
     status_code: str = "not_started"
     status: str = ""
     issue_count: int = 0
-    current_user_role: Optional[str] = None
-    members_summary: Optional[list[dict]] = None
+    current_user_role: str | None = None
+    members_summary: list[dict] | None = None
 
 class ScopeImpactPreviewRequest(CamelModel):
     feature_id: int

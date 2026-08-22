@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from difflib import SequenceMatcher
 import json
 import re
-from typing import Iterable, Literal
-
+from collections.abc import Iterable
+from dataclasses import dataclass
+from difflib import SequenceMatcher
+from typing import Literal
 
 LocaleValidationOutcome = Literal["match", "mismatch", "inconclusive"]
 
@@ -319,7 +319,7 @@ def correction_preserves_structure(
         if isinstance(before, list):
             return len(before) == len(after) and all(
                 preserved(left, right, natural)
-                for left, right in zip(before, after)
+                for left, right in zip(before, after, strict=False)
             )
         if isinstance(before, str) and natural and not _is_user_input(before, user_inputs):
             return _protected_fragments(before) == _protected_fragments(after)

@@ -1,10 +1,9 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.slot_fillers.prompts.scenarios_fill_agent import scenarios_fill_prompt
 from backend.core.perceptrons.slot_fillers.base_filler import BaseFiller, FillerInput
-from backend.schemas import ActorNode, PerceptionSlot, FeatureNode, ScenarioNode
+from backend.core.perceptrons.slot_fillers.prompts.scenarios_fill_agent import scenarios_fill_prompt
+from backend.schemas import ActorNode, FeatureNode, PerceptionSlot, ScenarioNode
 
 
 # 为场景补充器定义专属的输入类型
@@ -13,12 +12,12 @@ class ScenariosFillerInput(FillerInput):
     user_requirements: str
     actor: ActorNode
     feature: FeatureNode
-    scenarios: List[ScenarioNode]
+    scenarios: list[ScenarioNode]
     perception_description: PerceptionSlot
     user_feedback: str | None = None
 
 class ScenariosFiller(BaseFiller[ScenariosFillerInput]):
-    async def fill(self, input_data: ScenariosFillerInput) -> Dict:
+    async def fill(self, input_data: ScenariosFillerInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         actor_ = ActorNode.schema(

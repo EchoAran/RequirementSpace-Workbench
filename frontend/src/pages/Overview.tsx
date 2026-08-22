@@ -6,7 +6,7 @@ import { StaleChoiceDialog } from '@/components/shared/StaleChoiceDialog';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmationWorkspace } from '@/components/collaboration/ConfirmationWorkspace';
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { buildOverviewModel, buildProjectRoute, projectionPath } from '@/core/selectors';
+import { buildOverviewModel, buildProjectRouteWithBranch, projectionPath } from '@/core/selectors';
 import {
   useWorkspaceStore,
   selectChoices
@@ -44,6 +44,9 @@ export function Overview() {
   const auditLogs = useWorkspaceStore(state => state.auditLogs);
   const stageProgress = useWorkspaceStore((s) => s.stageProgress);
   const backendFindingsLoaded = useWorkspaceStore((s) => s.backendFindingsLoaded);
+  const backendFindings = useWorkspaceStore((s) => s.backendFindings);
+  const findingsByView = useWorkspaceStore((s) => s.findingsByView);
+  const isLoading = useWorkspaceStore((s) => s.isLoading);
   const [hasGeneratedPrototype, setHasGeneratedPrototype] = useState(false);
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export function Overview() {
     };
   }, [ir?.projectId]);
 
-  const baseOverview = buildOverviewModel(ir, auditLogs, stageProgress);
+  const baseOverview = buildOverviewModel(ir, auditLogs, stageProgress, findingsByView?.issues?.length ? findingsByView.issues : backendFindings);
   const readinessDimensions = baseOverview.readiness.dimensions.map((dimension) => (
     dimension.kind === 'ui'
       ? { ...dimension, score: hasGeneratedPrototype ? 100 : 0, checked: hasGeneratedPrototype }
@@ -84,8 +87,6 @@ export function Overview() {
   const highRiskIssues = overview.highRiskIssues;
   const decisionQueue = overview.decisionQueue;
   const recentChoices = overview.recentChoices.length ? overview.recentChoices : choices.filter((c: any) => c.status === 'candidate').slice(0, 3);
-  const findingsByView = useWorkspaceStore((s) => s.findingsByView);
-  const isLoading = useWorkspaceStore((s) => s.isLoading);
   const backendNextAction = (findingsByView?.next_action || []).find((f) => !!f);
   const projectConfiguration = useWorkspaceStore((s) => s.projectConfiguration);
   const fetchProjectConfiguration = useWorkspaceStore((s) => s.fetchProjectConfiguration);
@@ -154,7 +155,7 @@ export function Overview() {
   };
 
   const jumpToProjection = (projection: any) => {
-    return navigate(buildProjectRoute(ir?.projectId, projectionPath(projection)));
+    return navigate(buildProjectRouteWithBranch(ir?.projectId, projectionPath(projection), useWorkspaceStore.getState().branchRef));
   };
 
   const projectionLabel: Record<string, string> = {
@@ -281,7 +282,12 @@ export function Overview() {
               </div>
               <button
                 type="button"
-                onClick={() => ir?.projectId && navigate(`/projects/${ir.projectId}/configuration`)}
+                onClick={() => {
+                  if (!ir?.projectId) return;
+                  const b = useWorkspaceStore.getState().branchRef;
+                  const suffix = b && b !== 'main' ? `?branch=${encodeURIComponent(b)}` : '';
+                  navigate(`/projects/${ir.projectId}/configuration${suffix}`);
+                }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
               >
                 {t('overview.sections.configBtn')}
@@ -294,7 +300,12 @@ export function Overview() {
                   <button
                     key={card.key}
                     type="button"
-                    onClick={() => ir?.projectId && navigate(`/projects/${ir.projectId}/configuration?tab=${card.key}`)}
+                    onClick={() => {
+                      if (!ir?.projectId) return;
+                      const b = useWorkspaceStore.getState().branchRef;
+                      const bParam = b && b !== 'main' ? `&branch=${encodeURIComponent(b)}` : '';
+                      navigate(`/projects/${ir.projectId}/configuration?tab=${card.key}${bParam}`);
+                    }}
                     className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-left transition-all hover:border-indigo-200 hover:bg-white hover:shadow-sm"
                   >
                     <div className="flex items-center gap-2">

@@ -23,6 +23,7 @@ from backend.database.model import (
 
 from .common import _CommitIdMaps
 
+
 async def _insert_actors(
     project_id: int,
     patch: dict,

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import os
-import logging
 import asyncio
-import time
 import hashlib
-from typing import Any, Optional
+import logging
+import os
+import time
+from typing import Any
 
 from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
 from backend.core.llm_context import LLMRequestContext, current_llm_context
 from backend.core.locale import DEFAULT_LOCALE
+from backend.integration.skill_backed_services.llm_json_client import SyncSkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
-from backend.integration.skill_backed_services.llm_json_client import SyncSkillBackedLLMJsonClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class SplSemanticExportService:
             logger.error(f"Failed to load spl-semantic-export-skill: {exc}")
             self._available = False
 
-    async def export(self, detail: ProjectDetailResponse, llm_ctx: Optional[Any] = None) -> str:
+    async def export(self, detail: ProjectDetailResponse, llm_ctx: Any | None = None) -> str:
         """
         Exports project details to semantic SPL.
         Integrates LLM credentials from llm_ctx and implements caching.

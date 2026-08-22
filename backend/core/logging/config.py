@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
-
+from typing import Literal
 
 DEFAULT_LOG_CATEGORIES = frozenset(
     {"request", "db", "llm", "ai_operation", "auth", "audit"}

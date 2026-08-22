@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.slot_fillers.prompts.acceptance_criteria_fill_agent import acceptance_criteria_fill_prompt
 from backend.core.perceptrons.slot_fillers.base_filler import BaseFiller, FillerInput
+from backend.core.perceptrons.slot_fillers.prompts.acceptance_criteria_fill_agent import acceptance_criteria_fill_prompt
 from backend.schemas import ActorNode, FeatureNode, PerceptionSlot, ScenarioNode
 
 
@@ -13,7 +12,7 @@ class AcceptanceCriteriaFillerInput(FillerInput):
     user_requirements: str
     actor: ActorNode
     feature: FeatureNode
-    scenarios: List[ScenarioNode]
+    scenarios: list[ScenarioNode]
     perception_description: PerceptionSlot
     user_feedback: str | None = None
 
@@ -22,7 +21,7 @@ class AcceptanceCriteriaFiller(BaseFiller[AcceptanceCriteriaFillerInput]):
     async def fill(
         self,
         input_data: AcceptanceCriteriaFillerInput,
-    ) -> Dict:
+    ) -> dict:
         user_requirements_ = input_data.user_requirements
 
         actor_ = ActorNode.schema(
@@ -78,7 +77,7 @@ class AcceptanceCriteriaFiller(BaseFiller[AcceptanceCriteriaFillerInput]):
 
     @staticmethod
     def _build_scenarios_payload(
-        scenarios: List[ScenarioNode],
+        scenarios: list[ScenarioNode],
     ) -> list[dict]:
         return [
             {

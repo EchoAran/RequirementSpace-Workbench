@@ -1,21 +1,24 @@
-import os
 import logging
+import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Import ports
 from backend.api.modules.preview_convergence.ports import set_prototype_generation_service
-from backend.api.modules.requirements_core.ports import (
-    set_actor_generation_service,
-    set_feature_generation_service,
-    set_scenario_generation_service,
-    set_acceptance_criteria_generation_service,
-    set_flow_generation_service,
-    set_scope_generation_service,
-)
+from backend.api.modules.preview_convergence.public import PrototypeGenerationService
 from backend.api.modules.project_lifecycle.ports import (
     set_project_creation_service,
     set_project_service,
+)
+from backend.api.modules.project_lifecycle.public import ProjectCreationService, ProjectService
+from backend.api.modules.requirements_core.ports import (
+    set_acceptance_criteria_generation_service,
+    set_actor_generation_service,
+    set_feature_generation_service,
+    set_flow_generation_service,
+    set_scenario_generation_service,
+    set_scope_generation_service,
 )
 
 # Import services
@@ -27,8 +30,6 @@ from backend.api.modules.requirements_core.public import (
     ScenarioGenerationService,
     ScopeGenerationService,
 )
-from backend.api.modules.project_lifecycle.public import ProjectService, ProjectCreationService
-from backend.api.modules.preview_convergence.public import PrototypeGenerationService
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def bootstrap_services():
     """Instantiate and register all services to their ports."""
     # Ensure env is loaded
     load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
-    
+
     generation_backend = os.environ.get(
         "REQUIREMENTSPACE_GENERATION_BACKEND",
         "skill",
@@ -55,14 +56,15 @@ def bootstrap_services():
         raise ValueError(
             "REQUIREMENTSPACE_GENERATION_BACKEND must be 'skill' or 'legacy'"
         )
-    
+
     logger.info("Initializing services with backend mode: %s", generation_backend)
-    
+
     actor_gen = ActorGenerationService()
     flow_gen = FlowGenerationService()
     project_srv = ProjectService()
-    
+
     if generation_backend == "skill":
+        from backend.api.modules.preview_convergence.ports.preview_generator import set_page_generator
         from backend.integration.skill_backed_services.acceptance_criteria_generation_service import (
             SkillBackedAcceptanceCriteriaGenerationService,
         )
@@ -81,7 +83,6 @@ def bootstrap_services():
         from backend.integration.skill_backed_services.scope_generation_service import (
             SkillBackedScopeGenerationService,
         )
-        from backend.api.modules.preview_convergence.ports.preview_generator import set_page_generator
 
         proj_creation = ProjectCreationService(
             preview_generator=SkillBackedActorFeaturePreviewGenerator()
@@ -90,7 +91,7 @@ def bootstrap_services():
         scen_gen = SkillBackedScenarioGenerationService()
         ac_gen = SkillBackedAcceptanceCriteriaGenerationService()
         scope_gen = SkillBackedScopeGenerationService()
-        
+
         page_gen = SkillBackedPrototypePageGenerator()
         set_page_generator(page_gen)
         proto_gen = PrototypeGenerationService(page_generator=page_gen)
@@ -101,7 +102,7 @@ def bootstrap_services():
         ac_gen = AcceptanceCriteriaGenerationService()
         scope_gen = ScopeGenerationService()
         proto_gen = PrototypeGenerationService()
-        
+
     # Wire to ports
     set_prototype_generation_service(proto_gen)
     set_actor_generation_service(actor_gen)
@@ -112,7 +113,7 @@ def bootstrap_services():
     set_scope_generation_service(scope_gen)
     set_project_creation_service(proj_creation)
     set_project_service(project_srv)
-    
+
     registry.generation_backend = generation_backend
     registry.scope_generation_service = scope_gen
 
@@ -121,15 +122,15 @@ def bootstrap_services():
 
 def register_choice_adapters(registry):
     """Register all built-in choice adapters to the registry."""
+    from backend.api.modules.project_lifecycle.public import ProjectCreationChoiceAdapter
     from backend.api.modules.requirements_core.public import (
-        ActorGenerationChoiceAdapter,
-        ScenarioGenerationChoiceAdapter,
         AcceptanceCriteriaGenerationChoiceAdapter,
+        ActorGenerationChoiceAdapter,
         FeatureGenerationChoiceAdapter,
         FlowGenerationChoiceAdapter,
+        ScenarioGenerationChoiceAdapter,
         ScopeGenerationChoiceAdapter,
     )
-    from backend.api.modules.project_lifecycle.public import ProjectCreationChoiceAdapter
 
     registry.register("actor", ActorGenerationChoiceAdapter)
     registry.register("scenario", ScenarioGenerationChoiceAdapter)

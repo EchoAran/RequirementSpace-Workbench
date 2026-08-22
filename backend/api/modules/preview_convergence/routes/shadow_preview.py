@@ -1,27 +1,28 @@
 from __future__ import annotations
-from backend.api.dependencies.ownership import require_owned_project
 
 import asyncio
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.modules.preview_convergence.schemas.shadow_preview import (
-    PreviewShadowDraftResponse,
-    PreviewShadowRegenerateRequest,
-)
-from backend.api.modules.preview_convergence.schemas.prototype import PrototypePreviewResponse
+from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.ownership import require_owned_project
 from backend.api.modules.preview_convergence.application.shadow_convergence import (
     PreviewShadowConvergenceService,
     build_project_snapshot,
     calculate_stable_snapshot_hash,
 )
 from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
+from backend.api.modules.preview_convergence.schemas.prototype import PrototypePreviewResponse
+from backend.api.modules.preview_convergence.schemas.shadow_preview import (
+    PreviewShadowDraftResponse,
+    PreviewShadowRegenerateRequest,
+)
+from backend.core.llm_context import LLMRequestContext
 from backend.database.database import get_session
 from backend.database.model import PreviewShadowDraftModel, ProjectModel
-from backend.api.dependencies.llm import get_llm_context
-from backend.core.llm_context import LLMRequestContext
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/preview-shadow-drafts",
@@ -152,12 +153,15 @@ async def _create_shadow_draft(
     return draft
 
 
+_background_tasks: set[asyncio.Task] = set()
+
+
 def _start_shadow_convergence(
     project_id: int,
     draft_id: str,
     llm_ctx: LLMRequestContext,
 ) -> None:
-    asyncio.create_task(
+    task = asyncio.create_task(
         convergence_service.converge_shadow_snapshot_task(
             project_id,
             draft_id,
@@ -168,6 +172,8 @@ def _start_shadow_convergence(
             content_locale_source=llm_ctx.content_locale_source,
         )
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.post("", response_model=PreviewShadowDraftResponse)
@@ -199,7 +205,7 @@ async def prepare_shadow_draft(
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to generate real preview: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate real preview: {e!s}")
 
     unready_gates = _unready_gate_names(gates)
     base_snapshot = await build_project_snapshot(owned_project.id, session)
@@ -384,17 +390,7 @@ async def regenerate_shadow_draft(
     await session.commit()
 
     # Respawn background convergence task
-    asyncio.create_task(
-        convergence_service.converge_shadow_snapshot_task(
-            owned_project.id,
-            draft_id,
-            api_url=llm_ctx.api_url,
-            api_key=llm_ctx.api_key,
-            model_name=llm_ctx.model_name,
-            content_locale=llm_ctx.content_locale,
-            content_locale_source=llm_ctx.content_locale_source,
-        )
-    )
+    _start_shadow_convergence(owned_project.id, draft_id, llm_ctx)
 
     # Recalculate unready gates
     gates = await convergence_service.gate_evaluator.evaluate_gates(owned_project.id, session)

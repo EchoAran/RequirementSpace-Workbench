@@ -1,7 +1,8 @@
 from sqlalchemy import select
-from backend.database.model import ActorModel, ConfirmationStatus
+
+from backend.api.modules.requirements_core.actor.schemas import ActorCreateRequest, ActorResponse, ActorUpdateRequest
 from backend.core.notifier import get_notifier
-from backend.api.modules.requirements_core.actor.schemas import ActorCreateRequest, ActorUpdateRequest, ActorResponse
+from backend.database.model import ActorModel, ConfirmationStatus
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
@@ -68,6 +69,7 @@ class ActorService:
             stages={"what"},
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return ActorResponse(
@@ -138,6 +140,7 @@ class ActorService:
             stages={"what"},
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -193,6 +196,7 @@ class ActorService:
             stages={"what"},
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {

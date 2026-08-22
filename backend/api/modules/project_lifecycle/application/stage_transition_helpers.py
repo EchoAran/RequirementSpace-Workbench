@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from backend.database.model import AuditLogModel
 
-
 STAGES_ORDER = ("what", "how", "scope")
 
 

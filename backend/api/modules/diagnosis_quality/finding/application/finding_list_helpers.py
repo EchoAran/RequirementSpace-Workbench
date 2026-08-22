@@ -89,18 +89,30 @@ async def suggestion_stages(
     project_id: int,
     stage: str,
     session,
+    workspace_id: int | None = None,
 ) -> list[str]:
     if stage != "all":
         return [stage] if stage in {"what", "how", "scope"} else []
-    result = await session.execute(
-        select(ProjectModel.unlocked_stages).where(
-            ProjectModel.id == project_id
+    unlocked_text = None
+    if workspace_id is not None:
+        from backend.database.model import BranchWorkspaceModel
+        ws_res = await session.execute(
+            select(BranchWorkspaceModel.unlocked_stages).where(
+                BranchWorkspaceModel.id == workspace_id
+            )
         )
-    )
-    unlocked_text = result.scalar_one_or_none() or ""
+        unlocked_text = ws_res.scalar_one_or_none()
+
+    if unlocked_text is None:
+        result = await session.execute(
+            select(ProjectModel.unlocked_stages).where(
+                ProjectModel.id == project_id
+            )
+        )
+        unlocked_text = result.scalar_one_or_none() or ""
     unlocked = {
         item.strip()
-        for item in unlocked_text.split(",")
+        for item in (unlocked_text or "").split(",")
         if item.strip()
     }
     stages = ["what"]

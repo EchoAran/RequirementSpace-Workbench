@@ -39,6 +39,7 @@ class SkillBackedAcceptanceCriteriaGenerationService(
         generation_mode: str,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -49,6 +50,7 @@ class SkillBackedAcceptanceCriteriaGenerationService(
             project_id=project_id,
             scenario_ids=scenario_ids,
             session=session,
+            workspace_id=workspace_id,
         )
 
         gherkin_context_by_scenario_id = await self._load_gherkin_context(

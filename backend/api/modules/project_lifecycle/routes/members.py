@@ -1,19 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database.database import get_session
-from backend.database.model import ProjectModel
-from backend.api.dependencies.project_access import (
-    require_project_member,
-    require_project_role,
-)
+
 from backend.api.dependencies.actor_context import get_actor_context
-from backend.core.actor_context import ActorContext
+from backend.api.dependencies.project_access import (
+    require_project_admin,
+    require_project_member,
+)
 from backend.api.modules.project_lifecycle.application.members_service import ProjectMemberService
 from backend.api.modules.project_lifecycle.schemas.members import (
-    ProjectMemberResponse,
     ProjectMemberAddRequest,
+    ProjectMemberResponse,
     ProjectMemberUpdateRequest,
 )
+from backend.core.actor_context import ActorContext
+from backend.database.database import get_session
+from backend.database.model import ProjectModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/members",
@@ -51,7 +52,7 @@ async def add_member(
     project_id: str,
     body: ProjectMemberAddRequest,
     actor: ActorContext = Depends(get_actor_context),
-    owned_project: ProjectModel = Depends(require_project_role("admin")),
+    owned_project: ProjectModel = Depends(require_project_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Add a new member to the project."""
@@ -97,7 +98,7 @@ async def update_member(
     member_id: int,
     body: ProjectMemberUpdateRequest,
     actor: ActorContext = Depends(get_actor_context),
-    owned_project: ProjectModel = Depends(require_project_role("admin")),
+    owned_project: ProjectModel = Depends(require_project_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Update a project member's role or status."""
@@ -142,7 +143,7 @@ async def remove_member(
     project_id: str,
     member_id: int,
     actor: ActorContext = Depends(get_actor_context),
-    owned_project: ProjectModel = Depends(require_project_role("admin")),
+    owned_project: ProjectModel = Depends(require_project_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Remove a project member (mark status as removed)."""

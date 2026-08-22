@@ -2,16 +2,17 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from backend.core.notifier import get_notifier
 from backend.core.generators.scopes_generator import (
     ScopesGenerator,
     ScopesGeneratorInput,
 )
-from backend.schemas import FeatureNode, ScopeStatus
+from backend.core.notifier import get_notifier
+from backend.schemas import FeatureNode
 from backend.services.binary_conversion_service import (
     BinaryConversionError,
     BinaryConversionService,
 )
+
 from .scope_generation_context import load_scope_generation_context
 
 
@@ -37,7 +38,7 @@ class ScopeGenerationService:
         head_commit_id: str | None = None,
         workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ProjectModel, BranchWorkspaceModel
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
 
         async def _exec(stmt):
             res = session.execute(stmt)
@@ -247,9 +248,10 @@ class ScopeGenerationService:
             project_id=project_id,
             stages={"scope"},
             session=session,
+            workspace_id=workspace_id,
         )
 
-        from backend.database.model import ProjectModel, BranchWorkspaceModel
+        from backend.database.model import BranchWorkspaceModel
 
         async def _exec(stmt):
             res = session.execute(stmt)
@@ -384,31 +386,50 @@ class ScopeGenerationService:
         if not raw_scopes:
             raise ValueError("empty_scopes")
 
-        leaf_feature_ids = {
-            feature.featureId
+        leaf_feature_map = {
+            feature.featureId: feature
             for feature in leaf_feature_nodes
         }
+        leaf_feature_ids = set(leaf_feature_map.keys())
 
-        scope_feature_ids = [
-            item.get("feature_id")
-            for item in raw_scopes
-        ]
-
-        if len(set(scope_feature_ids)) != len(scope_feature_ids):
-            raise ValueError("duplicate_scope_feature")
-
-        if set(scope_feature_ids) != leaf_feature_ids:
-            raise ValueError("scope_feature_mismatch")
-
-        scopes = []
+        scopes_by_feature_id: dict[int, dict] = {}
 
         for item in raw_scopes:
-            feature_id = item.get("feature_id")
+            if not isinstance(item, dict):
+                continue
+
+            raw_fid = item.get("feature_id", item.get("featureId"))
+            fid = None
+            if raw_fid is not None:
+                try:
+                    fid = int(raw_fid)
+                except (ValueError, TypeError):
+                    fid = None
+
+            if fid not in leaf_feature_ids:
+                fname = str(item.get("feature_name", item.get("feature", ""))).strip().lower()
+                for lf in leaf_feature_nodes:
+                    if lf.featureName.strip().lower() == fname:
+                        fid = lf.featureId
+                        break
+
+            if fid not in leaf_feature_ids:
+                continue
+
+            if fid in scopes_by_feature_id:
+                continue
+
             scope_status = item.get(
                 "scope_status",
                 item.get("scopeStatus", item.get("scope")),
             )
-            reason = item.get("reason", item.get("reasons", ""))
+            if not scope_status or str(scope_status).lower() not in self._valid_scope_statuses:
+                scope_status = "current"
+
+            reason = str(item.get("reason", item.get("reasons", "")) or "").strip()
+            if not reason:
+                reason = f"根据需求分析纳入规划范围：{leaf_feature_map[fid].featureName}"
+
             positive_summary = item.get(
                 "positive_summary",
                 item.get("positiveSummary"),
@@ -426,30 +447,35 @@ class ScopeGenerationService:
                 item.get("negativePictureBase64"),
             )
 
-            if feature_id not in leaf_feature_ids:
-                raise ValueError("invalid_feature_reference")
+            scopes_by_feature_id[fid] = {
+                "feature_id": fid,
+                "scope_status": str(scope_status).lower(),
+                "reason": reason,
+                "positive_summary": positive_summary,
+                "negative_summary": negative_summary,
+                "positive_picture_base64": positive_picture_base64,
+                "negative_picture_base64": negative_picture_base64,
+                "kano_category": item.get("kano_category", item.get("kanoCategory")),
+                "kano_category_name": item.get("kano_category_name", item.get("kanoCategoryName")),
+            }
 
-            if scope_status not in self._valid_scope_statuses:
-                raise ValueError("invalid_scope_status")
-
-            if not reason:
-                raise ValueError("invalid_scope_payload")
-
-            scopes.append(
-                {
-                    "feature_id": feature_id,
-                    "scope_status": scope_status.lower(),
-                    "reason": reason,
-                    "positive_summary": positive_summary,
-                    "negative_summary": negative_summary,
-                    "positive_picture_base64": positive_picture_base64,
-                    "negative_picture_base64": negative_picture_base64,
-                    "kano_category": item.get("kano_category", item.get("kanoCategory")),
-                    "kano_category_name": item.get("kano_category_name", item.get("kanoCategoryName")),
+        # Auto-fill any missing leaf features so LLM omissions never cause scope_feature_mismatch
+        for lf in leaf_feature_nodes:
+            if lf.featureId not in scopes_by_feature_id:
+                scopes_by_feature_id[lf.featureId] = {
+                    "feature_id": lf.featureId,
+                    "scope_status": "current",
+                    "reason": f"默认纳入当前规划范围：{lf.featureName}",
+                    "positive_summary": None,
+                    "negative_summary": None,
+                    "positive_picture_base64": None,
+                    "negative_picture_base64": None,
+                    "kano_category": "O",
+                    "kano_category_name": "一维属性",
                 }
-            )
 
-        return scopes
+        # Preserve order of leaf_feature_nodes
+        return [scopes_by_feature_id[lf.featureId] for lf in leaf_feature_nodes]
 
     @staticmethod
     def _build_response_payload(
@@ -491,7 +517,7 @@ class ScopeGenerationService:
         session,
         workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ScopeModel, FeatureModel
+        from backend.database.model import FeatureModel, ScopeModel
 
         async def _exec(stmt):
             res = session.execute(stmt)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .schema import SplExportInputDict, SplExportOutputDict
 from .renderer import SplSyntaxRenderer
+from .schema import SplExportInputDict, SplExportOutputDict
 
 
 class SplSyntaxExportSkill:

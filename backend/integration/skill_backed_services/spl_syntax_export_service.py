@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+
 from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
 from backend.core.locale import DEFAULT_LOCALE, SupportedLocale
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
@@ -58,7 +59,7 @@ class SplSyntaxExportService:
             # Execute skill (runs synchronously in the executor if needed,
             # but since it's pure code, direct synchronous call is fine)
             result_dict = self._skill.export(payload)
-            
+
             # Validate output using SplExportOutput schema
             output = SplExportOutput.model_validate(result_dict)
             if not output.spl_text:

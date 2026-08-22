@@ -7,6 +7,7 @@ from backend.database.model import (
 
 from .common import _CommitIdMaps
 
+
 def _build_prototype_id_maps(
     patch: dict,
     id_maps: _CommitIdMaps,

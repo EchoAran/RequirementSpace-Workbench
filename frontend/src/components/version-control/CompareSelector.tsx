@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeftRight, GitBranch, GitCommitHorizontal, Play } from 'lucide-react';
+import { ArrowLeftRight, Play } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
 import { CommitSummary } from '@/core/versionControl';
-import { cn } from '@/lib/utils';
 
 /**
  * 任意版本比较选择器（Phase D）。
@@ -49,14 +48,19 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
   const [base, setBase] = useState<RefState>({ kind: 'workspace', value: branchRef });
   const [target, setTarget] = useState<RefState>({ kind: 'workspace', value: branchRef });
   const [commitOptions, setCommitOptions] = useState<CommitSummary[]>([]);
+  const [commitsLoading, setCommitsLoading] = useState(false);
 
   // 挂载时独立拉取提交选项（all + limit 200），与 store 已加载提交合并去重。
   useEffect(() => {
     let cancelled = false;
+    setCommitsLoading(true);
     workspaceApi.listCommits(projectId, { all: true, limit: 200 }).then((res) => {
       if (cancelled) return;
       setCommitOptions(res.commits);
-    }).catch(() => { /* 提交选项加载失败不阻塞比较器 */ });
+    }).catch(() => { /* 提交选项加载失败不阻塞比较器 */ })
+      .finally(() => {
+        if (!cancelled) setCommitsLoading(false);
+      });
     return () => { cancelled = true; };
   }, [projectId]);
 
@@ -73,13 +77,39 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
     setTarget(base);
   };
 
-  const apply = () => onChange(toRef(base), toRef(target));
+  const apply = () => {
+    if (!isValidRef(base) || !isValidRef(target)) return;
+    onChange(toRef(base), toRef(target));
+  };
 
   const branchChoices = useMemo(() => {
-    const list = branches || [];
-    // workspace 的 ref 值是当前分支，无需作为 branch 下拉项；只列非 workspace 分支。
-    return list;
+    return branches || [];
   }, [branches]);
+
+  const handleKindChange = (newKind: RefKind, setState: (s: RefState) => void) => {
+    let defaultValue = '';
+    if (newKind === 'workspace') {
+      defaultValue = branchRef;
+    } else if (newKind === 'branch') {
+      defaultValue = branchChoices[0]?.public_id || 'main';
+    } else if (newKind === 'commit') {
+      defaultValue = commitOptions[0]?.public_id || '';
+    }
+    setState({ kind: newKind, value: defaultValue });
+  };
+
+  const isValidRef = (state: RefState): boolean => {
+    if (!state.value) return false;
+    if (state.kind === 'commit' && commitOptions.length > 0) {
+      return commitOptions.some((c) => c.public_id === state.value);
+    }
+    if (state.kind === 'branch' && branchChoices.length > 0) {
+      return branchChoices.some((b) => b.public_id === state.value || b.name === state.value);
+    }
+    return true;
+  };
+
+  const canCompare = isValidRef(base) && isValidRef(target);
 
   const renderSide = (state: RefState, setState: (s: RefState) => void, label: string) => (
     <div className="flex min-w-0 flex-col gap-1">
@@ -87,7 +117,7 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
       <div className="flex gap-1.5">
         <select
           value={state.kind}
-          onChange={(e) => setState({ ...state, kind: e.target.value as RefKind })}
+          onChange={(e) => handleKindChange(e.target.value as RefKind, setState)}
           aria-label={`${label} ${t('versionControl.diff.base')}`}
           className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-400"
         >
@@ -102,7 +132,13 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
             aria-label={`${label} value`}
             className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
           >
-            <option value={branchRef}>{branchRef}</option>
+            {branchChoices.length === 0 ? (
+              <option value={branchRef}>{branchRef}</option>
+            ) : (
+              branchChoices.map((b) => (
+                <option key={b.public_id} value={b.name}>{b.name}</option>
+              ))
+            )}
           </select>
         )}
         {state.kind === 'branch' && (
@@ -124,6 +160,9 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
             aria-label={`${label} value`}
             className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
           >
+            {commitOptions.length === 0 && (
+              <option value="">{commitsLoading ? t('shell.loading') : t('versionControl.compare.noCommits', '无可用提交')}</option>
+            )}
             {commitOptions.map((c) => (
               <option key={c.public_id} value={c.public_id}>{c.short_id} · {c.message}</option>
             ))}
@@ -148,7 +187,8 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
       <button
         type="button"
         onClick={apply}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+        disabled={!canCompare}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         <Play className="h-3.5 w-3.5" />
         {t('versionControl.diff.title')}

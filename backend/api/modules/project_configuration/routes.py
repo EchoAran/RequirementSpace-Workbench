@@ -1,31 +1,32 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.api.dependencies.auth import get_current_user
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel
 from backend.api.dependencies.project_access import (
-    require_project_member,
-    require_project_role,
+    require_project_admin,
     require_project_config_read_access,
     require_project_config_write_access,
-)
-from backend.api.modules.project_configuration.schemas import (
-    ProjectConfigurationResponse,
-    ProjectConfigurationUpdate,
-    GenerationStrategyConfigResponse,
-    GenerationStrategyConfigUpdate,
-    ProjectKnowledgeSummary,
-    ProjectKnowledgeConfigUpdate,
-)
-from backend.api.modules.project_configuration.application.project_configuration_service import (
-    ProjectConfigurationService,
-)
-from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
-    GenerationStrategyConfigService,
+    require_project_member,
 )
 from backend.api.modules.project_configuration.application.content_locale_service import (
     ProjectContentLocaleService,
 )
+from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
+    GenerationStrategyConfigService,
+)
+from backend.api.modules.project_configuration.application.project_configuration_service import (
+    ProjectConfigurationService,
+)
+from backend.api.modules.project_configuration.schemas import (
+    GenerationStrategyConfigResponse,
+    GenerationStrategyConfigUpdate,
+    ProjectConfigurationResponse,
+    ProjectConfigurationUpdate,
+    ProjectKnowledgeConfigUpdate,
+    ProjectKnowledgeSummary,
+)
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/configuration",
@@ -56,7 +57,7 @@ async def get_project_configuration(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve project configuration: {str(exc)}",
+            detail=f"Failed to retrieve project configuration: {exc!s}",
         )
 
 
@@ -93,7 +94,7 @@ async def update_project_configuration(
         await session.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update project configuration: {str(exc)}",
+            detail=f"Failed to update project configuration: {exc!s}",
         )
 
 
@@ -111,7 +112,7 @@ async def get_generation_strategy_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve generation strategy configuration: {str(exc)}",
+            detail=f"Failed to retrieve generation strategy configuration: {exc!s}",
         )
 
 
@@ -121,7 +122,7 @@ async def update_generation_strategy_config(
     request: GenerationStrategyConfigUpdate,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     """Update generation strategy configuration (requires admin role)."""
     try:
@@ -136,7 +137,7 @@ async def update_generation_strategy_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update generation strategy configuration: {str(exc)}",
+            detail=f"Failed to update generation strategy configuration: {exc!s}",
         )
 
 
@@ -145,7 +146,7 @@ async def delete_generation_strategy_config(
     project_id: str,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     """Reset generation strategy configuration back to default (requires admin role)."""
     try:
@@ -154,7 +155,7 @@ async def delete_generation_strategy_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to reset generation strategy configuration: {str(exc)}",
+            detail=f"Failed to reset generation strategy configuration: {exc!s}",
         )
 
 
@@ -164,7 +165,7 @@ async def update_project_knowledge_config(
     request: ProjectKnowledgeConfigUpdate,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     """Update project-specific knowledge base toggle (requires admin role)."""
     try:
@@ -177,5 +178,5 @@ async def update_project_knowledge_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update project knowledge configuration: {str(exc)}",
+            detail=f"Failed to update project knowledge configuration: {exc!s}",
         )

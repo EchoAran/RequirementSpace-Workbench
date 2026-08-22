@@ -176,6 +176,7 @@ class FeatureGenerationService:
                 "FLOW",
             },
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -290,7 +291,7 @@ class FeatureGenerationService:
         session,
         workspace_id: int | None = None,
     ) -> tuple[str, list[ActorNode]]:
-        from backend.database.model import ActorModel, ProjectModel, BranchWorkspaceModel
+        from backend.database.model import ActorModel, BranchWorkspaceModel, ProjectModel
 
         project_result = await session.execute(
             select(ProjectModel).where(

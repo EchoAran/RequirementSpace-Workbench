@@ -1,28 +1,28 @@
-﻿import logging
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import llm_context_manager
 from backend.api.dependencies.ownership import require_owned_project
 from backend.api.dependencies.project_access import require_project_member
-from backend.database.model import UserModel, ChoiceGroupModel, ChoiceModel
-from backend.api.modules.decision_workflow.choice_group.schemas import (
-    ChoiceGroupResponse,
-    ChoiceActionResponse,
-    GenerationChoiceGroupCreateRequest,
-    GenerationAcceptRequest,
-)
-from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
 from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     GenerationChoiceService,
 )
-from backend.database.database import get_session
+from backend.api.modules.decision_workflow.choice_group.application.choice_service import ChoiceService
+from backend.api.modules.decision_workflow.choice_group.schemas import (
+    ChoiceActionResponse,
+    ChoiceGroupResponse,
+    GenerationAcceptRequest,
+    GenerationChoiceGroupCreateRequest,
+)
 from backend.api.modules.version_control.dependencies import reject_commit_write
-from backend.api.dependencies.llm import llm_context_manager
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import CHOICE_GROUP_RESOLVED
+from backend.database.database import get_session
+from backend.database.model import ChoiceGroupModel, ChoiceModel, UserModel
 
 router = APIRouter(
     tags=["choices"],
@@ -40,16 +40,24 @@ generation_choice_service = GenerationChoiceService()
 async def list_choice_groups(
     project_id: str,
     status: str | None = Query(None, description="Filter by ChoiceGroup status (e.g. 'open', 'resolved')"),
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_project_member(project_id, user, session)
+    from backend.api.modules.version_control.public import resolve_branch_context
+    _branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+    )
+    ws_id = ws_obj.id if ws_obj else None
+
     try:
         return await choice_service.list_choice_groups(
             project_id=owned_project.id,
             status=status,
             session=session,
+            workspace_id=ws_id,
         )
     except HTTPException:
         raise
@@ -67,7 +75,8 @@ async def list_choice_groups(
 async def accept_choice(
     project_id: str,
     choice_id: int,
-    body: GenerationAcceptRequest = GenerationAcceptRequest(),
+    branch: str | None = Query(None),
+    body: GenerationAcceptRequest | None = None,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
@@ -75,7 +84,14 @@ async def accept_choice(
     """采纳一个 choice。支持 patch 和 draft_payload 两种模式。
     对 draft_payload 型 choice，默认检查上下文是否过期。
     设置 force=true 可跳过 stale 检查。"""
+    body = body or GenerationAcceptRequest()
     owned_project = await require_owned_project(project_id, user, session)
+
+    from backend.api.modules.version_control.public import resolve_branch_context
+    _branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+    )
+    ws_id = ws_obj.id if ws_obj else None
 
     # Verify the choice exists and belongs to this project
     query = select(ChoiceModel).join(ChoiceGroupModel).where(
@@ -94,6 +110,7 @@ async def accept_choice(
                 choice_id=choice_id,
                 session=session,
                 force=body.force,
+                workspace_id=ws_id,
             )
             log_event(
                 logger,
@@ -229,6 +246,7 @@ async def discard_choice_group(
 )
 async def create_generation_choice_group(
     body: GenerationChoiceGroupCreateRequest,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
@@ -239,6 +257,12 @@ async def create_generation_choice_group(
     用户稍后可调用 accept、reject、discard 处理。
     """
     owned_project = await require_owned_project(body.project_id, user, session)
+    from backend.api.modules.version_control.public import resolve_branch_context
+    _branch_obj, ws_obj, perms = await session.run_sync(
+        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+    )
+    ws_id = ws_obj.id if ws_obj else None
+
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             result = await generation_choice_service.create_choice_group(
@@ -248,6 +272,7 @@ async def create_generation_choice_group(
                 candidate_count=body.candidate_count,
                 user_feedback=body.user_feedback,
                 session=session,
+                workspace_id=ws_id,
             )
             return result
         except ValueError as error:
@@ -275,6 +300,7 @@ async def create_generation_choice_group(
 async def regenerate_choice_group(
     project_id: str,
     group_id: int,
+    branch: str | None = Query(None),
     feedback: str | None = Query(None, description="User feedback for regeneration"),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -325,6 +351,7 @@ async def regenerate_choice_group(
 async def regenerate_choice(
     project_id: str,
     choice_id: int,
+    branch: str | None = Query(None),
     feedback: str | None = Query(None, description="User feedback for regeneration"),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),

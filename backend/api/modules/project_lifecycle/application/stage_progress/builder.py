@@ -10,7 +10,6 @@ from .checks import (
 )
 from .loader import StageProgressData, load_stage_progress_data
 
-
 STAGES_ORDER = ("what", "how", "scope")
 
 
@@ -21,6 +20,16 @@ def _is_stage_unlocked(stage: str, unlocked_stages: set[str]) -> bool:
         return "what" in unlocked_stages
     if stage == "scope":
         return "how" in unlocked_stages
+    return False
+
+
+def _is_next_stage_unlocked(stage: str, unlocked_stages: set[str]) -> bool:
+    if stage == "what":
+        return "what" in unlocked_stages
+    if stage == "how":
+        return "how" in unlocked_stages
+    if stage == "scope":
+        return "scope" in unlocked_stages
     return False
 
 
@@ -51,7 +60,7 @@ def _stage_failed_checks(stage: str, data: StageProgressData) -> list[dict]:
     return scope_stage_checks(
         data.what.leaf_features,
         data.scoped_feature_ids,
-        data.project.kano_status,
+        data.kano_status,
     )
 
 
@@ -73,6 +82,7 @@ def _build_stage(
     gate_findings: list,
 ) -> dict:
     unlocked = _is_stage_unlocked(stage, data.unlocked_stages)
+    next_stage_unlocked = _is_next_stage_unlocked(stage, data.unlocked_stages)
     failed_checks = _stage_failed_checks(stage, data)
     content_complete = not failed_checks
     latest_job = data.latest_jobs.get(stage)
@@ -82,7 +92,7 @@ def _build_stage(
     )
     status_code = stage_status(
         unlocked,
-        stage in data.unlocked_stages,
+        next_stage_unlocked,
         bool(gate_findings),
         content_complete,
         analysis_running,
@@ -112,6 +122,7 @@ def _build_stage(
 async def _load_gate_findings(
     project_id: int,
     session,
+    workspace_id: int | None = None,
 ) -> dict[str, list]:
     finding_service = FindingService()
     return {
@@ -121,6 +132,7 @@ async def _load_gate_findings(
             view="gate",
             action="enter_how",
             session=session,
+            workspace_id=workspace_id,
         ),
         "how": await finding_service.list_findings(
             project_id=project_id,
@@ -128,6 +140,7 @@ async def _load_gate_findings(
             view="gate",
             action="enter_scope",
             session=session,
+            workspace_id=workspace_id,
         ),
         "scope": await finding_service.list_findings(
             project_id=project_id,
@@ -135,6 +148,7 @@ async def _load_gate_findings(
             view="gate",
             action="generate_preview",
             session=session,
+            workspace_id=workspace_id,
         ),
     }
 
@@ -143,9 +157,10 @@ async def get_stage_progress(
     project_id: int,
     public_project_id: str,
     session,
+    workspace_id: int | None = None,
 ) -> dict:
-    data = await load_stage_progress_data(project_id, session)
-    findings_by_stage = await _load_gate_findings(project_id, session)
+    data = await load_stage_progress_data(project_id, session, workspace_id)
+    findings_by_stage = await _load_gate_findings(project_id, session, workspace_id)
     return {
         "project_id": public_project_id,
         "stages": [

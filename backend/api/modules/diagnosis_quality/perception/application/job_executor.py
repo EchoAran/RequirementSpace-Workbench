@@ -3,15 +3,19 @@ import hashlib
 import json
 import logging
 import time
+
 from fastapi import BackgroundTasks
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from backend.core.detectors.issue_context_loader import (
     IssueProjectContext,
     load_issue_project_context,
 )
-from backend.core.llm_context import LLMRequestContext, current_llm_context, is_web_request_ctx
+from backend.core.llm_context import (
+    LLMRequestContext,
+    current_llm_context,
+    is_web_request_ctx,
+)
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
     PERCEPTION_JOB_COMPLETED,
@@ -75,24 +79,27 @@ class PerceptionJobExecutor:
         project_id: int,
         stage: str,
         session,
+        workspace_id: int | None = None,
     ):
         from backend.database.model import PerceptionJobModel
 
-        result = await session.execute(
-            select(PerceptionJobModel)
-            .where(
-                PerceptionJobModel.project_id == project_id,
-                PerceptionJobModel.stage == stage,
-                PerceptionJobModel.status.in_(
-                    [
-                        PerceptionJobStatus.NOT_STARTED.value,
-                        PerceptionJobStatus.RUNNING.value,
-                    ]
-                ),
-            )
-            .order_by(PerceptionJobModel.id.asc())
+        stmt = select(PerceptionJobModel).where(
+            PerceptionJobModel.project_id == project_id,
+            PerceptionJobModel.stage == stage,
+            PerceptionJobModel.status.in_(
+                [
+                    PerceptionJobStatus.NOT_STARTED.value,
+                    PerceptionJobStatus.RUNNING.value,
+                ]
+            ),
         )
+        if workspace_id is not None:
+            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
+        else:
+            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
+        stmt = stmt.order_by(PerceptionJobModel.id.asc())
 
+        result = await session.execute(stmt)
         return result.scalars().first()
 
     async def run_perception_job(
@@ -156,22 +163,27 @@ class PerceptionJobExecutor:
         description: str,
         session,
     ) -> None:
-        from backend.database.model import ProjectModel, PerceptionSlotModel
+        from backend.database.model import PerceptionSlotModel
 
-        result = await session.execute(
-            select(ProjectModel)
-            .where(ProjectModel.id == job.project_id)
-            .options(selectinload(ProjectModel.perception_slot))
+        slot_stmt = select(PerceptionSlotModel).where(
+            PerceptionSlotModel.project_id == job.project_id,
         )
-        project = result.scalar_one_or_none()
-        if not project:
-            return
-        if project.perception_slot:
-            await session.delete(project.perception_slot)
+        ws_id = getattr(job, "workspace_id", None)
+        if ws_id is not None:
+            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id == ws_id)
+        else:
+            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id.is_(None))
+
+        existing_slots = (await session.execute(slot_stmt)).scalars().all()
+        for slot in existing_slots:
+            await session.delete(slot)
+        await session.flush()
+
         session.add(
             PerceptionSlotModel(
                 id=job.id,
                 project_id=job.project_id,
+                workspace_id=ws_id,
                 perception_kind=result_kind.value,
                 description=description,
             )
@@ -268,6 +280,7 @@ class PerceptionJobExecutor:
                 context = await load_issue_project_context(
                     project_id=job.project_id,
                     session=session,
+                    workspace_id=getattr(job, "workspace_id", None),
                 )
                 current_hash = self._build_context_hash(
                     perception_kind=job.perception_kind,

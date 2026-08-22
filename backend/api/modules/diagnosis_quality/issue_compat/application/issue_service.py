@@ -1,4 +1,6 @@
-from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import IssueRepairService
+from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import (
+    IssueRepairService,
+)
 
 
 class IssueService:

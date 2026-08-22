@@ -42,7 +42,7 @@ class ScopeReasonSolver(BaseIssueAISolver):
         session,
         workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ProjectModel, FeatureModel
+        from backend.database.model import FeatureModel, ProjectModel
 
         target_id = None
         if target:

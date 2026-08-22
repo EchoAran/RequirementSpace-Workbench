@@ -3,15 +3,16 @@ import logging
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.api.dependencies.auth import get_current_user
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import AUTH_PERMISSION_DENIED
 from backend.database.database import get_session
 from backend.database.model import (
-    UserModel,
-    ProjectModel,
     ProjectMemberModel,
     ProjectMemberStatus,
+    ProjectModel,
+    UserModel,
 )
 
 logger = get_logger(__name__)
@@ -111,7 +112,7 @@ def require_project_role(allowed_roles: list[str] | str):
             cached = getattr(request.state, cache_key, None)
             if cached:
                 _, member = cached
-        
+
         if not member:
             query = select(ProjectMemberModel).where(
                 ProjectMemberModel.project_id == project.id,
@@ -120,7 +121,7 @@ def require_project_role(allowed_roles: list[str] | str):
             )
             res = await session.execute(query)
             member = res.scalar_one_or_none()
-            
+
         if not member:
             raise HTTPException(status_code=404, detail="project_not_found")
 
@@ -142,6 +143,12 @@ def require_project_role(allowed_roles: list[str] | str):
         return project
 
     return dependency
+
+
+require_project_admin = require_project_role("admin")
+require_project_editor = require_project_role("editor")
+require_project_owner = require_project_role("owner")
+require_project_writer = require_project_role(["owner", "admin", "editor"])
 
 
 async def require_project_config_write_access(

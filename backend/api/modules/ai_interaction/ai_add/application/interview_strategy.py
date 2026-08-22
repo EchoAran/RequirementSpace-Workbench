@@ -14,10 +14,11 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
-from backend.core.prompt_resolver import resolve_prompt
 from backend.core.localized_messages import localized_message
+from backend.core.prompt_resolver import resolve_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class BaseInterviewStrategy(ABC):
         injected_system_prompt = self._inject_knowledge_context(system_prompt, knowledge_context)
 
         # 3. Format message history for LLM
-        messages = [{"role": "system", "content": injected_system_prompt}] + chat_history
+        messages = [{"role": "system", "content": injected_system_prompt}, *chat_history]
 
         # 4. Call LLM
         response = await llm_call_chat(

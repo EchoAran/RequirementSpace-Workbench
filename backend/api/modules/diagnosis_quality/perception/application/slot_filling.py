@@ -1,11 +1,11 @@
+from backend.api.modules.diagnosis_quality.perception.application.draft_confirmer import (
+    PerceptionDraftConfirmer,
+)
 from backend.api.modules.diagnosis_quality.perception.application.draft_creator import (
     PerceptionDraftCreator,
 )
 from backend.api.modules.diagnosis_quality.perception.application.draft_discarder import (
     PerceptionDraftDiscarder,
-)
-from backend.api.modules.diagnosis_quality.perception.application.draft_confirmer import (
-    PerceptionDraftConfirmer,
 )
 
 
@@ -164,8 +164,10 @@ class PerceptionSlotFillingService:
         self,
         draft_id: str,
         owner_user_id: int,
+        session=None,
     ) -> dict:
         return await self._discarder.discard_draft(
             draft_id=draft_id,
             owner_user_id=owner_user_id,
+            session=session,
         )

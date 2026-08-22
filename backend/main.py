@@ -1,7 +1,7 @@
-from contextlib import asynccontextmanager
 import logging
 import os
 import socket
+from contextlib import asynccontextmanager
 
 # Set a global default socket timeout of 5.0 seconds to prevent any connection or SSL handshake from hanging.
 socket.setdefaulttimeout(5.0)
@@ -22,47 +22,37 @@ from backend.core.logging.events import (
 
 configure_logging()
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
 from backend.api.dependencies.ownership import require_owned_project
 from backend.api.dependencies.project_access import require_project_member
-
-from backend.api.modules.project_lifecycle.routes.creation import (
-    router as project_creation_router,
+from backend.api.modules.ai_interaction.ai_add.routes import (
+    draft_router as ai_object_generation_draft_router,
+    router as ai_add_session_router,
 )
-from backend.api.modules.project_lifecycle.routes.creation_choice import (
-    router as project_creation_choice_router,
+from backend.api.modules.ai_interaction.ai_explain.routes import (
+    router as ai_explain_router,
 )
-from backend.api.modules.project_lifecycle.routes.blank import (
-    router as blank_project_router,
+from backend.api.modules.auth_account.routes.auth import (
+    router as auth_router,
 )
-from backend.api.modules.requirements_core.actor.routes import (
-    router as actor_router,
-    generation_router as actor_generation_router,
+from backend.api.modules.auth_account.routes.llm_config import (
+    router as account_router,
 )
-from backend.api.modules.requirements_core.feature.routes import (
-    router as feature_router,
-    generation_router as feature_generation_router,
+from backend.api.modules.auth_account.routes.preferences import (
+    router as preferences_router,
 )
-from backend.api.modules.requirements_core.scenario.routes import (
-    router as scenario_router,
-    generation_router as scenario_generation_router,
-    ac_generation_router as acceptance_criteria_generation_router,
+from backend.api.modules.collaboration.routes.notifications import (
+    router as notifications_router,
 )
-from backend.api.modules.requirements_core.flow.routes import (
-    router as flow_router,
-    generation_router as flow_generation_router,
+from backend.api.modules.collaboration.routes.tasks import (
+    me_router as user_tasks_router,
+    router as collaboration_tasks_router,
+    summary_router as collaboration_summary_router,
 )
-from backend.api.modules.requirements_core.scope.routes import (
-    router as scope_router,
-    project_scope_router as project_scope_router,
-    generation_router as scope_generation_router,
-)
-from backend.api.modules.requirements_core.business_object.routes import (
-    router as business_object_router,
-)
-from backend.api.modules.requirements_core.node_status.routes import (
-    router as node_status_router,
+from backend.api.modules.decision_workflow.choice_group.routes import (
+    router as choice_router,
 )
 from backend.api.modules.diagnosis_quality.finding.routes import (
     router as finding_router,
@@ -73,32 +63,14 @@ from backend.api.modules.diagnosis_quality.issue_compat.routes import (
 from backend.api.modules.diagnosis_quality.issue_repair.routes import (
     router as issue_repair_draft_router,
 )
-from backend.api.modules.diagnosis_quality.quality_metrics.routes import (
-    router as quality_metrics_router,
-)
 from backend.api.modules.diagnosis_quality.next_suggestion.routes import (
     router as next_suggestion_router,
 )
 from backend.api.modules.diagnosis_quality.perception.routes import (
     router as perception_slot_filling_router,
 )
-from backend.api.modules.decision_workflow.choice_group.routes import (
-    router as choice_router,
-)
-from backend.api.modules.project_lifecycle.routes.requirements import (
-    router as project_requirements_router,
-)
-from backend.api.modules.project_lifecycle.routes.project import (
-    router as project_router,
-)
-from backend.api.modules.project_lifecycle.routes.members import (
-    router as project_members_router,
-)
-from backend.api.modules.project_lifecycle.routes.llm_config import (
-    router as project_llm_config_router,
-)
-from backend.api.modules.project_configuration.routes import (
-    router as project_configuration_router,
+from backend.api.modules.diagnosis_quality.quality_metrics.routes import (
+    router as quality_metrics_router,
 )
 from backend.api.modules.preview_convergence.routes.prototype import (
     router as prototype_generation_router,
@@ -106,39 +78,65 @@ from backend.api.modules.preview_convergence.routes.prototype import (
 from backend.api.modules.preview_convergence.routes.shadow_preview import (
     router as preview_shadow_router,
 )
-from backend.api.modules.ai_interaction.ai_add.routes import (
-    router as ai_add_session_router,
-    draft_router as ai_object_generation_draft_router,
+from backend.api.modules.project_configuration.routes import (
+    router as project_configuration_router,
 )
-from backend.api.modules.ai_interaction.ai_explain.routes import (
-    router as ai_explain_router,
+from backend.api.modules.project_knowledge.routes import (
+    config_router as project_knowledge_config_router,
+    router as project_knowledge_router,
+)
+from backend.api.modules.project_lifecycle.routes.blank import (
+    router as blank_project_router,
+)
+from backend.api.modules.project_lifecycle.routes.creation import (
+    router as project_creation_router,
+)
+from backend.api.modules.project_lifecycle.routes.creation_choice import (
+    router as project_creation_choice_router,
 )
 from backend.api.modules.project_lifecycle.routes.interview import (
     router as project_interview_router,
 )
-from backend.api.modules.collaboration.routes.tasks import (
-    router as collaboration_tasks_router,
-    summary_router as collaboration_summary_router,
-    me_router as user_tasks_router,
+from backend.api.modules.project_lifecycle.routes.llm_config import (
+    router as project_llm_config_router,
 )
-from backend.api.modules.collaboration.routes.notifications import (
-    router as notifications_router,
+from backend.api.modules.project_lifecycle.routes.members import (
+    router as project_members_router,
 )
-from backend.api.modules.auth_account.routes.auth import (
-    router as auth_router,
+from backend.api.modules.project_lifecycle.routes.project import (
+    router as project_router,
 )
-from backend.api.modules.auth_account.routes.preferences import (
-    router as preferences_router,
+from backend.api.modules.project_lifecycle.routes.requirements import (
+    router as project_requirements_router,
 )
-from backend.api.modules.auth_account.routes.llm_config import (
-    router as account_router,
+from backend.api.modules.requirements_core.actor.routes import (
+    generation_router as actor_generation_router,
+    router as actor_router,
 )
-from backend.api.modules.project_knowledge.routes import (
-    router as project_knowledge_router,
-    config_router as project_knowledge_config_router,
+from backend.api.modules.requirements_core.business_object.routes import (
+    router as business_object_router,
 )
-from backend.api.modules.version_control.routes import (
-    router as version_control_branch_router,
+from backend.api.modules.requirements_core.feature.routes import (
+    generation_router as feature_generation_router,
+    router as feature_router,
+)
+from backend.api.modules.requirements_core.flow.routes import (
+    generation_router as flow_generation_router,
+    router as flow_router,
+)
+from backend.api.modules.requirements_core.node_status.routes import (
+    router as node_status_router,
+)
+from backend.api.modules.requirements_core.ports import set_notifier
+from backend.api.modules.requirements_core.scenario.routes import (
+    ac_generation_router as acceptance_criteria_generation_router,
+    generation_router as scenario_generation_router,
+    router as scenario_router,
+)
+from backend.api.modules.requirements_core.scope.routes import (
+    generation_router as scope_generation_router,
+    project_scope_router as project_scope_router,
+    router as scope_router,
 )
 from backend.api.modules.version_control.commit_routes import (
     router as version_control_commit_router,
@@ -149,11 +147,11 @@ from backend.api.modules.version_control.diff_routes import (
 from backend.api.modules.version_control.merge_routes import (
     router as version_control_merge_router,
 )
-
+from backend.api.modules.version_control.routes import (
+    router as version_control_branch_router,
+)
 from backend.database.database import init_db
 
-
-from backend.api.modules.requirements_core.ports import set_notifier
 
 class PerceptionStaleNotifier:
     async def mark_stale(
@@ -163,6 +161,7 @@ class PerceptionStaleNotifier:
         session,
         perception_kinds: set[str] | None = None,
         clear_active_slot: bool = True,
+        workspace_id: int | None = None,
     ) -> None:
         from backend.api.modules.diagnosis_quality.public import (
             mark_perception_jobs_stale,
@@ -173,6 +172,7 @@ class PerceptionStaleNotifier:
             session=session,
             perception_kinds=perception_kinds,
             clear_active_slot=clear_active_slot,
+            workspace_id=workspace_id,
         )
 
 
@@ -234,8 +234,8 @@ async def lifespan(fast_api: FastAPI):
 
     set_notifier(PerceptionStaleNotifier())
 
-    from backend.api.modules.decision_workflow.ports.ports import ChoiceAdapterRegistry
     from backend.api.bootstrap import register_choice_adapters
+    from backend.api.modules.decision_workflow.ports.ports import ChoiceAdapterRegistry
     register_choice_adapters(ChoiceAdapterRegistry())
 
     # Blocker 2: Register ports
@@ -301,9 +301,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import traceback
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
-import traceback
+
 from backend.core.llm_context import is_web_request_ctx
 from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 
@@ -318,8 +320,8 @@ def _request_log_path(request: Request) -> str:
 
 @app.middleware("http")
 async def web_request_context_middleware(request: Request, call_next):
-    import uuid
     import time
+    import uuid
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = request_id
     set_log_context(request_id=request_id)
@@ -359,16 +361,16 @@ async def llm_content_locale_mismatch_handler(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import uuid
-    
+
     request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
     set_log_context(request_id=request_id)
-    
+
     # Format raw traceback into string
     tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    
+
     # Sanitize traceback to prevent secrets from entering logs
     sanitized_tb = sanitize_message(tb_str)
-    
+
     log_event(
         logger,
         logging.ERROR,
@@ -412,7 +414,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code >= 500:
         request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
         set_log_context(request_id=request_id)
-        
+
         # Log the sanitized detail server-side for diagnostics
         log_event(
             logger,
@@ -426,7 +428,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             error_type=type(exc).__name__,
             error_detail=sanitize_message(str(exc.detail)),
         )
-        
+
         # Get request origin to echo it back in CORS headers
         origin = request.headers.get("origin", "*")
         if origins and "*" not in origins and origin not in origins:
@@ -441,16 +443,16 @@ async def http_exception_handler(request: Request, exc: HTTPException):
                 "message": "An unhandled exception occurred in the backend."
             }
         )
-        
+
         # Force inject CORS headers to bypass browser blocks on 500 errors
         response.headers["X-Request-ID"] = request_id
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true" if allow_credentials else "false"
         response.headers["Access-Control-Allow-Methods"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "*"
-        
+
         return response
-        
+
     # For < 500 errors, preserve original stable detail and headers
     headers = dict(exc.headers) if exc.headers else {}
     return JSONResponse(
@@ -465,14 +467,16 @@ from backend.api.dependencies.auth import require_admin
 from backend.api.dependencies.llm import get_llm_context
 from backend.core.llm_context import LLMRequestContext
 
+
 @app.get("/api/llm_test")
 async def llm_test(
     user=Depends(require_admin),
     llm_ctx: LLMRequestContext = Depends(get_llm_context),
 ):
     import socket
-    import httpx
     from urllib.parse import urlparse
+
+    import httpx
 
     # Use request-scoped credentials resolved by get_llm_context
     api_url = llm_ctx.api_url.rstrip("/")

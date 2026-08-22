@@ -1,1 +1,0 @@
-"""Project lifecycle characterization tests."""

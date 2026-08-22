@@ -1,12 +1,13 @@
 from datetime import timedelta
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.modules.auth_account.schemas.auth import LoginRequest, RegisterRequest
 from backend.core.config import ADMIN_INVITE_CODE_HASH, AUTH_SESSION_EXPIRE_DAYS
-from backend.core.security import hash_password, verify_password, generate_session_token, hash_session_token
-from backend.database.model import UserModel, AuthSessionModel, UserRole, beijing_now
-from backend.api.modules.auth_account.schemas.auth import RegisterRequest, LoginRequest
+from backend.core.security import generate_session_token, hash_password, hash_session_token, verify_password
+from backend.database.model import AuthSessionModel, UserModel, UserRole, beijing_now
 
 
 class AuthService:

@@ -12,15 +12,17 @@ from __future__ import annotations
 
 import logging
 import time
+
 from backend.api.modules.ai_interaction.ai_explain.application.context import (
     NODE_LOADERS,
     _load_projection_context,
     _load_workspace_context,
 )
-from backend.core.logging import get_logger, log_event, sanitize_message
-from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.localized_messages import localized_message
+from backend.core.logging import get_logger, log_event, sanitize_message
+from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
+
 from .context_locale import localize_ai_explain_context
 
 logger = get_logger(__name__)
@@ -47,7 +49,7 @@ class AIExplainService:
         if project is None:
             raise ValueError("project_not_found")
 
-        from backend.core.prompt_resolver import resolve_prompt, get_content_locale
+        from backend.core.prompt_resolver import get_content_locale, resolve_prompt
         locale = get_content_locale()
         scope_kind, context_text, scope_label, objects_loaded = (
             await self._load_scope_context(project_id, scope, db_session)
@@ -184,7 +186,7 @@ class AIExplainService:
     @staticmethod
     async def _get_node_label(target_type: str, target_id: int, db_session) -> str:
         """Get a human-readable label for a node scope."""
-        from backend.database.model import ActorModel, FeatureModel, FlowModel, BusinessObjectModel
+        from backend.database.model import ActorModel, BusinessObjectModel, FeatureModel, FlowModel
 
         model_map = {
             "actor": ActorModel,

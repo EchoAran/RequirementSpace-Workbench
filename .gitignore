@@ -74,6 +74,7 @@ test-results/
 # IDE and OS files
 .idea/
 .vscode/
+.claude/
 *.iml
 .DS_Store
 Thumbs.db
@@ -83,14 +84,11 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-
-# develop a document
-docs/*
-!docs/development_specifications/
-docs/development_specifications/*
-!docs/development_specifications/file_and_structure_guidelines.md
-
 # Local runtime storage
 storage/
-
 plugin/
+
+# 个人开发或测试文档，ignore掉，避免上传到远程仓库
+docs/
+backend/tests/
+frontend/src/tests/

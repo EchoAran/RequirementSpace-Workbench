@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol, Optional
+from typing import Any, Protocol
 
 from backend.api.modules.preview_convergence.schemas.prototype import PrototypePreviewResponse
 
@@ -41,7 +41,7 @@ class PrototypeGenerationServicePort(Protocol):
         project_id: int,
         session,
         raise_if_missing: bool = True,
-    ) -> Optional[PrototypePreviewResponse]:
+    ) -> PrototypePreviewResponse | None:
         ...
 
 

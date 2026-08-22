@@ -246,7 +246,8 @@
   "shell": {
     "loading": "正在载入项目工作区",
     "loadingProgress": "正在根据地址恢复项目上下文，请稍候...",
-    "loadingBackup": "正在准备项目数据..."
+    "loadingBackup": "正在准备项目数据...",
+    "retry": "重试"
   },
   "nav": {
     "overview": "概览",
@@ -254,6 +255,7 @@
     "flow": "怎么运作",
     "scope": "范围与交付",
     "preview": "方案预览",
+    "shadowPreview": "影子预览",
     "configuration": "项目配置",
     "settings": "系统设置",
     "back": "返回",
@@ -659,7 +661,15 @@
     "guard": {
       "loadingSession": "正在加载安全会话",
       "loadingSessionDesc": "系统正在校验您的登录凭证，为您保障工作区安全...",
-      "loadingSessionGuestDesc": "系统正在校验您的登录凭证，请稍候..."
+      "loadingSessionGuestDesc": "系统正在校验您的登录凭证，请稍候...",
+      "connectionDiagnoseTitle": "服务未响应或已断开",
+      "connectionDiagnoseDesc": "前端无法与后端 API 建立通信，可能由于后端服务未启动或网络环境受阻。",
+      "troubleshootTitle": "排查建议：",
+      "troubleshootBackend": "确认后端服务（uvicorn / FastAPI）是否已正常启动",
+      "troubleshootPort": "检查 Vite 反向代理或后端监听端口（默认 8000）是否正确",
+      "troubleshootNetwork": "检查本地网络连接、代理或防火墙配置",
+      "backToLogin": "返回登录",
+      "retrying": "正在重试..."
     }
   },
   "nodeKind": {
@@ -884,6 +894,8 @@
     "addFeaturePlaceholder": "例如: '人脸识别登录功能' (选填)"
   },
   "what": {
+    "confirmAddActor": "确认添加角色",
+    "confirmAddFeature": "确认添加功能",
     "structuredEdit": "结构化编辑",
     "confirmSave": "确认保存",
     "userStory": {
@@ -1109,6 +1121,9 @@
     "stepOutputBoLabel": "输出业务对象",
     "stepOutputBoEmpty": "暂无可用业务对象",
     "stepUserPerformerSelectTip": "用户动作必须选择至少一个参与者角色！",
+    "confirmAddBo": "确认添加数据对象",
+    "confirmAddFlow": "确认添加流程",
+    "confirmAddStep": "确认添加步骤",
     "stepAdoptText": "采纳并生成",
     "stepAdoptTitle": "采纳为草稿",
     "stepAdoptDesc": "已将该节点推荐采纳为本期交付资产。",
@@ -1119,6 +1134,26 @@
     "dependenciesDescription": "根据高一致性建模方法论，业务流程 (How) 是执行参与者针对系统功能特征点展开的流转演化。",
     "dependenciesAction": "请先在 What 页面中至少定义一个参与者与系统功能节点，然后才能在此处定义流程步骤和业务实体关系。",
     "goToWhat": "前往 What 阶段进行参与者与能力建模",
+    "focusMode": "全屏专注",
+    "focusCanvasBtn": "专注编辑画布",
+    "focusModeTooltip": "放大为独立全屏画布，自由编辑步骤与连接点",
+    "openFocusCanvas": "全屏专注画布",
+    "stepsCount": "步骤",
+    "linksCount": "分支连线",
+    "autoLayout": "自动排版",
+    "autoLayoutTitle": "自动分层整理所有步骤位置",
+    "fitViewTitle": "适应画布视口并居中",
+    "canvasTips": "💡 提示：按住步骤右侧点拖拽可快速连线；点击连线可断开；拖动节点自由布局",
+    "inputPort": "输入连接点",
+    "outputPort": "拖拽以建立下一步连线",
+    "stepInspector": "步骤属性",
+    "assignedActorsLabel": "关联参与者",
+    "businessObjectsLabel": "输入 / 输出业务对象",
+    "nextStepsLabel": "下一步分支连线 (Next Steps)",
+    "linkInspector": "分支连线详情",
+    "disconnectLink": "断开此分支连线",
+    "flowOverview": "流程概要",
+    "addNewStepModalTitle": "新增流程步骤",
     "generatedDraftTitle": "AI 推荐的业务流程与实体草稿已生成",
     "generatedDraftDescription": "AI 自动设计了契合系统模型的泳道步骤与关联业务数据对象。",
     "generatedDraftFeedbackPlaceholder": "补充流程调整意见 (可选)",
@@ -1264,16 +1299,24 @@
       "regenerate": "重新推演",
       "discard": "舍弃影子草稿",
       "commit": "采纳并合入正式项目",
-      "quickPrototype": "快速原型",
+      "quickPrototype": "高保真交互原型",
       "openPrototype": "独立窗口打开原型",
       "regeneratePrototype": "重新推演界面",
       "generatePrototype": "智能生成原型",
+      "readyToCompileTitle": "前置规约已齐备，准备编译交互式原型",
+      "readyToCompileDesc": "系统已汇聚参与者角色、功能特征树、业务流程泳道及交付范围决策，点击下方按钮即可一键编译生成完整多角色运行态交互原型。",
+      "noPrototypeTitle": "尚未生成交互式原型",
+      "incompleteCompileDesc": "当前项目前置阶段尚未全部收敛，可点击下方生成临时影子原型探索或前往补齐前置规约。",
+      "compilePrototypeBtn": "一键编译生成交互式原型",
+      "actorBadgeCount": "{{count}} 个参与角色",
+      "featureBadgeCount": "{{count}} 个功能点",
+      "flowBadgeCount": "{{count}} 条业务流程",
       "compilingCommitted": "AI 正在组装正式高保真原型",
       "generatingPrototype": "AI 正在生成预览原型",
       "compilingCommittedDescription": "正在将已采纳的设计资产转换为正式高保真网页原型，完成后会自动加载。",
       "generatingPrototypeDescription": "生成完成后，交互式原型会自动显示在此处。",
       "assemblyFailure": "原型推演拼装失败，请保证特征树与流程完整性。",
-      "noPrototype": "当前项目还没有原型。请点击右上角“智能生成原型”来生成。",
+      "noPrototype": "当前项目还没有原型。请点击下方“一键编译生成交互式原型”来生成。",
       "roleSpecs": "角色界面与交互规格说明",
       "pageCount": "共 {{count}} 个页面定义",
       "noRolePreview": "该角色暂无关联页面预览",
@@ -2884,12 +2927,33 @@
       "changeSummary": "{{added}} 新增 / {{removed}} 删除 / {{modified}} 修改",
       "mergeRequests": "合并请求",
       "loadMore": "加载更多",
-      "viewFullModel": "查看完整模型"
+      "viewFullModel": "查看完整模型",
+      "revertCommit": "回滚到此提交",
+      "revertSuccess": "版本回滚成功，已生成回滚提交并还原工作区",
+      "revertDialogTitle": "回滚到该历史版本",
+      "revertDialogDesc": "系统将在当前分支上创建一个反向回滚提交，将所有需求规约模型（参与者、功能、场景、业务对象、流程与范围）精准恢复到该历史快照状态。所有历史记录均会完整保留。",
+      "revertBranchTarget": "目标分支",
+      "revertCommitTarget": "回滚快照",
+      "revertMessageLabel": "回滚提交信息",
+      "revertConfirmButton": "确认回滚",
+      "reverting": "正在回滚..."
+    },
+    "protectedBranchBanner": "您正在查看受保护的 main 分支（只读模式）。如需进行结构变更或编辑模型，请从此版本创建新分支。",
+    "viewerReadOnlyBanner": "您当前对本项目仅具备只读权限，无法执行修改或提交操作。",
+    "readOnlyToast": "当前分支处于只读模式，无法执行修改操作",
+    "sessionUnavailableTitle": "无法连接到服务器",
+    "sessionUnavailableDesc": "网络连接异常或服务暂不可用，我们已为您保留当前会话状态。",
+    "retryConnect": "重试连接",
+    "createBranchFromHere": "从此版本创建分支",
+    "compare": {
+      "noCommits": "暂无可比较提交"
     },
     "commitDetail": {
       "title": "提交快照",
       "empty": "该快照无模型数据",
-      "close": "关闭"
+      "close": "关闭",
+      "items": "项",
+      "searchPlaceholder": "在当前提交快照中搜索对象..."
     },
     "createBranch": {
       "title": "新建分支",
@@ -2905,6 +2969,8 @@
       "title": "变更对比",
       "base": "基准",
       "target": "对比",
+      "paginationCount": "显示 {{shown}} / 总计 {{total}} 项变更",
+      "loadMore": "加载更多 (剩余 {{remaining}} 项)",
       "jumpToWhat": "在‘是什么’中查看",
       "jumpToFlow": "在‘怎么做’中查看",
       "jumpToScope": "在‘范围’中查看",
@@ -2929,6 +2995,52 @@
       "parent": "所属",
       "related": "关联对象",
       "textChanges": "文本变更",
+      "ac": "验收标准",
+      "steps": "步骤序列",
+      "viewRawJson": "查看原始数据 (JSON)",
+      "hideRawJson": "收起原始数据 (JSON)",
+      "stepNumber": "步骤 {{num}}",
+      "stepInput": "输入对象",
+      "stepOutput": "输出对象",
+      "stepActors": "执行角色",
+      "noAttributes": "暂无属性定义",
+      "noSteps": "暂无步骤定义",
+      "noAc": "暂无验收准则",
+      "changedFieldsSummary": "变更字段对比",
+      "fieldName": "字段",
+      "fieldBefore": "修改前",
+      "fieldAfter": "修改后",
+      "fields": {
+        "name": "名称",
+        "title": "标题",
+        "description": "描述说明",
+        "content": "详细内容",
+        "status": "范围状态",
+        "scope_status": "范围状态",
+        "kano_category": "Kano 属性",
+        "kano_category_name": "Kano 属性",
+        "positive_summary": "纳入理由",
+        "negative_summary": "排除影响",
+        "reason": "决策依据",
+        "step_type": "步骤类型",
+        "position": "排序位置",
+        "data_type": "数据类型",
+        "example": "示例数据",
+        "attributes": "属性列表",
+        "steps": "流程步骤",
+        "acceptance_criteria": "验收准则",
+        "parent_feature": "上级功能",
+        "parent_id": "上级功能",
+        "actor_ids": "关联角色",
+        "actors": "关联角色",
+        "feature_id": "所属功能",
+        "actor_id": "执行角色",
+        "input_business_objects": "输入业务对象",
+        "output_business_objects": "输出业务对象",
+        "user_requirements": "用户诉求",
+        "confirmation_status": "确认状态",
+        "unlocked_stages": "已解锁阶段"
+      },
       "entityType": {
         "actor": "参与者",
         "feature": "功能",
@@ -2944,10 +3056,11 @@
       }
     },
     "errors": {
-      "loadBranchesFailed": "加载分支失败",
-      "loadCommitsFailed": "加载提交失败",
-      "loadDiffFailed": "加载变更对比失败",
-      "createBranchFailed": "创建分支失败"
+      "source_branch_empty": "源分支尚无任何提交记录，请先在当前分支提交变更后再创建合并请求",
+      "source_target_same": "源分支与目标分支不能相同",
+      "duplicate_open_mr": "已存在同源同目标的开放合并请求，请勿重复创建",
+      "source_branch_not_found": "未找到源分支",
+      "target_branch_not_found": "未找到目标分支"
     },
     "discardConfirmTitle": "丢弃未保存的编辑？",
     "discardConfirmMessage": "切换分支将丢弃正在进行的未保存编辑。确定继续吗？",
@@ -2959,6 +3072,14 @@
       "headChanged": "目标分支已有新提交，请刷新后重试",
       "listTitle": "合并请求",
       "total": "共 {{count}} 个",
+      "filter": {
+        "all": "全部",
+        "open": "进行中",
+        "merged": "已合并",
+        "closed": "已关闭"
+      },
+      "paginationCount": "显示 {{shown}} / 总计 {{total}} 个",
+      "loadMore": "加载更多 (剩余 {{remaining}} 个)",
       "newMr": "新建 MR",
       "openMrs": "进行中的 MR",
       "noMrs": "暂无合并请求",
@@ -3081,6 +3202,415 @@
         "body": "当前版本管理不提供 rebase、cherry-pick、tag、远程仓库同步或命令行兼容。请通过分支 + 合并请求的方式组织变更。"
       },
       "protectedAction": "创建分支 / 发起合并请求"
+    }
+  },
+  "systemGuide": {
+    "title": "用户指南与规约协同手册",
+    "subtitle": "形式化需求规约、分支协同、版本回滚与原型编译全景手册",
+    "trigger": "使用指南",
+    "manualBadge": "手册",
+    "searchPlaceholder": "搜索功能、规约概念或操作指引...",
+    "directoryTitle": "功能目录",
+    "noResults": "未搜索到匹配的指引内容",
+    "designAndRationale": "核心设计与原理说明",
+    "workflowSteps": "标准操作步骤指引",
+    "faqTitle": "常见问题与避坑提示",
+    "categories": {
+      "workflow": "需求规约流程",
+      "version_control": "版本控制协同",
+      "collaboration": "团队与决策"
+    },
+    "sections": {
+      "lifecycle": {
+        "title": "规约演进全景流程",
+        "category": "workflow",
+        "badge": "核心生命周期",
+        "summary": "RequirementSpace 采用形式化需求规约体系，将传统模糊文本转化为高保真结构化图谱。严格遵循三阶段递进准入准出机制，前置规约齐备后即可编译生成可交互的前端原型。",
+        "highlights": [
+          {
+            "title": "三阶段强约束递进",
+            "desc": "需求规约必须依次推进 What（参与者与功能）→ Flow（业务流程编排）→ Scope（范围界定与验收场景），后一阶段依赖前一阶段的产出，不可跨越跳步。"
+          },
+          {
+            "title": "分支独立工作区状态",
+            "desc": "每个分支拥有完全隔离的工作区模型与阶段解锁状态。特性分支的推进或修改绝不会影响主分支（main）或其他分支的进度。"
+          },
+          {
+            "title": "影子骨架 vs 真实原型",
+            "desc": "在前置规约未完全齐备时，原型视图呈现影子骨架预览（展示阶段推进状态与占位图谱）；三阶段全部完成（已齐备）后，系统自动激活原型编译沙箱。"
+          },
+          {
+            "title": "形式化可追溯图谱",
+            "desc": "参与者、功能、流程步骤、业务对象、Gherkin 场景以及验收标准全部通过逻辑 UUID 建立网状拓扑关联，支持全链路正向与逆向追溯。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "阶段一：What 参与者与功能定义",
+            "desc": "梳理系统参与者角色，拆解根功能与子功能层级树，标注 KANO 价值属性并确认 AI 提取的假设。"
+          },
+          {
+            "step": 2,
+            "title": "阶段二：Flow 业务流程编排",
+            "desc": "为关键业务功能编排泳道流程图，明确各步骤的操作参与者、前后置连线以及消费/产出的业务数据对象。"
+          },
+          {
+            "step": 3,
+            "title": "阶段三：Scope 范围与验收场景",
+            "desc": "判定需求范围（In-Scope / Out-of-Scope），使用 Given-When-Then 编写可执行 Gherkin 验收用例并通过准出检验。"
+          },
+          {
+            "step": 4,
+            "title": "阶段四：交互式原型沙箱编译",
+            "desc": "前置三阶段齐备后触发沙箱编译，生成高保真交互式原型，支持实时操作演示与需求双向验证。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "为什么我完成了 What 阶段，原型页面仍然显示影子骨架？",
+            "a": "因为系统遵循前置阶段完整性原则，交互式原型依赖完整的参与者、功能、流转数据和 Gherkin 交互场景。必须 What、Flow、Scope 三个阶段全部完成并准出后，才会进入原型编译状态。"
+          },
+          {
+            "q": "为什么不同分支看到的原型状态不一样？",
+            "a": "每个分支是完全独立的需求空间。例如 main 分支可能刚完成 What 阶段（显示影子预览），而特性分支已完成三阶段（显示进行中编译），这是分支隔离的正确表现。"
+          }
+        ]
+      },
+      "what": {
+        "title": "What 阶段：参与者与功能需求",
+        "category": "workflow",
+        "badge": "系统能力定义",
+        "summary": "What 阶段是整个需求工程的基石，用于确立系统的参与者边界（Actors）、层级化功能能力树（Features）以及 KANO 需求价值分类。",
+        "highlights": [
+          {
+            "title": "参与者职责边界",
+            "desc": "定义与系统发生交互的真实人员或外部系统角色，设定名称、描述、确认状态与操作权限边界。"
+          },
+          {
+            "title": "树状功能分解",
+            "desc": "支持无限层级的功能树划分，每个功能节点明确其核心描述、父子关联以及依赖关系。"
+          },
+          {
+            "title": "KANO 价值属性评估",
+            "desc": "对功能进行 KANO 价值定级（必备型 Must-be、期望型 One-dimensional、魅力型 Attractive），指导后续优先级排期。"
+          },
+          {
+            "title": "AI 假设提取与确认",
+            "desc": "AI 分析原始需求时自动提取的推断将标记为「待确认假设」，可在决策中心批量核准或修订。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "添加/确认核心参与者",
+            "desc": "在参与者管理区添加系统角色，或点击 AI 假设卡片确认推断角色。"
+          },
+          {
+            "step": 2,
+            "title": "构建系统功能树",
+            "desc": "创建根功能与子功能节点，维护功能说明与层级结构。"
+          },
+          {
+            "step": 3,
+            "title": "评定 KANO 分类与准出",
+            "desc": "完成所有必备功能标注，检查清单满足准出条件后即可解锁进入 Flow 阶段。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "如何修改或删除已创建的功能节点？",
+            "a": "在功能树中选中该节点，在右侧对象面板中编辑属性，或使用操作栏的删除按钮（需注意下级子功能将被级联清理）。"
+          }
+        ]
+      },
+      "flow": {
+        "title": "Flow 阶段：业务流程编排",
+        "category": "workflow",
+        "badge": "动态行为流转",
+        "summary": "Flow 阶段将静态功能细化为动态的业务执行流，通过泳道流程图直观展示跨角色的协作时序与数据流转。",
+        "highlights": [
+          {
+            "title": "步骤指派与时序连线",
+            "desc": "每个步骤明确操作主体（指派参与者）、所属功能以及前后跳转流转条件。"
+          },
+          {
+            "title": "业务对象与属性流转",
+            "desc": "定义流程步骤所消费的输入对象（Input BO）和产出的输出对象（Output BO），保障数据流闭环。"
+          },
+          {
+            "title": "泳道图交互渲染",
+            "desc": "自动按参与者分栏绘制泳道图，支持节点拖拽排版、分支连线与全屏画布聚焦。"
+          },
+          {
+            "title": "严谨状态机模型",
+            "desc": "流程定义对应底层的有限状态机规范，直接作为原型组件间事件流与页面跳转的代码生成依据。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "创建业务流程主干",
+            "desc": "点击新建流程，关联主要业务场景并设定流程目标。"
+          },
+          {
+            "step": 2,
+            "title": "编排步骤与参与者",
+            "desc": "添加步骤节点，指派负责执行该步骤的参与者角色与对应功能点。"
+          },
+          {
+            "step": 3,
+            "title": "关联输入输出业务对象",
+            "desc": "为步骤挂载需要读写的业务数据对象，构建端到端数据流。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "流程步骤之间的先后关系如何连线？",
+            "a": "在步骤详情中指定「下一步骤（Next Steps）」，系统将自动在泳道图与流程图中绘制带有方向的有向连线。"
+          }
+        ]
+      },
+      "scope": {
+        "title": "Scope 阶段：范围与验收标准",
+        "category": "workflow",
+        "badge": "验收与准入准出",
+        "summary": "Scope 阶段通过严谨的 Gherkin 场景规范和范围判定，确立产品验收标准，是触发原型编译与工程交付的最终道门。",
+        "highlights": [
+          {
+            "title": "Gherkin 规范化用例",
+            "desc": "严格按照 Given（前置条件）、When（触发操作）、Then（预期结果）结构编写用例，具备高度可执行性。"
+          },
+          {
+            "title": "范围边界裁定",
+            "desc": "将需求明确划分为 In-Scope（本期交付范围）与 Out-of-Scope（远期或排除范围），附带决策理由。"
+          },
+          {
+            "title": "验收准则关联",
+            "desc": "将业务验收标准与具体功能、业务对象和流程步骤精确绑定，消除歧义。"
+          },
+          {
+            "title": "Gate Check 准出检验",
+            "desc": "完成范围验收定义后，触发全生命周期 Gate Check 检验，通过后原型编译沙箱正式就绪。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "界定需求范围状态",
+            "desc": "针对各个功能卡片标注 In-Scope / Out-of-Scope 状态并补充依据。"
+          },
+          {
+            "step": 2,
+            "title": "编写 Gherkin 场景用例",
+            "desc": "为各核心场景建立 Given-When-Then 条件与断言，设置正向与异常流。"
+          },
+          {
+            "step": 3,
+            "title": "执行准出检验并触发编译",
+            "desc": "点击 Gate Check 准出检验，确认规约无遗漏后完成前置三阶段全部收官。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Gherkin 用例写完后怎么在原型中体现？",
+            "a": "编译引擎会将 Given-When-Then 用例直接映射为原型页面的交互行为、表单验证与跳转逻辑。"
+          }
+        ]
+      },
+      "preview": {
+        "title": "影子预览与原型沙箱",
+        "category": "workflow",
+        "badge": "交互式编译",
+        "summary": "提供实时的需求编译沙箱环境，将形式化规约即时转化为可点击、可操作的高保真交互原型与界面组件。",
+        "highlights": [
+          {
+            "title": "双态呈现机制",
+            "desc": "前置阶段未就绪时显示「影子骨架预览（Shadow Preview）」；三阶段齐备后显示「交互式原型编译」。"
+          },
+          {
+            "title": "双向规约追溯",
+            "desc": "在原型界面点击任意组件，可即时反查其背后的功能定义、参与者权限与 Gherkin 验收标准。"
+          },
+          {
+            "title": "沙箱热编译",
+            "desc": "当规约模型发生变更并提交时，原型沙箱自动感知并触发增量热重载更新。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "原型预览中发现界面逻辑不符合预期怎么办？",
+            "a": "直接回到对应的 What/Flow/Scope 阶段修改参与者属性、流程连线或 Gherkin 断言，修改后重新提交即可。"
+          }
+        ]
+      },
+      "branching": {
+        "title": "分支管理与保护策略",
+        "category": "version_control",
+        "badge": "并行探索策略",
+        "summary": "基于不可变语义图谱的分支管理体系，支持多成员并行探索不同需求方案，具备严格的主分支保护与权限隔离机制。",
+        "highlights": [
+          {
+            "title": "main 主分支受保护",
+            "desc": "main 分支代表受控基线，禁止直接在 main 分支进行未受审的写入，必须通过 Merge Request 合入。"
+          },
+          {
+            "title": "特性分支完全隔离",
+            "desc": "从任意提交或分支派生特性分支，享有独立的工作区实体数据与阶段流转进度，互不干扰。"
+          },
+          {
+            "title": "工作区无损切换",
+            "desc": "在顶部或仓库页切换分支时，工作台即刻加载对应分支的规约图谱，无未保存脏数据丢失风险。"
+          },
+          {
+            "title": "分支规范化命名",
+            "desc": "推荐采用 feature/xxx、fix/xxx 或 explore/xxx 等具有明确意图的前缀命名分支。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "从指定基线创建分支",
+            "desc": "在仓库总览页或顶部栏选择来源分支/提交，点击「创建分支」并命名。"
+          },
+          {
+            "step": 2,
+            "title": "在分支工作区自由迭代",
+            "desc": "切换至新分支后，可独立推进规约阶段、增删实体或编排流程。"
+          },
+          {
+            "step": 3,
+            "title": "提交变更并准备合并",
+            "desc": "在工作区完成改动后提交 Commit，随后发起合并请求合回目标分支。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "为什么我在 main 分支不能直接编辑需求？",
+            "a": "main 分支是整个团队的稳定基准线。系统要求从 main 检出特性分支进行修改，完成后通过 MR 评审合入。"
+          }
+        ]
+      },
+      "commit_revert": {
+        "title": "提交图谱与版本回滚",
+        "category": "version_control",
+        "badge": "不可变快照与回滚",
+        "summary": "每次提交保存完整全量规约快照（state_json）与 SHA-256 签名；支持对任意普通提交或合并提交一键安全回滚。",
+        "highlights": [
+          {
+            "title": "全量确定性快照",
+            "desc": "不同于传统代码的差异补丁链，每次提交均封存包含所有实体关系的完整结构化快照，具有高度确定性与稳健性。"
+          },
+          {
+            "title": "Git 风格 Revert Commit",
+            "desc": "点击「回滚到此提交」，系统自动从历史快照重建工作区，并在当前分支生成反向提交，保持历史线性与完整审计。"
+          },
+          {
+            "title": "合并提交回滚支持",
+            "desc": "对于合并提交（Merge Commit），同样支持还原至合并前的基线状态，有效防御错误合并。"
+          },
+          {
+            "title": "安全无损二次回滚",
+            "desc": "因为回滚操作本身生成新提交，既有历史记录永久保存，未来随时可以对回滚提交再次进行回滚恢复。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "定位目标历史提交",
+            "desc": "在提交时间线或提交图谱（Commit Graph）中点击选中想要回滚到的历史版本。"
+          },
+          {
+            "step": 2,
+            "title": "点击「回滚到此提交」",
+            "desc": "在右侧提交详情侧栏中点击回滚按钮，系统将唤起回滚确认对话框。"
+          },
+          {
+            "step": 3,
+            "title": "确认说明并执行回滚",
+            "desc": "确认回滚提交信息（如需可自定义），点击确认后系统自动还原工作区并推进分支 Head。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "回滚操作会把我现有的提交历史删掉吗？",
+            "a": "绝对不会。系统严格遵循不可变历史原则，回滚是通过在当前分支生成一条新的 Revert 提交来恢复状态，所有历史提交永远安全保存在图谱中。"
+          }
+        ]
+      },
+      "merge_request": {
+        "title": "合并请求与语义三方合并",
+        "category": "version_control",
+        "badge": "评审与冲突解决",
+        "summary": "合并请求（Merge Request）用于团队跨分支协同审阅，内置实体级语义 Diff、评审批注工作流与双栏智能冲突解决工作台。",
+        "highlights": [
+          {
+            "title": "实体级语义 Diff",
+            "desc": "智能对比参与者、功能、流程与场景的具体属性变动（新增、修改、删除），支持展开查看字段前后差异。"
+          },
+          {
+            "title": "审批决策与行内评论",
+            "desc": "支持提交 Approve（通过）或 Request Changes（请求修改）评审，支持在特定实体字段上发表阻塞性行内评论。"
+          },
+          {
+            "title": "双栏冲突解决工作台",
+            "desc": "当两端分支修改了同一实体的同一属性时，唤起冲突解决视图，用户可逐项勾选保留「源分支」或「目标分支」。"
+          },
+          {
+            "title": "合入全量自动刷新",
+            "desc": "合并执行成功后，系统自动同步刷新分支列表、提交图、MR 状态与当前工作区，无需手动按 F5。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "创建合并请求",
+            "desc": "在合并请求页面点击「新建 MR」，选择源分支与目标分支（如 main），填写标题与变更说明。"
+          },
+          {
+            "step": 2,
+            "title": "审查变更与提交审批",
+            "desc": "在「变更对比」标签审阅 Diff，在「概览与评审」标签发表评论或提交 Approve 审批。"
+          },
+          {
+            "step": 3,
+            "title": "执行合并与解决冲突",
+            "desc": "满足审批且无阻塞时点击「合并」；若检测到语义冲突，在弹出的工作台中逐项确认后完成合入。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "为什么我创建了 MR 后「合并」按钮是灰色的？",
+            "a": "请检查：① 是否已有至少 1 位项目维护者（管理员或创建者）提交了 Approved 审批；② 是否存在未解决的阻塞性行内评论；③ 源分支是否有待合并的新提交。"
+          }
+        ]
+      },
+      "collaboration": {
+        "title": "团队协同与决策中心",
+        "category": "collaboration",
+        "badge": "权限与协同流转",
+        "summary": "提供多角色项目成员权限管理、AI 待办决策分派流转以及全局通知中心，支撑敏捷团队高效协作。",
+        "highlights": [
+          {
+            "title": "四级角色权限体系",
+            "desc": "支持 Owner（项目拥有者）、Admin（管理员）、Member（协作成员）与 Viewer（只读观察者）精细化权限。"
+          },
+          {
+            "title": "待办决策中心（Tasks）",
+            "desc": "AI 提取的规约假设、冲突裁决与流程确认将作为待办任务精准分派给指定成员处理。"
+          },
+          {
+            "title": "全局实时通知中心",
+            "desc": "实时接收任务指派、MR 审批、评审意见与合入状态提醒，支持一键快捷已读。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "如何邀请新成员加入项目？",
+            "a": "项目所有者或管理员点击顶部导航栏的「成员管理」图标，输入成员邮箱并分配对应角色即可。"
+          }
+        ]
+      }
     }
   }
 }

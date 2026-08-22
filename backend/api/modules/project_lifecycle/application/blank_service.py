@@ -1,4 +1,4 @@
-﻿from backend.core.generators.blank_project_generator import (
+from backend.core.generators.blank_project_generator import (
     BlankProjectGenerator,
     BlankProjectGeneratorInput,
 )
@@ -61,6 +61,10 @@ class BlankProjectService:
                 project_id=project.id,
                 owner_user_id=owner_user_id,
             )
+
+        # Initialize version control baseline, protected main branch, and workspace
+        from backend.api.modules.version_control.public import migrate_project_to_version_control
+        await session.run_sync(lambda s: migrate_project_to_version_control(s, project))
 
         # Commit before returning so the follow-up GET /projects/{id}
         # in the frontend can always observe the newly created project.

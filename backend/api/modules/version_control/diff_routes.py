@@ -7,9 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.ownership import require_project_member
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel
-from backend.api.modules.version_control.schemas import DiffResult, EntityDiffResponse
 from backend.api.modules.version_control.application import diff_service
 from backend.api.modules.version_control.application.errors import (
     BranchNotFoundError,
@@ -17,6 +14,9 @@ from backend.api.modules.version_control.application.errors import (
     InvalidDiffRefError,
 )
 from backend.api.modules.version_control.audit import record_vc_failure_event
+from backend.api.modules.version_control.schemas import DiffResult, EntityDiffResponse
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/diff",

@@ -1,4 +1,4 @@
-from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
@@ -13,4 +13,4 @@ class CamelModel(BaseModel):
 
 
 class DraftRegenerateRequest(CamelModel):
-    user_feedback: Optional[str] = Field(None, description="Optional modification suggestions or feedback to steer the regeneration process")
+    user_feedback: str | None = Field(None, description="Optional modification suggestions or feedback to steer the regeneration process")

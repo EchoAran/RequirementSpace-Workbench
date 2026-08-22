@@ -25,6 +25,8 @@ class HowIssueDetector(BaseIssueDetector):
         issues.extend(self._detect_flow_without_feature(context))
         issues.extend(self._detect_flow_without_steps(context))
         issues.extend(self._detect_actor_action_step_without_actor(context))
+        issues.extend(self._detect_invalid_step_actor(context))
+        issues.extend(self._detect_invalid_step_business_object(context))
         issues.extend(self._detect_judgment_step_with_too_few_branches(context))
         issues.extend(self._detect_unreachable_flow_step(context))
         issues.extend(self._detect_business_object_without_usage(context))
@@ -138,6 +140,77 @@ class HowIssueDetector(BaseIssueDetector):
                             parentId=flow.flow_id,
                         ),
                         actionCode="open_flow_step_actor_panel",
+                    )
+                )
+
+        return issues
+
+    @staticmethod
+    def _detect_invalid_step_actor(
+        context: IssueProjectContext,
+    ) -> list[Issue]:
+        valid_actor_ids = {actor.actor_id for actor in context.actors}
+        issues: list[Issue] = []
+
+        for flow in context.flows:
+            for step in flow.steps:
+                invalid_actors = [aid for aid in step.actor_ids if aid not in valid_actor_ids]
+                if not invalid_actors:
+                    continue
+
+                issues.append(
+                    Issue(
+                        code="INVALID_STEP_ACTOR",
+                        stage=IssueStage.HOW,
+                        severity=IssueSeverity.BLOCKING,
+                        title="步骤关联了无效参与者",
+                        description=(
+                            f"流程“{flow.name}”中的步骤“{step.name}”"
+                            "关联了不存在或已被删除的角色。"
+                        ),
+                        target=IssueTarget(
+                            targetType="flow_step",
+                            targetId=step.step_id,
+                            parentType="flow",
+                            parentId=flow.flow_id,
+                        ),
+                        actionCode="open_flow_step_actor_panel",
+                    )
+                )
+
+        return issues
+
+    @staticmethod
+    def _detect_invalid_step_business_object(
+        context: IssueProjectContext,
+    ) -> list[Issue]:
+        valid_bo_ids = {bo.business_object_id for bo in context.business_objects}
+        issues: list[Issue] = []
+
+        for flow in context.flows:
+            for step in flow.steps:
+                all_bo_ids = step.input_business_object_ids + step.output_business_object_ids
+                invalid_bos = [boid for boid in all_bo_ids if boid not in valid_bo_ids]
+                if not invalid_bos:
+                    continue
+
+                issues.append(
+                    Issue(
+                        code="INVALID_STEP_BUSINESS_OBJECT",
+                        stage=IssueStage.HOW,
+                        severity=IssueSeverity.BLOCKING,
+                        title="步骤关联了无效业务对象",
+                        description=(
+                            f"流程“{flow.name}”中的步骤“{step.name}”"
+                            "关联了不存在或已被删除的业务对象。"
+                        ),
+                        target=IssueTarget(
+                            targetType="flow_step",
+                            targetId=step.step_id,
+                            parentType="flow",
+                            parentId=flow.flow_id,
+                        ),
+                        actionCode="open_flow_step_object_panel",
                     )
                 )
 

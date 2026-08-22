@@ -1,10 +1,11 @@
 import re
+
 from backend.core.detectors.issue_context_loader import IssueProjectContext
 from backend.schemas import (
     ActorNode,
+    BusinessObjectNode,
     FeatureNode,
     ScenarioNode,
-    BusinessObjectNode,
 )
 
 

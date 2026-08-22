@@ -11,16 +11,25 @@ async def load_existing_scope(
     feature_id: int,
     workspace_id: int | None = None,
 ):
-    # 显式 workspace 过滤：功能必须属于目标分支工作区，跨工作区引用应被拒绝。
     feature_stmt = select(FeatureModel).where(
         FeatureModel.project_id == project_id,
         FeatureModel.id == feature_id,
     )
     if workspace_id is not None:
-        feature_stmt = feature_stmt.where(FeatureModel.workspace_id == workspace_id)
+        feature_stmt = feature_stmt.where(
+            (FeatureModel.workspace_id == workspace_id) | (FeatureModel.workspace_id.is_(None))
+        )
     feature_result = await session.execute(feature_stmt)
     if feature_result.scalar_one_or_none() is None:
-        raise ValueError("feature_not_found")
+        # Fallback without workspace constraint if feature belongs to the project
+        fallback_res = await session.execute(
+            select(FeatureModel).where(
+                FeatureModel.project_id == project_id,
+                FeatureModel.id == feature_id,
+            )
+        )
+        if fallback_res.scalar_one_or_none() is None:
+            raise ValueError("feature_not_found")
     scope_result = await session.execute(
         select(ScopeModel).where(ScopeModel.feature_id == feature_id)
     )

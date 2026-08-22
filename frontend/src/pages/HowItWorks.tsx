@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, Folder } from 'lucide-react';
-import { buildProjectRoute, buildStepDetail, buildSystemProjection } from '@/core/selectors';
+import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, Folder, Maximize2 } from 'lucide-react';
+import { buildProjectRouteWithBranch, buildStepDetail, buildSystemProjection } from '@/core/selectors';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
 import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
@@ -14,6 +14,7 @@ import {
   selectSelectedObject,
 } from '@/store/useWorkspaceStore';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
+import { FocusFlowCanvasModal } from '@/components/shared/FocusFlowCanvasModal';
 import type { ActorNode, BusinessObjectNode, FeatureNode } from '@/core/schema';
 
 
@@ -117,8 +118,10 @@ export function HowItWorks() {
     boDeletionError,
     setBoDeletionError,
     addFlow,
+    updateFlow,
     deleteFlow,
     addFlowStep,
+    updateFlowStep,
     deleteFlowStep,
     runDiagnosis,
     requestStageTransition,
@@ -134,6 +137,7 @@ export function HowItWorks() {
 
   const [flowFeedback, setFlowFeedback] = useState('');
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
+  const [focusFlowId, setFocusFlowId] = useState<number | null>(null);
 
   // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
   useEffect(() => {
@@ -398,7 +402,7 @@ export function HowItWorks() {
             </p>
           </div>
           <button
-            onClick={() => navigate(buildProjectRoute(ir?.projectId, '/what'))}
+            onClick={() => navigate(buildProjectRouteWithBranch(ir?.projectId, '/what', useWorkspaceStore.getState().branchRef))}
             className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm"
           >
             {t('how.goToWhat')}
@@ -680,31 +684,42 @@ export function HowItWorks() {
                           const viewMode = flowViews[flow.flowId] || 'canvas';
                           return (
                             <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-                              <div className="flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-[10px] font-bold shadow-inner ml-auto" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-2 ml-auto" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
-                                  onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'canvas' }))}
-                                  className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
-                                    viewMode === 'canvas'
-                                      ? 'bg-white text-indigo-600 shadow-sm'
-                                      : 'text-slate-500 hover:text-slate-700'
-                                  }`}
+                                  onClick={() => setFocusFlowId(flow.flowId)}
+                                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-200/60 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                                  title={t('how.focusModeTooltip', '放大为独立全屏画布，编辑步骤与连接点')}
                                 >
-                                  <GitBranch className="w-3 h-3" />
-                                  {t('how.graphView')}
+                                  <Maximize2 className="w-3 h-3 text-indigo-600" />
+                                  {t('how.focusCanvasBtn', '专注编辑画布')}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'list' }))}
-                                  className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
-                                    viewMode === 'list'
-                                      ? 'bg-white text-indigo-600 shadow-sm'
-                                      : 'text-slate-500 hover:text-slate-700'
-                                  }`}
-                                >
-                                  <Workflow className="w-3 h-3" />
-                                  {t('how.listView')}
-                                </button>
+                                <div className="flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-[10px] font-bold shadow-inner">
+                                  <button
+                                    type="button"
+                                    onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'canvas' }))}
+                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                      viewMode === 'canvas'
+                                        ? 'bg-white text-indigo-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                  >
+                                    <GitBranch className="w-3 h-3" />
+                                    {t('how.graphView')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'list' }))}
+                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                      viewMode === 'list'
+                                        ? 'bg-white text-indigo-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                  >
+                                    <Workflow className="w-3 h-3" />
+                                    {t('how.listView')}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -793,6 +808,16 @@ export function HowItWorks() {
                                 >
           {t('how.fitView')}
                                 </button>
+                                <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
+                                <button
+                                  type="button"
+                                  onClick={() => setFocusFlowId(flow.flowId)}
+                                  title={t('how.focusModeTooltip', '放大为独立全屏画布，编辑步骤与连接点')}
+                                  className="px-2 h-7 flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-extrabold text-indigo-700 transition-colors shadow-sm cursor-pointer"
+                                >
+                                  <Maximize2 className="w-3 h-3" />
+                                  {t('how.focusMode', '全屏专注')}
+                                </button>
                               </div>
 
                               {/* Dotted Grid Canvas Area */}
@@ -830,25 +855,24 @@ export function HowItWorks() {
                                       const toPos = customStepPositions[nid] || positions[nid];
                                       if (!toPos) return null;
 
-                                      const isLoopback = toPos.x < fromPos.x;
-
-                                      const startX = isLoopback ? fromPos.x : fromPos.x + 260;
+                                      // Always exit from right port of source, enter left port of target
+                                      const startX = fromPos.x + 260;
                                       const startY = fromPos.y + 65;
-                                      const endX = isLoopback ? toPos.x + 260 : toPos.x;
+                                      const endX = toPos.x;
                                       const endY = toPos.y + 65;
 
                                       let pathD = '';
-                                      if (isLoopback) {
-                                        // Loopback/Cycle: draw an elegant arc above the nodes from left edge of source to right edge of target
+                                      if (endX <= startX) {
+                                        // Loopback / backward curve: exits right, loops above, enters left
                                         const midX = (startX + endX) / 2;
-                                        const arcHeight = Math.max(90, Math.abs(startX - endX) * 0.28);
-                                        const controlY = Math.min(startY, endY) - arcHeight;
-                                        pathD = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
+                                        const arcOffset = Math.max(75, Math.abs(startX - endX) * 0.2);
+                                        const controlY = Math.min(startY, endY) - arcOffset;
+                                        pathD = `M ${startX} ${startY} C ${startX + 80} ${startY}, ${startX + 40} ${controlY}, ${midX} ${controlY} S ${endX - 80} ${endY}, ${endX} ${endY}`;
                                       } else {
-                                        // Forward: draw a beautiful S-curve (cubic Bezier)
-                                        const cp1X = startX + 60;
+                                        // Standard forward curve: exits right, enters left
+                                        const cp1X = startX + Math.min(80, (endX - startX) * 0.5);
                                         const cp1Y = startY;
-                                        const cp2X = endX - 60;
+                                        const cp2X = endX - Math.min(80, (endX - startX) * 0.5);
                                         const cp2Y = endY;
                                         pathD = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
                                       }
@@ -937,7 +961,7 @@ export function HowItWorks() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              const ok = window.confirm(`t('how.stepDeleteConfirm', { name: step.stepName })`);
+                                              const ok = window.confirm(t('how.stepDeleteConfirm', { name: step.stepName }));
                                               if (!ok) return;
                                               await deleteFlowStep(flow.flowId, step.stepId);
                                             }}
@@ -1044,7 +1068,7 @@ export function HowItWorks() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              const ok = window.confirm(`t('how.stepDeleteConfirm', { name: step.stepName })`);
+                                              const ok = window.confirm(t('how.stepDeleteConfirm', { name: step.stepName }));
                                               if (!ok) return;
                                               await deleteFlowStep(flow.flowId, step.stepId);
                                             }}
@@ -1290,7 +1314,7 @@ export function HowItWorks() {
                 disabled={!newBusinessObjectName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                {t('scope.modal.confirm')}
+                {t('how.confirmAddBo', '确认添加')}
               </button>
             </div>
           </div>
@@ -1394,7 +1418,7 @@ export function HowItWorks() {
                 disabled={!newFlowName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                {t('scope.modal.confirm')}
+                {t('how.confirmAddFlow', '确认添加')}
               </button>
             </div>
           </div>
@@ -1425,7 +1449,7 @@ export function HowItWorks() {
                 <select
                   value={newStepType}
                   onChange={(e) => setNewStepType(e.target.value as any)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-semibold"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800 font-semibold"
                 >
                   <option value="actorAction">{t('how.stepPerformerUser')}</option>
                   <option value="systemAction">{t('how.stepPerformerSystem')}</option>
@@ -1453,7 +1477,7 @@ export function HowItWorks() {
                     <div className="text-xs text-slate-400 italic">{t('how.stepActorsEmpty')}</div>
                   ) : (
                     (ir?.actors || []).map((actor: ActorNode) => (
-                      <label key={actor.actorId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <label key={actor.actorId} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={newStepActorIds.includes(actor.actorId)}
@@ -1461,27 +1485,27 @@ export function HowItWorks() {
                             if (e.target.checked) {
                               setNewStepActorIds([...newStepActorIds, actor.actorId]);
                             } else {
-                              setNewStepActorIds(newStepActorIds.filter(id => id !== actor.actorId));
+                              setNewStepActorIds(newStepActorIds.filter((id) => id !== actor.actorId));
                             }
                           }}
-                          className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <span>{actor.actorName}</span>
+                        {actor.actorName}
                       </label>
                     ))
                   )}
                 </div>
               </div>
 
-              {/* Inputs Checklist */}
+              {/* Input BOs Checklist */}
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepInputBoLabel')}</label>
-                <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[110px] overflow-y-auto">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepInputBOsLabel')}</label>
+                <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[100px] overflow-y-auto">
                   {(ir?.businessObjects || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">{t('how.stepInputBoEmpty')}</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.stepBOsEmpty')}</div>
                   ) : (
                     (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
-                      <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <label key={bo.businessObjectId} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={newStepInputBoIds.includes(bo.businessObjectId)}
@@ -1489,27 +1513,27 @@ export function HowItWorks() {
                             if (e.target.checked) {
                               setNewStepInputBoIds([...newStepInputBoIds, bo.businessObjectId]);
                             } else {
-                              setNewStepInputBoIds(newStepInputBoIds.filter(id => id !== bo.businessObjectId));
+                              setNewStepInputBoIds(newStepInputBoIds.filter((id) => id !== bo.businessObjectId));
                             }
                           }}
-                          className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <span>{bo.businessObjectName}</span>
+                        {bo.businessObjectName}
                       </label>
                     ))
                   )}
                 </div>
               </div>
 
-              {/* Outputs Checklist */}
+              {/* Output BOs Checklist */}
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepOutputBoLabel')}</label>
-                <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[110px] overflow-y-auto">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.stepOutputBOsLabel')}</label>
+                <div className="space-y-2 border border-slate-200/50 rounded-xl p-3 bg-slate-50 max-h-[100px] overflow-y-auto">
                   {(ir?.businessObjects || []).length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">{t('how.stepInputBoEmpty')}</div>
+                    <div className="text-xs text-slate-400 italic">{t('how.stepBOsEmpty')}</div>
                   ) : (
                     (ir?.businessObjects || []).map((bo: BusinessObjectNode) => (
-                      <label key={bo.businessObjectId} className="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <label key={bo.businessObjectId} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={newStepOutputBoIds.includes(bo.businessObjectId)}
@@ -1517,12 +1541,12 @@ export function HowItWorks() {
                             if (e.target.checked) {
                               setNewStepOutputBoIds([...newStepOutputBoIds, bo.businessObjectId]);
                             } else {
-                              setNewStepOutputBoIds(newStepOutputBoIds.filter(id => id !== bo.businessObjectId));
+                              setNewStepOutputBoIds(newStepOutputBoIds.filter((id) => id !== bo.businessObjectId));
                             }
                           }}
-                          className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <span>{bo.businessObjectName}</span>
+                        {bo.businessObjectName}
                       </label>
                     ))
                   )}
@@ -1573,7 +1597,7 @@ export function HowItWorks() {
                 disabled={!newStepName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                {t('how.stepAdoptText')}
+                {t('how.confirmAddStep', '确认添加')}
               </button>
             </div>
           </div>
@@ -1683,6 +1707,24 @@ export function HowItWorks() {
           }
         }}
         onDefer={() => useWorkspaceStore.setState({ activeChoiceGroup: null })}
+      />
+
+      <FocusFlowCanvasModal
+        flow={(ir?.flows || []).find((f: any) => f.flowId === focusFlowId) || null}
+        isOpen={focusFlowId !== null}
+        onClose={() => setFocusFlowId(null)}
+        actors={ir?.actors || []}
+        businessObjects={ir?.businessObjects || []}
+        onUpdateStep={updateFlowStep}
+        onAddStep={async (flowId, data) => {
+          await addFlowStep(flowId, data);
+        }}
+        onDeleteStep={async (flowId, stepId) => {
+          await deleteFlowStep(flowId, stepId);
+        }}
+        onUpdateFlow={async (flowId, data) => {
+          await updateFlow(flowId, data);
+        }}
       />
 
       <RightObjectPanel />

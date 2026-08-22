@@ -1,18 +1,26 @@
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_project, require_project_member
-from backend.database.model import UserModel, ProjectModel
-from backend.api.modules.version_control.public import resolve_branch_context
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.ownership import (
+    require_owned_project as require_owned_project,
+    require_project_member,
+)
+from backend.api.modules.diagnosis_quality.finding.application.finding_service import (
+    FindingService,
+)
 from backend.api.modules.diagnosis_quality.finding.schemas import (
-    ProjectFindingsResponse,
     FindingStatusUpdateRequest,
     FindingStatusUpdateResponse,
+    ProjectFindingsResponse,
 )
-from backend.api.modules.diagnosis_quality.finding.application.finding_service import FindingService
-from backend.database.database import get_session
 from backend.api.modules.version_control.dependencies import reject_commit_write
+from backend.api.modules.version_control.public import (
+    map_branch_error,
+    resolve_branch_context,
+)
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/findings",
@@ -45,9 +53,13 @@ async def list_project_findings(
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
-        branch_obj, ws_obj, perms = await session.run_sync(
+        _branch_obj, ws_obj, _perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
 
         findings = await finding_service.list_findings(
@@ -118,15 +130,19 @@ async def update_project_finding_status(
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
-        branch_obj, ws_obj, perms = await session.run_sync(
+        _branch_obj, ws_obj, perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
-        if not perms.get("can_write", True):
-            raise HTTPException(
-                status_code=403,
-                detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
-            )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
 
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
         res = await finding_service.set_finding_status(
             project_id=owned_project.id,

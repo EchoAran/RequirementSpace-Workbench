@@ -1,4 +1,5 @@
 import logging
+
 from backend.services.knowledge.chunking import estimate_tokens
 from backend.services.knowledge.retrieval import KnowledgeRetrievalService
 
@@ -31,8 +32,9 @@ class KnowledgeContextBuilder:
     ) -> str:
         # Check project-level knowledge enabled setting if project_id is provided
         if project_id is not None and session is not None:
-            from backend.database.model import ProjectGenerationStrategyConfigModel
             from sqlalchemy import select
+
+            from backend.database.model import ProjectGenerationStrategyConfigModel
             stmt = select(ProjectGenerationStrategyConfigModel).where(
                 ProjectGenerationStrategyConfigModel.project_id == project_id
             )
@@ -56,19 +58,19 @@ class KnowledgeContextBuilder:
         # 2. Format and accumulate chunks within token budget
         acc_chunks = []
         current_tokens = 0
-        
+
         # Estimate static wrapper instruction tokens
         wrapper_tokens = estimate_tokens(CONTEXT_TEMPLATE.format(chunks_content=""))
-        
+
         for chunk in chunks:
             doc = chunk.document
-            
+
             # Format source heading
             if chunk.heading_path:
                 source_header = f"[Source: {doc.original_filename} > {chunk.heading_path}]"
             else:
                 source_header = f"[Source: {doc.original_filename}]"
-                
+
             formatted_chunk = f"{source_header}\n\n{chunk.text}"
             chunk_tokens = estimate_tokens(formatted_chunk)
 
@@ -76,7 +78,7 @@ class KnowledgeContextBuilder:
             if wrapper_tokens + current_tokens + chunk_tokens + 2 > token_budget:
                 # Stop if budget exceeded
                 break
-                
+
             acc_chunks.append(formatted_chunk)
             current_tokens += chunk_tokens + 2
 

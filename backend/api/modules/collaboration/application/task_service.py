@@ -1,15 +1,17 @@
+from datetime import UTC, datetime
+
 import sqlalchemy as sa
-from datetime import datetime, timezone
 from fastapi import HTTPException
+
+from backend.api.modules.optimistic_lock.public import (
+    snapshot_service,
+)
 from backend.database.model import (
     CollaborationTaskModel,
     ProjectMemberModel,
 )
 from backend.services.audit_service import AuditService
-from backend.api.modules.optimistic_lock.public import (
-    NodeSnapshotService,
-    snapshot_service,
-)
+
 from .task_creation_helpers import (
     add_assignment_notification,
     build_batch_confirmation_task,
@@ -31,7 +33,7 @@ BATCH_TASK_TITLE_KEY = "collaboration.taskTitles.batchConfirmation"
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 class TaskService:
     async def create_confirm_task(

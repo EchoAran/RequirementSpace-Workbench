@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -29,6 +31,7 @@ class CandidateContext:
         default=None,
         metadata={"help": "DB session, adapters can use it to load project context during generate"},
     )
+    workspace_id: int | None = None
     strategy_id: str | None = None
     strategy_label: str | None = None
     strategy_description: str | None = None
@@ -166,7 +169,7 @@ def build_strategy_feedback(context: CandidateContext, task_label: str) -> str:
         feedback += f"- 策略说明：{desc}\n"
     if instruction:
         feedback += f"- 生成侧重点：{instruction}\n"
-    
+
     feedback += f"\n当前任务：{task_label}。\n"
     feedback += "请在满足原始需求、项目上下文和输出格式约束的前提下，按上述策略生成本候选。"
     return feedback

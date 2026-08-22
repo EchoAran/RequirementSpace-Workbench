@@ -1,7 +1,6 @@
 """SingleFeatureGenerator — generates exactly one feature from interview summary."""
 
 import json
-from typing import Dict
 
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
@@ -22,7 +21,7 @@ class SingleFeatureGenerator(BaseSingleObjectGenerator):
                "rationale": "..."}
     """
 
-    async def generate(self, input_data: SingleObjectGeneratorInput) -> Dict:
+    async def generate(self, input_data: SingleObjectGeneratorInput) -> dict:
         existing_features = input_data.project_context.get("features", [])
         existing_actors = input_data.project_context.get("actors", [])
 

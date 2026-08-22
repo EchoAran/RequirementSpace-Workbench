@@ -1,13 +1,13 @@
 import re
 from uuid import uuid4
-from sqlalchemy import select
 
-from backend.core.notifier import get_notifier
 from backend.core.generators.flows_generator import (
     FlowsGenerator,
     FlowsGeneratorInput,
 )
+from backend.core.notifier import get_notifier
 from backend.schemas import ActorNode, FeatureNode
+
 from .generation import (
     build_flow_generation_response,
     load_flow_generation_context,
@@ -132,6 +132,7 @@ class FlowGenerationService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -166,6 +167,7 @@ class FlowGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             raw,
@@ -177,10 +179,12 @@ class FlowGenerationService:
             project_id=project_id,
             user_feedback=user_feedback,
             session=session,
+            workspace_id=workspace_id,
         )
 
         draft_payload = {
             "project_id": project_id,
+            "workspace_id": workspace_id,
             "generation_mode": (
                 "three_step"
                 if use_three_step_generation
@@ -206,6 +210,7 @@ class FlowGenerationService:
         user_feedback: str | None,
         session,
         validate_result: bool = True,
+        workspace_id: int | None = None,
     ) -> tuple[dict, list[ActorNode], list[FeatureNode], int, bool]:
         (
             user_requirements,
@@ -215,6 +220,7 @@ class FlowGenerationService:
         ) = await self._load_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         use_three_step_generation = (
             leaf_feature_count >= self._three_step_leaf_feature_threshold
@@ -248,8 +254,9 @@ class FlowGenerationService:
     async def _load_project_context(
         project_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[str, list[ActorNode], list[FeatureNode], int]:
-        return await load_flow_generation_context(project_id, session)
+        return await load_flow_generation_context(project_id, session, workspace_id=workspace_id)
 
     def _validate_generated_flows(
         self,
@@ -286,5 +293,8 @@ class FlowGenerationService:
     async def _persist_flow_generation_draft(
         draft: dict,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        return await persist_flow_generation_draft(draft, session)
+        return await persist_flow_generation_draft(
+            draft, session, workspace_id=workspace_id
+        )

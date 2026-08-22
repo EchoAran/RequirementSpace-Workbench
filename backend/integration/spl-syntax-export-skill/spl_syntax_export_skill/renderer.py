@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
 def escape_string(text: str | None) -> str:
@@ -27,9 +27,9 @@ class SplSyntaxRenderer:
     def __init__(self) -> None:
         pass
 
-    def render(self, payload: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
-        warnings: List[Dict[str, Any]] = []
-        trace_links: List[Dict[str, Any]] = []
+    def render(self, payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+        warnings: list[dict[str, Any]] = []
+        trace_links: list[dict[str, Any]] = []
 
         project = payload.get("project", {})
         project_name = project.get("project_name", "Unknown")
@@ -81,7 +81,7 @@ class SplSyntaxRenderer:
                 "message": "Project has no features defined.",
                 "source": {"kind": "project", "id": project_id}
             })
-            
+
         self._append_feature_variables(lines, features)
 
         # 7. WORKERS (Flows)

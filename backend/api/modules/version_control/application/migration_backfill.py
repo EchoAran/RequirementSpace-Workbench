@@ -1,18 +1,22 @@
-from typing import Any, Dict, List, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, select
+from typing import Any
 
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from backend.api.modules.version_control.domain.uuid_generator import (
+    ensure_logical_uuid,
+)
 from backend.database.model import (
     ActorModel,
+    BusinessObjectModel,
+    ChoiceGroupModel,
     FeatureModel,
     FeatureRelationModel,
-    ScenarioModel,
-    BusinessObjectModel,
     FlowModel,
+    ScenarioModel,
     ScopeModel,
-    ChoiceGroupModel,
 )
-from backend.api.modules.version_control.domain.uuid_generator import ensure_logical_uuid
+
 
 def _has_table(db: Session, table_name: str) -> bool:
     """动态检查当前数据库链接中目标表是否存在。"""
@@ -27,7 +31,7 @@ def _backfill_actors(
     db: Session,
     project_id: int,
     workspace_id: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """为项目中的所有 Actor 实体回填 logical_uuid 与 workspace_id。"""
     if not _has_table(db, "actors"):
         return []
@@ -54,7 +58,7 @@ def _backfill_features_and_relations(
     db: Session,
     project_id: int,
     workspace_id: int,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[int, str]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[int, str]]:
     """为 Feature 与 FeatureRelation 回填 UUID 与 workspace_id。"""
     if not _has_table(db, "features"):
         return [], [], {}
@@ -116,8 +120,8 @@ def _backfill_scenarios(
     db: Session,
     project_id: int,
     workspace_id: int,
-    feat_map: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_map: dict[int, str],
+) -> list[dict[str, Any]]:
     """为 Scenario 及 ScenarioAcceptanceCriterion 回填 UUID 与 workspace_id。"""
     if not _has_table(db, "scenarios"):
         return []
@@ -163,7 +167,7 @@ def _backfill_business_objects(
     db: Session,
     project_id: int,
     workspace_id: int,
-) -> Tuple[List[Dict[str, Any]], Dict[int, str]]:
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
     """为 BusinessObject 及 BusinessObjectAttribute 回填 UUID 与 workspace_id。"""
     if not _has_table(db, "business_objects"):
         return [], {}
@@ -212,9 +216,9 @@ def _backfill_flows(
     db: Session,
     project_id: int,
     workspace_id: int,
-    feat_map: Dict[int, str],
-    bo_map: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_map: dict[int, str],
+    bo_map: dict[int, str],
+) -> list[dict[str, Any]]:
     """为 Flow 及 FlowStep 回填 UUID 与 workspace_id。"""
     if not _has_table(db, "flows"):
         return []
@@ -283,8 +287,8 @@ def _backfill_scopes(
     db: Session,
     project_id: int,
     workspace_id: int,
-    feat_map: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_map: dict[int, str],
+) -> list[dict[str, Any]]:
     """为 Scope 决策补齐 logical_uuid 与 workspace_id。"""
     if not _has_table(db, "feature_scopes") or not _has_table(db, "features"):
         return []

@@ -9,13 +9,12 @@ Semantic Requirement-Space Diff Engine.
   - relation_added / relation_removed：关系增减，携带另一端 UUID 与类型；
   - ordered_item_moved：有序集合（功能树位置、验收标准、流程步骤）的相对顺序变化。
 """
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
-
 import difflib
+from collections import defaultdict
+from typing import Any
 
 # 规范化状态顶层集合 → 对象类型
-COLLECTION_KEYS: List[str] = [
+COLLECTION_KEYS: list[str] = [
     "actors",
     "features",
     "feature_relations",
@@ -25,7 +24,7 @@ COLLECTION_KEYS: List[str] = [
     "scopes",
 ]
 
-ENTITY_TYPE_BY_COLLECTION: Dict[str, str] = {
+ENTITY_TYPE_BY_COLLECTION: dict[str, str] = {
     "actors": "actor",
     "features": "feature",
     "feature_relations": "feature_relation",
@@ -36,7 +35,7 @@ ENTITY_TYPE_BY_COLLECTION: Dict[str, str] = {
 }
 
 # 各对象类型的标量字段（不含 position：有序集合的位置差异由 ordered_item_moved 表达）
-SCALAR_FIELDS: Dict[str, List[str]] = {
+SCALAR_FIELDS: dict[str, list[str]] = {
     "actor": ["name", "description", "confirmation_status"],
     "feature": ["name", "description", "confirmation_status"],
     "feature_relation": [],
@@ -64,7 +63,7 @@ SCALAR_FIELDS: Dict[str, List[str]] = {
 }
 
 # 需要行级文本片段的文本字段
-TEXT_FIELDS: Dict[str, Set[str]] = {
+TEXT_FIELDS: dict[str, set[str]] = {
     "actor": {"description"},
     "feature": {"description"},
     "scenario": {"name", "content"},
@@ -77,7 +76,7 @@ TEXT_FIELDS: Dict[str, Set[str]] = {
 }
 
 # 关系字段：字段名 → 另一端对象类型。值为 list 时按集合比较，单值时按前后值比较。
-RELATION_FIELDS: Dict[str, Dict[str, str]] = {
+RELATION_FIELDS: dict[str, dict[str, str]] = {
     "feature": {"actor_logical_uuids": "actor"},
     "scenario": {
         "feature_logical_uuid": "feature",
@@ -98,19 +97,19 @@ RELATION_FIELDS: Dict[str, Dict[str, str]] = {
 }
 
 # 项目元数据字段及是否文本
-METADATA_FIELDS: Dict[str, str] = {
+METADATA_FIELDS: dict[str, str] = {
     "user_requirements": "text",
     "kano_status": "enum",
     "unlocked_stages": "enum",
 }
 
 # 有序集合子对象类型 → (父对象类型, 父状态内列表键)
-ORDERED_CHILD_PARENTS: Dict[str, Tuple[str, str]] = {
+ORDERED_CHILD_PARENTS: dict[str, tuple[str, str]] = {
     "acceptance_criterion": ("scenario", "acceptance_criteria"),
     "flow_step": ("flow", "steps"),
 }
 
-_CHANGE_RANK: Dict[str, int] = {
+_CHANGE_RANK: dict[str, int] = {
     "entity_updated": 0,
     "field_changed": 1,
     "relation_removed": 2,
@@ -121,7 +120,7 @@ _CHANGE_RANK: Dict[str, int] = {
 }
 
 
-def _display_name(entity: Dict[str, Any]) -> str:
+def _display_name(entity: dict[str, Any]) -> str:
     """从对象字典中取一个适合树节点展示的名字。"""
     for key in ("name", "content", "title"):
         value = entity.get(key)
@@ -131,8 +130,8 @@ def _display_name(entity: Dict[str, Any]) -> str:
 
 
 def _index_entity(
-    index: Dict[str, Dict[str, str]],
-    entity: Dict[str, Any],
+    index: dict[str, dict[str, str]],
+    entity: dict[str, Any],
     entity_type: str,
 ) -> None:
     """把对象及其展示名登记进名称索引（首次命中保留，便于 base/target 都可用）。"""
@@ -145,11 +144,11 @@ def _index_entity(
 
 
 def _build_name_index(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-) -> Dict[str, Dict[str, str]]:
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+) -> dict[str, dict[str, str]]:
     """构建 uuid → (对象类型, 展示名) 的全局索引，供关系另一端命名与缺失节点补全使用。"""
-    index: Dict[str, Dict[str, str]] = {}
+    index: dict[str, dict[str, str]] = {}
     for state in (base_state, target_state):
         for key, entity_type in ENTITY_TYPE_BY_COLLECTION.items():
             for entity in state.get(key, []):
@@ -167,7 +166,7 @@ def _build_name_index(
     return index
 
 
-def _text_diff(before: Any, after: Any) -> List[Dict[str, Any]]:
+def _text_diff(before: Any, after: Any) -> list[dict[str, Any]]:
     """对文本字段做行级差异，输出红删绿增的统一视图片段。"""
     before_text = "" if before is None else str(before)
     after_text = "" if after is None else str(after)
@@ -176,7 +175,7 @@ def _text_diff(before: Any, after: Any) -> List[Dict[str, Any]]:
     before_lines = before_text.splitlines()
     after_lines = after_text.splitlines()
     matcher = difflib.SequenceMatcher(None, before_lines, after_lines, autojunk=False)
-    blocks: List[Dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
     for op, i1, i2, j1, j2 in matcher.get_opcodes():
         if op == "equal":
             continue
@@ -191,7 +190,7 @@ def _text_diff(before: Any, after: Any) -> List[Dict[str, Any]]:
     return blocks
 
 
-def _longest_common_subsequence(a: List[str], b: List[str]) -> List[str]:
+def _longest_common_subsequence(a: list[str], b: list[str]) -> list[str]:
     """返回 a、b 的最长公共子序列（回溯采用确定性的偏上选择，保证结果稳定）。"""
     n, m = len(a), len(b)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
@@ -201,7 +200,7 @@ def _longest_common_subsequence(a: List[str], b: List[str]) -> List[str]:
                 dp[i][j] = dp[i - 1][j - 1] + 1
             else:
                 dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
-    result: List[str] = []
+    result: list[str] = []
     i, j = n, m
     while i > 0 and j > 0:
         if a[i - 1] == b[j - 1]:
@@ -218,11 +217,11 @@ def _longest_common_subsequence(a: List[str], b: List[str]) -> List[str]:
 
 def _order_moves(
     entity_type: str,
-    base_list: List[Dict[str, Any]],
-    target_list: List[Dict[str, Any]],
+    base_list: list[dict[str, Any]],
+    target_list: list[dict[str, Any]],
     parent_uuid: str,
     parent_type: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """检测有序集合内的相对顺序变化，仅把真正调整位置的项标为 ordered_item_moved。
 
     插入/删除导致的整体位移不会误报：只对两侧都存在的项比较相对顺序。
@@ -245,7 +244,7 @@ def _order_moves(
 
     base_map = {e["logical_uuid"]: e for e in base_list}
     target_map = {e["logical_uuid"]: e for e in target_list}
-    moves: List[Dict[str, Any]] = []
+    moves: list[dict[str, Any]] = []
     for entity_uuid in moved_uuids:
         before = base_map[entity_uuid]
         after = target_map[entity_uuid]
@@ -273,11 +272,11 @@ def _relation_entry(
     field: str,
     related_type: str,
     related_uuid: str,
-    parent_uuid: Optional[str],
-    parent_type: Optional[str],
+    parent_uuid: str | None,
+    parent_type: str | None,
     side: str,
-    name_index: Dict[str, Dict[str, str]],
-) -> Dict[str, Any]:
+    name_index: dict[str, dict[str, str]],
+) -> dict[str, Any]:
     """构造一条关系增减条目，携带另一端对象类型、UUID 与展示名。"""
     return {
         "change_type": change_type,
@@ -298,12 +297,12 @@ def _relation_entry(
 
 def _diff_children(
     entity_type: str,
-    base_list: List[Dict[str, Any]],
-    target_list: List[Dict[str, Any]],
+    base_list: list[dict[str, Any]],
+    target_list: list[dict[str, Any]],
     parent_uuid: str,
     parent_type: str,
-    out: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
+    out: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
 ) -> None:
     """差异嵌套子对象（验收标准、步骤、属性），以父对象为上下文输出增删改分组。"""
     base_map = {e["logical_uuid"]: e for e in base_list}
@@ -340,19 +339,19 @@ def _diff_children(
 
 def _diff_entity(
     entity_type: str,
-    base: Dict[str, Any],
-    target: Dict[str, Any],
-    out: List[Dict[str, Any]],
-    parent_uuid: Optional[str],
-    parent_type: Optional[str],
-    name_index: Dict[str, Dict[str, str]],
+    base: dict[str, Any],
+    target: dict[str, Any],
+    out: list[dict[str, Any]],
+    parent_uuid: str | None,
+    parent_type: str | None,
+    name_index: dict[str, dict[str, str]],
 ) -> None:
     """差异单个对象：标量字段、关系增减，以及嵌套子对象与其顺序。"""
     if base == target:
         return
     entity_uuid = target["logical_uuid"]
     entity_name = _display_name(target)
-    detail: List[Dict[str, Any]] = []
+    detail: list[dict[str, Any]] = []
 
     for field in SCALAR_FIELDS.get(entity_type, []):
         before = base.get(field)
@@ -477,9 +476,9 @@ def _diff_entity(
 
 
 def _diff_metadata(
-    base_meta: Dict[str, Any],
-    target_meta: Dict[str, Any],
-    out: List[Dict[str, Any]],
+    base_meta: dict[str, Any],
+    target_meta: dict[str, Any],
+    out: list[dict[str, Any]],
 ) -> None:
     """差异项目级元数据（用户需求、Kano 状态、阶段解锁）。"""
     base_meta = base_meta or {}
@@ -507,17 +506,17 @@ def _diff_metadata(
 
 
 def _diff_feature_relation_ordering(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+) -> list[dict[str, Any]]:
     """按父功能分组检测功能树子节点顺序变化（功能树位置调整）。"""
-    base_by_parent: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    target_by_parent: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    base_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    target_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for rel in base_state.get("feature_relations", []):
         base_by_parent[rel.get("parent_feature_logical_uuid")].append(rel)
     for rel in target_state.get("feature_relations", []):
         target_by_parent[rel.get("parent_feature_logical_uuid")].append(rel)
-    moves: List[Dict[str, Any]] = []
+    moves: list[dict[str, Any]] = []
     for parent_uuid in sorted(set(base_by_parent) & set(target_by_parent)):
         moves.extend(
             _order_moves(
@@ -532,12 +531,12 @@ def _diff_feature_relation_ordering(
 
 
 def _ensure_updated_nodes(
-    entries: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
+    entries: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
 ) -> None:
     """为只有细节条目但缺失 entity_updated 节点的对象补节点（例如仅顺序变化、仅子对象变化的父对象）。"""
-    changed_uuids: Set[str] = set()
-    entity_parent: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    changed_uuids: set[str] = set()
+    entity_parent: dict[str, tuple[str | None, str | None]] = {}
     for entry in entries:
         if entry["change_type"] in ("entity_updated", "entity_added", "entity_removed"):
             continue
@@ -561,9 +560,9 @@ def _ensure_updated_nodes(
         )
 
 
-def _build_summary(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_summary(entries: list[dict[str, Any]]) -> dict[str, Any]:
     """按对象类型与变更种类聚合汇总计数。"""
-    by_type: Dict[str, Dict[str, int]] = {}
+    by_type: dict[str, dict[str, int]] = {}
     for entry in entries:
         if entry["change_type"] not in ("entity_added", "entity_removed", "entity_updated"):
             continue
@@ -588,18 +587,18 @@ def _build_summary(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def find_entity_meta(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
     entity_uuid: str,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """在 base/target 状态中查找对象类型与展示名，供实体详情接口使用。"""
     return _build_name_index(base_state, target_state).get(entity_uuid, {})
 
 
 def compute_semantic_diff(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-) -> Dict[str, Any]:
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+) -> dict[str, Any]:
     """
     计算两份规范化状态之间的语义差异。
 
@@ -608,7 +607,7 @@ def compute_semantic_diff(
     :return: {"summary": {...}, "entries": [...]}，entries 为确定的、可被 DiffEntry 契约校验的字典列表
     """
     name_index = _build_name_index(base_state, target_state)
-    entries: List[Dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
 
     _diff_metadata(base_state.get("project_metadata", {}), target_state.get("project_metadata", {}), entries)
 

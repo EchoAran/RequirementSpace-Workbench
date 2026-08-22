@@ -1,20 +1,25 @@
-from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel, UserModel
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.llm import llm_context_manager
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import llm_context_manager
+from backend.api.dependencies.ownership import require_owned_project
+from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import (
+    NextSuggestionService,
+)
 from backend.api.modules.diagnosis_quality.next_suggestion.schemas import (
     NextSuggestionRediagnoseRequest,
     NextSuggestionResponse,
 )
-from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import (
-    NextSuggestionService,
+from backend.api.modules.version_control.dependencies import reject_commit_write
+from backend.api.modules.version_control.public import (
+    map_branch_error,
+    resolve_branch_context,
 )
 from backend.database.database import get_session
-from backend.api.modules.version_control.dependencies import reject_commit_write
-
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/next-suggestion",
@@ -37,11 +42,21 @@ NEXT_SUGGESTION_ERRORS = {
 async def get_next_suggestion(
     project_id: str,
     background_tasks: BackgroundTasks,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[UserModel, Depends(get_current_user)],
+    owned_project: Annotated[ProjectModel, Depends(require_owned_project)],
     stage: str = Query(pattern="^(what|how|scope|preview)$"),
-    session: AsyncSession = Depends(get_session),
-    user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_owned_project)):
+    branch: str | None = Query(None),
+):
     try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         async with llm_context_manager(
             user,
             session,
@@ -54,6 +69,7 @@ async def get_next_suggestion(
                 session=session,
                 background_tasks=background_tasks,
                 public_project_id=owned_project.public_id,
+                workspace_id=ws_id,
             )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -68,6 +84,7 @@ async def get_next_suggestion(
             )
         raise
 
+
 @router.post(
     "/rediagnose",
     response_model=NextSuggestionResponse,
@@ -76,12 +93,32 @@ async def rediagnose_next_suggestion(
     project_id: str,
     request: NextSuggestionRediagnoseRequest,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session),
-    user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_owned_project),
-    commit_guard: None = Depends(reject_commit_write),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[UserModel, Depends(get_current_user)],
+    owned_project: Annotated[ProjectModel, Depends(require_owned_project)],
+    commit_guard: Annotated[None, Depends(reject_commit_write)] = None,
+    branch: str | None = Query(None),
 ):
     try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    can_write = (
+        perms.get("can_write", perms.get("can_edit", False))
+        if isinstance(perms, dict)
+        else getattr(perms, "can_write", getattr(perms, "can_edit", False))
+    )
+    if not can_write:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="branch_readonly_or_protected",
+        )
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.rediagnose_next_suggestion(
                 project_id=owned_project.id,
@@ -89,6 +126,7 @@ async def rediagnose_next_suggestion(
                 session=session,
                 background_tasks=background_tasks,
                 public_project_id=owned_project.public_id,
+                workspace_id=ws_id,
             )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -111,11 +149,21 @@ async def rediagnose_next_suggestion(
 async def get_rediagnose_status(
     project_id: str,
     background_tasks: BackgroundTasks,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[UserModel, Depends(get_current_user)],
+    owned_project: Annotated[ProjectModel, Depends(require_owned_project)],
     stage: str = Query(pattern="^(what|how|scope|preview)$"),
-    session: AsyncSession = Depends(get_session),
-    user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_owned_project)):
+    branch: str | None = Query(None),
+):
     try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.get_next_suggestion(
                 project_id=owned_project.id,
@@ -124,6 +172,7 @@ async def get_rediagnose_status(
                 background_tasks=background_tasks,
                 public_project_id=owned_project.public_id,
                 include_perception=True,
+                workspace_id=ws_id,
             )
     except ValueError as error:
         if str(error) == "project_not_found":

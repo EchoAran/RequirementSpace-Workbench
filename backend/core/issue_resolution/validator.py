@@ -7,6 +7,7 @@ Three-layer validation:
 """
 
 from sqlalchemy import select
+
 from backend.database.model import (
     ActorModel,
     BusinessObjectModel,

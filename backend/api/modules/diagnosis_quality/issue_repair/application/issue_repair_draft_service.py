@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.api.modules.diagnosis_quality.perception.application.invalidation import (
     mark_perception_jobs_stale,
 )
+from backend.core.engines.patch_engine import GraphPatchEngine
 from backend.core.issue_resolution.fingerprint import (
     compute_context_hash,
     load_target_entity_snapshot,
@@ -21,11 +22,13 @@ from backend.core.issue_resolution.fingerprint import (
 from backend.core.issue_resolution.validator import (
     RepairValidator,
 )
-from backend.core.engines.patch_engine import GraphPatchEngine
+from backend.core.logging import get_logger
 from backend.database.model import (
     AuditLogModel,
     IssueRepairDraftModel,
 )
+
+logger = get_logger(__name__)
 
 
 def _generate_draft_id() -> str:
@@ -89,7 +92,9 @@ class IssueRepairDraftService:
 
         # P5: generate impact preview from patch
         if draft.patch:
-            from backend.core.issue_resolution.impact_preview import build_impact_preview
+            from backend.core.issue_resolution.impact_preview import (
+                build_impact_preview,
+            )
             try:
                 preview = await build_impact_preview(
                     draft.patch, draft.project_id, draft.issue_code, session,
@@ -98,8 +103,8 @@ class IssueRepairDraftService:
                 if isinstance(existing, dict):
                     existing['impact_preview'] = preview
                     draft.validation_report = existing
-            except Exception:
-                pass
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                logger.debug("Failed to build impact preview: %s", exc)
             await session.flush()
 
         return {
@@ -163,7 +168,7 @@ class IssueRepairDraftService:
         draft.status = "applied"
         await session.flush()
 
-        await self._invalidate_perception_jobs(draft, project_id, session)
+        await self._invalidate_perception_jobs(draft, project_id, session, workspace_id=workspace_id)
         issue_diff = await self._detect_issue_diff(draft, project_id, session)
         self._record_confirmation_audit(
             draft,
@@ -269,6 +274,7 @@ class IssueRepairDraftService:
         draft: IssueRepairDraftModel,
         project_id: int,
         session: AsyncSession,
+        workspace_id: int | None = None,
     ) -> None:
         stages = {draft.stage}
         kinds = set()
@@ -285,6 +291,7 @@ class IssueRepairDraftService:
                 stages=stages,
                 perception_kinds=kinds or None,
                 session=session,
+                workspace_id=workspace_id,
             )
 
         await session.flush()
@@ -303,7 +310,9 @@ class IssueRepairDraftService:
         if draft.stage:
             # P5: before/after full diff in same transaction
             from backend.core.detectors import (
-                HowIssueDetector, ScopeIssueDetector, WhatIssueDetector,
+                HowIssueDetector,
+                ScopeIssueDetector,
+                WhatIssueDetector,
             )
             from backend.schemas import IssueStage
             _det_map = {
@@ -422,7 +431,9 @@ class IssueRepairDraftService:
         draft.status = "discarded"
         await session.flush()
 
-        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import IssueRepairService
+        from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_service import (
+            IssueRepairService,
+        )
         repair_service = IssueRepairService()
         result = await repair_service.resolve(
             project_id=project_id,

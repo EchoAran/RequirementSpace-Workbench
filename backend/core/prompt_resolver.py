@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from backend.core.llm_context import current_llm_context
 from backend.core.locale import DEFAULT_LOCALE, SUPPORTED_LOCALES, SupportedLocale
@@ -15,7 +15,7 @@ def get_content_locale() -> SupportedLocale:
         locale if locale in SUPPORTED_LOCALES else DEFAULT_LOCALE.value,
     )
 
-def resolve_prompt(name: str, locale: Optional[str] = None) -> str:
+def resolve_prompt(name: str, locale: str | None = None) -> str:
     """Resolve a prompt without silently crossing supported languages."""
     if locale is None:
         locale = get_content_locale()
@@ -52,10 +52,10 @@ class LocalizedPromptProxy(str):
     def format(self, *args, **kwargs) -> str:
         return self._resolve().format(*args, **kwargs)
 
-    def strip(self, chars: Optional[str] = None) -> str:
+    def strip(self, chars: str | None = None) -> str:
         return self._resolve().strip(chars)
 
-    def split(self, sep: Optional[str] = None, maxsplit: int = -1) -> list[str]:
+    def split(self, sep: str | None = None, maxsplit: int = -1) -> list[str]:
         return self._resolve().split(sep, maxsplit)
 
     def startswith(self, prefix, start=0, end=None) -> bool:

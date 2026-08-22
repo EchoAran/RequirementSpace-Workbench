@@ -28,8 +28,42 @@ from backend.core.detectors import (
     ScopeIssueDetector,
     WhatIssueDetector,
 )
+from backend.core.issue_capabilities import (
+    IssueCapabilityKind,
+    get_issue_capability,
+)
 from backend.core.issue_resolution import IssueSolverRegistry
 from backend.core.issue_resolution.ai.base_ai_solver import RepairResult
+from backend.core.issue_resolution.ai.strategies.actor_feature_coverage_solver import (
+    ActorFeatureCoverageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.actor_feature_reverse_coverage_solver import (
+    ActorFeatureReverseCoverageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.business_object_attribute_solver import (
+    BusinessObjectAttributeSolver,
+)
+from backend.core.issue_resolution.ai.strategies.business_object_without_usage_solver import (
+    BusinessObjectWithoutUsageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.duplicate_scenario_name_solver import (
+    DuplicateScenarioNameSolver,
+)
+from backend.core.issue_resolution.ai.strategies.flow_feature_coverage_solver import (
+    FlowFeatureCoverageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.flow_without_steps_solver import (
+    FlowWithoutStepsSolver,
+)
+from backend.core.issue_resolution.ai.strategies.scenario_actor_consistency_solver import (
+    ScenarioActorConsistencySolver,
+)
+from backend.core.issue_resolution.ai.strategies.scenario_coverage_solver import (
+    ScenarioCoverageSolver,
+)
+from backend.core.issue_resolution.ai.strategies.scope_reason_solver import (
+    ScopeReasonSolver,
+)
 from backend.core.issue_resolution.draft_factory import (
     IssueResolutionDraftFactory,
 )
@@ -41,46 +75,12 @@ from backend.core.issue_resolution.fingerprint import (
 from backend.core.issue_resolution.validator import (
     RepairValidator,
 )
-from backend.core.issue_resolution.ai.strategies.scope_reason_solver import (
-    ScopeReasonSolver,
-)
-from backend.core.issue_resolution.ai.strategies.actor_feature_coverage_solver import (
-    ActorFeatureCoverageSolver,
-)
-from backend.core.issue_resolution.ai.strategies.business_object_attribute_solver import (
-    BusinessObjectAttributeSolver,
-)
-from backend.core.issue_resolution.ai.strategies.flow_feature_coverage_solver import (
-    FlowFeatureCoverageSolver,
-)
-from backend.core.issue_resolution.ai.strategies.scenario_coverage_solver import (
-    ScenarioCoverageSolver,
-)
-from backend.core.issue_resolution.ai.strategies.actor_feature_reverse_coverage_solver import (
-    ActorFeatureReverseCoverageSolver,
-)
-from backend.core.issue_resolution.ai.strategies.scenario_actor_consistency_solver import (
-    ScenarioActorConsistencySolver,
-)
-from backend.core.issue_resolution.ai.strategies.duplicate_scenario_name_solver import (
-    DuplicateScenarioNameSolver,
-)
-from backend.core.issue_resolution.ai.strategies.flow_without_steps_solver import (
-    FlowWithoutStepsSolver,
-)
-from backend.core.issue_resolution.ai.strategies.business_object_without_usage_solver import (
-    BusinessObjectWithoutUsageSolver,
-)
-from backend.schemas import Issue, IssueStage, IssueTarget
-from backend.core.issue_capabilities import (
-    IssueCapabilityKind,
-    get_issue_capability,
-)
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
     ISSUE_REPAIR_DRAFT_CREATED,
     ISSUE_REPAIR_FAILED,
 )
+from backend.schemas import Issue, IssueStage, IssueTarget
 
 logger = get_logger(__name__)
 
@@ -106,6 +106,8 @@ _ISSUE_CODE_TO_STAGE: dict[str, str] = {
     "FLOW_WITHOUT_FEATURE": "how",
     "FLOW_WITHOUT_STEPS": "how",
     "ACTOR_ACTION_STEP_WITHOUT_ACTOR": "how",
+    "INVALID_STEP_ACTOR": "how",
+    "INVALID_STEP_BUSINESS_OBJECT": "how",
     "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES": "how",
     "UNREACHABLE_FLOW_STEP": "how",
     "BUSINESS_OBJECT_WITHOUT_USAGE": "how",
@@ -808,7 +810,8 @@ class IssueRepairService:
             "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO", "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS",
             "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA", "DUPLICATE_SCENARIO_NAME",
             "LEAF_FEATURE_WITHOUT_FLOW", "FLOW_WITHOUT_FEATURE", "FLOW_WITHOUT_STEPS",
-            "ACTOR_ACTION_STEP_WITHOUT_ACTOR", "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
+            "ACTOR_ACTION_STEP_WITHOUT_ACTOR", "INVALID_STEP_ACTOR", "INVALID_STEP_BUSINESS_OBJECT",
+            "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
             "UNREACHABLE_FLOW_STEP", "BUSINESS_OBJECT_WITHOUT_USAGE",
             "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES", "SCOPE_WITHOUT_REASON",
         }

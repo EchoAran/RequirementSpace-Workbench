@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 import logging
 import time
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -44,7 +44,6 @@ from backend.core.logging.events import (
     DB_STAMP_STARTED,
     VC_BASELINE_AUTO_DISABLED,
 )
-
 
 logger = get_logger("backend.database")
 
@@ -306,8 +305,9 @@ def _repair_issue_repair_drafts_table(db_path) -> None:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='issue_repair_drafts';"
         )
         if cursor.fetchone() is None:
-            from backend.database.model import IssueRepairDraftModel
             from sqlalchemy import create_engine
+
+            from backend.database.model import IssueRepairDraftModel
             sync_engine = create_engine(f"sqlite:///{db_path}")
             IssueRepairDraftModel.__table__.create(sync_engine, checkfirst=True)
             sync_engine.dispose()
@@ -372,7 +372,9 @@ def _repair_legacy_scope_status_values(db_path) -> None:
 def run_stamp_head() -> None:
     """Stamp Alembic to head to mark schema as up to date after metadata create_all."""
     from pathlib import Path
+
     from alembic.config import Config
+
     from alembic import command
 
     started = time.perf_counter()
@@ -530,6 +532,53 @@ def _validate_upgrade_schema(
         )
 
 
+def _ensure_sqlite_schema_compatibility(sync_engine: Engine) -> None:
+    """Inspect database schema and automatically add any missing columns from model metadata."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(sync_engine)
+    existing_tables = set(inspector.get_table_names())
+
+    with sync_engine.connect() as conn:
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue
+            existing_columns = {c["name"] for c in inspector.get_columns(table_name)}
+            for column in table.columns:
+                if column.name not in existing_columns:
+                    col_type = column.type.compile(sync_engine.dialect)
+                    default_clause = ""
+                    if column.default is not None and hasattr(column.default, "arg"):
+                        default_val = column.default.arg
+                        if isinstance(default_val, bool):
+                            default_clause = f" DEFAULT {1 if default_val else 0}"
+                        elif isinstance(default_val, (int, float)):
+                            default_clause = f" DEFAULT {default_val}"
+                        elif isinstance(default_val, str):
+                            default_clause = f" DEFAULT '{default_val}'"
+                    elif column.server_default is not None and hasattr(column.server_default, "arg"):
+                        default_clause = f" DEFAULT {column.server_default.arg}"
+                    elif not column.nullable:
+                        if "INT" in str(col_type).upper() or "BOOL" in str(col_type).upper():
+                            default_clause = " DEFAULT 0"
+                        else:
+                            default_clause = " DEFAULT ''"
+
+                    null_clause = " NOT NULL" if not column.nullable and "sqlite" in sync_engine.dialect.name else ""
+                    try:
+                        sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}{default_clause}{null_clause}"
+                        conn.execute(text(sql))
+                        conn.commit()
+                        logger.info(f"Auto-added missing column: {table_name}.{column.name} ({col_type})")
+                    except Exception:
+                        try:
+                            fallback_sql = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}{default_clause}"
+                            conn.execute(text(fallback_sql))
+                            conn.commit()
+                            logger.info(f"Auto-added missing column (fallback): {table_name}.{column.name}")
+                        except Exception as inner_e:
+                            logger.warning(f"Could not auto-add column {table_name}.{column.name}: {inner_e}")
+
+
 def _ensure_version_control_baselines() -> None:
     """Ensure all existing projects without a main branch are migrated to version control."""
     # 特性开关 kill-switch：关闭时跳过自动迁移（不删除既有提交，仅停止新写入）。
@@ -548,9 +597,11 @@ def _ensure_version_control_baselines() -> None:
     try:
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
+
         from backend.api.modules.version_control.public import migrate_all_projects_to_version_control
         sync_url = _sync_migration_url(DATABASE_URL)
         sync_engine = create_engine(sync_url)
+        _ensure_sqlite_schema_compatibility(sync_engine)
         with Session(sync_engine) as db_session:
             migrate_all_projects_to_version_control(db_session)
             db_session.commit()

@@ -2,15 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.database import get_session
-from backend.database.model import UserModel
+from backend.api.modules.auth_account.application.llm_config_service import LLMConfigService
 from backend.api.modules.auth_account.schemas.llm_config import (
-    LLMConfigResponse,
     LLMConfigRequest,
+    LLMConfigResponse,
     LLMConfigTestRequest,
     LLMConfigTestResponse,
 )
-from backend.api.modules.auth_account.application.llm_config_service import LLMConfigService
+from backend.database.database import get_session
+from backend.database.model import UserModel
 
 router = APIRouter(
     prefix="/api/account/llm-config",
@@ -32,7 +32,7 @@ async def get_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve LLM configuration: {str(exc)}",
+            detail=f"Failed to retrieve LLM configuration: {exc!s}",
         )
 
 
@@ -57,7 +57,7 @@ async def update_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update LLM configuration: {str(exc)}",
+            detail=f"Failed to update LLM configuration: {exc!s}",
         )
 
 
@@ -79,7 +79,7 @@ async def delete_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to delete LLM configuration: {str(exc)}",
+            detail=f"Failed to delete LLM configuration: {exc!s}",
         )
 
 
@@ -106,5 +106,5 @@ async def test_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"LLM configuration test failed: {str(exc)}",
+            detail=f"LLM configuration test failed: {exc!s}",
         )

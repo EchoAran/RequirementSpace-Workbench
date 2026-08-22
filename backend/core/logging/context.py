@@ -3,14 +3,13 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import Any
 
-
 LOG_CONTEXT_FIELDS = ("request_id", "user_id", "project_id", "operation")
 
-_log_context: ContextVar[dict[str, object]] = ContextVar("log_context", default={})
+_log_context: ContextVar[dict[str, object] | None] = ContextVar("log_context", default=None)
 
 
 def set_log_context(**fields: object) -> None:
-    current = dict(_log_context.get())
+    current = dict(_log_context.get() or {})
     for key, value in fields.items():
         if key in LOG_CONTEXT_FIELDS and value is not None:
             current[key] = value
@@ -22,8 +21,8 @@ def clear_log_context() -> None:
 
 
 def get_log_context() -> dict[str, object]:
-    return dict(_log_context.get())
+    return dict(_log_context.get() or {})
 
 
 def context_value(key: str, default: Any = None) -> Any:
-    return _log_context.get().get(key, default)
+    return (_log_context.get() or {}).get(key, default)

@@ -113,6 +113,7 @@ class ActorGenerationService:
             stages={"what", "how"},
             perception_kinds={"ACTOR", "SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -182,7 +183,7 @@ class ActorGenerationService:
         session,
         workspace_id: int | None = None,
     ) -> str:
-        from backend.database.model import ProjectModel, BranchWorkspaceModel
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
 
         async def _exec(stmt):
             res = session.execute(stmt)

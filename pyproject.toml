@@ -1,0 +1,87 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "requirement_space.db*",
+    "test_requirement_space.db*",
+    "storage",
+    "frontend",
+    "docs",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "RUF",  # Ruff-specific rules
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line length violations
+    "E402",   # module level import not at top of file
+    "E711",   # comparison to None for SQLAlchemy filters
+    "E712",   # comparison to True/False for SQLAlchemy filters
+    "B904",   # raise ... from err
+    "RUF001", # ambiguous unicode character string (Chinese punctuation)
+    "RUF002", # ambiguous unicode character docstring (Chinese punctuation)
+    "RUF003", # ambiguous unicode character comment (Chinese punctuation)
+    "RUF012", # mutable class attributes in Pydantic / SQLAlchemy / Dataclasses
+    "SIM102", # collapsible if
+    "SIM103", # needless bool
+    "SIM105", # try-except-pass
+    "SIM108", # ternary operator
+    "SIM117", # multiple with statements
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"backend/tests/*" = ["RUF043", "B017", "E741"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.params.Depends",
+    "fastapi.Query",
+    "fastapi.params.Query",
+    "fastapi.Path",
+    "fastapi.params.Path",
+    "fastapi.Body",
+    "fastapi.params.Body",
+    "fastapi.Header",
+    "fastapi.params.Header",
+    "fastapi.Cookie",
+    "fastapi.params.Cookie",
+    "fastapi.File",
+    "fastapi.params.File",
+    "fastapi.Security",
+    "fastapi.params.Security",
+    "Depends",
+    "Query",
+    "Path",
+    "Body",
+    "Header",
+    "Cookie",
+    "File",
+    "Security",
+    "require_project_role",
+    "require_project_member",
+    "require_owned_project",
+    "require_owned_generative_draft",
+    "require_owned_choice_group",
+    "require_owned_choice",
+    "require_owned_ai_add_session",
+    "require_owned_choice_group_draft",
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["backend"]

@@ -1,10 +1,7 @@
-# -*- coding: utf-8 -*-
 from sqlalchemy import select, update
-from backend.database.model import (
-    KnowledgeWorkspaceModel,
-    KnowledgeDocumentModel,
-    KnowledgeChunkModel
-)
+
+from backend.database.model import KnowledgeChunkModel, KnowledgeDocumentModel, KnowledgeWorkspaceModel
+
 
 class KnowledgeWorkspaceService:
     @staticmethod

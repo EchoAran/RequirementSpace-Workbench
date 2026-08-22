@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, FilePlus2, FileMinus2, FilePenLine, Link2, Link2Off, ArrowDownUp } from 'lucide-react';
 import { workspaceApi } from '@/lib/api';
@@ -8,8 +8,8 @@ import {
   DiffResult,
   DiffTypeSummary,
 } from '@/core/versionControl';
+import { DiffEntityDetail } from './DiffEntityDetail';
 import { cn } from '@/lib/utils';
-import { jumpTargetForEntity } from '@/core/objectNavigation';
 
 interface SemanticDiffViewProps {
   projectId: string;
@@ -66,15 +66,6 @@ function changeColor(type: DiffChangeType): string {
   }
 }
 
-function jumpLabelKey(entityType: string): string {
-  switch (jumpTargetForEntity(entityType)) {
-    case '/what': return 'versionControl.diff.jumpToWhat';
-    case '/flow': return 'versionControl.diff.jumpToFlow';
-    case '/scope': return 'versionControl.diff.jumpToScope';
-    default: return 'versionControl.diff.jumpToWhat';
-  }
-}
-
 function changeLabelKey(type: DiffChangeType): string {
   switch (type) {
     case 'entity_added':
@@ -118,34 +109,74 @@ export function SemanticDiffView({
   const { t } = useTranslation();
   const [result, setResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DiffEntry | null>(null);
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [mobilePane, setMobilePane] = useState<'tree' | 'detail'>('tree');
+  const currentDiffReqId = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const PAGE_SIZE = 50;
+
+  const load = useCallback(async (isAppend = false) => {
+    if (isAppend) {
+      if (loadingMore || loading) return;
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setLoadingMore(false);
+      setError(null);
+    }
+    const reqId = isAppend ? currentDiffReqId.current : ++currentDiffReqId.current;
     try {
+      const currentOffset = isAppend && result ? result.entries.length : 0;
       const res = await workspaceApi.getSemanticDiff(projectId, {
         base_ref: baseRef,
         target_ref: targetRef,
         branch,
         entity_type: entityType,
         change_type: changeType,
-        limit: 500,
+        limit: PAGE_SIZE,
+        offset: currentOffset,
       });
-      setResult(res);
+
+      if (currentDiffReqId.current !== reqId) return;
+
+      setResult((prev) => {
+        if (isAppend && prev) {
+          return {
+            ...res,
+            entries: [...prev.entries, ...res.entries],
+          };
+        }
+        return res;
+      });
+      setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'versionControl.errors.loadDiffFailed');
+      if (currentDiffReqId.current === reqId) {
+        setError(e instanceof Error ? e.message : 'versionControl.errors.loadDiffFailed');
+      }
     } finally {
-      setLoading(false);
+      if (currentDiffReqId.current === reqId) {
+        if (isAppend) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
+      } else if (isAppend) {
+        setLoadingMore(false);
+      }
     }
-  }, [projectId, baseRef, targetRef, branch, entityType, changeType]);
+  }, [projectId, baseRef, targetRef, branch, entityType, changeType, result, loading, loadingMore]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setResult(null);
+    setSelected(null);
+    setError(null);
+    setLoadingMore(false);
+    void load(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, baseRef, targetRef, branch, entityType, changeType]);
 
   const grouped = useMemo(() => {
     if (!result) return [] as { type: string; summary?: DiffTypeSummary; entries: DiffEntry[] }[];
@@ -177,7 +208,7 @@ export function SemanticDiffView({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 w-full flex-col gap-3">
       {loading && <p className="text-sm text-slate-400">{t('shell.loading')}</p>}
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
@@ -200,86 +231,110 @@ export function SemanticDiffView({
               </button>
             ))}
           </div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid min-h-[580px] w-full grid-cols-1 gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
           {/* 左侧：变更树 */}
-          <div className={cn('min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white', mobilePane !== 'tree' && 'hidden md:block')}>
-            <div className="border-b border-slate-100 px-3 py-2">
-              <p className="text-xs font-bold text-slate-700">{t('versionControl.diff.treeTitle')}</p>
-              {result.summary.total_added + result.summary.total_removed + result.summary.total_modified === 0 ? (
-                <p className="mt-1 text-xs text-slate-400">{t('versionControl.diff.empty')}</p>
-              ) : (
-                <p className="mt-1 text-xs text-slate-500">
-                  {t('versionControl.repository.changeSummary', {
-                    added: result.summary.total_added,
-                    removed: result.summary.total_removed,
-                    modified: result.summary.total_modified,
-                  })}
-                </p>
+          <div className={cn('min-h-0 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white flex flex-col shadow-sm', mobilePane !== 'tree' && 'hidden md:flex')}>
+            <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-800">{t('versionControl.diff.treeTitle')}</p>
+                {result.summary.total_added + result.summary.total_removed + result.summary.total_modified === 0 ? (
+                  <p className="mt-0.5 text-xs text-slate-400">{t('versionControl.diff.empty')}</p>
+                ) : (
+                  <p className="mt-0.5 text-xs text-slate-500 font-medium">
+                    {t('versionControl.repository.changeSummary', {
+                      added: result.summary.total_added,
+                      removed: result.summary.total_removed,
+                      modified: result.summary.total_modified,
+                    })}
+                  </p>
+                )}
+              </div>
+              {result.total > 0 && (
+                <span className="text-[11px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-lg border border-slate-200/80 shadow-2xs">
+                  {t('versionControl.diff.paginationCount', { shown: result.entries.length, total: result.total })}
+                </span>
               )}
             </div>
 
-            {grouped.length === 0 && !loading && (
-              <p className="px-3 py-4 text-sm text-slate-400">{t('versionControl.diff.empty')}</p>
-            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {grouped.length === 0 && !loading && (
+                <p className="px-4 py-6 text-sm text-slate-400 text-center">{t('versionControl.diff.empty')}</p>
+              )}
 
-            {grouped.map((group) => {
-              const collapsed = collapsedTypes.has(group.type);
-              return (
-                <div key={group.type} className="border-b border-slate-50">
+              {grouped.map((group) => {
+                const collapsed = collapsedTypes.has(group.type);
+                return (
+                  <div key={group.type} className="border-b border-slate-50">
+                    <button
+                      type="button"
+                      onClick={() => toggleType(group.type)}
+                      aria-expanded={!collapsed}
+                      aria-controls={`diff-group-${group.type}`}
+                      className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <ChevronRight className={cn('h-3.5 w-3.5 text-slate-400 transition-transform', collapsed && '-rotate-90')} />
+                      <span>{t(typeLabelKey(group.type))}</span>
+                      <span className="ml-auto text-[11px] font-medium text-slate-400">
+                        {group.summary ? `+${group.summary.added} ~${group.summary.modified} -${group.summary.removed}` : group.entries.length}
+                      </span>
+                    </button>
+
+                    {!collapsed && (
+                      <ul id={`diff-group-${group.type}`} className="ml-4 border-l border-slate-100 pb-1">
+                        {group.entries.map((entry, i) => {
+                          const isSelected = selected?.entity_uuid === entry.entity_uuid && selected?.path === entry.path && selected?.change_type === entry.change_type;
+                          return (
+                            <li key={`${entry.change_type}-${entry.entity_uuid}-${i}`}>
+                              <button
+                                type="button"
+                                onClick={() => { selectEntry(entry); setMobilePane('detail'); }}
+                                aria-current={isSelected ? 'true' : undefined}
+                                className={cn(
+                                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-xs transition-colors rounded-lg mx-1',
+                                  isSelected ? 'bg-indigo-50 text-indigo-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
+                                )}
+                              >
+                                <ChangeIcon type={entry.change_type} className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', changeColor(entry.change_type))} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate">{entry.entity_name || entry.entity_uuid}</span>
+                                  <span className={cn('block text-[10px] font-medium', changeColor(entry.change_type))}>
+                                    {t(changeLabelKey(entry.change_type))}
+                                    {entry.field ? ` · ${entry.field}` : ''}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+
+              {result.entries.length < result.total && (
+                <div className="p-3 text-center border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => toggleType(group.type)}
-                    aria-expanded={!collapsed}
-                    aria-controls={`diff-group-${group.type}`}
-                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    disabled={loadingMore}
+                    onClick={() => void load(true)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 cursor-pointer"
                   >
-                    <ChevronRight className={cn('h-4 w-4 text-slate-400 transition-transform', collapsed && '-rotate-90')} />
-                    <span className="font-semibold text-slate-700">{t(typeLabelKey(group.type))}</span>
-                    <span className="ml-auto text-xs text-slate-400">
-                      {group.summary ? `+${group.summary.added} ~${group.summary.modified} -${group.summary.removed}` : group.entries.length}
-                    </span>
+                    {loadingMore ? t('shell.loading') : t('versionControl.diff.loadMore', { remaining: result.total - result.entries.length })}
                   </button>
-
-                  {!collapsed && (
-                    <ul id={`diff-group-${group.type}`} className="ml-4 border-l border-slate-100 pb-1">
-                      {group.entries.map((entry, i) => {
-                        const isSelected = selected?.entity_uuid === entry.entity_uuid && selected?.path === entry.path && selected?.change_type === entry.change_type;
-                        return (
-                          <li key={`${entry.change_type}-${entry.entity_uuid}-${i}`}>
-                            <button
-                              type="button"
-                              onClick={() => { selectEntry(entry); setMobilePane('detail'); }}
-                              aria-current={isSelected ? 'true' : undefined}
-                              className={cn(
-                                'flex w-full items-start gap-2 px-3 py-1.5 text-left text-xs hover:bg-indigo-50',
-                                isSelected && 'bg-indigo-50'
-                              )}
-                            >
-                              <ChangeIcon type={entry.change_type} className={cn('mt-0.5 h-3.5 w-3.5', changeColor(entry.change_type))} />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate font-medium text-slate-700">{entry.entity_name || entry.entity_uuid}</span>
-                                <span className={cn('block text-[10px]', changeColor(entry.change_type))}>
-                                  {t(changeLabelKey(entry.change_type))}
-                                  {entry.field ? ` · ${entry.field}` : ''}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
 
           {/* 右侧：详情 */}
-          <div className={cn('min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4', mobilePane !== 'detail' && 'hidden md:block')}>
+          <div className={cn('min-h-0 min-w-0 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-sm', mobilePane !== 'detail' && 'hidden md:block')}>
             {!selected ? (
-              <p className="text-sm text-slate-400">{t('versionControl.diff.selectNode')}</p>
+              <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center p-6 text-slate-400">
+                <p className="text-sm font-medium">{t('versionControl.diff.selectNode')}</p>
+              </div>
             ) : (
-              <EntryDetail entry={selected} t={t} onJump={onJump} />
+              <DiffEntityDetail entry={selected} onJump={onJump} />
             )}
           </div>
         </div>
@@ -289,91 +344,3 @@ export function SemanticDiffView({
   );
 }
 
-// i18next 的 t 类型签名较长，这里用轻量类型收窄。
-type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
-
-function EntryDetail({ entry, t, onJump }: { entry: DiffEntry; t: TranslateFn; onJump?: (entry: DiffEntry) => void }) {
-  const before = entry.before;
-  const after = entry.after;
-
-  const renderValue = (value: unknown): string => {
-    if (value === null || value === undefined) return '—';
-    if (typeof value === 'object') return JSON.stringify(value, null, 2);
-    return String(value);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <ChangeIcon type={entry.change_type} className={cn('h-4 w-4', changeColor(entry.change_type))} />
-        <span className={cn('text-sm font-bold', changeColor(entry.change_type))}>{t(changeLabelKey(entry.change_type))}</span>
-        <span className="text-xs text-slate-400">{t(typeLabelKey(entry.entity_type))}</span>
-        {onJump && jumpTargetForEntity(entry.entity_type) && (
-          <button
-            type="button"
-            onClick={() => onJump(entry)}
-            className="ml-auto rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100"
-          >
-            {t(jumpLabelKey(entry.entity_type))}
-          </button>
-        )}
-      </div>
-
-      <div className="text-sm font-medium text-slate-700">{entry.entity_name || entry.entity_uuid}</div>
-      {entry.field && <div className="text-xs text-slate-500">{t('versionControl.diff.fieldChanged')}: {entry.field}</div>}
-
-      {(entry.change_type === 'relation_added' || entry.change_type === 'relation_removed') && (
-        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs">
-          <p className="text-slate-500">{t('versionControl.diff.relation')}: {entry.relation_type || entry.path}</p>
-          <p className="mt-1 font-medium text-slate-700">{entry.related_entity_name || entry.related_entity_uuid}</p>
-        </div>
-      )}
-
-      {(entry.change_type === 'field_changed' || entry.change_type === 'entity_added' || entry.change_type === 'entity_removed') && (
-        <>
-          {(before !== undefined || after !== undefined) && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {(entry.change_type === 'field_changed' || entry.change_type === 'entity_removed') && (
-                <div className="rounded-lg border border-rose-100 bg-rose-50 p-3">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-rose-500">{t('versionControl.diff.before')}</p>
-                  <pre className="whitespace-pre-wrap text-xs text-rose-800">{renderValue(before)}</pre>
-                </div>
-              )}
-              {(entry.change_type === 'field_changed' || entry.change_type === 'entity_added') && (
-                <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600">{t('versionControl.diff.after')}</p>
-                  <pre className="whitespace-pre-wrap text-xs text-emerald-800">{renderValue(after)}</pre>
-                </div>
-              )}
-            </div>
-          )}
-
-          {entry.text_blocks.length > 0 && (
-            <div className="space-y-1 rounded-lg border border-slate-100 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('versionControl.diff.textChanges')}</p>
-              {entry.text_blocks.map((block, i) => (
-                <div key={i} className="text-xs">
-                  {block.before_lines.map((line, j) => (
-                    <p key={`b${j}`} className="bg-rose-50 px-2 text-rose-700">- {line}</p>
-                  ))}
-                  {block.after_lines.map((line, j) => (
-                    <p key={`a${j}`} className="bg-emerald-50 px-2 text-emerald-700">+ {line}</p>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {entry.change_type === 'ordered_item_moved' && (
-        <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
-          <p>{t('versionControl.diff.orderedMoved')}</p>
-          {entry.before_position !== undefined && entry.after_position !== undefined && (
-            <p className="mt-1">#{entry.before_position} → #{entry.after_position}</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

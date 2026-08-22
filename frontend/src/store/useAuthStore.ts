@@ -8,6 +8,8 @@ export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isInitializing: boolean;
+  connectionError: boolean;
+  sessionUnavailable: boolean;
   error: string | null;
   
   register: (data: RegisterRequest) => Promise<void>;
@@ -27,6 +29,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
     user: null,
     isAuthenticated: false,
     isInitializing: true,
+    connectionError: false,
+    sessionUnavailable: false,
     error: null,
 
     register: async (data: RegisterRequest) => {
@@ -34,7 +38,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const user = await authApi.register(data);
         await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
-        set({ user, isAuthenticated: true });
+        set({ user, isAuthenticated: true, connectionError: false, sessionUnavailable: false });
         
         // Load workspaces for the newly registered user
         await useWorkspaceStore.getState().loadWorkspaces();
@@ -49,7 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const user = await authApi.login(data);
         await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
-        set({ user, isAuthenticated: true });
+        set({ user, isAuthenticated: true, connectionError: false, sessionUnavailable: false });
         
         // Load workspaces for the logged in user
         await useWorkspaceStore.getState().loadWorkspaces();
@@ -74,14 +78,20 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const user = await authApi.getMe();
         await applyUiLocale(user.preferred_locale ?? user.preferredLocale);
-        set({ user, isAuthenticated: true });
+        set({ user, isAuthenticated: true, connectionError: false, sessionUnavailable: false });
         
         // Load workspaces for the authenticated user
         await useWorkspaceStore.getState().loadWorkspaces();
-      } catch (err) {
-        // Safe to ignore on initial load if user is not logged in
-        await resetUiLocale();
-        set({ user: null, isAuthenticated: false });
+      } catch (err: any) {
+        const status = err?.status ?? err?.response?.status;
+        if (status === 401 || status === 403) {
+          // Explicit unauthorized response
+          await resetUiLocale();
+          set({ user: null, isAuthenticated: false, connectionError: false, sessionUnavailable: false });
+        } else {
+          // Network connection error / 5xx: preserve auth session if previously set
+          set({ connectionError: true, sessionUnavailable: true, error: 'auth.networkError' });
+        }
       } finally {
         set({ isInitializing: false });
       }
@@ -93,6 +103,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
         user: null,
         isAuthenticated: false,
         isInitializing: false,
+        connectionError: false,
+        sessionUnavailable: false,
         error: null,
       });
       

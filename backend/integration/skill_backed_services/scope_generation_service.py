@@ -30,6 +30,7 @@ class SkillBackedScopeGenerationService(ScopeGenerationService):
         project_id: int,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -38,6 +39,7 @@ class SkillBackedScopeGenerationService(ScopeGenerationService):
         ) = await self._load_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
 
         requirement_text = user_requirements

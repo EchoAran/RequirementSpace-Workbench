@@ -13,10 +13,10 @@
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class IssueCapabilityKind(str, Enum):
+class IssueCapabilityKind(StrEnum):
     """Issue 处理能力枚举。
 
     ai_repair         → AI 修复，调用 AI solver 生成 repair draft 或 choice group
@@ -55,6 +55,8 @@ KNOWN_ISSUE_CODES: set[str] = {
     "FLOW_WITHOUT_FEATURE",
     "FLOW_WITHOUT_STEPS",
     "ACTOR_ACTION_STEP_WITHOUT_ACTOR",
+    "INVALID_STEP_ACTOR",
+    "INVALID_STEP_BUSINESS_OBJECT",
     "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
     "UNREACHABLE_FLOW_STEP",
     "BUSINESS_OBJECT_WITHOUT_USAGE",
@@ -128,6 +130,14 @@ ISSUE_CAPABILITIES: dict[str, IssueCapabilityDefinition] = {
 
     # ========== 定位处理 (open panel solver) ==========
     "ACTOR_ACTION_STEP_WITHOUT_ACTOR": IssueCapabilityDefinition(
+        kind=IssueCapabilityKind.OPEN_PANEL,
+        action_label="定位处理",
+    ),
+    "INVALID_STEP_ACTOR": IssueCapabilityDefinition(
+        kind=IssueCapabilityKind.OPEN_PANEL,
+        action_label="定位处理",
+    ),
+    "INVALID_STEP_BUSINESS_OBJECT": IssueCapabilityDefinition(
         kind=IssueCapabilityKind.OPEN_PANEL,
         action_label="定位处理",
     ),

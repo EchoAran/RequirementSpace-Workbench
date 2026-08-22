@@ -1,19 +1,21 @@
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+
 from backend.database.model import (
+    ConfirmationStatus,
     FeatureModel,
     FeatureRelationModel,
-    ConfirmationStatus,
 )
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.feature.schemas import (
     FeatureCreateRequest,
-    FeatureUpdateRequest,
     FeatureResponse,
+    FeatureUpdateRequest,
 )
+from backend.core.notifier import get_notifier
+
 from .feature_writer import (
     apply_feature_updates,
     build_feature_update_diff,
@@ -120,6 +122,7 @@ class FeatureService:
                 "FLOW",
             },
             session=session,
+            workspace_id=workspace_id,
         )
 
         return serialize_created_feature(feature, req.parent_id)
@@ -140,8 +143,9 @@ class FeatureService:
         if workspace_id is not None and feature.workspace_id != workspace_id:
             raise ValueError("feature_not_found_in_workspace")
 
-        if workspace_id is not None and req.parent_id:
-            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == req.parent_id))
+        parent_id_val = getattr(req, "parent_id", None)
+        if workspace_id is not None and parent_id_val:
+            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == parent_id_val))
             parent_feat = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
             if parent_feat and parent_feat.workspace_id != workspace_id:
                 raise ValueError("Cross-workspace entity reference rejected: parent feature belongs to a different workspace")
@@ -184,6 +188,7 @@ class FeatureService:
                 "FLOW",
             },
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -236,6 +241,7 @@ class FeatureService:
                 "FLOW",
             },
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {

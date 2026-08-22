@@ -1,11 +1,12 @@
+from sqlalchemy import select
+
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
 from backend.api.modules.requirements_core.flow.application.flow_generation_service import FlowGenerationService
 from backend.database.model import BusinessObjectModel, FlowModel
-from sqlalchemy import select
 
 
 class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -27,6 +28,7 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             project_id=context.project_id,
             user_feedback=combined,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
 
         flows = response_payload.get("flows", [])
@@ -64,18 +66,26 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
         project_id = payload["project_id"]
-        flows = await session.execute(select(FlowModel).where(FlowModel.project_id == project_id))
+        workspace_id = kwargs.get("workspace_id")
+
+        flow_stmt = select(FlowModel).where(FlowModel.project_id == project_id)
+        if workspace_id is not None:
+            flow_stmt = flow_stmt.where(FlowModel.workspace_id == workspace_id)
+        flows = await session.execute(flow_stmt)
         for flow in flows.scalars().all():
             await session.delete(flow)
         await session.flush()
-        business_objects = await session.execute(
-            select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
-        )
+
+        bo_stmt = select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
+        if workspace_id is not None:
+            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        business_objects = await session.execute(bo_stmt)
         for business_object in business_objects.scalars().all():
             await session.delete(business_object)
         await session.flush()
+
         result = await self._service._persist_flow_generation_draft(
-            draft=payload, session=session,
+            draft=payload, session=session, workspace_id=workspace_id,
         )
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(
@@ -83,6 +93,7 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
         return result
 
@@ -94,7 +105,7 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         return any(_flow_names(e) == _flow_names(candidate) for e in existing)
 
     async def is_context_stale(self, choice, session) -> tuple[bool, str | None]:
-        from backend.database.model import FeatureModel, ActorModel, BusinessObjectModel
+        from backend.database.model import ActorModel, BusinessObjectModel, FeatureModel
         payload = choice.payload or {}
         flows = payload.get("flows", [])
         for f in flows:
@@ -102,10 +113,11 @@ class FlowGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 feature = await session.get(FeatureModel, fid)
                 if not feature:
                     return True, f"功能（id={fid}）已被删除，此候选可能不适用"
-            for fid in f.get("actor_ids", []):
-                actor = await session.get(ActorModel, fid)
-                if not actor:
-                    return True, f"参与者（id={fid}）已被删除，此候选可能不适用"
+            for step in f.get("flow_steps", []):
+                for aid in step.get("actor_ids", []):
+                    actor = await session.get(ActorModel, aid)
+                    if not actor:
+                        return True, f"参与者（id={aid}）已被删除，此候选可能不适用"
         for bo in payload.get("business_objects", []):
             if bo.get("id"):
                 bo_model = await session.get(BusinessObjectModel, bo["id"])

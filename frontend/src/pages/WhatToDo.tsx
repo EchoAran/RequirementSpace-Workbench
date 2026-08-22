@@ -1372,7 +1372,7 @@ export function WhatToDo() {
                 disabled={!newActorName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                {t('scope.modal.confirm')}
+                {t('what.confirmAddActor', '确认添加')}
               </button>
             </div>
           </div>
@@ -1385,7 +1385,7 @@ export function WhatToDo() {
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-md w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50">
               <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-1.5">
-        {t('what.scenarios.manualCreateTitle')}
+                {t('what.scenarios.manualCreateTitle')}
               </h3>
               <p className="text-[10px] text-slate-500 mt-1">{t('what.scenarios.manualCreateDesc')}</p>
             </div>
@@ -1457,7 +1457,7 @@ export function WhatToDo() {
                 disabled={!newFeatureName.trim()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
               >
-                {t('scope.modal.confirm')}
+                {t('what.confirmAddFeature')}
               </button>
             </div>
           </div>

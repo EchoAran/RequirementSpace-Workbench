@@ -1,12 +1,20 @@
-from sqlalchemy import select, insert
+from sqlalchemy import insert, select
+
 from backend.database.model import (
+    ConfirmationStatus,
+    FeatureModel,
     FlowModel,
     FlowStepModel,
-    FeatureModel,
-    ConfirmationStatus,
     flow_feature_table,
 )
 from backend.services.audit_service import AuditService
+
+from .flow_updater import (
+    apply_flow_updates,
+    build_flow_update_diff,
+    capture_flow_state,
+    load_flow_for_update,
+)
 from .steps import (
     apply_flow_step_relationship_updates,
     apply_flow_step_scalar_updates,
@@ -26,24 +34,18 @@ from .steps import (
     validate_reordered_steps,
     write_flow_step_links,
 )
-from .flow_updater import (
-    apply_flow_updates,
-    build_flow_update_diff,
-    capture_flow_state,
-    load_flow_for_update,
-)
 
 audit_service = AuditService()
-from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.flow.schemas import (
     FlowCreateRequest,
-    FlowUpdateRequest,
     FlowResponse,
     FlowStepCreateRequest,
-    FlowStepUpdateRequest,
     FlowStepResponse,
     FlowStepsReorderRequest,
+    FlowStepUpdateRequest,
+    FlowUpdateRequest,
 )
+from backend.core.notifier import get_notifier
 
 
 async def _exec_stmt(session, stmt):
@@ -116,6 +118,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return FlowResponse(
@@ -146,7 +149,7 @@ class FlowService:
             raise ValueError("flow_not_found_in_workspace")
 
         flow = await load_flow_for_update(session, project_id, flow_id)
-        
+
         from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "flow", flow, req.last_seen_updated_at)
 
@@ -180,6 +183,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -226,6 +230,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {
@@ -239,8 +244,9 @@ class FlowService:
         flow_id: int,
         req: FlowStepCreateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> FlowStepResponse:
-        await ensure_flow_exists(session, project_id, flow_id)
+        await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
 
         # 轻量约束校验
         if req.step_type == "actorAction" and not req.actor_ids:
@@ -249,6 +255,7 @@ class FlowService:
         position = await get_next_step_position(session, flow_id)
 
         step = FlowStepModel(
+            workspace_id=workspace_id,
             flow_id=flow_id,
             position=position,
             name=req.name,
@@ -289,6 +296,7 @@ class FlowService:
                 req.output_business_object_ids
             ),
             next_step_ids=req.next_step_ids,
+            workspace_id=workspace_id,
         )
 
         await session.flush()
@@ -300,6 +308,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return self._serialize_flow_step(reloaded_step)
@@ -311,9 +320,10 @@ class FlowService:
         step_id: int,
         req: FlowStepUpdateRequest,
         session,
+        workspace_id: int | None = None,
     ) -> FlowStepResponse:
-        await ensure_flow_exists(session, project_id, flow_id)
-        step = await load_flow_step_for_update(session, flow_id, step_id)
+        await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
+        step = await load_flow_step_for_update(session, flow_id, step_id, workspace_id=workspace_id)
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "flow_step", step, req.last_seen_updated_at)
@@ -328,6 +338,7 @@ class FlowService:
             flow_id=flow_id,
             step=step,
             request=req,
+            workspace_id=workspace_id,
         )
 
         await session.flush()
@@ -350,6 +361,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -363,9 +375,10 @@ class FlowService:
         flow_id: int,
         step_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
-        await ensure_flow_exists(session, project_id, flow_id)
-        step = await load_flow_step_to_delete(session, flow_id, step_id)
+        await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
+        step = await load_flow_step_to_delete(session, flow_id, step_id, workspace_id=workspace_id)
 
         # 查找被删除步骤的前驱和后继以进行拓扑修复
         predecessors, successors = await load_step_neighbors(
@@ -378,7 +391,11 @@ class FlowService:
         await session.flush()
 
         # 重新建立前驱和后继之间的直接关联来修复流程链
-        await bridge_step_neighbors(session, predecessors, successors)
+        await bridge_step_neighbors(
+            session,
+            predecessors,
+            successors,
+        )
 
         # 审计日志: 删除流程步骤
         await audit_service.record(
@@ -399,6 +416,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {
@@ -412,8 +430,10 @@ class FlowService:
         flow_id: int,
         req: FlowStepsReorderRequest,
         session,
+        workspace_id: int | None = None,
     ) -> FlowResponse:
         # 1. Verify flow belongs to project
+        await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
         flow = await load_flow_for_reorder(session, project_id, flow_id)
 
         # 2. Strict validation of step_ids
@@ -448,6 +468,7 @@ class FlowService:
             stages={"how"},
             perception_kinds={"FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         session.expire_all()

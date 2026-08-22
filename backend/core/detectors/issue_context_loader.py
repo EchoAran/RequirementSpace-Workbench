@@ -1,20 +1,20 @@
 from .issue_context import (
-    load_issue_business_objects,
-    load_issue_scopes,
-    load_issue_flows,
-    AcceptanceCriterionIssueItem,
-    ActorIssueItem,
-    BusinessObjectIssueItem,
-    FeatureIssueItem,
-    FlowIssueItem,
-    FlowStepIssueItem,
+    AcceptanceCriterionIssueItem as AcceptanceCriterionIssueItem,
+    ActorIssueItem as ActorIssueItem,
+    BusinessObjectIssueItem as BusinessObjectIssueItem,
+    FeatureIssueItem as FeatureIssueItem,
+    FlowIssueItem as FlowIssueItem,
+    FlowStepIssueItem as FlowStepIssueItem,
     IssueProjectContext,
-    ScenarioIssueItem,
-    ScopeIssueItem,
+    ScenarioIssueItem as ScenarioIssueItem,
+    ScopeIssueItem as ScopeIssueItem,
     load_issue_actors,
+    load_issue_business_objects,
     load_issue_features,
+    load_issue_flows,
     load_issue_project,
     load_issue_scenarios,
+    load_issue_scopes,
 )
 
 
@@ -39,8 +39,8 @@ async def load_issue_project_context(
     if workspace_id is not None:
         from backend.database.model import BranchWorkspaceModel
         ws = await session.get(BranchWorkspaceModel, workspace_id)
-        if ws and ws.user_requirements:
-            user_reqs = ws.user_requirements
+        if ws is not None:
+            user_reqs = ws.user_requirements if ws.user_requirements is not None else ""
 
     return IssueProjectContext(
         project_id=project.id,

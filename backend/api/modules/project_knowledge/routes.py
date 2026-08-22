@@ -1,32 +1,34 @@
-﻿import os
-import uuid
-import hashlib
+﻿import hashlib
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from sqlalchemy import select, func
+import os
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.database import get_session
 from backend.api.dependencies.auth import get_current_user
-from backend.database.model import (
-    UserModel,
-    KnowledgeWorkspaceModel,
-    KnowledgeDocumentModel,
-)
-from backend.core import config
 from backend.api.dependencies.project_access import (
     require_project_member,
     require_project_role,
 )
-from .dependencies import (
-    require_owned_knowledge_workspace,
-    require_owned_knowledge_document,
+from backend.core import config
+from backend.database.database import get_session
+from backend.database.model import (
+    KnowledgeDocumentModel,
+    KnowledgeWorkspaceModel,
+    UserModel,
 )
 from backend.services.knowledge.conversion import KnowledgeConversionService
+
+from .dependencies import (
+    require_owned_knowledge_document,
+    require_owned_knowledge_workspace,
+)
 from .schemas import (
-    KnowledgeWorkspaceResponse,
-    KnowledgeDocumentResponse,
     KnowledgeDocumentPatchRequest,
+    KnowledgeDocumentResponse,
+    KnowledgeWorkspaceResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -205,8 +207,9 @@ async def delete_workspace_document(
     _safe_delete_file(doc.markdown_path)
 
     # Delete related chunks
-    from backend.database.model import KnowledgeChunkModel
     from sqlalchemy import delete
+
+    from backend.database.model import KnowledgeChunkModel
     await session.execute(
         delete(KnowledgeChunkModel).where(KnowledgeChunkModel.document_id == doc.id)
     )
@@ -368,8 +371,9 @@ async def delete_project_document(
     _safe_delete_file(doc.markdown_path)
 
     # Delete related chunks
-    from backend.database.model import KnowledgeChunkModel
     from sqlalchemy import delete
+
+    from backend.database.model import KnowledgeChunkModel
     await session.execute(
         delete(KnowledgeChunkModel).where(KnowledgeChunkModel.document_id == doc.id)
     )

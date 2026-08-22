@@ -1,9 +1,10 @@
-from typing import List, Optional
+
 from pydantic import Field
+
 from backend.api.base_schema import CamelModel
-
-
-from backend.api.modules.diagnosis_quality.issue_compat.schemas import IssueTargetResponse
+from backend.api.modules.diagnosis_quality.issue_compat.schemas import (
+    IssueTargetResponse,
+)
 
 
 class IssueCapabilityResponse(CamelModel):
@@ -20,17 +21,17 @@ class FindingResponse(CamelModel):
     severity: str
     title: str
     description: str
-    target: Optional[IssueTargetResponse] = None
+    target: IssueTargetResponse | None = None
     blocking_scope: str = "none"
-    action_code: Optional[str] = None
+    action_code: str | None = None
     metadata: dict = Field(default_factory=dict)
-    capability: Optional[IssueCapabilityResponse] = None
+    capability: IssueCapabilityResponse | None = None
 
 class ProjectFindingsResponse(CamelModel):
     project_id: str
     stage: str
     view: str
-    findings: List[FindingResponse]
+    findings: list[FindingResponse]
 
 class FindingStatusUpdateRequest(CamelModel):
     finding_id: str

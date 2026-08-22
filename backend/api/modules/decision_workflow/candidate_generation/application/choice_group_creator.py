@@ -13,8 +13,8 @@ from backend.core.ai_operation_monitor import log_ai_operation_result
 from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 from backend.core.logging import log_event
 from backend.core.logging.events import (
-    CHOICE_GROUP_CREATED,
     CHOICE_GROUP_CREATE_REQUESTED,
+    CHOICE_GROUP_CREATED,
     CHOICE_GROUP_GENERATION_FAILED,
 )
 from backend.database.model import (
@@ -163,9 +163,11 @@ async def _create_group(
     is_partial_failure: bool,
     issue_fields: dict,
     session,
+    workspace_id: int | None = None,
 ) -> ChoiceGroupModel:
     group = ChoiceGroupModel(
         project_id=project_id,
+        workspace_id=workspace_id,
         status="failed" if is_partial_failure else "open",
         selection_mode="single",
         generation_type=generation_type,
@@ -376,6 +378,7 @@ async def _run_candidates(
     session,
     progress_callback,
     run_candidate_generation,
+    workspace_id: int | None = None,
 ) -> CandidateRunResult:
     return await run_candidate_generation(
         count=plan.run_count,
@@ -390,6 +393,7 @@ async def _run_candidates(
             target=target,
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         ),
         resolved_strategies=plan.resolved_strategies,
     )
@@ -455,6 +459,7 @@ async def _persist_creation(
     issue_fields: dict,
     plan: _GenerationPlan,
     session,
+    workspace_id: int | None = None,
 ) -> tuple[ChoiceGroupModel, list[ChoiceModel]]:
     context_hash = issue_fields.pop("context_hash")
     if context_hash is None and session:
@@ -470,6 +475,7 @@ async def _persist_creation(
         is_partial_failure,
         issue_fields,
         session,
+        workspace_id=workspace_id,
     )
     created_choices = _create_candidate_choices(
         group,
@@ -518,13 +524,13 @@ async def _finalize_creation(
         result,
         session,
     )
-    project_public_id = (
-        await session.execute(
-            select(ProjectModel.public_id).where(
-                ProjectModel.id == project_id
-            )
+    project_public_id = None
+    if session:
+        from backend.database.model import ProjectModel
+        project_res = await session.execute(
+            select(ProjectModel.public_id).where(ProjectModel.id == project_id)
         )
-    ).scalar_one()
+        project_public_id = project_res.scalar_one_or_none()
     return build_choice_group_response(
         group,
         choices,
@@ -539,6 +545,7 @@ async def create_choice_group(
     issue_fields: dict, get_adapter, run_candidate_generation,
     build_choice_group_response, logger, large_batch_threshold: int,
     timeout_feature_batch_size: int,
+    workspace_id: int | None = None,
 ) -> dict:
     config = settings.with_overrides(candidate_count)
     _log_creation_requested(
@@ -559,6 +566,7 @@ async def create_choice_group(
     result = await _run_candidates(
         plan, project_id, target, user_feedback, session,
         progress_callback, run_candidate_generation,
+        workspace_id=workspace_id,
     )
     candidates, is_partial_failure, status_detail = _evaluate_candidates(
         logger, project_id, generation_type, result, plan, config,
@@ -567,6 +575,7 @@ async def create_choice_group(
     group, choices = await _persist_creation(
         project_id, generation_type, target, result, candidates,
         status_detail, is_partial_failure, issue_fields, plan, session,
+        workspace_id=workspace_id,
     )
     return await _finalize_creation(
         logger, project_id, generation_type, group, choices, result,

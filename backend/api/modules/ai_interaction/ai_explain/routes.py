@@ -1,20 +1,21 @@
 """API routes for AI-powered Q&A explanation."""
 
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.model import UserModel
+from backend.api.dependencies.llm import llm_context_manager
+from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
 from backend.api.modules.ai_interaction.ai_explain.schemas import (
     ExplainRequest,
     ExplainResponse,
 )
-from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
 from backend.database.database import get_session
-from backend.api.dependencies.llm import llm_context_manager
+from backend.database.model import UserModel
 
 router = APIRouter(
     prefix="/api/ai",

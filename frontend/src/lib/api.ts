@@ -314,14 +314,14 @@ export const workspaceApi = {
   resolveIssue: async (projectId: string, payload: { issue_id?: string; issue_code: string; stage?: string; target: any | null; metadata?: any }): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/issues/resolve`, payload);
   },
-  getNextSuggestion: async (projectId: string, stage: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/next-suggestion`, { stage });
+  getNextSuggestion: async (projectId: string, stage: string, branch?: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/next-suggestion`, { stage, branch });
   },
-  rediagnoseNextSuggestion: async (projectId: string, stage: string): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/next-suggestion/rediagnose`, { stage });
+  rediagnoseNextSuggestion: async (projectId: string, stage: string, branch?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/next-suggestion/rediagnose${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, { stage });
   },
-  getRediagnoseStatus: async (projectId: string, stage: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/next-suggestion/rediagnose/status`, { stage });
+  getRediagnoseStatus: async (projectId: string, stage: string, branch?: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/next-suggestion/rediagnose/status`, { stage, branch });
   },
   createSlotFillingDraft: async (projectId: string, perceptionJobId: number, fillerKind: string): Promise<any> => {
     const kind = fillerKind === 'ac' || fillerKind === 'acceptanceCriteria' || fillerKind === 'acceptance_criterion'
@@ -726,6 +726,13 @@ export const workspaceApi = {
   },
   getCommitDetail: async (projectId: string, commitRef: string): Promise<CommitDetail> => {
     return http.get<CommitDetail>(`/projects/${projectId}/commits/${commitRef}`);
+  },
+  revertCommit: async (
+    projectId: string,
+    commitRef: string,
+    payload?: { branch_ref?: string; message?: string }
+  ): Promise<CommitDetail> => {
+    return http.post<CommitDetail>(`/projects/${projectId}/commits/${commitRef}/revert`, payload);
   },
   getSemanticDiff: async (
     projectId: string,

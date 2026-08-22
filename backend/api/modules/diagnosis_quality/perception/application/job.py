@@ -9,6 +9,7 @@ from backend.schemas import (
     NextSuggestion,
     PerceptionJobStatus,
 )
+
 from .job_executor import PerceptionJobExecutor
 from .job_invalidator import PerceptionJobInvalidator
 
@@ -24,10 +25,12 @@ class PerceptionJobService:
         session,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion | None:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
 
         for perception_kind in ("ACTOR", "FEATURE"):
@@ -46,6 +49,7 @@ class PerceptionJobService:
                 session=session,
                 background_tasks=background_tasks,
                 public_project_id=public_project_id,
+                workspace_id=workspace_id,
             )
 
             if suggestion is not None:
@@ -69,6 +73,7 @@ class PerceptionJobService:
                     session=session,
                     background_tasks=background_tasks,
                     public_project_id=public_project_id,
+                    workspace_id=workspace_id,
                 )
 
                 if suggestion is not None:
@@ -82,10 +87,12 @@ class PerceptionJobService:
         session,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion | None:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
 
         return await self._get_perception_suggestion(
@@ -103,6 +110,7 @@ class PerceptionJobService:
             session=session,
             background_tasks=background_tasks,
             public_project_id=public_project_id,
+            workspace_id=workspace_id,
         )
 
     async def get_active_slot_suggestion(
@@ -111,10 +119,11 @@ class PerceptionJobService:
         stage: str,
         session,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion | None:
         from backend.database.model import PerceptionJobModel, PerceptionSlotModel
 
-        result = await session.execute(
+        stmt = (
             select(PerceptionJobModel)
             .join(PerceptionSlotModel, PerceptionSlotModel.id == PerceptionJobModel.id)
             .where(
@@ -122,8 +131,14 @@ class PerceptionJobService:
                 PerceptionJobModel.stage == stage,
                 PerceptionJobModel.status == PerceptionJobStatus.DONE_WITH_SLOT.value,
             )
-            .order_by(PerceptionJobModel.id.desc())
         )
+        if workspace_id is not None:
+            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
+        else:
+            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
+        stmt = stmt.order_by(PerceptionJobModel.id.desc())
+
+        result = await session.execute(stmt)
         job = result.scalars().first()
         if job is None:
             return None
@@ -143,19 +158,24 @@ class PerceptionJobService:
         target_type: str,
         target_id: str,
         context_hash: str,
+        workspace_id: int | None = None,
     ):
         from backend.database.model import PerceptionJobModel
 
-        result = await session.execute(
-            select(PerceptionJobModel).where(
-                PerceptionJobModel.project_id == project_id,
-                PerceptionJobModel.stage == stage,
-                PerceptionJobModel.perception_kind == perception_kind,
-                PerceptionJobModel.target_type == target_type,
-                PerceptionJobModel.target_id == target_id,
-                PerceptionJobModel.context_hash == context_hash,
-            )
+        stmt = select(PerceptionJobModel).where(
+            PerceptionJobModel.project_id == project_id,
+            PerceptionJobModel.stage == stage,
+            PerceptionJobModel.perception_kind == perception_kind,
+            PerceptionJobModel.target_type == target_type,
+            PerceptionJobModel.target_id == target_id,
+            PerceptionJobModel.context_hash == context_hash,
         )
+        if workspace_id is not None:
+            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
+        else:
+            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
+
+        result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def _activate_and_schedule_job(
@@ -188,6 +208,7 @@ class PerceptionJobService:
         context_hash: str,
         session,
         background_tasks: BackgroundTasks | None,
+        workspace_id: int | None = None,
     ):
         from backend.database.model import PerceptionJobModel
 
@@ -195,6 +216,7 @@ class PerceptionJobService:
             async with session.begin_nested():
                 job = PerceptionJobModel(
                     project_id=project_id,
+                    workspace_id=workspace_id,
                     stage=stage,
                     perception_kind=perception_kind,
                     target_type=target_type,
@@ -218,6 +240,7 @@ class PerceptionJobService:
                 target_type=target_type,
                 target_id=target_id,
                 context_hash=context_hash,
+                workspace_id=workspace_id,
             )
             if job is None:
                 raise
@@ -234,11 +257,13 @@ class PerceptionJobService:
         context_hash: str,
         session,
         background_tasks: BackgroundTasks | None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion:
         active_job = await self._load_active_stage_job(
             project_id=project_id,
             stage=stage,
             session=session,
+            workspace_id=workspace_id,
         )
         if active_job is not None:
             if (
@@ -262,6 +287,7 @@ class PerceptionJobService:
             context_hash=context_hash,
             session=session,
             background_tasks=background_tasks,
+            workspace_id=workspace_id,
         )
         if (
             background_tasks is not None
@@ -327,6 +353,7 @@ class PerceptionJobService:
         session,
         background_tasks: BackgroundTasks | None,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion | None:
         await self._mark_stale_jobs(
             project_id=project_id,
@@ -336,6 +363,7 @@ class PerceptionJobService:
             target_id=target_id,
             context_hash=context_hash,
             session=session,
+            workspace_id=workspace_id,
         )
 
         job = await self._load_matching_job(
@@ -346,6 +374,7 @@ class PerceptionJobService:
             target_type=target_type,
             target_id=target_id,
             context_hash=context_hash,
+            workspace_id=workspace_id,
         )
 
         if job is None:
@@ -358,6 +387,7 @@ class PerceptionJobService:
                 context_hash=context_hash,
                 session=session,
                 background_tasks=background_tasks,
+                workspace_id=workspace_id,
             )
         return await self._resolve_existing_job(
             job,
@@ -396,8 +426,19 @@ class PerceptionJobService:
     def _iter_pairs_with_scenarios(self, context: IssueProjectContext) -> list[tuple[int, int]]:
         return self.executor._iter_pairs_with_scenarios(context)
 
-    async def _load_active_stage_job(self, project_id: int, stage: str, session):
-        return await self.executor._load_active_stage_job(project_id, stage, session)
+    async def _load_active_stage_job(
+        self,
+        project_id: int,
+        stage: str,
+        session,
+        workspace_id: int | None = None,
+    ):
+        return await self.executor._load_active_stage_job(
+            project_id,
+            stage,
+            session,
+            workspace_id=workspace_id,
+        )
 
     async def _mark_stale_jobs(
         self,
@@ -408,6 +449,7 @@ class PerceptionJobService:
         target_id: str,
         context_hash: str,
         session,
+        workspace_id: int | None = None,
     ) -> None:
         await self.invalidator._mark_stale_jobs(
             project_id=project_id,
@@ -417,6 +459,7 @@ class PerceptionJobService:
             target_id=target_id,
             context_hash=context_hash,
             session=session,
+            workspace_id=workspace_id,
         )
 
     def _build_running_suggestion(self, job) -> NextSuggestion:

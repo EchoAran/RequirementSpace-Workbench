@@ -26,6 +26,7 @@ from .shadow_patch.what_generator import (
     _generate_scenario_patch,
 )
 
+
 def _fill_preserved_what_gaps(patch: dict, base_snapshot: dict) -> None:
     features = base_snapshot.get("features", [])
     actors = base_snapshot.get("actors", [])
@@ -434,9 +435,9 @@ class PreviewShadowPatchGenerator:
         stages are preserved exactly as-is without invoking their corresponding generators.
         """
         from backend.api.modules.requirements_core.ports import (
+            get_feature_generation_service,
             get_flow_generation_service,
             get_scope_generation_service,
-            get_feature_generation_service,
         )
         flow_generation_service = get_flow_generation_service()
         scope_generation_service = get_scope_generation_service()

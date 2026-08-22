@@ -97,8 +97,12 @@ async def _load_actor_context(project_id: int, target_id: int, session) -> tuple
 async def _load_feature_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
     """Load context for a single feature: self + parent + children + actors."""
     from backend.database.model import (
-        FeatureModel, FeatureRelationModel, ActorModel, FlowModel,
-        feature_actor_table, flow_feature_table,
+        ActorModel,
+        FeatureModel,
+        FeatureRelationModel,
+        FlowModel,
+        feature_actor_table,
+        flow_feature_table,
     )
 
     feature = await session.get(FeatureModel, target_id)
@@ -157,7 +161,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
 
 async def _load_flow_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
     """Load context for a single flow: self + features + steps."""
-    from backend.database.model import FlowModel, FeatureModel, FlowStepModel, flow_feature_table
+    from backend.database.model import FeatureModel, FlowModel, FlowStepModel, flow_feature_table
 
     flow = await session.get(FlowModel, target_id)
     if flow is None:
@@ -203,7 +207,7 @@ async def _load_flow_context(project_id: int, target_id: int, session) -> tuple[
 
 async def _load_business_object_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
     """Load context for a single business object: self + attributes."""
-    from backend.database.model import BusinessObjectModel, BusinessObjectAttributeModel
+    from backend.database.model import BusinessObjectAttributeModel, BusinessObjectModel
 
     bo = await session.get(BusinessObjectModel, target_id)
     if bo is None:
@@ -322,7 +326,10 @@ async def _load_projection_context(
     loaded = []
 
     from backend.database.model import (
-        ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
+        ActorModel,
+        BusinessObjectModel,
+        FeatureModel,
+        FlowModel,
     )
 
     parts = []
@@ -384,7 +391,11 @@ async def _load_projection_context(
 async def _load_workspace_context(project_id: int, session) -> tuple[str, list[str]]:
     """Load full workspace context with threshold-based summary for large projects."""
     from backend.database.model import (
-        ProjectModel, ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
+        ActorModel,
+        BusinessObjectModel,
+        FeatureModel,
+        FlowModel,
+        ProjectModel,
     )
 
     project = await session.get(ProjectModel, project_id)

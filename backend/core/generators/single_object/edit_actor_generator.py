@@ -1,7 +1,7 @@
 """EditActorGenerator — produces edit diff for an existing actor."""
 
 import json
-from typing import Dict, Any
+from typing import Any
 
 from backend.core.generators.single_object.base_edit_generator import (
     BaseEditGenerator,
@@ -11,7 +11,6 @@ from backend.core.generators.single_object.base_single_object_generator import (
     inject_generator_knowledge_context,
     serialize_prompt_data,
 )
-
 from backend.core.generators.single_object.prompts.edit_actor_prompt import (
     EDIT_ACTOR_GENERATE_PROMPT,
 )
@@ -28,7 +27,7 @@ class EditActorGenerator(BaseEditGenerator):
     target_object_type = "actor"
     editable_fields = EDITABLE_FIELDS.get("actor", [])
 
-    async def generate(self, input_data: EditGeneratorInput) -> Dict[str, Any]:
+    async def generate(self, input_data: EditGeneratorInput) -> dict[str, Any]:
         existing_actors = input_data.project_context.get("actors", [])
         existing_str = serialize_prompt_data(existing_actors)
         original_str = serialize_prompt_data(input_data.original_object)

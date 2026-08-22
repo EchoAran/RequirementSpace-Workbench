@@ -13,20 +13,20 @@ Three-Way Semantic Requirement-Space Merge Engine.
 本模块是纯函数，不依赖 FastAPI / SQLAlchemy，可独立测试。
 """
 import hashlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from backend.api.modules.version_control.domain.serializer import (
-    serialize_requirement_space,
-)
 from backend.api.modules.version_control.domain.semantic_diff import (
     COLLECTION_KEYS,
     ENTITY_TYPE_BY_COLLECTION,
-    SCALAR_FIELDS,
-    RELATION_FIELDS,
     METADATA_FIELDS,
     ORDERED_CHILD_PARENTS,
+    RELATION_FIELDS,
+    SCALAR_FIELDS,
     _display_name,
     _index_entity,
+)
+from backend.api.modules.version_control.domain.serializer import (
+    serialize_requirement_space,
 )
 
 # 冲突类型的稳定错误码
@@ -55,12 +55,12 @@ def _make_conflict(
     base_value: Any,
     target_value: Any,
     source_value: Any,
-    parent_uuid: Optional[str] = None,
-    parent_type: Optional[str] = None,
+    parent_uuid: str | None = None,
+    parent_type: str | None = None,
     **extra: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """构造一条冲突项，携带 base/target/source 三侧值供解决界面展示。"""
-    item: Dict[str, Any] = {
+    item: dict[str, Any] = {
         "conflict_id": _conflict_id(entity_uuid, path, conflict_type),
         "conflict_type": conflict_type,
         "entity_type": entity_type,
@@ -80,9 +80,9 @@ def _make_conflict(
 
 
 def _resolve_value(
-    conflict: Dict[str, Any],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-) -> Tuple[bool, Any]:
+    conflict: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+) -> tuple[bool, Any]:
     """在 resolutions 中查找冲突的解决结果，返回 (是否已解决, 所选值)。"""
     if not resolutions:
         return False, None
@@ -100,12 +100,12 @@ def _resolve_value(
 
 
 def _build_name_index(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-    source_state: Dict[str, Any],
-) -> Dict[str, Dict[str, str]]:
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
+) -> dict[str, dict[str, str]]:
     """构建 uuid → (对象类型, 展示名) 的全局索引，覆盖三侧状态（含嵌套子对象）。"""
-    index: Dict[str, Dict[str, str]] = {}
+    index: dict[str, dict[str, str]] = {}
     for state in (base_state, target_state, source_state):
         for key, entity_type in ENTITY_TYPE_BY_COLLECTION.items():
             for entity in state.get(key, []):
@@ -133,11 +133,11 @@ def _merge_field(
     entity_uuid: str,
     entity_name: str,
     path: str,
-    parent_uuid: Optional[str],
-    parent_type: Optional[str],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Optional[Dict[str, Dict[str, str]]] = None,
+    parent_uuid: str | None,
+    parent_type: str | None,
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]] | None = None,
     **extra: Any,
 ) -> Any:
     """合并单个标量/单值字段：单侧改动自动采用，两侧不同则冲突。"""
@@ -168,12 +168,12 @@ def _merge_relation_set(
     entity_type: str,
     entity_uuid: str,
     entity_name: str,
-    parent_uuid: Optional[str],
-    parent_type: Optional[str],
-    name_index: Dict[str, Dict[str, str]],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-) -> List[str]:
+    parent_uuid: str | None,
+    parent_type: str | None,
+    name_index: dict[str, dict[str, str]],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+) -> list[str]:
     """合并关系集合字段：两侧新增取并集，同一元素一侧增另一侧删产生相反操作冲突。"""
     base_set = set(base_value or [])
     target_set = set(target_value or [])
@@ -217,19 +217,19 @@ def _merge_relation_set(
 
 def _merge_entity(
     entity_type: str,
-    base: Dict[str, Any],
-    target: Dict[str, Any],
-    source: Dict[str, Any],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
-    parent_uuid: Optional[str] = None,
-    parent_type: Optional[str] = None,
-) -> Dict[str, Any]:
+    base: dict[str, Any],
+    target: dict[str, Any],
+    source: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
+    parent_uuid: str | None = None,
+    parent_type: str | None = None,
+) -> dict[str, Any]:
     """合并单个实体（三者都存在）：标量字段、关系集合、单值关系逐项应用三方规则。"""
     entity_uuid = target.get("logical_uuid") or base.get("logical_uuid")
     entity_name = _display_name(target) or _display_name(base)
-    merged: Dict[str, Any] = {"logical_uuid": entity_uuid}
+    merged: dict[str, Any] = {"logical_uuid": entity_uuid}
 
     for field in SCALAR_FIELDS.get(entity_type, []):
         merged[field] = _merge_field(
@@ -273,15 +273,15 @@ def _merge_entity(
 def _merge_ordered_items(
     child_type: str,
     list_key: str,
-    base_list: List[Dict[str, Any]],
-    target_list: List[Dict[str, Any]],
-    source_list: List[Dict[str, Any]],
-    parent_uuid: Optional[str],
-    parent_type: Optional[str],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
-) -> List[Dict[str, Any]]:
+    base_list: list[dict[str, Any]],
+    target_list: list[dict[str, Any]],
+    source_list: list[dict[str, Any]],
+    parent_uuid: str | None,
+    parent_type: str | None,
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
     """合并有序子对象集合，并对齐最终位置。
 
     位置规则（阶段 6）：
@@ -294,7 +294,7 @@ def _merge_ordered_items(
     target_map = {e["logical_uuid"]: e for e in target_list}
     source_map = {e["logical_uuid"]: e for e in source_list}
 
-    kept: Dict[str, Dict[str, Any]] = {}
+    kept: dict[str, dict[str, Any]] = {}
     for entity_uuid in sorted(set(base_map) | set(target_map) | set(source_map)):
         b = base_map.get(entity_uuid)
         t = target_map.get(entity_uuid)
@@ -443,14 +443,14 @@ def _merge_ordered_items(
 
 
 def _merge_metadata(
-    base: Dict[str, Any],
-    target: Dict[str, Any],
-    source: Dict[str, Any],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    base: dict[str, Any],
+    target: dict[str, Any],
+    source: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+) -> dict[str, Any]:
     """合并项目级元数据（用户需求、Kano 状态、阶段解锁）。"""
-    merged: Dict[str, Any] = {}
+    merged: dict[str, Any] = {}
     for field, _kind in METADATA_FIELDS.items():
         merged[field] = _merge_field(
             field,
@@ -465,24 +465,24 @@ def _merge_metadata(
 
 
 def _merge_feature_relations(
-    base_list: List[Dict[str, Any]],
-    target_list: List[Dict[str, Any]],
-    source_list: List[Dict[str, Any]],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
-) -> List[Dict[str, Any]]:
+    base_list: list[dict[str, Any]],
+    target_list: list[dict[str, Any]],
+    source_list: list[dict[str, Any]],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
     """合并功能树边集合：边以 logical_uuid 合并，位置按父功能分组重排。"""
     base_map = {e["logical_uuid"]: e for e in base_list}
     target_map = {e["logical_uuid"]: e for e in target_list}
     source_map = {e["logical_uuid"]: e for e in source_list}
 
-    def _key(rel: Dict[str, Any]) -> Tuple[str, str]:
+    def _key(rel: dict[str, Any]) -> tuple[str, str]:
         return (rel.get("parent_feature_logical_uuid", ""), rel.get("child_feature_logical_uuid", ""))
 
     # 同一 (parent, child) 边被两侧以不同 logical_uuid 新增 → 冲突，避免合并后重复边。
-    target_key_map: Dict[Tuple[str, str], str] = {}
-    source_key_map: Dict[Tuple[str, str], str] = {}
+    target_key_map: dict[tuple[str, str], str] = {}
+    source_key_map: dict[tuple[str, str], str] = {}
     for rel in target_list:
         target_key_map.setdefault(_key(rel), rel["logical_uuid"])
     for rel in source_list:
@@ -508,7 +508,7 @@ def _merge_feature_relations(
             source_map.pop(s_uuid, None)  # 占位保留 target 边
 
     all_uuids = sorted(set(base_map) | set(target_map) | set(source_map))
-    kept: Dict[str, Dict[str, Any]] = {}
+    kept: dict[str, dict[str, Any]] = {}
     for entity_uuid in all_uuids:
         b = base_map.get(entity_uuid)
         t = target_map.get(entity_uuid)
@@ -557,11 +557,11 @@ def _merge_feature_relations(
         )
 
     # 按父功能分组，组内按 position 重排并重编号。
-    by_parent: Dict[str, List[str]] = {}
+    by_parent: dict[str, list[str]] = {}
     for entity_uuid, rel in kept.items():
         by_parent.setdefault(rel.get("parent_feature_logical_uuid", ""), []).append(entity_uuid)
 
-    merged: List[Dict[str, Any]] = []
+    merged: list[dict[str, Any]] = []
     for parent_uuid in sorted(by_parent):
         uuids = by_parent[parent_uuid]
         # 各组须按 position 排序，位置比较才有意义（避免按 uuid 字典序误判插入点）。
@@ -590,20 +590,20 @@ def _merge_feature_relations(
 
 def _merge_collection(
     key: str,
-    base_list: List[Dict[str, Any]],
-    target_list: List[Dict[str, Any]],
-    source_list: List[Dict[str, Any]],
+    base_list: list[dict[str, Any]],
+    target_list: list[dict[str, Any]],
+    source_list: list[dict[str, Any]],
     entity_type: str,
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
-) -> List[Dict[str, Any]]:
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
     """合并顶层集合（参与者、功能、场景、业务对象、流程、范围）。"""
     base_map = {e["logical_uuid"]: e for e in base_list}
     target_map = {e["logical_uuid"]: e for e in target_list}
     source_map = {e["logical_uuid"]: e for e in source_list}
 
-    kept: List[Dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
     for entity_uuid in sorted(set(base_map) | set(target_map) | set(source_map)):
         b = base_map.get(entity_uuid)
         t = target_map.get(entity_uuid)
@@ -664,13 +664,13 @@ def _merge_collection(
 
 
 def _merge_ordered_parent_children(
-    merged_raw: Dict[str, Any],
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-    source_state: Dict[str, Any],
-    resolutions: Optional[Dict[str, Dict[str, Any]]],
-    conflicts: List[Dict[str, Any]],
-    name_index: Dict[str, Dict[str, str]],
+    merged_raw: dict[str, Any],
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+    name_index: dict[str, dict[str, str]],
 ) -> None:
     """为含有序子对象的父对象（scenario.acceptance_criteria、flow.steps）合并子集合。"""
     for child_type, (parent_type, list_key) in ORDERED_CHILD_PARENTS.items():
@@ -706,17 +706,17 @@ def _parent_collection_key(parent_type: str) -> str:
     raise ValueError(f"Unknown parent type '{parent_type}'")
 
 
-def _canonicalize(merged_raw: Dict[str, Any]) -> Dict[str, Any]:
+def _canonicalize(merged_raw: dict[str, Any]) -> dict[str, Any]:
     """把合并结果经确定性序列化器归一化，保证与 Commit state_json 同构可哈希。"""
     return serialize_requirement_space(merged_raw)
 
 
 def _build_auto_summary(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-    source_state: Dict[str, Any],
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
     conflict_count: int,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """汇总合并统计：触及对象数、自动合并数、冲突数。"""
     changed = 0
     auto = 0
@@ -730,7 +730,7 @@ def _build_auto_summary(
             s = source_map.get(uuid)
             if (t is not None and t != b) or (s is not None and s != b):
                 changed += 1
-                if t == s or t == b or s == b:
+                if t in (s, b) or s == b:
                     auto += 1
     for field in METADATA_FIELDS:
         b = base_state.get("project_metadata", {}).get(field)
@@ -738,7 +738,7 @@ def _build_auto_summary(
         s = source_state.get("project_metadata", {}).get(field)
         if (t != b) or (s != b):
             changed += 1
-            if t == s or t == b or s == b:
+            if t in (s, b) or s == b:
                 auto += 1
     return {
         "total_changed": changed,
@@ -748,11 +748,11 @@ def _build_auto_summary(
 
 
 def compute_three_way_merge(
-    base_state: Dict[str, Any],
-    target_state: Dict[str, Any],
-    source_state: Dict[str, Any],
-    resolutions: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """
     计算 base/target/source 三方语义合并。
 
@@ -763,9 +763,9 @@ def compute_three_way_merge(
     :return: {"merged_state": 规范化状态, "conflicts": 未解决冲突列表, "auto_merged": 统计}
     """
     name_index = _build_name_index(base_state, target_state, source_state)
-    conflicts: List[Dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
 
-    merged_raw: Dict[str, Any] = {
+    merged_raw: dict[str, Any] = {
         "project_metadata": _merge_metadata(
             base_state.get("project_metadata", {}),
             target_state.get("project_metadata", {}),

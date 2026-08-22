@@ -1,14 +1,14 @@
 from backend.core.detectors import WhatIssueDetector
 from backend.core.findings.finding_factory import make_finding
-from backend.schemas import Finding, FindingType, BlockingScope, IssueStage, IssueSeverity
+from backend.schemas import BlockingScope, Finding, FindingType, IssueSeverity, IssueStage
 
 
 class WhatFindingPolicy:
     def __init__(self):
         self.detector = WhatIssueDetector()
 
-    async def get_findings(self, project_id: int, session) -> list[Finding]:
-        issues = await self.detector.detect(project_id, session)
+    async def get_findings(self, project_id: int, session, workspace_id: int | None = None) -> list[Finding]:
+        issues = await self.detector.detect(project_id, session, workspace_id=workspace_id)
         findings: list[Finding] = []
 
         # Separate FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO for aggregation
@@ -35,9 +35,7 @@ class WhatFindingPolicy:
             finding_type = FindingType.ISSUE
             blocking_scope = BlockingScope.NONE
 
-            if issue.code in ("ACTOR_WITHOUT_FEATURE", "DUPLICATE_SCENARIO_NAME"):
-                finding_type = FindingType.QUALITY_HINT
-            elif issue.code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
+            if issue.code in ("ACTOR_WITHOUT_FEATURE", "DUPLICATE_SCENARIO_NAME") or issue.code == "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA":
                 finding_type = FindingType.QUALITY_HINT
             elif issue.code in ("LEAF_FEATURE_WITHOUT_ACTOR", "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS"):
                 finding_type = FindingType.ISSUE

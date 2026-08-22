@@ -6,7 +6,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from backend.core.security import sanitize_message as _sanitize_security_message
 
-
 SENSITIVE_FIELD_NAMES = {
     "api_key",
     "llm_api_key",

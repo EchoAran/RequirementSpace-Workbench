@@ -4,8 +4,8 @@ Each edit generator produces a diff describing changes to an existing object,
 rather than a full object definition like add-mode generators.
 """
 
-from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput

@@ -1,8 +1,8 @@
 from contextvars import ContextVar
-from typing import Optional
 from dataclasses import dataclass
 
-from backend.core.locale import ContentLocaleSource, DEFAULT_LOCALE, SupportedLocale
+from backend.core.locale import DEFAULT_LOCALE, ContentLocaleSource, SupportedLocale
+
 
 @dataclass
 class LLMRequestContext:
@@ -12,7 +12,7 @@ class LLMRequestContext:
     content_locale: SupportedLocale = DEFAULT_LOCALE.value
     content_locale_source: ContentLocaleSource = "default"
 
-current_llm_context: ContextVar[Optional[LLMRequestContext]] = ContextVar("current_llm_context", default=None)
+current_llm_context: ContextVar[LLMRequestContext | None] = ContextVar("current_llm_context", default=None)
 is_web_request_ctx: ContextVar[bool] = ContextVar("is_web_request", default=False)
 
 class LLMContextMissingError(RuntimeError):

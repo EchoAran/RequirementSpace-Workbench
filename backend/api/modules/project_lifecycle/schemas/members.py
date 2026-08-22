@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Optional
+
 from backend.api.base_schema import CamelModel
+
 
 class ProjectMemberResponse(CamelModel):
     member_id: int
@@ -8,7 +9,7 @@ class ProjectMemberResponse(CamelModel):
     email: str
     role: str
     status: str
-    joined_at: Optional[datetime] = None
+    joined_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

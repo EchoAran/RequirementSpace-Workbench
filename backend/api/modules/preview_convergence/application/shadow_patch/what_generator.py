@@ -1,7 +1,7 @@
-from typing import Any
 
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
+
 
 async def _generate_actor_nodes(
     patch: dict,
@@ -250,7 +250,7 @@ def _append_feature_nodes(
         feature_node.featureId: feature_data["temp_id"]
         for feature_data, feature_node in zip(
             patch["features_added"],
-            feature_nodes,
+            feature_nodes, strict=False,
         )
     }
     _link_feature_tree(feature_nodes)

@@ -9,6 +9,7 @@ from backend.database.model import (
 
 from .common import _CommitIdMaps
 
+
 def _decode_scope_pictures(scope_data: dict) -> tuple[bytes | None, bytes | None]:
     from backend.services.binary_conversion_service import (
         BinaryConversionService,

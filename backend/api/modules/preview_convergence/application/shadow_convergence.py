@@ -6,22 +6,23 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .shadow_validator import PreviewShadowValidator
+from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
+from backend.core.llm_context import LLMRequestContext, current_llm_context, is_web_request_ctx
+from backend.core.locale import DEFAULT_LOCALE, ContentLocaleSource, SupportedLocale
+from backend.database.database import AsyncSessionLocal
+from backend.database.model import (
+    PreviewShadowDraftModel,
+    ProjectModel,
+    beijing_now,
+)
+
 from .shadow_merger import PreviewShadowMerger
 from .shadow_project_creator import (
-    build_project_snapshot,
+    build_project_snapshot as build_project_snapshot,
     calculate_stable_snapshot_hash,
     remap_snapshot_to_pydantic,
 )
-from backend.database.database import AsyncSessionLocal
-from backend.database.model import (
-    ProjectModel,
-    PreviewShadowDraftModel,
-    beijing_now,
-)
-from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
-from backend.core.llm_context import current_llm_context, is_web_request_ctx, LLMRequestContext
-from backend.core.locale import DEFAULT_LOCALE, ContentLocaleSource, SupportedLocale
+from .shadow_validator import PreviewShadowValidator
 
 
 class PreviewShadowConvergenceService:
@@ -41,7 +42,7 @@ class PreviewShadowConvergenceService:
         feature_nodes: list,
         leaf_feature_nodes: list,
         user_feedback: str = "",
-        temp_feat_to_int: dict[str, int] = None,
+        temp_feat_to_int: dict[str, int] | None = None,
     ) -> list[dict]:
         return await PreviewShadowMerger.generate_scopes_for_features(
             scope_service=scope_service,
@@ -283,7 +284,7 @@ class PreviewShadowConvergenceService:
                 if draft:
                     draft.status = "failed"
                     draft.error_message = (
-                        f"Convergence failed: {str(error)}\n{error_trace}"
+                        f"Convergence failed: {error!s}\n{error_trace}"
                     )
                     await session.commit()
         except Exception:
@@ -322,6 +323,6 @@ class PreviewShadowConvergenceService:
         draft = draft_res.scalar_one_or_none()
         if not draft:
             raise ValueError("shadow_draft_not_found")
-        
+
         draft.status = "discarded"
         draft.discarded_at = beijing_now()

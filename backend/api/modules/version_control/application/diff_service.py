@@ -5,47 +5,46 @@ Semantic Diff Application Service.
 """
 import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy.orm import Session
 
-from backend.api.modules.version_control.observability import (
-    monitor_vc_operation,
-    log_vc_duration,
-)
-from backend.core.logging.events import VC_DIFF_COMPLETED, VC_DIFF_FAILED
-
-from backend.database.model import RequirementCommitModel
 from backend.api.modules.version_control.application.branch_service import (
     resolve_branch_context,
 )
 from backend.api.modules.version_control.application.commit_service import (
     resolve_commit_in_project,
 )
-from backend.api.modules.version_control.application.workspace_serializer import (
-    serialize_workspace,
-)
 from backend.api.modules.version_control.application.errors import (
     BranchNotFoundError,
     CommitNotFoundError,
     InvalidDiffRefError,
 )
-from backend.api.modules.version_control.domain.serializer import CURRENT_SCHEMA_VERSION
+from backend.api.modules.version_control.application.workspace_serializer import (
+    serialize_workspace,
+)
 from backend.api.modules.version_control.domain.semantic_diff import (
     COLLECTION_KEYS,
     compute_semantic_diff,
     find_entity_meta,
 )
+from backend.api.modules.version_control.domain.serializer import CURRENT_SCHEMA_VERSION
+from backend.api.modules.version_control.observability import (
+    log_vc_duration,
+    monitor_vc_operation,
+)
 from backend.api.modules.version_control.schemas import (
-    DiffRefInfo,
     DiffEntry,
+    DiffRefInfo,
     DiffResult,
     DiffSummary,
     EntityDiffResponse,
 )
+from backend.core.logging.events import VC_DIFF_COMPLETED, VC_DIFF_FAILED
+from backend.database.model import RequirementCommitModel
 
 
-def _empty_state() -> Dict[str, Any]:
+def _empty_state() -> dict[str, Any]:
     """构造空项目规范化状态，用于无提交分支等没有可比基线的场景。"""
     return {
         "schema_version": CURRENT_SCHEMA_VERSION,
@@ -64,7 +63,7 @@ def _empty_state() -> Dict[str, Any]:
     }
 
 
-def _parse_ref(ref: str) -> Tuple[str, str]:
+def _parse_ref(ref: str) -> tuple[str, str]:
     """解析 ref 字符串为 (kind, value)，kind ∈ {commit, branch, workspace}。"""
     if ":" in ref:
         kind, value = ref.split(":", 1)
@@ -75,10 +74,10 @@ def _parse_ref(ref: str) -> Tuple[str, str]:
 
 def _branch_info(
     branch,
-    permissions: Dict[str, Any],
+    permissions: dict[str, Any],
     kind: str,
     label: str,
-    public_id: Optional[str] = None,
+    public_id: str | None = None,
 ) -> DiffRefInfo:
     """从分支对象构造 Diff 的 ref 元信息。"""
     return DiffRefInfo(
@@ -95,7 +94,7 @@ def resolve_state(
     db: Session,
     project_id: int,
     ref: str,
-) -> Tuple[Dict[str, Any], DiffRefInfo]:
+) -> tuple[dict[str, Any], DiffRefInfo]:
     """按 ref 解析一份规范化状态与元信息。"""
     kind, value = _parse_ref(ref)
 
@@ -134,9 +133,9 @@ def resolve_state(
 def _resolve_base_state(
     db: Session,
     project_id: int,
-    ref: Optional[str],
-    branch_ref: Optional[str],
-) -> Tuple[Dict[str, Any], DiffRefInfo]:
+    ref: str | None,
+    branch_ref: str | None,
+) -> tuple[dict[str, Any], DiffRefInfo]:
     """解析 Diff 基线：优先显式 ref，缺省为分支 head 提交。"""
     if ref:
         return resolve_state(db, project_id, ref)
@@ -157,9 +156,9 @@ def _resolve_base_state(
 def _resolve_target_state(
     db: Session,
     project_id: int,
-    ref: Optional[str],
-    branch_ref: Optional[str],
-) -> Tuple[Dict[str, Any], DiffRefInfo]:
+    ref: str | None,
+    branch_ref: str | None,
+) -> tuple[dict[str, Any], DiffRefInfo]:
     """解析 Diff 目标：优先显式 ref，缺省为分支当前工作区（未提交变更）。"""
     if ref:
         return resolve_state(db, project_id, ref)
@@ -173,11 +172,11 @@ def _resolve_target_state(
 def get_diff(
     db: Session,
     project_id: int,
-    base_ref: Optional[str] = None,
-    target_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
-    entity_type: Optional[str] = None,
-    change_type: Optional[str] = None,
+    base_ref: str | None = None,
+    target_ref: str | None = None,
+    branch_ref: str | None = None,
+    entity_type: str | None = None,
+    change_type: str | None = None,
     limit: int = 200,
     offset: int = 0,
 ) -> DiffResult:
@@ -193,7 +192,7 @@ def get_diff(
         target_state, target_info = _resolve_target_state(db, project_id, target_ref, branch_ref)
 
         result = compute_semantic_diff(base_state, target_state)
-        entries: List[Dict[str, Any]] = result["entries"]
+        entries: list[dict[str, Any]] = result["entries"]
         if entity_type:
             entries = [entry for entry in entries if entry["entity_type"] == entity_type]
         if change_type:
@@ -226,9 +225,9 @@ def get_diff(
 
 
 def _find_entity_by_uuid(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     entity_uuid: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """在规范化状态中按 logical_uuid 查找对象（含嵌套子对象与项目元数据）。"""
     if entity_uuid == "project":
         return {"project_metadata": state.get("project_metadata", {})}
@@ -255,9 +254,9 @@ def get_entity_diff(
     db: Session,
     project_id: int,
     entity_uuid: str,
-    base_ref: Optional[str] = None,
-    target_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
+    base_ref: str | None = None,
+    target_ref: str | None = None,
+    branch_ref: str | None = None,
 ) -> EntityDiffResponse:
     """
     返回单个对象的差异详情：对象自身与其子对象的全部变更条目，以及 base/target 的完整值。

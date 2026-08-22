@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.prompts import flows_perceive_prompt
 from backend.core.perceptrons.base_perceptron import BasePerceptron, PerceptronInput
+from backend.core.perceptrons.prompts import flows_perceive_prompt
 from backend.schemas import FeatureNode, FlowNode
 
 
@@ -11,11 +10,11 @@ from backend.schemas import FeatureNode, FlowNode
 @dataclass
 class FlowsPerceptronInput(PerceptronInput):
     user_requirements: str
-    features: List[FeatureNode]
-    flows: List[FlowNode]
+    features: list[FeatureNode]
+    flows: list[FlowNode]
 
 class FlowsPerceptron(BasePerceptron[FlowsPerceptronInput]):
-    async def perceive(self, input_data: FlowsPerceptronInput) -> Dict:
+    async def perceive(self, input_data: FlowsPerceptronInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         features_payload = FeatureNode.schema(

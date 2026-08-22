@@ -1,21 +1,21 @@
 import logging
 
-from fastapi import APIRouter, Depends, Response, Cookie
+from fastapi import APIRouter, Cookie, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.modules.auth_account.application.auth_service import AuthService
+from backend.api.modules.auth_account.schemas.auth import LoginRequest, RegisterRequest, UserResponse
 from backend.core.config import (
+    AUTH_COOKIE_DOMAIN,
+    AUTH_COOKIE_SAMESITE,
     AUTH_COOKIE_SECURE,
     AUTH_SESSION_EXPIRE_DAYS,
-    AUTH_COOKIE_SAMESITE,
-    AUTH_COOKIE_DOMAIN,
 )
-from backend.database.database import get_session
-from backend.database.model import UserModel
-from backend.api.modules.auth_account.schemas.auth import RegisterRequest, LoginRequest, UserResponse
-from backend.api.modules.auth_account.application.auth_service import AuthService
-from backend.api.dependencies.auth import get_current_user
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import AUTH_LOGIN_FAILED, AUTH_LOGIN_SUCCEEDED
+from backend.database.database import get_session
+from backend.database.model import UserModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = get_logger(__name__)

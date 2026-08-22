@@ -56,28 +56,24 @@ function triggerUnauthorized() {
 export async function request<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const { params, headers, body, timeout, ...restOptions } = options;
 
-  // 0. 注入分支请求上下文：调用点未显式指定 branch 时，自动携带当前激活分支。
+  // 0. 注入分支请求上下文：支持 url 自带 query 或 params 传参，安全合并无冗余问号。
+  const [basePath, existingQuery] = url.split('?');
+  const searchParams = new URLSearchParams(existingQuery || '');
+
   const mergedParams: Record<string, unknown> = { ...(params || {}) };
-  if (activeBranch && mergedParams.branch === undefined) {
+  if (activeBranch && mergedParams.branch === undefined && !searchParams.has('branch')) {
     mergedParams.branch = activeBranch;
   }
 
-  // 1. Build Query String if params exist
-  let queryString = '';
-  if (Object.keys(mergedParams).length > 0) {
-    const searchParams = new URLSearchParams();
-    Object.entries(mergedParams).forEach(([key, val]) => {
-      if (val !== undefined && val !== null) {
-        searchParams.append(key, String(val));
-      }
-    });
-    const qs = searchParams.toString();
-    if (qs) {
-      queryString = `?${qs}`;
+  Object.entries(mergedParams).forEach(([key, val]) => {
+    if (val !== undefined && val !== null) {
+      searchParams.set(key, String(val));
     }
-  }
+  });
 
-  const fullUrl = `${API_BASE_URL}${url}${queryString}`;
+  const qs = searchParams.toString();
+  const queryString = qs ? `?${qs}` : '';
+  const fullUrl = `${API_BASE_URL}${basePath}${queryString}`;
 
   // 2. Set default headers
   const defaultHeaders: Record<string, string> = {

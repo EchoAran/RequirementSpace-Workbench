@@ -1,4 +1,5 @@
 ﻿import logging
+
 from sqlalchemy import select
 
 from backend.core.llm_protected_inputs import collect_protected_texts

@@ -1,19 +1,19 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.prompts import features_perceive_prompt
 from backend.core.perceptrons.base_perceptron import BasePerceptron, PerceptronInput
+from backend.core.perceptrons.prompts import features_perceive_prompt
 from backend.schemas import FeatureNode
+
 
 # 为系统功能感知器定义专属的输入类型
 @dataclass
 class FeaturesPerceptronInput(PerceptronInput):
     user_requirements: str
-    features: List[FeatureNode]
+    features: list[FeatureNode]
 
 class FeaturesPerceptron(BasePerceptron[FeaturesPerceptronInput]):
-    async def perceive(self, input_data: FeaturesPerceptronInput) -> Dict:
+    async def perceive(self, input_data: FeaturesPerceptronInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         features_payload = FeatureNode.schema(

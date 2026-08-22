@@ -1,7 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from .shadow_patch_applier import PreviewShadowPatchApplier
-from .shadow_scope_generator import PreviewShadowScopeGenerator
 from .shadow_patch_generator import PreviewShadowPatchGenerator
+from .shadow_scope_generator import PreviewShadowScopeGenerator
 
 
 class PreviewShadowMerger:
@@ -16,7 +17,7 @@ class PreviewShadowMerger:
         feature_nodes: list,
         leaf_feature_nodes: list,
         user_feedback: str = "",
-        temp_feat_to_int: dict[str, int] = None
+        temp_feat_to_int: dict[str, int] | None = None
     ) -> list[dict]:
         return await PreviewShadowScopeGenerator.generate_scopes_for_features(
             scope_service=scope_service,

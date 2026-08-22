@@ -1,10 +1,11 @@
+from fastapi import BackgroundTasks
 from sqlalchemy import select
 
-from fastapi import BackgroundTasks
-
-from backend.api.modules.diagnosis_quality.perception.application.job import PerceptionJobService
 from backend.api.modules.diagnosis_quality.perception.application.invalidation import (
     mark_perception_jobs_stale,
+)
+from backend.api.modules.diagnosis_quality.perception.application.job import (
+    PerceptionJobService,
 )
 from backend.core.suggestions import (
     HowSuggestionPolicy,
@@ -52,6 +53,7 @@ class NextSuggestionService:
         public_project_id: str,
         include_perception: bool,
         transition_code: str | None,
+        workspace_id: int | None = None,
     ):
         if not include_perception and suggestion.code == transition_code:
             active_slot = (
@@ -61,6 +63,7 @@ class NextSuggestionService:
                     stage=stage,
                     session=session,
                     public_project_id=public_project_id,
+                    workspace_id=workspace_id,
                 )
             )
             if active_slot is not None:
@@ -77,6 +80,7 @@ class NextSuggestionService:
                     session=session,
                     background_tasks=background_tasks,
                     public_project_id=public_project_id,
+                    workspace_id=workspace_id,
                 )
             )
             if perception is not None:
@@ -93,6 +97,7 @@ class NextSuggestionService:
                     session=session,
                     background_tasks=background_tasks,
                     public_project_id=public_project_id,
+                    workspace_id=workspace_id,
                 )
             )
             if perception is not None:
@@ -135,11 +140,13 @@ class NextSuggestionService:
         background_tasks: BackgroundTasks | None,
         public_project_id: str,
         include_perception: bool,
+        workspace_id: int | None = None,
     ) -> dict | None:
         suggestion = await policy.get_next(
             project_id=project_id,
             session=session,
             public_project_id=public_project_id,
+            workspace_id=workspace_id,
         )
         transition_code = {
             "what": "ENTER_HOW",
@@ -155,10 +162,11 @@ class NextSuggestionService:
             public_project_id=public_project_id,
             include_perception=include_perception,
             transition_code=transition_code,
+            workspace_id=workspace_id,
         )
         if (
             suggestion.code == transition_code
-            and await self._is_stage_advanced(project_id, stage, session)
+            and await self._is_stage_advanced(project_id, stage, session, workspace_id=workspace_id)
         ):
             return None
         result = suggestion.to_dict()
@@ -173,11 +181,12 @@ class NextSuggestionService:
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
         include_perception: bool = False,
+        workspace_id: int | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
         pub_id = public_project_id or str(project_id)
 
-        if not await self._is_stage_visible(project_id, stage, session):
+        if not await self._is_stage_visible(project_id, stage, session, workspace_id=workspace_id):
             return {
                 "project_id": pub_id,
                 "stage": stage,
@@ -205,6 +214,7 @@ class NextSuggestionService:
                 background_tasks=background_tasks,
                 public_project_id=pub_id,
                 include_perception=include_perception,
+                workspace_id=workspace_id,
             )
 
         return {
@@ -220,12 +230,13 @@ class NextSuggestionService:
         session,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
         await self._ensure_project_exists(project_id, session)
         pub_id = public_project_id or str(project_id)
 
-        if not await self._is_stage_visible(project_id, stage, session):
+        if not await self._is_stage_visible(project_id, stage, session, workspace_id=workspace_id):
             return {
                 "project_id": pub_id,
                 "stage": stage,
@@ -243,6 +254,7 @@ class NextSuggestionService:
             project_id=project_id,
             stages={stage},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return await self.get_next_suggestion(
@@ -252,6 +264,7 @@ class NextSuggestionService:
             background_tasks=background_tasks,
             public_project_id=pub_id,
             include_perception=True,
+            workspace_id=workspace_id,
         )
 
     @staticmethod
@@ -285,15 +298,26 @@ class NextSuggestionService:
         project_id: int,
         stage: str,
         session,
+        workspace_id: int | None = None,
     ) -> bool:
-        from backend.database.model import ProjectModel
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
 
-        project_result = await session.execute(
-            select(ProjectModel.unlocked_stages).where(
-                ProjectModel.id == project_id,
+        unlocked_text = None
+        if workspace_id is not None:
+            ws_res = await session.execute(
+                select(BranchWorkspaceModel.unlocked_stages).where(
+                    BranchWorkspaceModel.id == workspace_id,
+                )
             )
-        )
-        unlocked_text = project_result.scalar_one_or_none()
+            unlocked_text = ws_res.scalar_one_or_none()
+
+        if unlocked_text is None:
+            project_result = await session.execute(
+                select(ProjectModel.unlocked_stages).where(
+                    ProjectModel.id == project_id,
+                )
+            )
+            unlocked_text = project_result.scalar_one_or_none()
 
         if unlocked_text is None:
             raise ValueError("project_not_found")
@@ -320,25 +344,47 @@ class NextSuggestionService:
             return "what" in unlocked
         if stage == "scope":
             return "how" in unlocked
-        if stage == "preview":
-            return True
-
-        return False
+        return stage == "preview"
 
     @staticmethod
-    async def _is_stage_advanced(project_id: int, stage: str, session) -> bool:
-        from backend.database.model import ProjectModel
+    async def _is_stage_advanced(
+        project_id: int,
+        stage: str,
+        session,
+        workspace_id: int | None = None,
+    ) -> bool:
+        next_stage_map = {
+            "what": "how",
+            "how": "scope",
+            "scope": "preview",
+        }
+        next_stage = next_stage_map.get(stage)
+        if not next_stage:
+            return False
 
-        result = await session.execute(
-            select(ProjectModel.unlocked_stages).where(ProjectModel.id == project_id)
-        )
-        unlocked_text = result.scalar_one_or_none()
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
+
+        unlocked_text = None
+        if workspace_id is not None:
+            ws_res = await session.execute(
+                select(BranchWorkspaceModel.unlocked_stages).where(
+                    BranchWorkspaceModel.id == workspace_id,
+                )
+            )
+            unlocked_text = ws_res.scalar_one_or_none()
+
+        if unlocked_text is None:
+            result = await session.execute(
+                select(ProjectModel.unlocked_stages).where(ProjectModel.id == project_id)
+            )
+            unlocked_text = result.scalar_one_or_none()
+
         if unlocked_text is None:
             raise ValueError("project_not_found")
         unlocked = {
             item.strip() for item in unlocked_text.split(",") if item.strip()
         }
-        return stage in unlocked
+        return next_stage in unlocked
 
     @staticmethod
     def _build_locked_stage_suggestion(

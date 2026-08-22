@@ -3,32 +3,33 @@ Branch Application Service.
 负责分支的生命周期管理（创建、列表、详情、重命名、删除）与分支上下文解析。
 基于 SQLAlchemy Session 提供高内聚的同步领域函数。
 """
-from typing import Any, Dict, List, Optional, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from typing import Any
 
-from backend.database.model import (
-    ProjectModel,
-    ProjectMemberModel,
-    RequirementBranchModel,
-    RequirementCommitModel,
-    BranchWorkspaceModel,
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from backend.api.modules.version_control.application.workspace_restoration import (
+    copy_workspace,
+    restore_workspace_from_state,
 )
 from backend.api.modules.version_control.schemas import (
     BranchCreateRequest,
-    BranchUpdateRequest,
-    BranchSummaryResponse,
     BranchDetailResponse,
     BranchPermissions,
+    BranchSummaryResponse,
+    BranchUpdateRequest,
     WorkspaceDirtySummary,
 )
-from backend.api.modules.version_control.application.workspace_restoration import (
-    restore_workspace_from_state,
-    copy_workspace,
+from backend.database.model import (
+    BranchWorkspaceModel,
+    ProjectMemberModel,
+    ProjectModel,
+    RequirementBranchModel,
+    RequirementCommitModel,
 )
 
 
-def _can_legacy_write(db: Session, project_id: int, user_id: Optional[int]) -> bool:
+def _can_legacy_write(db: Session, project_id: int, user_id: int | None) -> bool:
     """判断未迁移项目（无 main 分支）的过渡期写权限：owner/admin/editor 可写，reviewer/viewer 只读。
 
     该判断对齐版本控制引入前 require_project_role("editor") 的语义，避免绕过角色限制。
@@ -50,14 +51,14 @@ def _can_legacy_write(db: Session, project_id: int, user_id: Optional[int]) -> b
 def resolve_branch_context(
     db: Session,
     project_id: int,
-    branch_ref: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> Tuple[Optional[RequirementBranchModel], Optional[BranchWorkspaceModel], Dict[str, Any]]:
+    branch_ref: str | None = None,
+    user_id: int | None = None,
+) -> tuple[RequirementBranchModel | None, BranchWorkspaceModel | None, dict[str, Any]]:
     """
     根据请求中的 branch_ref (支持 public_id, id, name) 解析对应的分支与 BranchWorkspace。
     如果未传入 branch_ref，则默认回退至 main 主分支。
     """
-    branch: Optional[RequirementBranchModel] = None
+    branch: RequirementBranchModel | None = None
     from sqlalchemy.orm import joinedload
 
     if branch_ref is not None and str(branch_ref).strip() != "":
@@ -105,12 +106,19 @@ def resolve_branch_context(
         )
     ).first()
 
+    if not workspace:
+        raise ValueError(
+            f"BranchWorkspace not found for branch '{branch.name}' (id: {branch.id}) in project {project_id}"
+        )
+
     # 查找用户的项目角色与写/增/删权限
     is_owner_or_admin = False
+    is_editor_or_above = False
     if user_id is not None:
         project = db.get(ProjectModel, project_id)
         if project and project.owner_user_id == user_id:
             is_owner_or_admin = True
+            is_editor_or_above = True
         else:
             from backend.database.model import ProjectMemberModel
             member = db.scalars(
@@ -119,25 +127,31 @@ def resolve_branch_context(
                     ProjectMemberModel.user_id == user_id,
                 )
             ).first()
-            if member and member.role in ("owner", "admin"):
-                is_owner_or_admin = True
+            if member:
+                if member.role in ("owner", "admin"):
+                    is_owner_or_admin = True
+                    is_editor_or_above = True
+                elif member.role == "editor":
+                    is_editor_or_above = True
 
     is_author = (user_id is not None and branch.created_by_user_id == user_id)
+    is_protected_branch = bool(branch.is_protected or branch.is_default or branch.name == "main")
 
-    if branch.is_protected or branch.is_default or branch.name == "main":
+    if is_protected_branch:
         can_write = False
         can_delete = False
         can_rename = False
     else:
-        can_write = is_owner_or_admin or is_author
-        can_delete = is_owner_or_admin or is_author
-        can_rename = is_owner_or_admin or is_author
+        # 可写条件必须同时满足“角色允许写（editor 及以上）”和“是作者或 admin/owner”
+        can_write = is_editor_or_above and (is_owner_or_admin or is_author)
+        can_delete = is_editor_or_above and (is_owner_or_admin or is_author)
+        can_rename = is_editor_or_above and (is_owner_or_admin or is_author)
 
     permissions = {
         "can_write": can_write,
         "can_delete": can_delete,
         "can_rename": can_rename,
-        "is_protected": branch.is_protected or branch.is_default or branch.name == "main",
+        "is_protected": is_protected_branch,
     }
 
     return branch, workspace, permissions
@@ -145,8 +159,8 @@ def resolve_branch_context(
 
 def compute_workspace_dirty_summary(
     db: Session,
-    workspace: Optional[BranchWorkspaceModel],
-    head_commit: Optional[RequirementCommitModel],
+    workspace: BranchWorkspaceModel | None,
+    head_commit: RequirementCommitModel | None,
 ) -> WorkspaceDirtySummary:
     """比较工作区当前状态与 head commit 状态，返回是否脏及修改实体数量。
 
@@ -157,7 +171,10 @@ def compute_workspace_dirty_summary(
         return WorkspaceDirtySummary(is_dirty=False, modified_entities_count=0)
 
     import json
-    from backend.api.modules.version_control.application.workspace_serializer import serialize_workspace
+
+    from backend.api.modules.version_control.application.workspace_serializer import (
+        serialize_workspace,
+    )
     current_state = serialize_workspace(db, workspace)
     head_state = json.loads(head_commit.state_json)
     if current_state == head_state:
@@ -188,8 +205,8 @@ def compute_workspace_dirty_summary(
 def list_branches(
     db: Session,
     project_id: int,
-    user_id: Optional[int] = None,
-) -> List[BranchSummaryResponse]:
+    user_id: int | None = None,
+) -> list[BranchSummaryResponse]:
     """列表列出项目下的所有活跃分支及其上下文数据。"""
     stmt = (
         select(RequirementBranchModel)
@@ -201,7 +218,7 @@ def list_branches(
     )
     branches = db.scalars(stmt).all()
 
-    result: List[BranchSummaryResponse] = []
+    result: list[BranchSummaryResponse] = []
     for b in branches:
         head_commit = db.get(RequirementCommitModel, b.head_commit_id) if b.head_commit_id else None
         source_commit = db.get(RequirementCommitModel, b.source_commit_id) if b.source_commit_id else None
@@ -236,7 +253,7 @@ def get_branch_detail(
     db: Session,
     project_id: int,
     branch_ref: str,
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
 ) -> BranchDetailResponse:
     """获取单个分支的详细建模信息与 BranchWorkspace 摘要。"""
     branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
@@ -275,9 +292,28 @@ def create_branch(
     db: Session,
     project_id: int,
     req: BranchCreateRequest,
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
 ) -> BranchDetailResponse:
     """从指定 Commit 或源分支 Head 创建新分支，并恢复全新的 BranchWorkspace 实体数据。"""
+    # 0. 验证权限：创建分支至少需要 editor 角色
+    if user_id is not None:
+        project = db.get(ProjectModel, project_id)
+        is_editor_or_above = False
+        if project and project.owner_user_id == user_id:
+            is_editor_or_above = True
+        else:
+            from backend.database.model import ProjectMemberModel
+            member = db.scalars(
+                select(ProjectMemberModel).where(
+                    ProjectMemberModel.project_id == project_id,
+                    ProjectMemberModel.user_id == user_id,
+                )
+            ).first()
+            if member and member.role in ("owner", "admin", "editor"):
+                is_editor_or_above = True
+        if not is_editor_or_above:
+            raise PermissionError("insufficient_project_role: Branch creation requires at least 'editor' role.")
+
     # 1. 检查重名
     stmt = select(RequirementBranchModel).where(
         RequirementBranchModel.project_id == project_id,
@@ -287,8 +323,8 @@ def create_branch(
         raise ValueError(f"Branch name '{req.name}' already exists in project {project_id}")
 
     # 2. 寻找源 Commit 与源 Workspace
-    source_commit: Optional[RequirementCommitModel] = None
-    source_workspace: Optional[BranchWorkspaceModel] = None
+    source_commit: RequirementCommitModel | None = None
+    source_workspace: BranchWorkspaceModel | None = None
 
     if req.source_commit_public_id:
         c_stmt = select(RequirementCommitModel).where(
@@ -372,10 +408,10 @@ def rename_branch(
     project_id: int,
     branch_ref: str,
     req: BranchUpdateRequest,
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
 ) -> BranchDetailResponse:
     """重命名非受保护分支。"""
-    branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
+    branch, _workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
     if not branch:
         raise ValueError(f"Branch '{branch_ref}' not found")
     if not permissions.get("can_rename", False):
@@ -403,10 +439,10 @@ def delete_branch(
     db: Session,
     project_id: int,
     branch_ref: str,
-    user_id: Optional[int] = None,
-) -> Dict[str, Any]:
+    user_id: int | None = None,
+) -> dict[str, Any]:
     """删除非受保护分支及关联的 BranchWorkspace。"""
-    branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
+    branch, _workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
     if not branch:
         raise ValueError(f"Branch '{branch_ref}' not found")
     if not permissions.get("can_delete", False):
@@ -439,7 +475,7 @@ def delete_branch(
 
 def get_active_branch_preference(db: Session, project_id: int, user_id: int) -> str:
     """获取用户在指定项目中的当前活跃分支偏好，默认回退为 main。"""
-    from backend.database.model import UserBranchPreferenceModel, RequirementBranchModel
+    from backend.database.model import RequirementBranchModel, UserBranchPreferenceModel
     pref = db.execute(
         select(UserBranchPreferenceModel.branch_name).where(
             UserBranchPreferenceModel.user_id == user_id,
@@ -461,7 +497,7 @@ def get_active_branch_preference(db: Session, project_id: int, user_id: int) -> 
 
 def set_active_branch_preference(db: Session, project_id: int, user_id: int, branch_name: str) -> str:
     """更新用户在指定项目中的当前活跃分支偏好。"""
-    from backend.database.model import UserBranchPreferenceModel, RequirementBranchModel
+    from backend.database.model import RequirementBranchModel, UserBranchPreferenceModel
     b = db.execute(
         select(RequirementBranchModel).where(
             RequirementBranchModel.project_id == project_id,

@@ -1,22 +1,23 @@
-import httpx
 import logging
-from sqlalchemy import select, delete
+
+import httpx
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.model import ProjectLLMConfigModel
 from backend.api.modules.project_lifecycle.schemas.llm_config import (
-    ProjectLLMConfigResponse,
     ProjectLLMConfigRequest,
+    ProjectLLMConfigResponse,
     ProjectLLMConfigTestRequest,
     ProjectLLMConfigTestResponse,
 )
-from backend.core.security.encryption import encrypt_llm_api_key, decrypt_llm_api_key
 from backend.core.logging import get_logger, log_event
 from backend.core.logging.events import (
     LLM_CONFIG_MISSING,
     LLM_CONFIG_RESOLVED,
     LLM_CONFIG_SAVED,
 )
+from backend.core.security.encryption import decrypt_llm_api_key, encrypt_llm_api_key
+from backend.database.model import ProjectLLMConfigModel
 
 logger = get_logger("backend.api.modules.project_lifecycle.application.llm_config_service")
 

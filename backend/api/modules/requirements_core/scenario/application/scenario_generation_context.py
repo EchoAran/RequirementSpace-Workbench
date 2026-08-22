@@ -72,8 +72,9 @@ async def load_scenario_generation_context(
     project = await load_generation_project(session, project_id)
     user_reqs = project.user_requirements
     if workspace_id is not None:
-        from backend.database.model import BranchWorkspaceModel
         from sqlalchemy import select
+
+        from backend.database.model import BranchWorkspaceModel
         async def _exec(stmt):
             res = session.execute(stmt)
             if hasattr(res, "__await__"):

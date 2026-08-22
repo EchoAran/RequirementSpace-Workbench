@@ -3,17 +3,17 @@ Deterministic Requirement Space Serializer and SHA-256 State Hasher.
 负责将 BranchWorkspace 及其关联的需求实体（Actor, Feature, Scenario, AC, BusinessObject, Attribute, Flow, Step, Scope）
 序列化为规范化、只含逻辑 ID 的确定性 JSON 字符串，并计算 SHA-256 内容哈希。
 """
-from typing import Any, Dict, List
 import hashlib
 import json
+from typing import Any
 
 CURRENT_SCHEMA_VERSION = "1.0"
 
 
 def serialize_requirement_space(
-    workspace_data: Dict[str, Any],
+    workspace_data: dict[str, Any],
     schema_version: str = CURRENT_SCHEMA_VERSION,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     将原生需求空间字典规范化整理为无噪声、固定排序的格式化字典。
 
@@ -30,7 +30,7 @@ def serialize_requirement_space(
     }
 
     # Actors 规范化与排序
-    actors_raw: List[Dict[str, Any]] = workspace_data.get("actors", [])
+    actors_raw: list[dict[str, Any]] = workspace_data.get("actors", [])
     actors = []
     for item in actors_raw:
         actors.append({
@@ -42,7 +42,7 @@ def serialize_requirement_space(
     actors.sort(key=lambda x: x["logical_uuid"])
 
     # Features 规范化与排序
-    features_raw: List[Dict[str, Any]] = workspace_data.get("features", [])
+    features_raw: list[dict[str, Any]] = workspace_data.get("features", [])
     features = []
     for item in features_raw:
         actor_uuids = sorted(list(set(str(u) for u in item.get("actor_logical_uuids", []))))
@@ -56,7 +56,7 @@ def serialize_requirement_space(
     features.sort(key=lambda x: x["logical_uuid"])
 
     # Feature Relations 规范化与排序
-    feature_relations_raw: List[Dict[str, Any]] = workspace_data.get("feature_relations", [])
+    feature_relations_raw: list[dict[str, Any]] = workspace_data.get("feature_relations", [])
     feature_relations = []
     for item in feature_relations_raw:
         feature_relations.append({
@@ -70,10 +70,10 @@ def serialize_requirement_space(
     )
 
     # Scenarios 规范化与排序
-    scenarios_raw: List[Dict[str, Any]] = workspace_data.get("scenarios", [])
+    scenarios_raw: list[dict[str, Any]] = workspace_data.get("scenarios", [])
     scenarios = []
     for item in scenarios_raw:
-        ac_raw: List[Dict[str, Any]] = item.get("acceptance_criteria", [])
+        ac_raw: list[dict[str, Any]] = item.get("acceptance_criteria", [])
         ac_list = []
         for ac in ac_raw:
             ac_list.append({
@@ -96,10 +96,10 @@ def serialize_requirement_space(
     scenarios.sort(key=lambda x: x["logical_uuid"])
 
     # Business Objects 规范化与排序
-    bo_raw: List[Dict[str, Any]] = workspace_data.get("business_objects", [])
+    bo_raw: list[dict[str, Any]] = workspace_data.get("business_objects", [])
     business_objects = []
     for item in bo_raw:
-        attrs_raw: List[Dict[str, Any]] = item.get("attributes", [])
+        attrs_raw: list[dict[str, Any]] = item.get("attributes", [])
         attrs_list = []
         for attr in attrs_raw:
             attrs_list.append({
@@ -122,11 +122,11 @@ def serialize_requirement_space(
     business_objects.sort(key=lambda x: x["logical_uuid"])
 
     # Flows 规范化与排序
-    flows_raw: List[Dict[str, Any]] = workspace_data.get("flows", [])
+    flows_raw: list[dict[str, Any]] = workspace_data.get("flows", [])
     flows = []
     for item in flows_raw:
         f_feat_uuids = sorted(list(set(str(u) for u in item.get("feature_logical_uuids", []))))
-        steps_raw: List[Dict[str, Any]] = item.get("steps", [])
+        steps_raw: list[dict[str, Any]] = item.get("steps", [])
         steps_list = []
         for step in steps_raw:
             steps_list.append({
@@ -154,7 +154,7 @@ def serialize_requirement_space(
     flows.sort(key=lambda x: x["logical_uuid"])
 
     # Scopes 规范化与排序
-    scopes_raw: List[Dict[str, Any]] = workspace_data.get("scopes", [])
+    scopes_raw: list[dict[str, Any]] = workspace_data.get("scopes", [])
     scopes = []
     for item in scopes_raw:
         scopes.append({
@@ -183,7 +183,7 @@ def serialize_requirement_space(
     }
 
 
-def to_deterministic_json(normalized_dict: Dict[str, Any]) -> str:
+def to_deterministic_json(normalized_dict: dict[str, Any]) -> str:
     """
     将规范模型字典转换为具有严格确定性的 JSON 字符串。
     统一使用 UTF-8，键名升序，紧凑无多余空格分隔符。

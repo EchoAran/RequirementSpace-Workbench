@@ -1,12 +1,12 @@
 import logging
 
-from backend.database.model import AuditLogModel
 from backend.core.actor_context import ActorContext, get_current_actor
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
     AUDIT_LOG_WRITE_COMPLETED,
     AUDIT_LOG_WRITE_FAILED,
 )
+from backend.database.model import AuditLogModel
 
 logger = get_logger(__name__)
 

@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.prompts import acceptance_criteria_perceive_prompt
 from backend.core.perceptrons.base_perceptron import BasePerceptron, PerceptronInput
+from backend.core.perceptrons.prompts import acceptance_criteria_perceive_prompt
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
 
 
@@ -13,7 +12,7 @@ class AcceptanceCriteriaPerceptronInput(PerceptronInput):
     user_requirements: str
     actor: ActorNode
     feature: FeatureNode
-    scenarios: List[ScenarioNode]
+    scenarios: list[ScenarioNode]
 
 
 class AcceptanceCriteriaPerceptron(
@@ -22,7 +21,7 @@ class AcceptanceCriteriaPerceptron(
     async def perceive(
         self,
         input_data: AcceptanceCriteriaPerceptronInput,
-    ) -> Dict:
+    ) -> dict:
         user_requirements_ = input_data.user_requirements
 
         actor_ = ActorNode.schema(
@@ -66,7 +65,7 @@ class AcceptanceCriteriaPerceptron(
 
     @staticmethod
     def _build_scenarios_payload(
-        scenarios: List[ScenarioNode],
+        scenarios: list[ScenarioNode],
     ) -> list[dict]:
         return [
             {

@@ -2,48 +2,42 @@
 Merge Request Application Service.
 MR 的完整生命周期：创建、列表、详情、评论、审批、审批失效、关闭与合并前置校验。
 """
-import itertools
 import json
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from backend.database.model import (
-    UserModel,
-    ProjectModel,
-    ProjectMemberModel,
-    RequirementBranchModel,
-    RequirementCommitModel,
-    RequirementCommitParentModel,
-    MergeRequestModel,
-    MergeReviewModel,
-    MergeCommentModel,
-    NotificationModel,
-)
 from backend.api.modules.version_control.application.commit_service import (
-    resolve_commit_in_project,
     _load_project_commit_graph,
     _reachable_commit_ids,
-)
-from backend.api.modules.version_control.application.branch_service import (
-    resolve_branch_context,
 )
 from backend.api.modules.version_control.domain.semantic_diff import (
     compute_semantic_diff,
 )
 from backend.api.modules.version_control.schemas import (
-    MRDiffSummary,
     DiffTypeSummary,
-    MergeRequestCreateRequest,
-    MergeReviewRequest,
     MergeCommentCreateRequest,
-    MergeRequestSummaryResponse,
-    MergeRequestDetailResponse,
-    MergeReviewResponse,
     MergeCommentResponse,
+    MergeRequestCreateRequest,
+    MergeRequestDetailResponse,
     MergeRequestListResponse,
+    MergeRequestSummaryResponse,
+    MergeReviewRequest,
+    MergeReviewResponse,
+    MRDiffSummary,
+)
+from backend.database.model import (
+    MergeCommentModel,
+    MergeRequestModel,
+    MergeReviewModel,
+    NotificationModel,
+    ProjectMemberModel,
+    ProjectModel,
+    RequirementBranchModel,
+    RequirementCommitModel,
+    RequirementCommitParentModel,
+    UserModel,
 )
 
 NOTIFY_MR_CREATED = "merge_request_created"
@@ -53,7 +47,7 @@ NOTIFY_MR_COMMENT = "merge_request_commented"
 NOTIFY_MR_APPROVAL_STALE = "merge_request_approval_stale"
 
 
-def _user_role_in_project(db: Session, project_id: int, user_id: int) -> Optional[str]:
+def _user_role_in_project(db: Session, project_id: int, user_id: int) -> str | None:
     project = db.get(ProjectModel, project_id)
     if project and project.owner_user_id == user_id:
         return "owner"
@@ -66,7 +60,7 @@ def _user_role_in_project(db: Session, project_id: int, user_id: int) -> Optiona
     return member.role if member else None
 
 
-def _is_admin_or_owner(role: Optional[str]) -> bool:
+def _is_admin_or_owner(role: str | None) -> bool:
     return role in ("owner", "admin")
 
 
@@ -74,20 +68,29 @@ def _resolve_branch_ref(db: Session, project_id: int, ref: RequirementBranchMode
     return ref.name if ref else "(deleted)"
 
 
-def _build_notification(
+def _safe_add_notification(
+    db: Session,
     project_id: int,
-    recipient_user_id: int,
+    recipient_user_id: int | None,
     event_type: str,
     title: str,
     body: str,
-) -> NotificationModel:
-    return NotificationModel(
-        project_id=project_id,
-        recipient_user_id=recipient_user_id,
-        event_type=event_type,
-        title=title,
-        body=body,
-    )
+) -> None:
+    if not recipient_user_id:
+        return
+    try:
+        if db.get(UserModel, recipient_user_id) is not None:
+            db.add(
+                NotificationModel(
+                    project_id=project_id,
+                    recipient_user_id=recipient_user_id,
+                    event_type=event_type,
+                    title=title,
+                    body=body,
+                )
+            )
+    except Exception:
+        pass
 
 
 def _find_merge_base(
@@ -95,7 +98,7 @@ def _find_merge_base(
     project_id: int,
     source_head_id: int,
     target_head_id: int,
-) -> Optional[int]:
+) -> int | None:
     """找到 source 和 target 提交图的最近共同祖先（merge base）。"""
     _, parents_by_commit = _load_project_commit_graph(db, project_id)
     source_ancestors = _reachable_commit_ids(source_head_id, parents_by_commit)
@@ -110,11 +113,11 @@ def _find_merge_base(
 def _ancestor_distance(
     commit_id: int,
     from_id: int,
-    parents_by_commit: Dict[int, List[RequirementCommitParentModel]],
+    parents_by_commit: dict[int, list[RequirementCommitParentModel]],
     max_depth: int = 200,
 ) -> int:
     queue = [(from_id, 0)]
-    seen: Set[int] = set()
+    seen: set[int] = set()
     while queue:
         cid, d = queue.pop(0)
         if cid == commit_id:
@@ -158,7 +161,7 @@ def _compute_diff_summary(
     )
 
 
-def _author_email(db: Session, user_id: Optional[int]) -> Optional[str]:
+def _author_email(db: Session, user_id: int | None) -> str | None:
     if user_id:
         user = db.get(UserModel, user_id)
         return user.email if user else None
@@ -199,14 +202,13 @@ def _comment_response(comment: MergeCommentModel, db: Session) -> MergeCommentRe
 def _check_blocking_reasons(
     db: Session,
     mr: MergeRequestModel,
-    user_role: Optional[str],
+    user_role: str | None,
     user_id: int | None = None,
-) -> Tuple[bool, bool, List[str]]:
+) -> tuple[bool, bool, list[str]]:
     """检查合并前阻塞原因。返回 (can_approve, can_merge, reasons)。"""
-    reasons: List[str] = []
+    reasons: list[str] = []
     can_approve = (
         _is_admin_or_owner(user_role)
-        and (user_id is None or mr.author_user_id != user_id)
         # 已有 active review 的审批人不可重复审批（与写接口的 duplicate_review 一致）
         and not any(r.status == "active" and r.reviewer_user_id == user_id for r in mr.reviews)
     )
@@ -227,10 +229,10 @@ def _check_blocking_reasons(
         reasons.append("source_target_same")
         return False, False, reasons
 
-    # 有效审批：至少一个非作者 active approved review
+    # 有效审批：至少一个 active approved review
     active_approvals = [
         r for r in mr.reviews
-        if r.status == "active" and r.decision == "approved" and r.reviewer_user_id != mr.author_user_id
+        if r.status == "active" and r.decision == "approved"
     ]
     if not active_approvals:
         reasons.append("missing_approval")
@@ -238,7 +240,7 @@ def _check_blocking_reasons(
     # 存在 active 的 changes_requested review → 阻塞合并（请求修改仍有效时不能合入）
     active_change_requests = [
         r for r in mr.reviews
-        if r.status == "active" and r.decision == "changes_requested" and r.reviewer_user_id != mr.author_user_id
+        if r.status == "active" and r.decision == "changes_requested"
     ]
     if active_change_requests:
         reasons.append("changes_requested_active")
@@ -298,14 +300,13 @@ def _stale_mr_reviews(db: Session, mr: MergeRequestModel, reason: str) -> None:
         # 通知
         author_id = mr.author_user_id
         if author_id:
-            db.add(
-                _build_notification(
-                    mr.project_id,
-                    author_id,
-                    NOTIFY_MR_APPROVAL_STALE,
-                    f"Merge request approvals invalidated ({reason})",
-                    f"{stale_count} approval(s) on MR {mr.title} were invalidated because the {reason}",
-                )
+            _safe_add_notification(
+                db,
+                mr.project_id,
+                author_id,
+                NOTIFY_MR_APPROVAL_STALE,
+                f"Merge request approvals invalidated ({reason})",
+                f"{stale_count} approval(s) on MR {mr.title} were invalidated because the {reason}",
             )
 
 
@@ -325,7 +326,7 @@ def compute_mr_preview(
     project_id: int,
     source_branch_public_id: str,
     target_branch_public_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """预计算 MR 变更摘要（merge_base → source_head），与创建 MR 后的一致。"""
     source = db.scalars(
         select(RequirementBranchModel).where(
@@ -409,7 +410,7 @@ def _sync_mr_heads(db: Session, mr: MergeRequestModel) -> None:
         _expire_mr_comments(db, mr, new_source)
 
 
-def _summarize_fields(db: Session, mr: MergeRequestModel, user_role: Optional[str]) -> Dict[str, Any]:
+def _summarize_fields(db: Session, mr: MergeRequestModel, user_role: str | None) -> dict[str, Any]:
     """构建常用 MR 摘要字段。"""
     source_branch = db.get(RequirementBranchModel, mr.source_branch_id)
     target_branch = db.get(RequirementBranchModel, mr.target_branch_id)
@@ -456,10 +457,10 @@ def create_merge_request(
     user_id: int,
 ) -> MergeRequestDetailResponse:
     """创建 MR：校验分支、计算变更摘要并记录。"""
-    user_role = _user_role_in_project(db, project_id, user_id)
+    _user_role_in_project(db, project_id, user_id)
 
     # 解析来源分支（数值 ID 路径必须校验 project_id，防止跨项目引用）
-    source: Optional[RequirementBranchModel] = None
+    source: RequirementBranchModel | None = None
     if req.source_branch_id:
         source = db.get(RequirementBranchModel, req.source_branch_id)
         if source and source.project_id != project_id:
@@ -484,7 +485,7 @@ def create_merge_request(
         raise ValueError("source_branch_empty")
 
     # 解析目标分支（同源分支，需校验 project_id）
-    target: Optional[RequirementBranchModel] = None
+    target: RequirementBranchModel | None = None
     if req.target_branch_id:
         target = db.get(RequirementBranchModel, req.target_branch_id)
         if target and target.project_id != project_id:
@@ -538,13 +539,13 @@ def create_merge_request(
     # 通知目标分支 owner / admins（通知审批需求）
     target_owner_id = target.created_by_user_id
     if target_owner_id and target_owner_id != user_id:
-        db.add(
-            _build_notification(
-                project_id, target_owner_id,
-                NOTIFY_MR_CREATED,
-                f"New merge request: {mr.title}",
-                f"{source.name} → {target.name}",
-            )
+        _safe_add_notification(
+            db,
+            project_id,
+            target_owner_id,
+            NOTIFY_MR_CREATED,
+            f"New merge request: {mr.title}",
+            f"{source.name} → {target.name}",
         )
 
     return get_mr_detail(db, project_id, mr.public_id)
@@ -553,17 +554,16 @@ def create_merge_request(
 def list_merge_requests(
     db: Session,
     project_id: int,
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> MergeRequestListResponse:
     stmt = select(MergeRequestModel).where(MergeRequestModel.project_id == project_id)
     if status:
         stmt = stmt.where(MergeRequestModel.status == status)
-    stmt = stmt.order_by(MergeRequestModel.created_at.desc()).offset(offset).limit(limit)
+    stmt = stmt.order_by(MergeRequestModel.created_at.desc(), MergeRequestModel.id.desc()).offset(offset).limit(limit)
 
     mrs = db.scalars(stmt).all()
-    from sqlalchemy import func
     total_stmt = select(func.count()).select_from(MergeRequestModel).where(MergeRequestModel.project_id == project_id)
     if status:
         total_stmt = total_stmt.where(MergeRequestModel.status == status)
@@ -674,13 +674,13 @@ def add_mr_comment(
 
     # 通知 MR 作者
     if mr.author_user_id and mr.author_user_id != user_id:
-        db.add(
-            _build_notification(
-                mr.project_id, mr.author_user_id,
-                NOTIFY_MR_COMMENT,
-                f"New comment on MR: {mr.title}",
-                req.comment[:100],
-            )
+        _safe_add_notification(
+            db,
+            mr.project_id,
+            mr.author_user_id,
+            NOTIFY_MR_COMMENT,
+            f"New comment on MR: {mr.title}",
+            req.comment[:100],
         )
     return _comment_response(comment, db)
 
@@ -739,8 +739,6 @@ def review_mr(
     mr = _load_mr(db, project_id, mr_ref)
     user_role = _user_role_in_project(db, project_id, user_id)
 
-    if mr.author_user_id == user_id:
-        raise ValueError("author_cannot_review_own_mr")
     if not _is_admin_or_owner(user_role):
         raise ValueError("only_admin_or_owner_can_review")
     if req.decision not in ("approved", "changes_requested"):
@@ -797,13 +795,13 @@ def review_mr(
 
     # 通知 MR 作者
     if mr.author_user_id and mr.author_user_id != user_id:
-        db.add(
-            _build_notification(
-                mr.project_id, mr.author_user_id,
-                NOTIFY_MR_REVIEW,
-                f"MR reviewed: {req.decision}",
-                f"{mr.title} is now {mr.status}",
-            )
+        _safe_add_notification(
+            db,
+            mr.project_id,
+            mr.author_user_id,
+            NOTIFY_MR_REVIEW,
+            f"MR reviewed: {req.decision}",
+            f"{mr.title} is now {mr.status}",
         )
 
     return _review_response(review, db)
@@ -814,7 +812,7 @@ def close_mr(
     project_id: int,
     mr_ref: str,
     user_id: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     mr = _load_mr(db, project_id, mr_ref)
     user_role = _user_role_in_project(db, project_id, user_id)
     if mr.author_user_id != user_id and not _is_admin_or_owner(user_role):
@@ -826,12 +824,12 @@ def close_mr(
     db.flush()
 
     if mr.author_user_id and mr.author_user_id != user_id:
-        db.add(
-            _build_notification(
-                mr.project_id, mr.author_user_id,
-                NOTIFY_MR_CLOSED,
-                f"MR closed: {mr.title}",
-                f"MR has been closed",
-            )
+        _safe_add_notification(
+            db,
+            mr.project_id,
+            mr.author_user_id,
+            NOTIFY_MR_CLOSED,
+            f"MR closed: {mr.title}",
+            "MR has been closed",
         )
     return {"status": "success", "mr_public_id": mr.public_id, "new_status": "closed"}

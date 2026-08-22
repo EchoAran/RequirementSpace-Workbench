@@ -3,6 +3,7 @@ from sqlalchemy import select
 from backend.api.modules.diagnosis_quality.perception.application.invalidation import (
     mark_perception_jobs_stale,
 )
+
 from .flow_draft_persistence import persist_flow_draft
 
 
@@ -82,6 +83,7 @@ class PerceptionDraftConfirmer:
             stages=stale_stages,
             perception_kinds=stale_kinds,
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore

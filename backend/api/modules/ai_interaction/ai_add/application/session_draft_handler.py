@@ -14,9 +14,9 @@ from sqlalchemy import select
 
 from backend.api.modules.requirements_core.public import (
     ActorUpdateRequest,
+    BOUpdateRequest,
     FeatureUpdateRequest,
     FlowUpdateRequest,
-    BOUpdateRequest,
 )
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
@@ -368,10 +368,11 @@ class AIAddDraftHandler:
         owner_user_id,
         db_session,
     ) -> None:
+        from fastapi import HTTPException
+
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         from backend.database.model import CollaborationTaskModel, NotificationModel
         from backend.services.audit_service import AuditService
-        from fastapi import HTTPException
 
         project_id = draft.get("project_id")
         target_type = draft.get("target_type", "")
@@ -691,7 +692,10 @@ class AIAddDraftHandler:
     ) -> None:
         """Re-validate that the generated object can still be persisted."""
         from backend.database.model import (
-            ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
+            ActorModel,
+            BusinessObjectModel,
+            FeatureModel,
+            FlowModel,
         )
 
         if target_type == "actor":
@@ -766,7 +770,10 @@ class AIAddDraftHandler:
             raise ValueError("invalid_edit_anchor")
 
         from backend.database.model import (
-            ActorModel, FeatureModel, FlowModel, BusinessObjectModel,
+            ActorModel,
+            BusinessObjectModel,
+            FeatureModel,
+            FlowModel,
         )
 
         if base_type == "actor":
@@ -924,11 +931,11 @@ class AIAddDraftHandler:
         """Persist the generated object via the appropriate CRUD service."""
         from backend.api.modules.requirements_core.public import (
             ActorCreateRequest,
+            BOAttributeCreateRequest,
+            BOCreateRequest,
             FeatureCreateRequest,
             FeatureUpdateRequest,
             FlowCreateRequest,
-            BOCreateRequest,
-            BOAttributeCreateRequest,
         )
 
         if target_type == "actor":

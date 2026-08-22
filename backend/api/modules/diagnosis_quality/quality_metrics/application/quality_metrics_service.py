@@ -3,11 +3,12 @@
 Read-only queries against existing models — no new tables.
 """
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.database.model import (
-    ChoiceModel,
     ChoiceGroupModel,
+    ChoiceModel,
     IssueRepairDraftModel,
 )
 

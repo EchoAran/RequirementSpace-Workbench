@@ -1,21 +1,22 @@
 from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.database.model import ChoiceGroupModel, ChoiceModel, AuditLogModel
-from backend.api.modules.decision_workflow.choice_group.schemas import (
-    ChoiceResponse,
-    ChoiceGroupResponse,
-    ChoiceActionResponse,
-)
-from backend.core.notifier import get_notifier
-from backend.core.issue_resolution.ai.base_ai_solver import RepairProposal
-from backend.core.engines.patch_engine import GraphPatchEngine
 
 # Phase 1: generation choice 依赖
 from backend.api.modules.decision_workflow.candidate_generation.application.generation_choice_service import (
     get_adapter,
     get_generation_choice_applier,
 )
+from backend.api.modules.decision_workflow.choice_group.schemas import (
+    ChoiceActionResponse,
+    ChoiceGroupResponse,
+    ChoiceResponse,
+)
+from backend.core.engines.patch_engine import GraphPatchEngine
+from backend.core.issue_resolution.ai.base_ai_solver import RepairProposal
+from backend.core.notifier import get_notifier
+from backend.database.model import AuditLogModel, ChoiceGroupModel, ChoiceModel
 
 _NODE_INVALIDATION = {
     "actor": (
@@ -181,8 +182,9 @@ class ChoiceService:
         project_id: int,
         status: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> list[ChoiceGroupResponse]:
-        """List all choice groups for a project, optionally filtered by status."""
+        """List all choice groups for a project, optionally filtered by status and workspace."""
         query = (
             select(ChoiceGroupModel)
             .where(ChoiceGroupModel.project_id == project_id)
@@ -191,6 +193,14 @@ class ChoiceService:
                 selectinload(ChoiceGroupModel.project)
             )
         )
+        if workspace_id is not None:
+            from sqlalchemy import or_
+            query = query.where(
+                or_(
+                    ChoiceGroupModel.workspace_id == workspace_id,
+                    ChoiceGroupModel.workspace_id.is_(None),
+                )
+            )
         if status:
             query = query.where(ChoiceGroupModel.status == status)
 
@@ -251,6 +261,7 @@ class ChoiceService:
         choice_id: int,
         session,
         force: bool = False,
+        workspace_id: int | None = None,
     ) -> ChoiceActionResponse:
         """
         Accepts a choice. Dispatches based on choice.apply_mode:
@@ -279,6 +290,7 @@ class ChoiceService:
                 choice_id=choice_id,
                 session=session,
                 force=force,
+                workspace_id=workspace_id,
             )
         raise ValueError(f"unsupported_choice_apply_mode: {choice.apply_mode}")
 
@@ -340,6 +352,7 @@ class ChoiceService:
         choice_id: int,
         session,
         force: bool,
+        workspace_id: int | None = None,
     ) -> ChoiceActionResponse:
         stale_response = await self._check_generation_choice_staleness(
             choice,
@@ -352,6 +365,10 @@ class ChoiceService:
         if stale_response:
             return stale_response
 
+        ws_id = workspace_id or getattr(group, "workspace_id", None)
+        if ws_id is None and isinstance(choice.payload, dict):
+            ws_id = choice.payload.get("workspace_id")
+
         applier = get_generation_choice_applier()
         draft_type = choice.draft_type or group.generation_type or ""
         try:
@@ -360,6 +377,7 @@ class ChoiceService:
                 choice.payload,
                 session,
                 project_id=project_id,
+                workspace_id=ws_id,
             )
         except Exception as exc:
             raise ValueError(f"choice_apply_failed: {exc}") from exc
@@ -472,6 +490,7 @@ class ChoiceService:
                 stages=stages,
                 perception_kinds=kinds or None,
                 session=session,
+                workspace_id=getattr(group, "workspace_id", None),
             )
 
         issue_diff = await self._verify_patch_choice_resolution(
@@ -527,10 +546,10 @@ class ChoiceService:
         resolved_ids, remaining_ids, new_ids = [], [], []
         is_partial = False
         if group.source_type == "issue_repair" and group.stage and group.issue_id and group.issue_code:
+            from backend.core.detectors import HowIssueDetector, ScopeIssueDetector, WhatIssueDetector
             from backend.core.issue_resolution.resolution_verifier import (
                 verify_issue_resolved,
             )
-            from backend.core.detectors import HowIssueDetector, ScopeIssueDetector, WhatIssueDetector
             from backend.schemas import IssueStage
             _det_map = {
                 IssueStage.WHAT.value: WhatIssueDetector(),

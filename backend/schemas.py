@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
-from enum import Enum
+from enum import StrEnum
 
-from dataclasses_json import dataclass_json, Undefined
-from dataclasses_json import DataClassJsonMixin
 import inflection
+from dataclasses_json import DataClassJsonMixin, Undefined, dataclass_json
+
 
 def node_dataclass(cls=None, **kwargs):
     """统一的结点类装饰器，支持传入额外参数覆盖默认配置"""
@@ -26,19 +25,19 @@ class BaseNode(DataClassJsonMixin):
     pass
 
 # 定义枚举类型
-class ScopeStatus(str, Enum):
+class ScopeStatus(StrEnum):
     """功能范围状态枚举"""
     CURRENT = "current"
     POSTPONED = "postponed"
     EXCLUDE = "exclude"
 
-class FlowStepType(str, Enum):
+class FlowStepType(StrEnum):
     """流程步骤类型枚举"""
     ACTOR_ACTION = "actorAction"
     SYSTEM_ACTION = "systemAction"
     JUDGMENT = "judgment"
 
-class PerceptionKindType(str, Enum):
+class PerceptionKindType(StrEnum):
     """感知槽对应的结点枚举"""
     ACTOR = "角色结点"
     FEATURE_BRANCH = "功能模块结点"
@@ -74,7 +73,7 @@ class ScenarioNode(BaseNode):
     scenarioContent: str  # 用户故事/场景描述
     featureId: int
     actorId: int
-    acceptanceCriteria: List[AcceptanceCriterionNode] = field(default_factory=list)     # 空数组=没有验收条件
+    acceptanceCriteria: list[AcceptanceCriterionNode] = field(default_factory=list)     # 空数组=没有验收条件
 
 # 范围结点（kano分析结果）
 @node_dataclass
@@ -84,12 +83,12 @@ class ScopeNode(BaseNode):
     scopeStatus: ScopeStatus
     reason: str
 
-    positiveSummary: Optional[str] = None
-    negativeSummary: Optional[str] = None
-    positivePictureBase64: Optional[str] = None
-    negativePictureBase64: Optional[str] = None
-    kanoCategory: Optional[str] = None
-    kanoCategoryName: Optional[str] = None
+    positiveSummary: str | None = None
+    negativeSummary: str | None = None
+    positivePictureBase64: str | None = None
+    negativePictureBase64: str | None = None
+    kanoCategory: str | None = None
+    kanoCategoryName: str | None = None
 
 # 功能结点
 @node_dataclass
@@ -100,13 +99,13 @@ class FeatureNode(BaseNode):
     featureName: str
     featureDescription: str
 
-    actorIds: List[int] = field(default_factory=list)  # 空数组=没有关联角色
-    parentId: Optional[int] = None
-    childrenIds: List[int] = field(default_factory=list)      # 空数组表示无子结点，即该结点为叶子
+    actorIds: list[int] = field(default_factory=list)  # 空数组=没有关联角色
+    parentId: int | None = None
+    childrenIds: list[int] = field(default_factory=list)      # 空数组表示无子结点，即该结点为叶子
 
-    scenarios: List[ScenarioNode] = field(default_factory=list)      # 空数组表示没有场景
+    scenarios: list[ScenarioNode] = field(default_factory=list)      # 空数组表示没有场景
 
-    scope: Optional[ScopeNode] = None
+    scope: ScopeNode | None = None
 
 # 业务对象属性结点
 @node_dataclass
@@ -128,7 +127,7 @@ class BusinessObjectNode(BaseNode):
     businessObjectName: str
     businessObjectDescription: str
 
-    businessObjectAttributes: List[BusinessObjectAttributeNode] = field(default_factory=list)
+    businessObjectAttributes: list[BusinessObjectAttributeNode] = field(default_factory=list)
 
 # 流程步骤结点
 @node_dataclass
@@ -141,11 +140,11 @@ class FlowStepNode(BaseNode):
 
     stepType: FlowStepType
 
-    actorIds: List[int] = field(default_factory=list)  # 空数组=没有
-    inputBusinessObjectIds: List[int] = field(default_factory=list)  # 空数组=没有
-    outputBusinessObjectIds: List[int] = field(default_factory=list)  # 空数组=没有
+    actorIds: list[int] = field(default_factory=list)  # 空数组=没有
+    inputBusinessObjectIds: list[int] = field(default_factory=list)  # 空数组=没有
+    outputBusinessObjectIds: list[int] = field(default_factory=list)  # 空数组=没有
 
-    nextStepIds: List[int] = field(default_factory=list)  # 空数组=没有
+    nextStepIds: list[int] = field(default_factory=list)  # 空数组=没有
 
 # 流程主结点
 @node_dataclass
@@ -156,9 +155,9 @@ class FlowNode(BaseNode):
     flowName: str
     flowDescription: str
 
-    featureIds: List[int]  # 非空, 步骤必须关联至少一个功能
+    featureIds: list[int]  # 非空, 步骤必须关联至少一个功能
 
-    flowSteps: List[FlowStepNode] = field(default_factory=list)
+    flowSteps: list[FlowStepNode] = field(default_factory=list)
 
 # 感知槽结点
 @node_dataclass
@@ -170,7 +169,7 @@ class PerceptionSlot(BaseNode):
     perceptionDescription: str
 
 
-class PerceptionJobStatus(str, Enum):
+class PerceptionJobStatus(StrEnum):
     NOT_STARTED = "not_started"
     RUNNING = "running"
     DONE_EMPTY = "done_empty"
@@ -188,34 +187,34 @@ class PerceptionJob(BaseNode):
     stage: str
     perceptionKind: str
     targetType: str
-    targetId: Optional[str]
+    targetId: str | None
     contextHash: str
     status: PerceptionJobStatus
-    resultSlot: Optional[PerceptionSlot] = None
-    errorMessage: Optional[str] = None
+    resultSlot: PerceptionSlot | None = None
+    errorMessage: str | None = None
 
 
-class IssueSeverity(str, Enum):
+class IssueSeverity(StrEnum):
     BLOCKING = "blocking"
     WARNING = "warning"
     INFO = "info"
 
 
-class IssueStage(str, Enum):
+class IssueStage(StrEnum):
     WHAT = "what"
     HOW = "how"
     SCOPE = "scope"
     PREVIEW = "preview"
 
 
-class FindingType(str, Enum):
+class FindingType(StrEnum):
     ISSUE = "issue"
     NEXT_SUGGESTION = "next_suggestion"
     GATE_CONDITION = "gate_condition"
     QUALITY_HINT = "quality_hint"
 
 
-class BlockingScope(str, Enum):
+class BlockingScope(StrEnum):
     NONE = "none"
     STAGE_TRANSITION = "stage_transition"
     PREVIEW = "preview"
@@ -229,9 +228,9 @@ class IssueTarget(BaseNode):
     kind: str = field(default="issue_target", init=False)
 
     targetType: str
-    targetId: Optional[int | str] = None
-    parentType: Optional[str] = None
-    parentId: Optional[int | str] = None
+    targetId: int | str | None = None
+    parentType: str | None = None
+    parentId: int | str | None = None
 
     def key(self) -> str:
         parts = [
@@ -261,8 +260,8 @@ class Issue(BaseNode):
     severity: IssueSeverity
     title: str
     description: str
-    target: Optional[IssueTarget] = None
-    actionCode: Optional[str] = None
+    target: IssueTarget | None = None
+    actionCode: str | None = None
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -282,11 +281,11 @@ class Finding(BaseNode):
     severity: IssueSeverity
     title: str
     description: str
-    target: Optional[IssueTarget] = None
+    target: IssueTarget | None = None
     blockingScope: BlockingScope = BlockingScope.NONE
-    actionCode: Optional[str] = None
+    actionCode: str | None = None
     metadata: dict = field(default_factory=dict)
-    capability: Optional[dict] = None
+    capability: dict | None = None
 
 
 
@@ -299,9 +298,9 @@ class IssueResolution(BaseNode):
     title: str
     description: str
     action: dict
-    draftId: Optional[str] = None
+    draftId: str | None = None
     draft: dict = field(default_factory=dict)
-    patch: Optional[dict] = None
+    patch: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -325,7 +324,7 @@ class NextSuggestion(BaseNode):
     title: str
     description: str
     status: str = "ready"
-    target: Optional[dict] = None
+    target: dict | None = None
     action: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -348,7 +347,7 @@ class PreviewUI(BaseNode):
     html: str
     javascript: str
     css: str
-    pages: List[dict] = field(default_factory=list)
+    pages: list[dict] = field(default_factory=list)
     source: str = "placeholder"
     status: str = "ready"
 
@@ -364,10 +363,10 @@ class RequirementSpace(BaseNode):
     userRequirements: str
 
     # 感知槽
-    perceptionSlot: Optional[PerceptionSlot] = None  # None表示无感知槽
+    perceptionSlot: PerceptionSlot | None = None  # None表示无感知槽
 
     # 所有类型的结点集合
-    actors: List[ActorNode] = field(default_factory=list)
-    features: List[FeatureNode] = field(default_factory=list)
-    businessObjects: List[BusinessObjectNode] = field(default_factory=list)
-    flows: List[FlowNode] = field(default_factory=list)
+    actors: list[ActorNode] = field(default_factory=list)
+    features: list[FeatureNode] = field(default_factory=list)
+    businessObjects: list[BusinessObjectNode] = field(default_factory=list)
+    flows: list[FlowNode] = field(default_factory=list)

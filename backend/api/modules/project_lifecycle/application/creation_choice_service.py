@@ -7,17 +7,17 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.modules.project_lifecycle.application.blank_service import BlankProjectService
 from backend.api.modules.decision_workflow.public import (
-    GenerationCandidate,
-    CandidateContext,
-    GenerationChoiceSettings,
-    get_generation_choice_applier,
-    _build_choice_group_response,
     BaseGenerationChoiceAdapter,
-    run_candidate_generation,
+    CandidateContext,
+    GenerationCandidate,
+    GenerationChoiceSettings,
     GenerativeDraftStore,
+    _build_choice_group_response,
+    get_generation_choice_applier,
+    run_candidate_generation,
 )
+from backend.api.modules.project_lifecycle.application.blank_service import BlankProjectService
 from backend.api.modules.project_lifecycle.application.creation_service import ProjectCreationService
 from backend.core.llm_locale_validation import LLMContentLocaleMismatchError
 from backend.database.model import ChoiceGroupModel, ChoiceModel
@@ -277,6 +277,7 @@ class ProjectCreationChoiceGroupService:
             return None
 
         from fastapi import HTTPException
+
         from backend.database.model import KnowledgeWorkspaceModel
         from backend.services.knowledge.context_builder import KnowledgeContextBuilder
 

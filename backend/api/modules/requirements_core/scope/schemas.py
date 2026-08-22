@@ -1,6 +1,9 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from backend.api.base_schema import CamelModel
+
 
 # CRUD Schemas
 class ScopeUpdateRequest(CamelModel):

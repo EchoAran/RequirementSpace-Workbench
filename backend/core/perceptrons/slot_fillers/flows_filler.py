@@ -1,25 +1,27 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.slot_fillers.prompts.flows_fill_agent import flows_fill_prompt, business_objects_actors_label_prompt
 from backend.core.perceptrons.slot_fillers.base_filler import BaseFiller, FillerInput
-from backend.schemas import ActorNode, BusinessObjectNode, PerceptionSlot, FeatureNode, FlowNode
+from backend.core.perceptrons.slot_fillers.prompts.flows_fill_agent import (
+    business_objects_actors_label_prompt,
+    flows_fill_prompt,
+)
+from backend.schemas import ActorNode, BusinessObjectNode, FeatureNode, FlowNode, PerceptionSlot
 
 
 # 为流程补充器定义专属的输入类型
 @dataclass
 class FlowsFillerInput(FillerInput):
     user_requirements: str
-    actors: List[ActorNode]
-    features: List[FeatureNode]
-    business_objects: List[BusinessObjectNode]
-    flows: List[FlowNode]
+    actors: list[ActorNode]
+    features: list[FeatureNode]
+    business_objects: list[BusinessObjectNode]
+    flows: list[FlowNode]
     perception_description: PerceptionSlot
     user_feedback: str | None = None
 
 class FlowsFiller(BaseFiller[FlowsFillerInput]):
-    async def fill(self, input_data: FlowsFillerInput) -> Dict:
+    async def fill(self, input_data: FlowsFillerInput) -> dict:
         flows_response = await self._llm_handler.call_llm(
             prompt=self._build_flows_prompt(input_data),
             query=input_data.user_feedback,

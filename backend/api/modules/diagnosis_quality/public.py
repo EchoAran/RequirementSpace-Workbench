@@ -12,9 +12,10 @@ from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair
 from backend.api.modules.diagnosis_quality.perception.application.invalidation import (
     mark_perception_jobs_stale,
 )
+
 __all__ = [
-    "FindingService",
     "FindingResponse",
+    "FindingService",
     "IssueRepairService",
     "mark_perception_jobs_stale",
 ]

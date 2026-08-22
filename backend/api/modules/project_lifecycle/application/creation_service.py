@@ -1,8 +1,11 @@
-﻿import asyncio
-from uuid import uuid4
+import asyncio
 import re
-from sqlalchemy import delete, insert
+from uuid import uuid4
 
+from sqlalchemy import delete, insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.api.modules.project_lifecycle.ports import ActorFeaturePreviewGeneratorPort
 from backend.core.generators.actors_generator import (
     ActorsGenerator,
     ActorsGeneratorInput,
@@ -15,9 +18,8 @@ from backend.core.generators.features_generator import (
     FeaturesGenerator,
     FeaturesGeneratorInput,
 )
-from backend.schemas import ActorNode
 from backend.database.model import ConfirmationStatus
-from backend.api.modules.project_lifecycle.ports import ActorFeaturePreviewGeneratorPort
+from backend.schemas import ActorNode
 
 _feature_number_pattern = re.compile(r"^F\d{3}(?:-\d{3})*$")
 
@@ -200,9 +202,10 @@ class ProjectCreationService:
         knowledge_context = None
         from backend.core.config import KNOWLEDGE_BASE_ENABLED
         if knowledge_workspace_id and KNOWLEDGE_BASE_ENABLED:
-            from backend.database.model import KnowledgeWorkspaceModel
-            from sqlalchemy import select
             from fastapi import HTTPException
+            from sqlalchemy import select
+
+            from backend.database.model import KnowledgeWorkspaceModel
 
             ws_res = await session.execute(
                 select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
@@ -270,8 +273,9 @@ class ProjectCreationService:
         # Re-build knowledge context if workspace is active
         knowledge_context = None
         if knowledge_workspace_id:
-            from backend.database.model import KnowledgeWorkspaceModel
             from sqlalchemy import select
+
+            from backend.database.model import KnowledgeWorkspaceModel
             ws_res = await session.execute(
                 select(KnowledgeWorkspaceModel).where(KnowledgeWorkspaceModel.public_id == knowledge_workspace_id)
             )
@@ -363,9 +367,13 @@ class ProjectCreationService:
         self,
         draft_id: str,
         owner_user_id: int,
+        session: AsyncSession | None = None,
     ) -> dict:
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
-        await GenerativeDraftStore.discard_draft_locally(draft_id, owner_user_id)
+        if session is not None:
+            await GenerativeDraftStore.discard_draft(session, draft_id, owner_user_id)
+        else:
+            await GenerativeDraftStore.discard_draft_locally(draft_id, owner_user_id)
 
         return {
             "draft_id": draft_id,
@@ -530,6 +538,8 @@ class ProjectCreationService:
             session=session,
             replace_existing=False,
         )
+        from backend.api.modules.version_control.public import migrate_project_to_version_control
+        await session.run_sync(lambda s: migrate_project_to_version_control(s, project))
         return project
 
     async def _apply_project_creation_draft_to_existing_project(

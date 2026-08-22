@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class ActorFeaturePreviewGeneratorPort(ABC):
     """Port defining the boundary for generating actor and feature tree previews.
 

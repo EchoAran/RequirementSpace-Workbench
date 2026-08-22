@@ -3,17 +3,18 @@
 This module is placed in backend/core to serve as a shared interface,
 breaking circular dependencies between API modules.
 """
-from typing import Protocol, Set
+from typing import Protocol
 
 
 class RequirementsChangedNotifier(Protocol):
     async def mark_stale(
         self,
         project_id: int,
-        stages: Set[str],
+        stages: set[str],
         session,
-        perception_kinds: Set[str] | None = None,
+        perception_kinds: set[str] | None = None,
         clear_active_slot: bool = True,
+        workspace_id: int | None = None,
     ) -> None:
         """Mark affected perception jobs as stale when requirement elements change."""
         ...

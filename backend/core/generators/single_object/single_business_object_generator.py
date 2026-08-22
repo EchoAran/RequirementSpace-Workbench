@@ -1,7 +1,6 @@
 """SingleBusinessObjectGenerator — generates exactly one BO from interview summary."""
 
 import json
-from typing import Dict
 
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
@@ -22,7 +21,7 @@ class SingleBusinessObjectGenerator(BaseSingleObjectGenerator):
                "rationale": "..."}
     """
 
-    async def generate(self, input_data: SingleObjectGeneratorInput) -> Dict:
+    async def generate(self, input_data: SingleObjectGeneratorInput) -> dict:
         existing_bos = input_data.project_context.get("business_objects", [])
         existing_flows = input_data.project_context.get("flows", [])
 

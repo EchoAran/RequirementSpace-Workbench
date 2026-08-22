@@ -1,10 +1,10 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.generators.prompts import acceptance_criteria_generate_prompt
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
-from backend.schemas import FeatureNode, ActorNode, ScenarioNode
+from backend.core.generators.prompts import acceptance_criteria_generate_prompt
+from backend.schemas import ActorNode, FeatureNode, ScenarioNode
+
 
 # 为场景生成器定义专属的输入类型
 @dataclass
@@ -12,11 +12,11 @@ class AcceptanceCriteriaGeneratorInput(GenerateInput):
     user_requirements: str
     actor: ActorNode
     feature: FeatureNode
-    scenarios: List[ScenarioNode]
+    scenarios: list[ScenarioNode]
     user_feedback: str | None = None
 
 class AcceptanceCriteriaGenerator(BaseGenerator[AcceptanceCriteriaGeneratorInput]):
-    async def generate(self, input_data: AcceptanceCriteriaGeneratorInput) -> Dict:
+    async def generate(self, input_data: AcceptanceCriteriaGeneratorInput) -> dict:
         user_requirements_ = input_data.user_requirements
         feedback = input_data.user_feedback or ""
 

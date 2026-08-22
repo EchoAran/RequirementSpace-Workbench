@@ -3,8 +3,6 @@ from datetime import datetime
 from backend.api.base_schema import CamelModel
 
 
-
-
 class PrototypePreviewGenerateRequest(CamelModel):
     force_regenerate: bool = True
 

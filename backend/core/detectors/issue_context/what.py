@@ -33,9 +33,10 @@ async def load_issue_actors(
     session,
     workspace_id: int | None = None,
 ) -> list[ActorIssueItem]:
-    stmt = select(ActorModel).where(ActorModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+    stmt = select(ActorModel).where(
+        ActorModel.project_id == project_id,
+        ActorModel.workspace_id == workspace_id,
+    )
     result = await session.execute(stmt)
     return [
         ActorIssueItem(
@@ -85,9 +86,10 @@ async def load_issue_features(
     session,
     workspace_id: int | None = None,
 ) -> tuple[list[FeatureIssueItem], list[int]]:
-    stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+    stmt = select(FeatureModel).where(
+        FeatureModel.project_id == project_id,
+        FeatureModel.workspace_id == workspace_id,
+    )
     result = await session.execute(stmt)
     feature_models = result.scalars().all()
     feature_ids = [feature.id for feature in feature_models]
@@ -141,9 +143,10 @@ async def load_issue_scenarios(
     session,
     workspace_id: int | None = None,
 ) -> list[ScenarioIssueItem]:
-    stmt = select(ScenarioModel).where(ScenarioModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+    stmt = select(ScenarioModel).where(
+        ScenarioModel.project_id == project_id,
+        ScenarioModel.workspace_id == workspace_id,
+    )
     result = await session.execute(stmt)
     scenario_models = result.scalars().all()
     criteria_map = await _load_acceptance_criteria(

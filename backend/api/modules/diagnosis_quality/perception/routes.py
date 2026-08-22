@@ -1,24 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_project, require_owned_generative_draft
-from backend.api.dependencies.llm import get_llm_context, llm_context_manager
-from backend.database.model import UserModel, GenerativeDraftModel
 from backend.api.base_schema import DraftRegenerateRequest
-from backend.api.modules.version_control.dependencies import reject_commit_write
-
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import get_llm_context, llm_context_manager
+from backend.api.dependencies.ownership import (
+    require_owned_generative_draft,
+    require_owned_project,
+)
+from backend.api.modules.diagnosis_quality.perception.application.slot_filling import (
+    PerceptionSlotFillingService,
+)
 from backend.api.modules.diagnosis_quality.perception.schemas import (
     PerceptionSlotFillingConfirmResponse,
     PerceptionSlotFillingDraftCreateRequest,
     PerceptionSlotFillingDraftDiscardResponse,
     PerceptionSlotFillingDraftResponse,
 )
-from backend.api.modules.diagnosis_quality.perception.application.slot_filling import (
-    PerceptionSlotFillingService,
-)
+from backend.api.modules.version_control.dependencies import reject_commit_write
 from backend.database.database import get_session
-
+from backend.database.model import GenerativeDraftModel, UserModel
 
 router = APIRouter(
     prefix="/api/perception_slot_filling_drafts",
@@ -67,10 +68,17 @@ PERCEPTION_SLOT_FILLING_ERRORS = {
 
 async def _resolve_write_branch(session, project_id: int, branch: str | None, user_id: int):
     """解析分支写入上下文；受保护分支（含 main）拒绝直接写入。"""
-    from backend.api.modules.version_control.public import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, project_id, branch, user_id)
+    from backend.api.modules.version_control.public import (
+        map_branch_error,
+        resolve_branch_context,
     )
+    try:
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, project_id, branch, user_id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,
@@ -289,10 +297,12 @@ async def confirm_slot_filling_draft(
 async def discard_slot_filling_draft(
     draft: GenerativeDraftModel = Depends(require_owned_generative_draft),
     commit_guard: None = Depends(reject_commit_write),
+    session: AsyncSession = Depends(get_session),
 ):
     return await perception_slot_filling_service.discard_draft(
         draft_id=draft.draft_id,
         owner_user_id=draft.owner_user_id,
+        session=session,
     )
 
 

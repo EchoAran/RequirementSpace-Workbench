@@ -2,8 +2,9 @@
 Version Control HTTP API Schemas.
 定义分支管理与工作区状态的 HTTP 请求与响应 Schema 结构。
 """
-from typing import Any, Dict, List, Literal, Optional
 from datetime import datetime
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -24,22 +25,22 @@ class BranchSummaryResponse(BaseModel):
     public_id: str
     project_id: int
     name: str
-    description: Optional[str] = None
-    head_commit_id: Optional[int] = None
-    head_commit_public_id: Optional[str] = None
-    source_commit_id: Optional[int] = None
-    source_commit_public_id: Optional[str] = None
+    description: str | None = None
+    head_commit_id: int | None = None
+    head_commit_public_id: str | None = None
+    source_commit_id: int | None = None
+    source_commit_public_id: str | None = None
     is_protected: bool = False
     is_default: bool = False
     status: str = "active"
     created_at: datetime
     updated_at: datetime
-    permissions: Optional[BranchPermissions] = None
-    workspace_dirty: Optional[WorkspaceDirtySummary] = None
+    permissions: BranchPermissions | None = None
+    workspace_dirty: WorkspaceDirtySummary | None = None
 
 
 class BranchDetailResponse(BranchSummaryResponse):
-    workspace_id: Optional[int] = None
+    workspace_id: int | None = None
     user_requirements: str = ""
     kano_status: str = "missing"
     unlocked_stages: str = ""
@@ -47,14 +48,14 @@ class BranchDetailResponse(BranchSummaryResponse):
 
 class BranchCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=500)
-    source_commit_public_id: Optional[str] = None
-    source_branch_public_id: Optional[str] = None
+    description: str | None = Field(default=None, max_length=500)
+    source_commit_public_id: str | None = None
+    source_branch_public_id: str | None = None
 
 
 class BranchUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=500)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
 
 
 # ==========================================
@@ -63,8 +64,8 @@ class BranchUpdateRequest(BaseModel):
 
 class CommitCreateRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
-    expected_head_commit_id: Optional[int] = None
-    expected_head_commit_public_id: Optional[str] = None
+    expected_head_commit_id: int | None = None
+    expected_head_commit_public_id: str | None = None
 
     @model_validator(mode="after")
     def _require_expected_head(self) -> "CommitCreateRequest":
@@ -83,6 +84,11 @@ class CommitCreateRequest(BaseModel):
         return self
 
 
+class CommitRevertRequest(BaseModel):
+    branch_ref: str | None = None
+    message: str | None = None
+
+
 class CommitSummaryResponse(BaseModel):
     id: int
     public_id: str
@@ -90,24 +96,24 @@ class CommitSummaryResponse(BaseModel):
     message: str
     state_hash: str
     schema_version: str = "1.0"
-    summary: Optional[Dict[str, Any]] = None
-    author_user_id: Optional[int] = None
-    author_email: Optional[str] = None
+    summary: dict[str, Any] | None = None
+    author_user_id: int | None = None
+    author_email: str | None = None
     created_at: datetime
-    parent_ids: List[int] = Field(default_factory=list)
-    parent_public_ids: List[str] = Field(default_factory=list)
+    parent_ids: list[int] = Field(default_factory=list)
+    parent_public_ids: list[str] = Field(default_factory=list)
     is_merge: bool = False
-    branch_public_ids: List[str] = Field(default_factory=list)
-    branch_names: List[str] = Field(default_factory=list)
+    branch_public_ids: list[str] = Field(default_factory=list)
+    branch_names: list[str] = Field(default_factory=list)
 
 
 class CommitDetailResponse(CommitSummaryResponse):
     # 历史只读视图：由 Commit state_json 重建的规范化需求模型，不读取当前分支表。
-    state: Optional[Dict[str, Any]] = None
+    state: dict[str, Any] | None = None
 
 
 class CommitListResponse(BaseModel):
-    commits: List[CommitSummaryResponse] = Field(default_factory=list)
+    commits: list[CommitSummaryResponse] = Field(default_factory=list)
     total: int = 0
     limit: int = 50
     offset: int = 0
@@ -120,16 +126,16 @@ class CommitListResponse(BaseModel):
 class DiffRefInfo(BaseModel):
     kind: str = "commit"  # commit | branch | workspace
     label: str = ""
-    public_id: Optional[str] = None
-    branch_ref: Optional[str] = None
-    branch_name: Optional[str] = None
+    public_id: str | None = None
+    branch_ref: str | None = None
+    branch_name: str | None = None
     branch_is_protected: bool = False
 
 
 class TextDiffBlock(BaseModel):
     kind: str = "replace"  # replace | add | remove
-    before_lines: List[str] = Field(default_factory=list)
-    after_lines: List[str] = Field(default_factory=list)
+    before_lines: list[str] = Field(default_factory=list)
+    after_lines: list[str] = Field(default_factory=list)
 
 
 class DiffEntry(BaseModel):
@@ -137,19 +143,19 @@ class DiffEntry(BaseModel):
     entity_type: str
     entity_uuid: str
     entity_name: str = ""
-    parent_uuid: Optional[str] = None
-    parent_type: Optional[str] = None
+    parent_uuid: str | None = None
+    parent_type: str | None = None
     path: str = ""
-    field: Optional[str] = None
+    field: str | None = None
     before: Any = None
     after: Any = None
-    text_blocks: List[TextDiffBlock] = Field(default_factory=list)
-    relation_type: Optional[str] = None
-    related_entity_type: Optional[str] = None
-    related_entity_uuid: Optional[str] = None
-    related_entity_name: Optional[str] = None
-    before_position: Optional[int] = None
-    after_position: Optional[int] = None
+    text_blocks: list[TextDiffBlock] = Field(default_factory=list)
+    relation_type: str | None = None
+    related_entity_type: str | None = None
+    related_entity_uuid: str | None = None
+    related_entity_name: str | None = None
+    before_position: int | None = None
+    after_position: int | None = None
 
 
 class DiffTypeSummary(BaseModel):
@@ -159,31 +165,31 @@ class DiffTypeSummary(BaseModel):
 
 
 class DiffSummary(BaseModel):
-    by_type: Dict[str, DiffTypeSummary] = Field(default_factory=dict)
+    by_type: dict[str, DiffTypeSummary] = Field(default_factory=dict)
     total_added: int = 0
     total_removed: int = 0
     total_modified: int = 0
 
 
 class DiffResult(BaseModel):
-    base: Optional[DiffRefInfo] = None
-    target: Optional[DiffRefInfo] = None
+    base: DiffRefInfo | None = None
+    target: DiffRefInfo | None = None
     summary: DiffSummary
-    entries: List[DiffEntry] = Field(default_factory=list)
+    entries: list[DiffEntry] = Field(default_factory=list)
     total: int = 0
     limit: int = 0
     offset: int = 0
 
 
 class EntityDiffResponse(BaseModel):
-    base: Optional[DiffRefInfo] = None
-    target: Optional[DiffRefInfo] = None
+    base: DiffRefInfo | None = None
+    target: DiffRefInfo | None = None
     entity_uuid: str
     entity_type: str = ""
     entity_name: str = ""
-    base_value: Optional[Dict[str, Any]] = None
-    target_value: Optional[Dict[str, Any]] = None
-    entries: List[DiffEntry] = Field(default_factory=list)
+    base_value: dict[str, Any] | None = None
+    target_value: dict[str, Any] | None = None
+    entries: list[DiffEntry] = Field(default_factory=list)
 
 
 # ==========================================
@@ -198,33 +204,33 @@ _REVIEW_DECISIONS = frozenset({"approved", "changes_requested"})
 
 class MergeReviewResponse(BaseModel):
     id: int
-    reviewer_user_id: Optional[int] = None
-    reviewer_email: Optional[str] = None
+    reviewer_user_id: int | None = None
+    reviewer_email: str | None = None
     decision: str = "approved"
     comment: str = ""
     status: str = "active"  # "active" | "stale"
-    stale_reason: Optional[str] = None
+    stale_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class MergeCommentResponse(BaseModel):
     id: int
-    author_user_id: Optional[int] = None
-    author_email: Optional[str] = None
-    entity_uuid: Optional[str] = None
-    field_path: Optional[str] = None
-    relation_key: Optional[str] = None
+    author_user_id: int | None = None
+    author_email: str | None = None
+    entity_uuid: str | None = None
+    field_path: str | None = None
+    relation_key: str | None = None
     comment: str
     required: bool = False
     status: str = "active"
-    effective_source_head_id: Optional[int] = None
-    expired_by_source_head_id: Optional[int] = None
+    effective_source_head_id: int | None = None
+    expired_by_source_head_id: int | None = None
     created_at: datetime
 
 
 class MRDiffSummary(BaseModel):
-    by_type: Dict[str, DiffTypeSummary] = Field(default_factory=dict)
+    by_type: dict[str, DiffTypeSummary] = Field(default_factory=dict)
     total_added: int = 0
     total_removed: int = 0
     total_modified: int = 0
@@ -235,37 +241,37 @@ class MergeRequestSummaryResponse(BaseModel):
     public_id: str
     project_id: int
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     source_branch_name: str = ""
     target_branch_name: str = ""
-    source_branch_public_id: Optional[str] = None
-    target_branch_public_id: Optional[str] = None
+    source_branch_public_id: str | None = None
+    target_branch_public_id: str | None = None
     status: str = "open"
-    author_user_id: Optional[int] = None
-    author_email: Optional[str] = None
-    diff_summary: Optional[MRDiffSummary] = None
+    author_user_id: int | None = None
+    author_email: str | None = None
+    diff_summary: MRDiffSummary | None = None
     active_review_count: int = 0
     total_comments: int = 0
-    source_head_short: Optional[str] = None
-    target_head_short: Optional[str] = None
+    source_head_short: str | None = None
+    target_head_short: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class MergeRequestDetailResponse(MergeRequestSummaryResponse):
-    source_head_commit_id: Optional[int] = None
-    source_head_public_id: Optional[str] = None
-    target_head_commit_id: Optional[int] = None
-    target_head_public_id: Optional[str] = None
-    merge_base_commit_id: Optional[int] = None
-    merge_base_public_id: Optional[str] = None
-    merged_commit_id: Optional[int] = None
-    merged_commit_public_id: Optional[str] = None
-    reviews: List[MergeReviewResponse] = Field(default_factory=list)
-    comments: List[MergeCommentResponse] = Field(default_factory=list)
+    source_head_commit_id: int | None = None
+    source_head_public_id: str | None = None
+    target_head_commit_id: int | None = None
+    target_head_public_id: str | None = None
+    merge_base_commit_id: int | None = None
+    merge_base_public_id: str | None = None
+    merged_commit_id: int | None = None
+    merged_commit_public_id: str | None = None
+    reviews: list[MergeReviewResponse] = Field(default_factory=list)
+    comments: list[MergeCommentResponse] = Field(default_factory=list)
     can_approve: bool = False
     can_merge: bool = False
-    blocking_reasons: List[str] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
 
 
 class MergeRequestPreviewRequest(BaseModel):
@@ -274,21 +280,21 @@ class MergeRequestPreviewRequest(BaseModel):
 
 
 class MergeRequestPreviewResponse(BaseModel):
-    merge_base_public_id: Optional[str] = None
-    source_head_public_id: Optional[str] = None
-    target_head_public_id: Optional[str] = None
+    merge_base_public_id: str | None = None
+    source_head_public_id: str | None = None
+    target_head_public_id: str | None = None
     diff_summary: MRDiffSummary = MRDiffSummary()
 
 
 class MergeRequestCreateRequest(BaseModel):
-    source_branch_id: Optional[int] = None
-    source_branch_name: Optional[str] = None
-    source_branch_public_id: Optional[str] = None
-    target_branch_id: Optional[int] = None
-    target_branch_name: Optional[str] = None
-    target_branch_public_id: Optional[str] = None
+    source_branch_id: int | None = None
+    source_branch_name: str | None = None
+    source_branch_public_id: str | None = None
+    target_branch_id: int | None = None
+    target_branch_name: str | None = None
+    target_branch_public_id: str | None = None
     title: str = Field(min_length=1, max_length=500)
-    description: Optional[str] = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def _require_identifiers(self) -> "MergeRequestCreateRequest":
@@ -303,19 +309,19 @@ class MergeRequestCreateRequest(BaseModel):
 
 class MergeReviewRequest(BaseModel):
     decision: str = "approved"
-    comment: Optional[str] = Field(default=None, max_length=2000)
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 class MergeCommentCreateRequest(BaseModel):
-    entity_uuid: Optional[str] = None
-    field_path: Optional[str] = None
-    relation_key: Optional[str] = None
+    entity_uuid: str | None = None
+    field_path: str | None = None
+    relation_key: str | None = None
     comment: str = Field(min_length=1, max_length=2000)
     required: bool = False
 
 
 class MergeRequestListResponse(BaseModel):
-    items: List[MergeRequestSummaryResponse] = Field(default_factory=list)
+    items: list[MergeRequestSummaryResponse] = Field(default_factory=list)
     total: int = 0
     limit: int = 50
     offset: int = 0
@@ -333,26 +339,26 @@ class ConflictItemResponse(BaseModel):
     entity_uuid: str
     entity_name: str = ""
     path: str = ""
-    parent_uuid: Optional[str] = None
-    parent_type: Optional[str] = None
+    parent_uuid: str | None = None
+    parent_type: str | None = None
     base_value: Any = None
     target_value: Any = None
     source_value: Any = None
-    related_entity_type: Optional[str] = None
-    related_entity_uuid: Optional[str] = None
-    related_entity_name: Optional[str] = None
-    choices: List[str] = ["target", "source"]
+    related_entity_type: str | None = None
+    related_entity_uuid: str | None = None
+    related_entity_name: str | None = None
+    choices: list[str] = ["target", "source"]
     resolved: bool = False
 
 
 class MergePreviewResponse(BaseModel):
     """MR 三方合并预览：可重建（每次按当前 heads 重算），列出待解决冲突与自动合并统计。"""
-    merge_base_public_id: Optional[str] = None
-    source_head_public_id: Optional[str] = None
-    target_head_public_id: Optional[str] = None
+    merge_base_public_id: str | None = None
+    source_head_public_id: str | None = None
+    target_head_public_id: str | None = None
     conflict_count: int = 0
-    conflicts: List[ConflictItemResponse] = Field(default_factory=list)
-    auto_merged_summary: Dict[str, int] = Field(default_factory=dict)
+    conflicts: list[ConflictItemResponse] = Field(default_factory=list)
+    auto_merged_summary: dict[str, int] = Field(default_factory=dict)
 
 
 class ConflictResolution(BaseModel):
@@ -368,7 +374,7 @@ class MergeRequestPayload(BaseModel):
     三个 head 字段必填：合并执行时据此校验 source/target 是否在预览后推进，防止按陈旧
     heads 创建 merge commit。缺失任一字段即拒绝合并（返回 422），不允许绕过并发保护。
     """
-    resolutions: List[ConflictResolution] = Field(default_factory=list)
+    resolutions: list[ConflictResolution] = Field(default_factory=list)
     merge_base_public_id: str = Field(min_length=1)
     source_head_public_id: str = Field(min_length=1)
     target_head_public_id: str = Field(min_length=1)
@@ -377,5 +383,5 @@ class MergeRequestPayload(BaseModel):
 class MergeResponse(BaseModel):
     """合并成功结果：目标分支产生带两个父节点的 merge commit。"""
     status: str
-    merged_commit_public_id: Optional[str] = None
-    target_head_public_id: Optional[str] = None
+    merged_commit_public_id: str | None = None
+    target_head_public_id: str | None = None

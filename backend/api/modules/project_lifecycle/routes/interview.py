@@ -1,14 +1,15 @@
 """API routes for project interview (chat-based requirements gathering)."""
 
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import get_llm_context
 from backend.api.modules.project_lifecycle.application.interview_service import ProjectInterviewService
 from backend.database.database import get_session
-from backend.api.dependencies.llm import get_llm_context
 
 logger = logging.getLogger(__name__)
 
@@ -75,31 +76,15 @@ async def interview_complete(
     db_session: AsyncSession = Depends(get_session),
     llm_ctx=Depends(get_llm_context),
 ):
-    """Complete the interview and trigger AI project draft generation.
+    """Converts the interview result into an AI draft for user confirmation.
 
     Steps:
-    1. Create the project with the gathered requirements.
-    2. Call ProjectCreationService.create_draft() to generate actors + features.
-    3. Return the draft so the frontend can show DraftPreviewModal.
+    1. Call ProjectCreationService.create_draft() to generate actors + features.
+    2. Return the draft so the frontend can show DraftPreviewModal.
     """
-    from backend.database.model import ProjectModel
     from backend.api.modules.project_lifecycle.application.creation_service import ProjectCreationService
 
     try:
-        project = ProjectModel(
-            name=request.name,
-            description=request.description or "",
-            user_requirements=request.user_requirements,
-            owner_user_id=user.id,
-        )
-        db_session.add(project)
-        await db_session.flush()
-
-        logger.info(
-            "Project created via interview  project_id=%s  name=%s",
-            project.id, project.name,
-        )
-
         # Trigger AI draft generation (same as "生成AI项目草稿")
         creation_service = ProjectCreationService()
         draft_response = await creation_service.create_draft(
@@ -111,8 +96,8 @@ async def interview_complete(
         )
 
         logger.info(
-            "AI draft generated from interview  project_id=%s  draft_id=%s",
-            project.id, draft_response.get("draft_id"),
+            "AI draft generated from interview draft_id=%s",
+            draft_response.get("draft_id"),
         )
 
         return {

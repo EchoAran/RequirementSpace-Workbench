@@ -2,17 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel
 from backend.api.dependencies.ownership import require_owned_project
-from backend.api.dependencies.project_access import require_project_role
+from backend.api.dependencies.project_access import require_project_admin
+from backend.api.modules.project_lifecycle.application.llm_config_service import ProjectLLMConfigService
 from backend.api.modules.project_lifecycle.schemas.llm_config import (
-    ProjectLLMConfigResponse,
     ProjectLLMConfigRequest,
+    ProjectLLMConfigResponse,
     ProjectLLMConfigTestRequest,
     ProjectLLMConfigTestResponse,
 )
-from backend.api.modules.project_lifecycle.application.llm_config_service import ProjectLLMConfigService
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/llm-config",
@@ -33,7 +33,7 @@ async def get_project_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve project LLM configuration: {str(exc)}",
+            detail=f"Failed to retrieve project LLM configuration: {exc!s}",
         )
 
 
@@ -43,7 +43,7 @@ async def update_project_llm_config(
     request: ProjectLLMConfigRequest,
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     try:
         return await llm_config_service.update_config(project.id, user.id, request, session)
@@ -55,7 +55,7 @@ async def update_project_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update project LLM configuration: {str(exc)}",
+            detail=f"Failed to update project LLM configuration: {exc!s}",
         )
 
 
@@ -63,7 +63,7 @@ async def update_project_llm_config(
 async def delete_project_llm_config(
     project_id: str,
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     try:
         await llm_config_service.delete_config(project.id, session)
@@ -71,7 +71,7 @@ async def delete_project_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to delete project LLM configuration: {str(exc)}",
+            detail=f"Failed to delete project LLM configuration: {exc!s}",
         )
 
 
@@ -80,7 +80,7 @@ async def test_project_llm_config(
     project_id: str,
     request: ProjectLLMConfigTestRequest,
     session: AsyncSession = Depends(get_session),
-    project: ProjectModel = Depends(require_project_role("admin")),
+    project: ProjectModel = Depends(require_project_admin),
 ):
     try:
         return await llm_config_service.test_config(project.id, request, session)
@@ -96,5 +96,5 @@ async def test_project_llm_config(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Project LLM configuration test failed: {str(exc)}",
+            detail=f"Project LLM configuration test failed: {exc!s}",
         )

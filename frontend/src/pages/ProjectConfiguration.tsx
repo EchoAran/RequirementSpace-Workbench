@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/useAuthStore';
 import { workspaceApi } from '@/lib/api';
 import { DEFAULT_UI_LOCALE } from '@/i18n';
+import { buildProjectRouteWithBranch } from '@/core/selectors';
 import {
   getGenerationStrategyPresentation,
   isBuiltinGenerationStrategy,
@@ -365,7 +366,7 @@ export function ProjectConfiguration() {
   const formatDate = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-    return d.toLocaleDateString(i18n.language || DEFAULT_UI_LOCALE, {
+      return d.toLocaleDateString(i18n.language || DEFAULT_UI_LOCALE, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -511,7 +512,7 @@ export function ProjectConfiguration() {
         {/* Breadcrumb / Header */}
         <div className="flex flex-col gap-2">
           <button 
-            onClick={() => navigate(`/projects/${projectId}/overview`)}
+            onClick={() => navigate(buildProjectRouteWithBranch(projectId, '/overview', useWorkspaceStore.getState().branchRef))}
             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 font-bold w-fit cursor-pointer bg-transparent border-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -621,7 +622,7 @@ export function ProjectConfiguration() {
                     {t('projectConfig.contentLanguage.label')}
                   </label>
                   <select
-                    value={contentLocale || ''}
+                    value={contentLocale}
                     onChange={(e) => setContentLocale(e.target.value)}
                     disabled={!isProjectAdmin}
                     className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white focus:outline-none focus:border-indigo-500 appearance-none transition-colors"

@@ -1,19 +1,19 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.prompts import actors_perceive_prompt
 from backend.core.perceptrons.base_perceptron import BasePerceptron, PerceptronInput
+from backend.core.perceptrons.prompts import actors_perceive_prompt
 from backend.schemas import ActorNode
+
 
 # 为参与者感知器定义专属的输入类型
 @dataclass
 class ActorsPerceptronInput(PerceptronInput):
     user_requirements: str
-    actors: List[ActorNode]
+    actors: list[ActorNode]
 
 class ActorsPerceptron(BasePerceptron[ActorsPerceptronInput]):
-    async def perceive(self, input_data: ActorsPerceptronInput) -> Dict:
+    async def perceive(self, input_data: ActorsPerceptronInput) -> dict:
 
         user_requirements_ = input_data.user_requirements
 

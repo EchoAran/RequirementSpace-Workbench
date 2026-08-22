@@ -9,39 +9,32 @@ Merge Request Execution Service (Phase 6).
 合并是服务端单一事务：任何校验失败都抛异常，调用方不提交即整体回滚，不产生部分目标写入。
 """
 import json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from backend.database.model import (
-    RequirementBranchModel,
-    RequirementCommitModel,
-    RequirementCommitParentModel,
-    MergeRequestModel,
-    AuditLogModel,
-)
-from backend.api.modules.version_control.application.merge_service import (
-    _find_merge_base,
-    _load_mr,
-    _check_blocking_reasons,
-    _user_role_in_project,
-    sync_mrs_on_branch_commit,
-)
 from backend.api.modules.version_control.application.branch_service import (
     resolve_branch_context,
 )
 from backend.api.modules.version_control.application.commit_service import (
     build_commit_summary,
 )
-from backend.api.modules.version_control.application.workspace_restoration import (
-    restore_workspace_from_state,
-    scrub_workspace,
-)
 from backend.api.modules.version_control.application.errors import (
     HeadChangedError,
     MergeBlockedError,
     MergeConflictError,
+)
+from backend.api.modules.version_control.application.merge_service import (
+    _check_blocking_reasons,
+    _find_merge_base,
+    _load_mr,
+    _user_role_in_project,
+    sync_mrs_on_branch_commit,
+)
+from backend.api.modules.version_control.application.workspace_restoration import (
+    restore_workspace_from_state,
+    scrub_workspace,
 )
 from backend.api.modules.version_control.domain.semantic_merge import (
     compute_three_way_merge,
@@ -57,9 +50,16 @@ from backend.api.modules.version_control.schemas import (
     MergeRequestPayload,
     MergeResponse,
 )
+from backend.database.model import (
+    AuditLogModel,
+    MergeRequestModel,
+    RequirementBranchModel,
+    RequirementCommitModel,
+    RequirementCommitParentModel,
+)
 
 
-def _load_commit_state(db: Session, commit_id: Optional[int]) -> Dict[str, Any]:
+def _load_commit_state(db: Session, commit_id: int | None) -> dict[str, Any]:
     """读取 Commit 的规范化状态字典；提交缺失或空时返回空状态。"""
     if not commit_id:
         return {}
@@ -72,7 +72,7 @@ def _load_commit_state(db: Session, commit_id: Optional[int]) -> Dict[str, Any]:
 def _merge_inputs(
     db: Session,
     mr: MergeRequestModel,
-) -> Tuple[int, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+) -> tuple[int, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """从分支当前 heads 读取 base/source/target 状态。
 
     返回 (base_commit_id, base_state, target_state, source_state)。base_commit_id 是依据
@@ -94,7 +94,7 @@ def _merge_inputs(
     return base_id, base_state, target_state, source_state
 
 
-def _resolve_commit_public_id(db: Session, commit_id: Optional[int]) -> Optional[str]:
+def _resolve_commit_public_id(db: Session, commit_id: int | None) -> str | None:
     """取 Commit 的 public_id；提交缺失时返回 None。"""
     if not commit_id:
         return None
@@ -102,7 +102,7 @@ def _resolve_commit_public_id(db: Session, commit_id: Optional[int]) -> Optional
     return commit.public_id if commit else None
 
 
-def _merge_preview_meta(db: Session, mr: MergeRequestModel, base_id: int) -> Dict[str, Optional[str]]:
+def _merge_preview_meta(db: Session, mr: MergeRequestModel, base_id: int) -> dict[str, str | None]:
     """构造预览返回所需的 heads 元信息（与 _merge_inputs 同源，避免自相矛盾）。"""
     source_branch = db.get(RequirementBranchModel, mr.source_branch_id)
     target_branch = db.get(RequirementBranchModel, mr.target_branch_id)
@@ -113,7 +113,7 @@ def _merge_preview_meta(db: Session, mr: MergeRequestModel, base_id: int) -> Dic
     }
 
 
-def _resolve_by_public_id(db: Session, project_id: int, public_id: Optional[str]) -> Optional[RequirementCommitModel]:
+def _resolve_by_public_id(db: Session, project_id: int, public_id: str | None) -> RequirementCommitModel | None:
     """按 public_id 在项目内解析提交；未提供或不属于本项目时返回 None。"""
     if not public_id:
         return None
@@ -130,9 +130,9 @@ def _verify_preview_heads(
     req: MergeRequestPayload,
     *,
     project_id: int,
-    current_base_id: Optional[int],
-    current_source_head_id: Optional[int],
-    current_target_head_id: Optional[int],
+    current_base_id: int | None,
+    current_source_head_id: int | None,
+    current_target_head_id: int | None,
 ) -> None:
     """校验客户端预览绑定的三方 heads 与当前分支 heads 完全一致。
 
@@ -140,7 +140,7 @@ def _verify_preview_heads(
     并把 MR 标记 merged，会把未审阅的 source 提交合入目标。任一不一致（含无法解析的 public_id，
     解析为 None 即视为不匹配）都抛出 HeadChangedError(409)。
     """
-    def _expect(public_id: str, current_id: Optional[int], label: str) -> None:
+    def _expect(public_id: str, current_id: int | None, label: str) -> None:
         commit = _resolve_by_public_id(db, project_id, public_id)
         if commit is None or commit.id != current_id:
             raise HeadChangedError(
@@ -156,16 +156,16 @@ def _verify_preview_heads(
 
 def _conflict_resolution_payload(
     req: MergeRequestPayload,
-    source_head_id: Optional[int],
-    target_head_id: Optional[int],
-) -> Dict[str, Any]:
+    source_head_id: int | None,
+    target_head_id: int | None,
+) -> dict[str, Any]:
     """构造冲突解决的审计载荷：冲突 ID、选择、手工值摘要与对应 heads。
 
     手工值不做完整记录以免在审计中留存敏感内容，只记录类型与长度摘要。
     """
     resolutions = []
     for item in req.resolutions:
-        entry: Dict[str, Any] = {"conflict_id": item.conflict_id, "choice": item.choice}
+        entry: dict[str, Any] = {"conflict_id": item.conflict_id, "choice": item.choice}
         if item.manual_value is not None:
             entry["manual_value_kind"] = type(item.manual_value).__name__
             entry["manual_value_length"] = len(str(item.manual_value))
@@ -178,18 +178,18 @@ def _conflict_resolution_payload(
     }
 
 
-def _resolutions_dict(req: MergeRequestPayload) -> Dict[str, Dict[str, Any]]:
+def _resolutions_dict(req: MergeRequestPayload) -> dict[str, dict[str, Any]]:
     """把请求体的 resolutions 列表规整为 conflict_id → 选择 的映射。"""
-    result: Dict[str, Dict[str, Any]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for item in req.resolutions:
-        entry: Dict[str, Any] = {"choice": item.choice}
+        entry: dict[str, Any] = {"choice": item.choice}
         if item.manual_value is not None:
             entry["manual_value"] = item.manual_value
         result[item.conflict_id] = entry
     return result
 
 
-def _conflict_response(item: Dict[str, Any]) -> ConflictItemResponse:
+def _conflict_response(item: dict[str, Any]) -> ConflictItemResponse:
     """把纯引擎冲突项映射为 HTTP 响应模型。"""
     return ConflictItemResponse(
         conflict_id=item["conflict_id"],
@@ -239,7 +239,7 @@ def get_merge_preview(
 def _validate_merged_structure(
     db: Session,
     project_id: int,
-    merged_state: Dict[str, Any],
+    merged_state: dict[str, Any],
 ) -> None:
     """校验合并后的规范化状态满足结构不变量：关系闭包、无重复 uuid、位置唯一。
 
@@ -249,7 +249,7 @@ def _validate_merged_structure(
     feature_uuids = {e["logical_uuid"] for e in merged_state.get("features", [])}
     actor_uuids = {e["logical_uuid"] for e in merged_state.get("actors", [])}
     bo_uuids = {e["logical_uuid"] for e in merged_state.get("business_objects", [])}
-    step_uuids: Dict[str, str] = {}
+    step_uuids: dict[str, str] = {}
     for flow in merged_state.get("flows", []):
         for step in flow.get("steps", []):
             step_uuids[step["logical_uuid"]] = flow["logical_uuid"]
@@ -310,6 +310,7 @@ def perform_merge(
     :raises HeadChangedError: source/target 分支 head 并发变化（409）
     """
     import time
+
     from backend.api.modules.version_control.observability import log_vc_duration
     from backend.core.logging.events import VC_MERGE_COMPLETED
     started = time.perf_counter()

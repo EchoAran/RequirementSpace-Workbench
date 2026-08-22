@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { GitBranch, GitCommitHorizontal, GitFork, History, Plus, GitPullRequest } from 'lucide-react';
+import { GitBranch, GitCommitHorizontal, GitFork, History, Plus, GitPullRequest, RotateCcw } from 'lucide-react';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { CommitSummary, DiffEntry } from '@/core/versionControl';
 import { SemanticDiffView } from '@/components/version-control/SemanticDiffView';
 import { CreateBranchDialog } from '@/components/version-control/CreateBranchDialog';
 import { MergeRequestView } from '@/components/version-control/MergeRequestView';
-import { VersionControlGuidance } from '@/components/version-control/VersionControlGuidance';
 import { findIrNodeByUuid, jumpTargetForEntity } from '@/core/objectNavigation';
-import { buildProjectRoute } from '@/core/selectors';
+import { buildProjectRouteWithBranch } from '@/core/selectors';
 import { CommitGraph } from '@/components/version-control/CommitGraph';
 import { CompareSelector } from '@/components/version-control/CompareSelector';
 import { CommitDetailDialog } from '@/components/version-control/CommitDetailDialog';
+import { RevertCommitDialog } from '@/components/version-control/RevertCommitDialog';
 import { cn } from '@/lib/utils';
 
 /**
@@ -33,6 +33,7 @@ export function Repository() {
   const [showCreateBranch, setShowCreateBranch] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [showCommitDetail, setShowCommitDetail] = useState(false);
+  const [showRevertDialog, setShowRevertDialog] = useState(false);
   const params = new URLSearchParams(location.search);
   const showDiffParam = params.get('diff') === '1';
   const requestBranchSwitch = useWorkspaceStore((s) => s.requestBranchSwitch);
@@ -98,11 +99,34 @@ export function Repository() {
 
   const jumpFromDiff = (entry: DiffEntry) => {
     if (!ir?.projectId) return;
+    const targetRef = params.get('target_ref');
+    const baseRef = params.get('base_ref');
+
+    if (entry.change_type === 'entity_removed') {
+      if (baseRef?.startsWith('commit:')) {
+        const commitId = baseRef.slice('commit:'.length);
+        setSelectedCommit({ public_id: commitId } as any);
+        setShowCommitDetail(true);
+        return;
+      }
+    }
+
+    if (targetRef?.startsWith('commit:')) {
+      const commitId = targetRef.slice('commit:'.length);
+      setSelectedCommit({ public_id: commitId } as any);
+      setShowCommitDetail(true);
+      return;
+    }
+
     const page = jumpTargetForEntity(entry.entity_type);
     if (!page) return;
     const obj = findIrNodeByUuid(ir, entry.entity_type, entry.entity_uuid);
-    if (obj) setSelectedObject(obj);
-    navigate(buildProjectRoute(ir.projectId, page));
+    if (obj) {
+      setSelectedObject(obj);
+      navigate(buildProjectRouteWithBranch(ir.projectId, page, useWorkspaceStore.getState().branchRef));
+    } else {
+      useWorkspaceStore.getState().setError(t('versionControl.errors.objectNotFoundInCurrentWorkspace', '该对象在当前工作区不存在，可能已被重命名或删除。'));
+    }
   };
 
   const formatDate = (iso: string) => {
@@ -113,253 +137,302 @@ export function Repository() {
   if (!projectId) return null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-5">
-      <div className="flex items-center gap-2">
-        <GitBranch className="h-5 w-5 text-indigo-600" />
-        <h1 className="text-lg font-bold text-slate-800">{t('versionControl.repository.title')}</h1>
-      </div>
-
-      {/* 标签栏：Commits / Merge Requests */}
-      {!showDiff && (
-        <div role="tablist" aria-label={t('versionControl.repository.title')} className="flex items-center gap-1">
-          {(['commits', 'mr'] as const).map((tab) => {
-            const active = params.get('tab') === tab || (!params.get('tab') && tab === 'commits');
-            const Icon = tab === 'mr' ? GitPullRequest : History;
-            return (
+    <div className="flex-1 flex w-full relative h-full min-h-0">
+      <div className="flex-1 overflow-y-auto bg-slate-50/70 p-6 pb-24 w-full">
+        <div className="mx-auto max-w-[1280px] animate-in fade-in duration-500 flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <GitBranch className="h-6 w-6 text-indigo-600" />
+              <h1 className="text-xl font-black tracking-tight text-slate-900">{t('versionControl.repository.title')}</h1>
+            </div>
+            {showDiff && (
               <button
-                key={tab}
                 type="button"
-                role="tab"
-                aria-selected={active}
                 onClick={() => {
                   const next = new URLSearchParams(location.search);
-                  if (tab === 'commits') next.delete('tab');
-                  else next.set('tab', tab);
+                  next.delete('diff');
+                  next.delete('base_ref');
+                  next.delete('target_ref');
                   navigate(`${location.pathname}?${next.toString()}`);
                 }}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-indigo-400',
-                  active ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
-                )}
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50 cursor-pointer"
               >
-                <Icon className="h-4 w-4" />
-                {tab === 'mr' ? t('versionControl.repository.mergeRequests') : t('versionControl.repository.commitTimeline')}
+                {t('versionControl.repository.backToRepo', '返回版本总览')}
               </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 版本控制引导横幅（基线/main 保护/MR 审批/不支持功能） */}
-      {!showDiff && <VersionControlGuidance />}
-
-      {showDiff ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
-          <CompareSelector
-            projectId={projectId}
-            baseRef={params.get('base_ref') || undefined}
-            targetRef={params.get('target_ref') || undefined}
-            branchRef={currentBranch?.public_id || 'main'}
-            onChange={(b, tg) => openDiff(b, tg)}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-slate-600">{t('versionControl.diff.title')}</p>
-            {/* 变更种类筛选：通过 URL 保存，可分享评审链接 */}
-            {([
-              { key: undefined, label: t('versionControl.diff.filterAll') },
-              { key: 'entity_added', label: t('versionControl.diff.filterAdded') },
-              { key: 'entity_removed', label: t('versionControl.diff.filterRemoved') },
-              { key: 'entity_updated', label: t('versionControl.diff.filterModified') },
-              { key: 'relation_added', label: t('versionControl.diff.filterRelation') },
-            ] as { key?: string; label: string }[]).map((f) => (
-              <button
-                key={f.key || 'all'}
-                type="button"
-                aria-pressed={diffChangeType === f.key}
-                onClick={() => setDiffFilter(diffEntityType, f.key)}
-                className={cn(
-                  'rounded-lg border px-2.5 py-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-indigo-400',
-                  diffChangeType === f.key
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
+            )}
           </div>
-          <SemanticDiffView
-            projectId={projectId}
-            baseRef={params.get('base_ref') || undefined}
-            targetRef={params.get('target_ref') || undefined}
-            branch={params.get('branch') || undefined}
-            entityType={diffEntityType}
-            changeType={diffChangeType}
-            onJump={jumpFromDiff}
-          />
-        </div>
-      ) : params.get('tab') === 'mr' ? (
-        <MergeRequestView projectId={projectId} />
-      ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,320px)]">
-          {/* 左栏：分支列表 */}
-          <aside className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-              <p className="text-xs font-bold text-slate-700">{t('versionControl.repository.branchList')}</p>
-              <button
-                type="button"
-                onClick={() => setShowCreateBranch(true)}
-                aria-label={t('versionControl.repository.createBranch')}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-indigo-600 hover:bg-indigo-50"
-                title={t('versionControl.repository.createBranch')}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <ul>
-              {(branches || []).map((branch) => {
-                const active = branch.public_id === currentBranch?.public_id;
+
+          {/* 标签栏：Commits / Merge Requests */}
+          {!showDiff && (
+            <div role="tablist" aria-label={t('versionControl.repository.title')} className="flex items-center gap-2">
+              {(['commits', 'mr'] as const).map((tab) => {
+                const active = params.get('tab') === tab || (!params.get('tab') && tab === 'commits');
+                const Icon = tab === 'mr' ? GitPullRequest : History;
                 return (
-                  <li key={branch.public_id}>
-                    <button
-                      type="button"
-                      onClick={() => switchToBranch(branch.public_id)}
-                      className={cn(
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-indigo-50',
-                        active && 'bg-indigo-50 text-indigo-700'
-                      )}
-                    >
-                      <GitBranch className="h-3.5 w-3.5 text-slate-400" />
-                      <span className="min-w-0 flex-1 truncate font-medium">{branch.name}</span>
-                      {branch.is_protected && <span className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">main</span>}
-                    </button>
-                  </li>
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      const next = new URLSearchParams(location.search);
+                      if (tab === 'commits') next.delete('tab');
+                      else next.set('tab', tab);
+                      navigate(`${location.pathname}?${next.toString()}`);
+                    }}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-xs cursor-pointer',
+                      active ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {tab === 'mr' ? t('versionControl.repository.mergeRequests') : t('versionControl.repository.commitTimeline')}
+                  </button>
                 );
               })}
-              {(branches || []).length === 0 && (
-                <li className="px-3 py-3 text-xs text-slate-400">{t('versionControl.repository.noBranches')}</li>
-              )}
-            </ul>
-          </aside>
-
-          {/* 主栏：提交时间线 */}
-          <main className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-              <History className="h-4 w-4 text-slate-400" />
-              <p className="text-xs font-bold text-slate-700">{t('versionControl.repository.commitTimeline')}</p>
             </div>
-            {commitLoading && !commits && <p className="px-4 py-4 text-sm text-slate-400">{t('shell.loading')}</p>}
-            {!commitLoading && (!commits || commits.commits.length === 0) && (
-              <p className="px-4 py-4 text-sm text-slate-400">{t('versionControl.repository.noCommits')}</p>
-            )}
-            {/* 只有一个基线提交时的引导：提示从创建分支开始并行探索（设计文档 3.3 空状态）。 */}
-            {!commitLoading && commits?.commits.length === 1 && (
-              <div className="mx-4 mt-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs text-slate-600">
-                {t('versionControl.repository.noSecondCommit')}
-              </div>
-            )}
-            <div className="px-4 py-4">
-              <CommitGraph
-                commits={commits?.commits || []}
-                selectedPublicId={selectedCommit?.public_id}
-                onSelect={setSelectedCommit}
-              />
-              {commits && commits.commits.length < commits.total && !commitLoading && (
-                <button
-                  type="button"
-                  onClick={() => loadCommits({ all: true, append: true })}
-                  className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  {t('versionControl.repository.loadMore')}
-                </button>
-              )}
-            </div>
-          </main>
+          )}
 
-          {/* 右栏：提交详情与动作 */}
-          <aside className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4">
-            {!selectedCommit ? (
-              <p className="text-sm text-slate-400">{t('versionControl.diff.selectNode')}</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <GitCommitHorizontal className="h-4 w-4 text-indigo-600" />
-                  <span className="font-mono text-xs text-slate-500">{selectedCommit.short_id}</span>
+          {showDiff ? (
+            <div className="flex flex-col gap-6 w-full">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col gap-4">
+                <CompareSelector
+                  projectId={projectId}
+                  baseRef={params.get('base_ref') || undefined}
+                  targetRef={params.get('target_ref') || undefined}
+                  branchRef={currentBranch?.public_id || 'main'}
+                  onChange={(b, tg) => openDiff(b, tg)}
+                />
+                <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-100">
+                  <p className="text-xs font-bold text-slate-700 mr-1">{t('versionControl.diff.title')}</p>
+                  {/* 变更种类筛选：通过 URL 保存，可分享评审链接 */}
+                  {([
+                    { key: undefined, label: t('versionControl.diff.filterAll') },
+                    { key: 'entity_added', label: t('versionControl.diff.filterAdded') },
+                    { key: 'entity_removed', label: t('versionControl.diff.filterRemoved') },
+                    { key: 'entity_updated', label: t('versionControl.diff.filterModified') },
+                    { key: 'relation_added', label: t('versionControl.diff.filterRelation') },
+                  ] as { key?: string; label: string }[]).map((f) => (
+                    <button
+                      key={f.key || 'all'}
+                      type="button"
+                      aria-pressed={diffChangeType === f.key}
+                      onClick={() => setDiffFilter(diffEntityType, f.key)}
+                      className={cn(
+                        'rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer',
+                        diffChangeType === f.key
+                          ? 'border-indigo-300 bg-indigo-50 text-indigo-700 font-bold'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-                <h3 className="text-sm font-bold text-slate-800">{selectedCommit.message}</h3>
-                <p className="text-xs text-slate-500">
-                  {t('versionControl.repository.author')}: {selectedCommit.author_email || selectedCommit.author_user_id || '-'}
-                </p>
-                <p className="text-xs text-slate-500">{formatDate(selectedCommit.created_at)}</p>
+              </div>
 
-                {selectedCommit.parent_public_ids.length > 0 && (
-                  <div>
-                    <p className="mb-1 text-xs font-bold text-slate-600">{t('versionControl.repository.parent')}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedCommit.parent_public_ids.map((pid) => (
-                        <span key={pid} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-                          {pid.slice(0, 8)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {selectedCommit.summary && (
-                  <div>
-                    <p className="mb-1 text-xs font-bold text-slate-600">{t('versionControl.repository.summary')}</p>
-                    <p className="text-xs text-slate-500">
-                      {t('versionControl.repository.changeSummary', {
-                        added: selectedCommit.summary.features ?? 0,
-                        removed: 0,
-                        modified: selectedCommit.summary.actors ?? 0,
-                      })}
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => openDiff(`commit:${selectedCommit.public_id}`)}
-                    className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-                  >
-                    {t('versionControl.repository.compareWithWorkspace')}
-                  </button>
+              <SemanticDiffView
+                projectId={projectId}
+                baseRef={params.get('base_ref') || undefined}
+                targetRef={params.get('target_ref') || undefined}
+                branch={params.get('branch') || undefined}
+                entityType={diffEntityType}
+                changeType={diffChangeType}
+                onJump={jumpFromDiff}
+              />
+            </div>
+          ) : params.get('tab') === 'mr' ? (
+            <MergeRequestView projectId={projectId} />
+          ) : (
+            <div className="grid min-h-[580px] grid-cols-1 gap-6 md:grid-cols-[260px_1fr_340px]">
+              {/* 左栏：分支列表 */}
+              <aside className="h-[640px] overflow-hidden rounded-2xl border border-slate-200 bg-white flex flex-col shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <p className="text-xs font-bold text-slate-800">{t('versionControl.repository.branchList')}</p>
                   <button
                     type="button"
                     onClick={() => setShowCreateBranch(true)}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                    aria-label={t('versionControl.repository.createBranch')}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
+                    title={t('versionControl.repository.createBranch')}
                   >
-                    <GitFork className="h-4 w-4" />
-                    {t('versionControl.repository.createBranchFromCommit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCommitDetail(true)}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    {t('versionControl.repository.viewFullModel')}
+                    <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
-              </div>
-            )}
-          </aside>
-        </div>
-      )}
+                <div className="flex-1 overflow-y-auto p-2">
+                  <ul className="space-y-1">
+                    {(branches || []).map((branch) => {
+                      const active = branch.public_id === currentBranch?.public_id;
+                      return (
+                        <li key={branch.public_id}>
+                          <button
+                            type="button"
+                            onClick={() => switchToBranch(branch.public_id)}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-left text-xs rounded-xl transition-colors',
+                              active ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                            )}
+                          >
+                            <GitBranch className={cn('h-3.5 w-3.5', active ? 'text-indigo-600' : 'text-slate-400')} />
+                            <span className="min-w-0 flex-1 truncate font-medium">{branch.name}</span>
+                            {branch.is_protected && <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">main</span>}
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {(branches || []).length === 0 && (
+                      <li className="px-3 py-4 text-xs text-slate-400 text-center">{t('versionControl.repository.noBranches')}</li>
+                    )}
+                  </ul>
+                </div>
+              </aside>
 
-      <CreateBranchDialog
-        open={showCreateBranch}
-        onClose={() => setShowCreateBranch(false)}
-        sourceCommitPublicId={selectedCommit?.public_id ?? null}
-        onCreated={(publicId) => switchToBranch(publicId)}
-      />
-      <CommitDetailDialog
-        projectId={projectId}
-        commitRef={selectedCommit?.public_id ?? null}
-        open={showCommitDetail}
-        onClose={() => setShowCommitDetail(false)}
-      />
+              {/* 主栏：提交时间线 */}
+              <main className="h-[640px] overflow-hidden rounded-2xl border border-slate-200 bg-white flex flex-col shadow-sm">
+                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <History className="h-4 w-4 text-indigo-600" />
+                  <p className="text-xs font-bold text-slate-800">{t('versionControl.repository.commitTimeline')}</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {commitLoading && !commits && <p className="px-4 py-4 text-sm text-slate-400 text-center">{t('shell.loading')}</p>}
+                  {!commitLoading && (!commits || commits.commits.length === 0) && (
+                    <p className="px-4 py-4 text-sm text-slate-400 text-center">{t('versionControl.repository.noCommits')}</p>
+                  )}
+                  {/* 只有一个基线提交时的引导 */}
+                  {!commitLoading && commits?.commits.length === 1 && (
+                    <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 text-xs text-slate-600 font-medium">
+                      {t('versionControl.repository.noSecondCommit')}
+                    </div>
+                  )}
+                  <CommitGraph
+                    commits={commits?.commits || []}
+                    selectedPublicId={selectedCommit?.public_id}
+                    onSelect={setSelectedCommit}
+                  />
+                  {commits && commits.commits.length < commits.total && !commitLoading && (
+                    <button
+                      type="button"
+                      onClick={() => loadCommits({ all: true, append: true })}
+                      className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      {t('versionControl.repository.loadMore')}
+                    </button>
+                  )}
+                </div>
+              </main>
+
+              {/* 右栏：提交详情与动作 */}
+              <aside className="h-[640px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                {!selectedCommit ? (
+                  <div className="flex h-full flex-col items-center justify-center text-center p-4 text-slate-400">
+                    <p className="text-xs font-medium">{t('versionControl.diff.selectNode')}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <GitCommitHorizontal className="h-4 w-4 text-indigo-600" />
+                      <span className="font-mono text-xs font-bold text-slate-700">@{selectedCommit.short_id}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 leading-snug">{selectedCommit.message}</h3>
+                      <p className="mt-1 text-xs text-slate-400">{formatDate(selectedCommit.created_at)}</p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-100 text-xs space-y-1.5">
+                      <p className="text-slate-500">
+                        <span className="font-bold text-slate-700">{t('versionControl.repository.author')}:</span> {selectedCommit.author_email || selectedCommit.author_user_id || '-'}
+                      </p>
+                      {selectedCommit.summary && (
+                        <p className="text-slate-500">
+                          <span className="font-bold text-slate-700">{t('versionControl.repository.summary')}:</span>{' '}
+                          {t('versionControl.repository.changeSummary', {
+                            added: selectedCommit.summary.features ?? 0,
+                            removed: 0,
+                            modified: selectedCommit.summary.actors ?? 0,
+                          })}
+                        </p>
+                      )}
+                    </div>
+
+                    {selectedCommit.parent_public_ids.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-xs font-bold text-slate-700">{t('versionControl.repository.parent')}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedCommit.parent_public_ids.map((pid) => (
+                            <span key={pid} className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-medium text-slate-600">
+                              {pid.slice(0, 8)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => openDiff(`commit:${selectedCommit.public_id}`)}
+                        className="w-full rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
+                      >
+                        {t('versionControl.repository.compareWithWorkspace')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateBranch(true)}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <GitFork className="h-3.5 w-3.5" />
+                        {t('versionControl.repository.createBranchFromCommit')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCommitDetail(true)}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        {t('versionControl.repository.viewFullModel')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowRevertDialog(true)}
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 text-amber-600" />
+                        {t('versionControl.repository.revertCommit')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
+          )}
+
+          <CreateBranchDialog
+            open={showCreateBranch}
+            onClose={() => setShowCreateBranch(false)}
+            sourceCommitPublicId={selectedCommit?.public_id ?? null}
+            onCreated={(publicId) => switchToBranch(publicId)}
+          />
+          <CommitDetailDialog
+            projectId={projectId}
+            commitRef={selectedCommit?.public_id ?? null}
+            open={showCommitDetail}
+            onClose={() => setShowCommitDetail(false)}
+          />
+          <RevertCommitDialog
+            projectId={projectId || ''}
+            commit={selectedCommit}
+            currentBranchName={currentBranch?.name}
+            open={showRevertDialog}
+            onClose={() => setShowRevertDialog(false)}
+            onReverted={async () => {
+              await loadCommits({ all: true });
+              await loadBranches();
+              if (projectId) {
+                await useWorkspaceStore.getState().refreshWorkspace();
+              }
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

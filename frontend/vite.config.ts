@@ -33,12 +33,30 @@ export default defineConfig(({ mode }) => {
       setupFiles: './src/tests/setup.ts',
     },
     build: {
+      chunkSizeWarningLimit: 500,
       rollupOptions: {
         output: {
-          manualChunks: {
-            react: ['react', 'react-dom', 'react-router-dom'],
-            ui: ['lucide-react'],
-            state: ['zustand'],
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+                return 'vendor-react';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('zustand') || id.includes('i18next') || id.includes('react-i18next')) {
+                return 'vendor-state';
+              }
+              if (id.includes('clsx') || id.includes('tailwind-merge') || id.includes('canvas-confetti') || id.includes('prismjs')) {
+                return 'vendor-utils';
+              }
+            }
+            if (id.includes('src/locales/')) {
+              return 'locales';
+            }
+            if (id.includes('src/store/useWorkspaceStore')) {
+              return 'store-workspace';
+            }
           },
         },
       },

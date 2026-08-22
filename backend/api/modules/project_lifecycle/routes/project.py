@@ -1,28 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from urllib.parse import quote
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.llm import llm_context_manager
 from backend.api.dependencies.ownership import require_owned_project
-from backend.api.dependencies.project_access import require_project_member, require_project_role
-from backend.database.model import UserModel, ProjectModel
-from backend.core.locale import resolve_effective_locale
+from backend.api.dependencies.project_access import (
+    require_project_member,
+    require_project_owner,
+)
+from backend.api.modules.project_lifecycle.ports import get_project_service
 from backend.api.modules.project_lifecycle.schemas.project import (
-    ProjectListItemResponse,
-    ProjectDetailResponse,
-    ProjectDeleteResponse,
     PerceptionSlotDeleteResponse,
+    ProjectDeleteResponse,
+    ProjectDetailResponse,
+    ProjectListItemResponse,
     ProjectUpdateRequest,
     ProjectUpdateResponse,
     ScopeImpactPreviewRequest,
     ScopeImpactPreviewResponse,
+    StageProgressResponse,
     StageTransitionRequest,
     StageTransitionResponse,
-    StageProgressResponse,
 )
-from backend.api.modules.project_lifecycle.ports import get_project_service
+from backend.core.locale import resolve_effective_locale
+from backend.database.model import ProjectModel, UserModel
+
 
 class LazyProjectServiceProxy:
     def __getattr__(self, name):
@@ -78,16 +83,9 @@ async def get_project_detail(
         if cached:
             detail.current_user_role = cached[1].role
         return detail
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        )
+    except (ValueError, PermissionError) as error:
+        from backend.api.modules.version_control.public import map_branch_error
+        raise map_branch_error(error)
 
 
 @router.post(
@@ -97,6 +95,7 @@ async def get_project_detail(
 async def stage_transition(
     project_id: str,
     request: StageTransitionRequest,
+    branch: str | None = Query(None),
     owned_project: ProjectModel = Depends(require_owned_project),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -107,20 +106,12 @@ async def stage_transition(
             action=request.action,
             force=request.force,
             operator_id=user.id,
+            branch_ref=branch,
             session=session,
         )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        if str(error) == "invalid_stage_transition":
-            raise HTTPException(
-                status_code=400,
-                detail="invalid_stage_transition",
-            )
-        raise
+    except (ValueError, PermissionError) as error:
+        from backend.api.modules.version_control.public import map_branch_error
+        raise map_branch_error(error)
 
 
 
@@ -130,21 +121,24 @@ async def stage_transition(
 )
 async def delete_perception_slot(
     project_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
 ):
     try:
+        from backend.api.modules.version_control.public import resolve_branch_context
+        _branch, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
         return await project_service.delete_perception_slot(
             project_id=owned_project.id,
             session=session,
+            workspace_id=ws_obj.id if ws_obj else None,
         )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        raise
+    except (ValueError, PermissionError) as error:
+        from backend.api.modules.version_control.public import map_branch_error
+        raise map_branch_error(error)
 
 
 @router.delete(
@@ -153,7 +147,7 @@ async def delete_perception_slot(
 )
 async def delete_project(
     project_id: str,
-    owned_project: ProjectModel = Depends(require_project_role("owner")),
+    owned_project: ProjectModel = Depends(require_project_owner),
     session: AsyncSession = Depends(get_session),
 ):
     try:
@@ -206,9 +200,13 @@ async def export_project_json(
     project: ProjectModel = Depends(require_project_member),
 ):
     import re
+
     from fastapi.responses import JSONResponse
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
+
+    from backend.api.modules.version_control.application.branch_service import (
+        resolve_branch_context,
+    )
+    branch_obj, _ws_obj, _perms = await session.run_sync(
         lambda s: resolve_branch_context(s, project.id, branch, user.id)
     )
     try:
@@ -247,8 +245,11 @@ async def export_project_markdown(
     project: ProjectModel = Depends(require_project_member),
 ):
     import re
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
+
+    from backend.api.modules.version_control.application.branch_service import (
+        resolve_branch_context,
+    )
+    branch_obj, _ws_obj, _perms = await session.run_sync(
         lambda s: resolve_branch_context(s, project.id, branch, user.id)
     )
     try:
@@ -288,8 +289,11 @@ async def export_project_spl_syntax(
     project: ProjectModel = Depends(require_project_member),
 ):
     import re
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
+
+    from backend.api.modules.version_control.application.branch_service import (
+        resolve_branch_context,
+    )
+    branch_obj, _ws_obj, _perms = await session.run_sync(
         lambda s: resolve_branch_context(s, project.id, branch, user.id)
     )
     try:
@@ -339,8 +343,10 @@ async def export_project_spl_semantic(
     if os.getenv("SPL_SEMANTIC_EXPORT_ENABLED", "true").lower() == "false":
         raise HTTPException(status_code=400, detail="spl_export_semantic_disabled")
 
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
+    from backend.api.modules.version_control.application.branch_service import (
+        resolve_branch_context,
+    )
+    branch_obj, _ws_obj, _perms = await session.run_sync(
         lambda s: resolve_branch_context(s, project.id, branch, user.id)
     )
 
@@ -384,6 +390,8 @@ async def export_project_spl_semantic(
 async def preview_scope_impact(
     project_id: str,
     request: ScopeImpactPreviewRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_project_member),
     session: AsyncSession = Depends(get_session),
 ):
@@ -393,6 +401,8 @@ async def preview_scope_impact(
             feature_id=request.feature_id,
             next_status=request.next_status,
             session=session,
+            branch_ref=branch,
+            user_id=user.id,
         )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -414,6 +424,8 @@ async def preview_scope_impact(
 )
 async def get_stage_progress(
     project_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_project_member),
     session: AsyncSession = Depends(get_session),
 ):
@@ -422,11 +434,9 @@ async def get_stage_progress(
             project_id=owned_project.id,
             public_project_id=project_id,
             session=session,
+            branch_ref=branch,
+            user_id=user.id,
         )
-    except ValueError as error:
-        if str(error) == "project_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="project_not_found",
-            )
-        raise
+    except (ValueError, PermissionError) as error:
+        from backend.api.modules.version_control.public import map_branch_error
+        raise map_branch_error(error)

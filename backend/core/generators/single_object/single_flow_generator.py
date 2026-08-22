@@ -1,7 +1,6 @@
 """SingleFlowGenerator — generates exactly one flow from interview summary."""
 
 import json
-from typing import Dict
 
 from backend.core.generators.single_object.base_single_object_generator import (
     BaseSingleObjectGenerator,
@@ -21,7 +20,7 @@ class SingleFlowGenerator(BaseSingleObjectGenerator):
                "rationale": "..."}
     """
 
-    async def generate(self, input_data: SingleObjectGeneratorInput) -> Dict:
+    async def generate(self, input_data: SingleObjectGeneratorInput) -> dict:
         existing_features = input_data.project_context.get("features", [])
         existing_flows = input_data.project_context.get("flows", [])
 

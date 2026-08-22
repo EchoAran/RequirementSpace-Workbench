@@ -4,6 +4,7 @@ Recommends leaf features to associate with an isolated actor.
 """
 
 import json
+
 from sqlalchemy import select
 
 from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult

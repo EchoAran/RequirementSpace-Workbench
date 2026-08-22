@@ -1,6 +1,5 @@
 from backend.core.prompt_resolver import get_content_locale
 
-
 MESSAGES = {
     "project_interview_welcome": {
         "zh-CN": "你好！请告诉我你想构建一个什么样的项目？它的核心目标是什么？",

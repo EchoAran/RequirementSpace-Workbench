@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
+from backend.api.modules.collaboration.application.notification_service import NotificationService
+from backend.api.modules.collaboration.schemas.notifications import (
+    MarkNotificationsReadRequest,
+    NotificationResponse,
+)
 from backend.database.database import get_session
 from backend.database.model import UserModel
-from backend.api.modules.collaboration.schemas.notifications import (
-    NotificationResponse,
-    MarkNotificationsReadRequest,
-)
-from backend.api.modules.collaboration.application.notification_service import NotificationService
 
 router = APIRouter(
     prefix="/api/me/notifications",
@@ -28,7 +28,7 @@ async def get_my_notifications(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve notifications: {str(exc)}",
+            detail=f"Failed to retrieve notifications: {exc!s}",
         )
 
 
@@ -44,5 +44,5 @@ async def mark_notifications_as_read(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to mark notifications as read: {str(exc)}",
+            detail=f"Failed to mark notifications as read: {exc!s}",
         )

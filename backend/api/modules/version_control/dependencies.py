@@ -3,7 +3,7 @@ Version Control FastAPI Dependencies.
 提供写接口的历史提交只读保护依赖。
 """
 import json
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 
@@ -58,3 +58,16 @@ async def reject_commit_write(request: Request) -> None:
                 payload = None
             if payload is not None and _find_commit_id(payload):
                 raise _reject()
+
+
+def map_branch_error(error: Exception) -> HTTPException:
+    """统一将分支解析、权限以及未找到等异常映射为对应的 HTTP 状态码。"""
+    if isinstance(error, HTTPException):
+        return error
+    err_str = str(error)
+    lower = err_str.lower()
+    if "not found" in lower or "not_found" in lower:
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=err_str)
+    if "protected" in lower or "cannot_write" in lower or "permission" in lower or isinstance(error, PermissionError):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Branch is protected or read-only")
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err_str)

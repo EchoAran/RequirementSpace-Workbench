@@ -8,6 +8,7 @@ Static analysis (no dry-run). Entity names queried via session for readability.
 """
 
 from sqlalchemy import select
+
 from backend.database.model import (
     ActorModel,
     BusinessObjectModel,
@@ -17,7 +18,6 @@ from backend.database.model import (
     ScenarioModel,
     ScopeModel,
 )
-
 
 # Risk level mapping by operation pattern
 _RISK_MAP: dict[str, str] = {

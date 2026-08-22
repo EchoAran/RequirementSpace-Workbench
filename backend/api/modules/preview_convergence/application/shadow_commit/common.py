@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+
 def _resolve_id(reference: Any, temporary_ids: dict[str, int]) -> int:
     if not reference:
         return 0

@@ -8,22 +8,13 @@ Commit Application Service.
 """
 import json
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, load_only
 
-from backend.database.model import (
-    UserModel,
-    RequirementBranchModel,
-    RequirementCommitModel,
-    RequirementCommitParentModel,
-)
 from backend.api.modules.version_control.application.branch_service import (
     resolve_branch_context,
-)
-from backend.api.modules.version_control.application.workspace_serializer import (
-    serialize_workspace,
 )
 from backend.api.modules.version_control.application.errors import (
     BranchNotFoundError,
@@ -31,16 +22,32 @@ from backend.api.modules.version_control.application.errors import (
     HeadChangedError,
     ProtectedBranchError,
 )
+from backend.api.modules.version_control.application.workspace_serializer import (
+    serialize_workspace,
+)
 from backend.api.modules.version_control.domain.serializer import (
     CURRENT_SCHEMA_VERSION,
-    to_deterministic_json,
     compute_state_hash,
+    to_deterministic_json,
+)
+from backend.api.modules.version_control.application.workspace_restoration import (
+    restore_workspace_from_state,
+    scrub_workspace,
 )
 from backend.api.modules.version_control.schemas import (
     CommitCreateRequest,
-    CommitSummaryResponse,
     CommitDetailResponse,
     CommitListResponse,
+    CommitRevertRequest,
+    CommitSummaryResponse,
+)
+from backend.database.model import (
+    ProjectMemberModel,
+    ProjectModel,
+    RequirementBranchModel,
+    RequirementCommitModel,
+    RequirementCommitParentModel,
+    UserModel,
 )
 
 _GRAPH_COLLECTION_KEYS = (
@@ -54,7 +61,7 @@ _GRAPH_COLLECTION_KEYS = (
 )
 
 
-def build_commit_summary(normalized_state: Dict[str, Any]) -> Dict[str, Any]:
+def build_commit_summary(normalized_state: dict[str, Any]) -> dict[str, Any]:
     """按对象类型统计规范化状态的对象数量，作为提交的变更摘要载荷。"""
     return {
         key: len(normalized_state.get(key, []))
@@ -66,7 +73,7 @@ def resolve_commit_in_project(
     db: Session,
     project_id: int,
     commit_ref: str,
-) -> Optional[RequirementCommitModel]:
+) -> RequirementCommitModel | None:
     """在指定项目内解析提交引用：支持数字主键、完整 public_id 和短标识前缀。"""
     ref_str = str(commit_ref).strip()
     if ref_str.isdigit():
@@ -100,9 +107,9 @@ def _resolve_expected_head(
     project_id: int,
     branch: RequirementBranchModel,
     req: CommitCreateRequest,
-) -> Optional[int]:
+) -> int | None:
     """解析并校验预期 head；不一致时抛出 HeadChangedError 防止静默覆盖他人提交。"""
-    expected_id: Optional[int] = None
+    expected_id: int | None = None
     if req.expected_head_commit_id is not None:
         expected_id = req.expected_head_commit_id
     elif req.expected_head_commit_public_id:
@@ -128,7 +135,7 @@ def create_commit(
     project_id: int,
     branch_ref: str,
     req: CommitCreateRequest,
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
 ) -> CommitDetailResponse:
     """
     把分支工作区当前状态固化为一条不可变提交，并在同一事务内推进分支 head。
@@ -196,7 +203,7 @@ def create_commit(
     return get_commit_detail(db, project_id, commit.public_id)
 
 
-def build_branch_index(db: Session, project_id: int) -> Dict[int, List[RequirementBranchModel]]:
+def build_branch_index(db: Session, project_id: int) -> dict[int, list[RequirementBranchModel]]:
     """构建 head_commit_id → 指向该提交的活跃分支列表，用于提交图上的分支标签。"""
     branches = db.scalars(
         select(RequirementBranchModel).where(
@@ -204,7 +211,7 @@ def build_branch_index(db: Session, project_id: int) -> Dict[int, List[Requireme
             RequirementBranchModel.status == "active",
         )
     ).all()
-    index: Dict[int, List[RequirementBranchModel]] = defaultdict(list)
+    index: dict[int, list[RequirementBranchModel]] = defaultdict(list)
     for branch in branches:
         if branch.head_commit_id is not None:
             index[branch.head_commit_id].append(branch)
@@ -214,7 +221,7 @@ def build_branch_index(db: Session, project_id: int) -> Dict[int, List[Requireme
 def _load_project_commit_graph(
     db: Session,
     project_id: int,
-) -> Tuple[Set[int], Dict[int, List[RequirementCommitParentModel]]]:
+) -> tuple[set[int], dict[int, list[RequirementCommitParentModel]]]:
     """加载项目内提交 id 集合与父子关系（仅投影 id，不加载 state_json 大列）。
 
     供提交图可达性遍历与 merge base 计算使用。分页列表不依赖本函数（改走
@@ -228,7 +235,7 @@ def _load_project_commit_graph(
             RequirementCommitParentModel.commit_id.in_(commit_ids)
         )
     ).all()
-    parents_by_commit: Dict[int, List[RequirementCommitParentModel]] = defaultdict(list)
+    parents_by_commit: dict[int, list[RequirementCommitParentModel]] = defaultdict(list)
     for row in parent_rows:
         if row.parent_commit_id in commit_ids:
             parents_by_commit[row.commit_id].append(row)
@@ -237,10 +244,10 @@ def _load_project_commit_graph(
 
 def _reachable_commit_ids(
     head_commit_id: int,
-    parents_by_commit: Dict[int, List[RequirementCommitParentModel]],
-) -> Set[int]:
+    parents_by_commit: dict[int, list[RequirementCommitParentModel]],
+) -> set[int]:
     """沿父链（含 merge 双父）收集从分支 head 可达的全部提交。"""
-    seen: Set[int] = set()
+    seen: set[int] = set()
     stack = [head_commit_id]
     while stack:
         commit_id = stack.pop()
@@ -254,12 +261,12 @@ def _reachable_commit_ids(
 def _commit_summary_fields(
     db: Session,
     commit: RequirementCommitModel,
-    parent_ids: List[int],
-    parent_public_ids: List[str],
-    branch_index: Dict[int, List[RequirementBranchModel]],
-) -> Dict[str, Any]:
+    parent_ids: list[int],
+    parent_public_ids: list[str],
+    branch_index: dict[int, list[RequirementBranchModel]],
+) -> dict[str, Any]:
     """构造提交摘要响应字段（含作者邮箱与分支标签）。"""
-    author_email: Optional[str] = None
+    author_email: str | None = None
     if commit.author_user_id is not None:
         author = db.get(UserModel, commit.author_user_id)
         if author is not None:
@@ -287,10 +294,10 @@ def _commit_summary_fields(
 def _load_commit_page(
     db: Session,
     project_id: int,
-    commit_ids: Optional[Set[int]],
+    commit_ids: set[int] | None,
     limit: int,
     offset: int,
-) -> List[RequirementCommitModel]:
+) -> list[RequirementCommitModel]:
     """SQL 层分页加载提交（仅裁剪列，不加载 state_json 大列）。
 
     commit_ids 为 None 时表示全项目（all 模式）；否则按可达集过滤。
@@ -324,13 +331,13 @@ def _load_commit_page(
     ).all()
 
 
-def _chunk(values: Set[int], size: int) -> List[Set[int]]:
+def _chunk(values: set[int], size: int) -> list[set[int]]:
     """把集合按固定大小切成多块，供 IN 子句分块（SQLite 变量上限规避）。"""
     items = list(values)
     return [set(items[i : i + size]) for i in range(0, len(items), size)]
 
 
-def _count_commits(db: Session, project_id: int, commit_ids: Optional[Set[int]]) -> int:
+def _count_commits(db: Session, project_id: int, commit_ids: set[int] | None) -> int:
     """统计分页范围内的提交总数（与 _load_commit_page 同谓词）。"""
     stmt = select(func.count()).select_from(RequirementCommitModel).where(
         RequirementCommitModel.project_id == project_id
@@ -350,8 +357,8 @@ def _count_commits(db: Session, project_id: int, commit_ids: Optional[Set[int]])
 def _page_parent_edges(
     db: Session,
     project_id: int,
-    page_ids: List[int],
-) -> Dict[int, List[int]]:
+    page_ids: list[int],
+) -> dict[int, list[int]]:
     """按 parent_order 加载分页提交的父 id 列表（仅取本页提交的父边）。"""
     if not page_ids:
         return {}
@@ -360,7 +367,7 @@ def _page_parent_edges(
             RequirementCommitParentModel.commit_id.in_(page_ids)
         )
     ).all()
-    edges: Dict[int, List[int]] = defaultdict(list)
+    edges: dict[int, list[int]] = defaultdict(list)
     for row in sorted(rows, key=lambda r: r.parent_order):
         edges[row.commit_id].append(row.parent_commit_id)
     return edges
@@ -368,8 +375,8 @@ def _page_parent_edges(
 
 def _parent_public_id_map(
     db: Session,
-    parent_ids: Set[int],
-) -> Dict[int, str]:
+    parent_ids: set[int],
+) -> dict[int, str]:
     """批量解析父提交 id → public_id（供提交图边渲染）。"""
     if not parent_ids:
         return {}
@@ -384,7 +391,7 @@ def _parent_public_id_map(
 def list_commits(
     db: Session,
     project_id: int,
-    branch_ref: Optional[str] = None,
+    branch_ref: str | None = None,
     all: bool = False,
     limit: int = 50,
     offset: int = 0,
@@ -413,7 +420,7 @@ def list_commits(
     all_parent_ids = {pid for pids in edges.values() for pid in pids}
     pub_map = _parent_public_id_map(db, all_parent_ids)
 
-    summaries: List[CommitSummaryResponse] = []
+    summaries: list[CommitSummaryResponse] = []
     for commit in page:
         parent_ids = edges.get(commit.id, [])
         parent_public_ids = [pub_map[pid] for pid in parent_ids if pid in pub_map]
@@ -453,3 +460,87 @@ def get_commit_detail(
     fields = _commit_summary_fields(db, commit, parent_ids, parent_public_ids, branch_index)
     fields["state"] = json.loads(commit.state_json) if commit.state_json else None
     return CommitDetailResponse(**fields)
+
+
+def revert_commit(
+    db: Session,
+    project_id: int,
+    branch_ref: str,
+    target_commit_ref: str,
+    user_id: int | None = None,
+    custom_message: str | None = None,
+) -> CommitDetailResponse:
+    """将指定分支的工作区和状态回滚到 target_commit 对应快照，并生成一条新的 Revert 提交。"""
+    branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref, user_id)
+    if branch is None or workspace is None:
+        raise BranchNotFoundError(f"Branch '{branch_ref}' not found in project {project_id}")
+
+    project = db.get(ProjectModel, project_id)
+    is_owner = project is not None and project.owner_user_id == user_id
+    member_role = None
+    if user_id:
+        member = db.scalars(
+            select(ProjectMemberModel).where(
+                ProjectMemberModel.project_id == project_id,
+                ProjectMemberModel.user_id == user_id,
+            )
+        ).first()
+        member_role = member.role if member else None
+
+    is_admin = is_owner or (member_role in ("owner", "admin"))
+
+    if branch.is_protected and not is_admin:
+        raise ProtectedBranchError("Only project owner or admin can revert protected branch")
+    elif not branch.is_protected and not permissions.get("can_write", False):
+        raise ValueError("Insufficient permission to modify branch")
+
+    target_commit = resolve_commit_in_project(db, project_id, target_commit_ref)
+    if target_commit is None:
+        raise CommitNotFoundError(f"Target commit '{target_commit_ref}' not found in project {project_id}")
+
+    if not target_commit.state_json:
+        raise ValueError("Target commit does not contain valid state snapshot")
+
+    state_dict = json.loads(target_commit.state_json)
+
+    # 1. 恢复工作区（清除旧实体并从目标快照重建）
+    scrub_workspace(db, workspace.id)
+    restore_workspace_from_state(db, workspace, state_dict)
+    db.flush()
+
+    # 2. 重新序列化工作区状态生成提交快照
+    normalized_state = serialize_workspace(db, workspace)
+    state_json = to_deterministic_json(normalized_state)
+    state_hash = compute_state_hash(state_json)
+
+    short_target_id = target_commit.public_id[:8]
+    message = custom_message.strip() if custom_message and custom_message.strip() else f"回滚至提交: [{short_target_id}] {target_commit.message}"
+
+    # 3. 创建回滚提交（父提交指向当前 branch head）
+    commit = RequirementCommitModel(
+        project_id=project_id,
+        message=message,
+        state_json=state_json,
+        state_hash=state_hash,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        author_user_id=user_id,
+        summary_json=build_commit_summary(normalized_state),
+    )
+    db.add(commit)
+    db.flush()
+
+    if branch.head_commit_id is not None:
+        db.add(
+            RequirementCommitParentModel(
+                commit_id=commit.id,
+                parent_commit_id=branch.head_commit_id,
+                parent_order=0,
+            )
+        )
+        db.flush()
+
+    # 4. 推进分支 head
+    branch.head_commit_id = commit.id
+    db.flush()
+
+    return get_commit_detail(db, project_id, commit.public_id)

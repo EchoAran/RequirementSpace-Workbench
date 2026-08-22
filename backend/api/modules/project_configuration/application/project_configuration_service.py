@@ -1,20 +1,21 @@
 import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.model import (
-    KnowledgeDocumentModel,
-    UserModel,
-    UserRole,
-    UserLLMConfigModel,
+from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
+    GenerationStrategyConfigService,
 )
 from backend.api.modules.project_configuration.schemas import (
     ProjectConfigurationResponse,
     ProjectKnowledgeSummary,
     ProjectLLMSummary,
 )
-from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
-    GenerationStrategyConfigService,
+from backend.database.model import (
+    KnowledgeDocumentModel,
+    UserLLMConfigModel,
+    UserModel,
+    UserRole,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,13 +85,13 @@ class ProjectConfigurationService:
         # 2. Knowledge Base Summary
         from backend.core.config import KNOWLEDGE_BASE_ENABLED
         from backend.database.model import ProjectGenerationStrategyConfigModel
-        
+
         stmt = select(ProjectGenerationStrategyConfigModel).where(
             ProjectGenerationStrategyConfigModel.project_id == project_id
         )
         res_config = await session.execute(stmt)
         db_config = res_config.scalar_one_or_none()
-        
+
         proj_knowledge_enabled = KNOWLEDGE_BASE_ENABLED
         if db_config is not None:
             proj_knowledge_enabled = KNOWLEDGE_BASE_ENABLED and db_config.knowledge_enabled
@@ -132,20 +133,22 @@ class ProjectConfigurationService:
         enabled: bool,
         session: AsyncSession
     ) -> ProjectKnowledgeSummary:
-        from backend.database.model import ProjectGenerationStrategyConfigModel
         from backend.core.config import KNOWLEDGE_BASE_ENABLED
-        
+        from backend.database.model import ProjectGenerationStrategyConfigModel
+
         stmt = select(ProjectGenerationStrategyConfigModel).where(
             ProjectGenerationStrategyConfigModel.project_id == project_id
         )
         res = await session.execute(stmt)
         db_config = res.scalar_one_or_none()
-        
+
         if db_config:
             db_config.knowledge_enabled = enabled
             db_config.updated_by_user_id = user_id
         else:
-            from backend.api.modules.project_configuration.application.generation_strategy_config_service import DEFAULT_STRATEGIES
+            from backend.api.modules.project_configuration.application.generation_strategy_config_service import (
+                DEFAULT_STRATEGIES,
+            )
             db_config = ProjectGenerationStrategyConfigModel(
                 project_id=project_id,
                 enabled=True,
@@ -155,10 +158,10 @@ class ProjectConfigurationService:
                 updated_by_user_id=user_id
             )
             session.add(db_config)
-            
+
         await session.commit()
         await session.refresh(db_config)
-        
+
         query = (
             select(KnowledgeDocumentModel)
             .where(KnowledgeDocumentModel.project_id == project_id)
@@ -166,7 +169,7 @@ class ProjectConfigurationService:
         )
         res_docs = await session.execute(query)
         docs = res_docs.scalars().all()
-        
+
         ai_ready_count = sum(1 for d in docs if d.status == "ready" and d.ai_enabled)
 
         return ProjectKnowledgeSummary(

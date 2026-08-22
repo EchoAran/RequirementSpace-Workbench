@@ -31,14 +31,14 @@ def create_default_generator_registry() -> SingleObjectGeneratorRegistry:
     from backend.core.generators.single_object.single_actor_generator import (
         SingleActorGenerator,
     )
+    from backend.core.generators.single_object.single_business_object_generator import (
+        SingleBusinessObjectGenerator,
+    )
     from backend.core.generators.single_object.single_feature_generator import (
         SingleFeatureGenerator,
     )
     from backend.core.generators.single_object.single_flow_generator import (
         SingleFlowGenerator,
-    )
-    from backend.core.generators.single_object.single_business_object_generator import (
-        SingleBusinessObjectGenerator,
     )
 
     registry = SingleObjectGeneratorRegistry()
@@ -73,14 +73,14 @@ def create_default_edit_generator_registry() -> EditGeneratorRegistry:
     from backend.core.generators.single_object.edit_actor_generator import (
         EditActorGenerator,
     )
+    from backend.core.generators.single_object.edit_business_object_generator import (
+        EditBusinessObjectGenerator,
+    )
     from backend.core.generators.single_object.edit_feature_generator import (
         EditFeatureGenerator,
     )
     from backend.core.generators.single_object.edit_flow_generator import (
         EditFlowGenerator,
-    )
-    from backend.core.generators.single_object.edit_business_object_generator import (
-        EditBusinessObjectGenerator,
     )
 
     registry = EditGeneratorRegistry()

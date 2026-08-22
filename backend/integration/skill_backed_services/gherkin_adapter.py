@@ -5,7 +5,6 @@ from typing import Any
 
 from backend.schemas import ActorNode, FeatureNode, ScenarioNode
 
-
 STEP_KEYS = (
     "Given",
     "And",

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
 from backend.database.model import (
     BusinessObjectAttributeModel,
@@ -35,11 +35,13 @@ async def create_business_objects(
     session,
     project_id: int,
     items: list[dict],
+    workspace_id: int | None = None,
 ) -> dict:
     models_by_number = {}
     for item in items:
         model = BusinessObjectModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=item["business_object_name"],
             description=item["business_object_description"],
             confirmation_status="ai_assumption",
@@ -54,6 +56,7 @@ async def create_business_object_attributes(
     session,
     items: list[dict],
     models_by_number: dict,
+    workspace_id: int | None = None,
 ) -> None:
     for item in items:
         business_object = models_by_number[item["business_object_number"]]
@@ -64,6 +67,7 @@ async def create_business_object_attributes(
             )
             session.add(
                 BusinessObjectAttributeModel(
+                    workspace_id=workspace_id,
                     business_object_id=business_object.id,
                     name=attribute["business_object_attribute_name"],
                     description=attribute[
@@ -82,11 +86,13 @@ async def create_flows(
     session,
     project_id: int,
     payloads: list[dict],
+    workspace_id: int | None = None,
 ) -> list[GeneratedFlowContext]:
     contexts = []
     for payload in payloads:
         model = FlowModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             name=payload["flow_name"],
             description=payload["flow_description"],
             confirmation_status="ai_assumption",
@@ -100,6 +106,7 @@ async def create_flows(
 async def create_flow_steps(
     session,
     contexts: list[GeneratedFlowContext],
+    workspace_id: int | None = None,
 ) -> int:
     for context in contexts:
         for position, payload in enumerate(
@@ -107,6 +114,7 @@ async def create_flow_steps(
             start=1,
         ):
             model = FlowStepModel(
+                workspace_id=workspace_id,
                 flow_id=context.model.id,
                 position=position,
                 name=payload["step_name"],
@@ -122,6 +130,7 @@ async def create_flow_steps(
 def collect_flow_association_rows(
     contexts: list[GeneratedFlowContext],
     business_objects_by_number: dict,
+    valid_actor_ids: set[int] | None = None,
 ) -> FlowAssociationRows:
     rows = FlowAssociationRows()
     for context in contexts:
@@ -136,6 +145,7 @@ def collect_flow_association_rows(
             rows,
             context,
             business_objects_by_number,
+            valid_actor_ids,
         )
     return rows
 
@@ -144,12 +154,16 @@ def _collect_step_association_rows(
     rows: FlowAssociationRows,
     context: GeneratedFlowContext,
     business_objects_by_number: dict,
+    valid_actor_ids: set[int] | None = None,
 ) -> None:
     for payload in context.payload.get("flow_steps", []):
         step = context.steps_by_number[payload["step_number"]]
+        actor_ids = payload.get("actor_ids", [])
+        if valid_actor_ids is not None:
+            actor_ids = [aid for aid in actor_ids if aid in valid_actor_ids]
         rows.actors.extend(
             {"flow_step_id": step.id, "actor_id": actor_id}
-            for actor_id in payload.get("actor_ids", [])
+            for actor_id in actor_ids
         )
         rows.input_business_objects.extend(
             {
@@ -202,28 +216,46 @@ async def persist_flow_association_rows(
     await session.flush()
 
 
-async def persist_flow_generation_draft(draft: dict, session) -> dict:
+async def persist_flow_generation_draft(
+    draft: dict,
+    session,
+    workspace_id: int | None = None,
+) -> dict:
+    from backend.database.model import ActorModel
     project_id = draft["project_id"]
     business_object_items = draft["business_objects"]
     business_objects = await create_business_objects(
         session,
         project_id,
         business_object_items,
+        workspace_id=workspace_id,
     )
     await create_business_object_attributes(
         session,
         business_object_items,
         business_objects,
+        workspace_id=workspace_id,
     )
     flow_contexts = await create_flows(
         session,
         project_id,
         draft["flows"],
+        workspace_id=workspace_id,
     )
-    flow_step_count = await create_flow_steps(session, flow_contexts)
+    flow_step_count = await create_flow_steps(
+        session,
+        flow_contexts,
+        workspace_id=workspace_id,
+    )
+    actor_stmt = select(ActorModel.id).where(ActorModel.project_id == project_id)
+    if workspace_id is not None:
+        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+    valid_actor_ids = set((await session.execute(actor_stmt)).scalars().all())
+
     rows = collect_flow_association_rows(
         flow_contexts,
         business_objects,
+        valid_actor_ids=valid_actor_ids,
     )
     await persist_flow_association_rows(session, rows)
     return {

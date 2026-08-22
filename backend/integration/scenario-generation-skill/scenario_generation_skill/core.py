@@ -15,7 +15,7 @@ def _resource_text(package_path: str, filename: str) -> str:
 
 def _load_config(config_path: str | None = None) -> Any:
     if config_path:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             config_dict = json.load(f)
     else:
         config_dict = json.loads(

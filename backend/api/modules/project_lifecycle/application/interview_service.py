@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+
 from backend.core.generators.prompts import PROJECT_INTERVIEW_SYSTEM_PROMPT
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.localized_messages import localized_message
@@ -45,9 +46,7 @@ class ProjectInterviewService:
             }
 
         llm = self._get_llm_handler()
-        full_messages = [
-            {"role": "system", "content": PROJECT_INTERVIEW_SYSTEM_PROMPT},
-        ] + messages
+        full_messages = [{"role": "system", "content": PROJECT_INTERVIEW_SYSTEM_PROMPT}, *messages]
 
         response = await llm.call_chat(
             messages=full_messages,

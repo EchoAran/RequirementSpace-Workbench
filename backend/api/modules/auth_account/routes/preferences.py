@@ -2,15 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.database import get_session
-from backend.database.model import UserModel
-from backend.api.modules.auth_account.schemas.preferences import (
-    UpdatePreferencesRequest,
-    PreferencesResponse,
-)
 from backend.api.modules.auth_account.application.preferences_service import (
     UserPreferencesService,
 )
+from backend.api.modules.auth_account.schemas.preferences import (
+    PreferencesResponse,
+    UpdatePreferencesRequest,
+)
+from backend.database.database import get_session
+from backend.database.model import UserModel
 
 router = APIRouter(
     prefix="/api/account/preferences",

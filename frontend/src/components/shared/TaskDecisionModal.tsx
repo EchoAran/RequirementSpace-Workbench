@@ -359,42 +359,42 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
-        <div className="px-6 py-4 border-b border-slate-150 flex items-center justify-between bg-slate-50/50">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200/80 animate-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div>
-            <span className="text-[10px] font-bold tracking-wider uppercase bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold tracking-wider uppercase bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full border border-indigo-100">
               {t('taskDecision.approvalHeader')}
             </span>
-            <h3 className="text-base font-bold text-slate-800 mt-1">{getCollaborationTaskTitle(task, t)}</h3>
+            <h3 className="text-base font-black text-slate-900 mt-1">{getCollaborationTaskTitle(task, t)}</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-100 rounded-full transition-colors">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {error && (
-            <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-xl text-xs flex items-start gap-2">
+            <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-2xl text-xs flex items-start gap-2 font-medium">
               <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
           {task.contentChanged && (
-            <div className="bg-amber-50 border border-amber-100 text-amber-800 px-4 py-3 rounded-xl text-xs flex items-start gap-2">
+            <div className="bg-amber-50 border border-amber-100 text-amber-800 px-4 py-3 rounded-2xl text-xs flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <strong className="block font-semibold mb-0.5">{t('taskDecision.contentChangedWarningTitle')}</strong>
-                <span>{t('taskDecision.contentChangedWarningDesc')}</span>
+                <strong className="block font-bold mb-0.5">{t('taskDecision.contentChangedWarningTitle')}</strong>
+                <span className="font-medium">{t('taskDecision.contentChangedWarningDesc')}</span>
               </div>
             </div>
           )}
 
           {getCollaborationTaskDescription(task, t) && (
-            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60">
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t('taskDecision.assignNote')}</div>
-              <div className="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-wrap">{getCollaborationTaskDescription(task, t)}</div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-wrap font-medium">{getCollaborationTaskDescription(task, t)}</div>
             </div>
           )}
 
@@ -403,9 +403,9 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
             <div className="space-y-3">
               {snapshotGroups.map((group, index) => {
                 return (
-                  <div key={`${group.title}-${index}`} className="border border-slate-150 rounded-xl overflow-hidden bg-slate-50/30 text-xs">
+                  <div key={`${group.title}-${index}`} className="border border-slate-150 rounded-2xl overflow-hidden bg-slate-50/30 text-xs">
                     {snapshotGroups.length > 1 && (
-                      <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 font-semibold text-slate-700">
+                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-slate-700">
                         {group.title}
                       </div>
                     )}
@@ -425,27 +425,27 @@ export function TaskDecisionModal({ task, projectId, onClose, onDecided }: TaskD
               value={decisionNote}
               onChange={(e) => setDecisionNote(e.target.value)}
               placeholder={t('taskDecision.decisionNotePlaceholder')}
-              className="w-full text-xs text-slate-700 border border-slate-200 rounded-xl px-3.5 py-2.5 min-h-[70px] focus:outline-none focus:border-indigo-500 transition-colors"
+              className="w-full text-xs text-slate-700 border border-slate-200 bg-slate-50/50 rounded-2xl px-3.5 py-2.5 min-h-[70px] focus:bg-white focus:outline-none focus:border-indigo-500 transition-all font-medium"
             />
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-150 bg-slate-50/30 flex items-center justify-between gap-3 shrink-0">
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex items-center justify-between gap-3 shrink-0">
           <div className="text-[10px] text-slate-400">
-            {t('taskDecision.handlerLabel')} <span className="font-semibold text-slate-500">{task.assigneeEmail}</span>
+            {t('taskDecision.handlerLabel')} <span className="font-bold text-slate-600">{task.assigneeEmail}</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => handleDecision('reject')}
               disabled={loading}
-              className="px-4 py-2 rounded-xl text-xs font-semibold border border-rose-200 text-rose-600 bg-white hover:bg-rose-50/50 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold border border-rose-200 text-rose-600 bg-white hover:bg-rose-50/60 transition-all cursor-pointer disabled:opacity-50"
             >
               {t('taskDecision.rejectBtn')}
             </button>
             <button
               onClick={() => handleDecision('approve')}
               disabled={loading}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white shadow-md flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>{t('taskDecision.approveBtn')}</span>

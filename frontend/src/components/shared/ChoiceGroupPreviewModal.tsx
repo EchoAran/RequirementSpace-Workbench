@@ -44,7 +44,62 @@ function getFailedChoiceError(choice: any, fallback: string, t: any): string {
   return i18n.language === 'en-US' && /[\u4e00-\u9fff]/.test(rawError) ? fallback : rawError;
 }
 
-function confirmRegeneration(draftType: string): boolean {
+function confirmRegeneration(draftType: string, choice?: any): boolean {
+  const ir = useWorkspaceStore.getState().ir;
+  if (ir) {
+    let hasExistingContent = false;
+    switch (draftType) {
+      case 'flow':
+        hasExistingContent = (ir.flows?.length ?? 0) > 0 || (ir.businessObjects?.length ?? 0) > 0;
+        break;
+      case 'actor':
+        hasExistingContent = (ir.actors?.length ?? 0) > 0;
+        break;
+      case 'feature':
+        hasExistingContent = (ir.features?.length ?? 0) > 0;
+        break;
+      case 'scenario': {
+        const payload = choice?.payload || {};
+        const targetFeatureIds = new Set(
+          asArray(payload.feature_ids || (payload.feature_id ? [payload.feature_id] : []))
+        );
+        const features = ir.features || [];
+        hasExistingContent = features.some(f => {
+          if (targetFeatureIds.size > 0 && !targetFeatureIds.has(f.featureId) && !targetFeatureIds.has(f.id)) {
+            return false;
+          }
+          return (f.scenarios?.length ?? 0) > 0;
+        });
+        break;
+      }
+      case 'acceptance_criteria': {
+        const payload = choice?.payload || {};
+        const targetScenarioIds = new Set(asArray(payload.scenario_ids));
+        const allScenarios = (ir.features || []).flatMap(f => f.scenarios || []);
+        hasExistingContent = allScenarios.some(s => {
+          if (targetScenarioIds.size > 0 && !targetScenarioIds.has(s.scenarioId) && !targetScenarioIds.has(s.id)) {
+            return false;
+          }
+          return (s.acceptanceCriteria?.length ?? 0) > 0;
+        });
+        break;
+      }
+      case 'scope': {
+        hasExistingContent = (ir.scopeItemsCompatible?.length ?? 0) > 0 ||
+          (ir.features || []).some(f => Boolean(f.scope)) ||
+          ir.kanoStatus === 'generated';
+        break;
+      }
+      default:
+        hasExistingContent = false;
+        break;
+    }
+
+    if (!hasExistingContent) {
+      return true;
+    }
+  }
+
   const targets: Record<string, string> = {
     actor: i18n.t('choiceGroupPreview.targets.actor'),
     feature: i18n.t('choiceGroupPreview.targets.feature'),
@@ -71,7 +126,8 @@ function CandidateComparisonView({
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   const handleAcceptClick = async (choiceId: string) => {
-    if (!confirmRegeneration(draftType)) return;
+    const targetChoice = choices.find(c => (c.choiceId || c.id) === choiceId);
+    if (!confirmRegeneration(draftType, targetChoice)) return;
     setSubmittingId(choiceId);
     try {
       await onAccept(choiceId);
@@ -700,11 +756,13 @@ interface ChoiceGroupPreviewModalProps {
 
 const subtasksRecord: Record<string, string[]> = {
   project: ["vision", "benchmarking", "outline", "actors", "featureTree", "candidates", "tuning"],
+  project_creation: ["vision", "benchmarking", "outline", "actors", "featureTree", "candidates", "tuning"],
   actor: ["context", "roles", "responsibilities", "roleDiff", "refiningRoles"],
   feature: ["domainModel", "partitioning", "leafNodes", "treeDiff", "coupling"],
   flow: ["skeleton", "mainFlow", "io", "complexity", "swimlanes"],
   scenario: ["events", "mocking", "branches", "usability", "goldenPath"],
   acceptance_criteria: ["boundary", "bdd", "coverage", "strictness", "gherkin"],
+  ac: ["boundary", "bdd", "coverage", "strictness", "gherkin"],
   scope: ["mvp", "kano", "cost", "mvpDiff", "kanoMatrix"]
 };
 
@@ -810,9 +868,9 @@ export function ChoiceGroupPreviewModal({
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericFlow');
     } else if (type === 'scope') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
-    } else if (type === 'acceptance_criteria') {
+    } else if (type === 'acceptance_criteria' || type === 'ac') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
-    } else if (type === 'project') {
+    } else if (type === 'project' || type === 'project_creation') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
     } else {
       // If group is null and type is null, infer from lastActionMessageToken
@@ -829,9 +887,9 @@ export function ChoiceGroupPreviewModal({
         loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
       } else if (msg.includes('acceptance') || msg.includes('.ac')) {
         loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
-      } else if (msg.includes('project')) {
+      } else if (msg.includes('onboarding') || msg.includes('generatingplans') || msg.includes('initialdraft') || msg.includes('projectdraft')) {
         loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
-      } else if (lastActionMessageToken) {
+      } else if (lastActionMessageToken && lastActionMessageToken !== 'store.project.generatingCandidates') {
         loadingTitle = resolveLocalizedMessage(t, lastActionMessageToken, messageInterpolation);
       }
     }
@@ -990,7 +1048,8 @@ export function ChoiceGroupPreviewModal({
   const showCompareOption = totalSuccessful > 1;
   const compareActive = isCompareMode && showCompareOption;
   const handleAcceptClick = (choiceId: string) => {
-    if (confirmRegeneration(draftType)) {
+    const targetChoice = successfulChoices.find((c: any) => (c.choiceId || c.id) === choiceId) || activeChoice;
+    if (confirmRegeneration(draftType, targetChoice)) {
       void onAccept(choiceId);
     }
   };

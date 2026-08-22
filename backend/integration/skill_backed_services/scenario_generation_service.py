@@ -16,7 +16,6 @@ from backend.integration.skill_backed_services.llm_json_client import (
 )
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -151,6 +150,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         generation_mode: str,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -163,6 +163,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             actor_id=actor_id,
             generation_mode=generation_mode,
             session=session,
+            workspace_id=workspace_id,
         )
 
         generated_scenarios, gherkin_by_target = await self._generate_with_skill(
@@ -191,20 +192,35 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         owner_user_id: int,
         session,
         generate_acceptance_criteria: bool = False,
+        branch_name: str | None = None,
+        head_commit_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
+
+        draft_branch = draft.get("branch_name")
+        if draft_branch and branch_name and draft_branch != branch_name:
+            raise ValueError(f"draft_branch_mismatch: Draft created on branch '{draft_branch}' cannot be confirmed on '{branch_name}'")
+
+        draft_commit = draft.get("head_commit_id")
+        if draft_commit and head_commit_id and draft_commit != head_commit_id:
+            raise ValueError("branch_drift_detected: Branch head commit has advanced since draft creation")
+
+        ws_id = workspace_id if workspace_id is not None else draft.get("workspace_id")
 
         result = await self._persist_scenario_generation_draft(
             draft=draft,
             session=session,
+            workspace_id=ws_id,
         )
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=ws_id,
         )
-        result.pop("scenario_ids")
+        result.pop("scenario_ids", None)
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -373,6 +389,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
     async def _persist_scenario_generation_draft(
         draft: dict,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         project_id = draft["project_id"]
         specs_by_target = await SkillBackedScenarioGenerationService._persist_gherkin_specs(
@@ -383,12 +400,14 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             draft,
             specs_by_target,
             session,
+            workspace_id=workspace_id,
         )
         acceptance_criterion_count = (
             await SkillBackedScenarioGenerationService._persist_acceptance_criteria(
                 draft,
                 scenarios,
                 session,
+                workspace_id=workspace_id,
             )
         )
         return {
@@ -433,6 +452,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         specs_by_target: dict,
         session,
+        workspace_id: int | None = None,
     ) -> list:
         from backend.database.model import ScenarioModel
 
@@ -450,6 +470,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
 
             scenario = ScenarioModel(
                 project_id=project_id,
+                workspace_id=workspace_id,
                 feature_id=item["feature_id"],
                 actor_id=item["actor_id"],
                 name=item["scenario_name"],
@@ -468,6 +489,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         scenarios: list,
         session,
+        workspace_id: int | None = None,
     ) -> int:
         from backend.database.model import ScenarioAcceptanceCriterionModel
 
@@ -476,6 +498,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             for position, criterion in enumerate(item["acceptance_criteria"], start=1):
                 session.add(
                     ScenarioAcceptanceCriterionModel(
+                        workspace_id=workspace_id,
                         scenario_id=scenario.id,
                         position=position,
                         content=criterion,

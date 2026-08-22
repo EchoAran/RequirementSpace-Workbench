@@ -44,6 +44,6 @@ async def verify_issue_resolved(
     ]
 
     if still_open:
-        return [], [issue_id] + same_code_remaining
+        return [], [issue_id, *same_code_remaining]
     else:
         return [issue_id], same_code_remaining

@@ -1,16 +1,28 @@
 from __future__ import annotations
 
-import os
-import logging
-import re
 import asyncio
+import logging
+import os
+import re
+from collections.abc import Callable
 from contextvars import copy_context
-from typing import Any, Callable, Dict, List, Optional
-from .schema import SplExportInputDict, SplExportOutputDict
-from .ir import SplSemanticIR, TypeIR, TypeFieldIR, WorkerIR, WorkerStepIR, ScenarioIR, SplExportWarningIR, WarningSourceIR, TraceLinkIR
+from typing import Any
+
+from .ir import (
+    ScenarioIR,
+    SplExportWarningIR,
+    SplSemanticIR,
+    TraceLinkIR,
+    TypeFieldIR,
+    TypeIR,
+    WarningSourceIR,
+    WorkerIR,
+    WorkerStepIR,
+)
+from .prompts import AC_TO_SCENARIO_PROMPT, COVERAGE_REVIEW_PROMPT, FLOW_TO_WORKER_PROMPT, TYPE_NORMALIZATION_PROMPT
 from .renderer import SplSemanticRenderer
+from .schema import SplExportInputDict, SplExportOutputDict
 from .validators import SplSemanticValidator
-from .prompts import TYPE_NORMALIZATION_PROMPT, FLOW_TO_WORKER_PROMPT, AC_TO_SCENARIO_PROMPT, COVERAGE_REVIEW_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +40,13 @@ def run_async(coro):
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-    
+
     if loop and loop.is_running():
         import threading
         from concurrent.futures import Future
-        
+
         fut = Future()
-        
+
         def run_in_thread():
             new_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(new_loop)
@@ -45,7 +57,7 @@ def run_async(coro):
                 fut.set_exception(e)
             finally:
                 new_loop.close()
-                
+
         context = copy_context()
         t = threading.Thread(target=lambda: context.run(run_in_thread))
         t.start()
@@ -60,14 +72,14 @@ class SplSemanticExportSkill:
     Coordinates type normalization, worker mapping, Gherkin extraction, and coverage review.
     """
 
-    def __init__(self, ask_json: Optional[Callable[[str], Dict[str, Any]]] = None) -> None:
+    def __init__(self, ask_json: Callable[[str], dict[str, Any]] | None = None) -> None:
         self._ask_json = ask_json
         self._renderer = SplSemanticRenderer()
         self._validator = SplSemanticValidator()
 
     def export(self, payload: SplExportInputDict) -> SplExportOutputDict:
         ir = SplSemanticIR(payload)
-        
+
         # If LLM handler is not provided, fall back to pure placeholder shell and warn
         if not self._ask_json:
             ir.warnings.append(SplExportWarningIR(
@@ -93,13 +105,13 @@ class SplSemanticExportSkill:
             # Quality grade determination
             has_major_warnings = any(
                 w.code in (
-                    "missing_type_ref", 
-                    "unmapped_flow", 
+                    "missing_type_ref",
+                    "unmapped_flow",
                     "uncovered_feature",
                     "judgment_branch_unresolved",
                     "duplicate_semantic_identifier",
                     "uncovered_acceptance_criterion"
-                ) 
+                )
                 for w in ir.warnings
             )
             quality = "semantic_with_warnings" if (has_major_warnings or not val_report.get("coverage_passed", False)) else "semantic_verified"
@@ -139,7 +151,7 @@ class SplSemanticExportSkill:
                 concurrency_limit = 5
 
         sem = asyncio.Semaphore(concurrency_limit)
-        
+
         async def ask_with_sem_and_timeout(prompt: str) -> dict:
             async with sem:
                 return await asyncio.wait_for(
@@ -168,7 +180,7 @@ class SplSemanticExportSkill:
         bo_id = bo.get("business_object_id")
         bo_name = bo.get("business_object_name", "")
         bo_desc = bo.get("business_object_description", "")
-        
+
         # Format attributes list for the prompt
         attrs_str = []
         for attr in bo.get("business_object_attributes", []):
@@ -178,7 +190,7 @@ class SplSemanticExportSkill:
                 f"desc={attr.get('business_object_attribute_description')}, "
                 f"example={attr.get('business_object_attribute_example')}"
             )
-        
+
         prompt = TYPE_NORMALIZATION_PROMPT.format(
             bo_name=bo_name,
             bo_description=bo_desc,
@@ -189,7 +201,7 @@ class SplSemanticExportSkill:
         try:
             res = await ask_fn(prompt)
             type_name = res.get("type_name", f"BusinessObject_{bo_id}")
-            
+
             # Sanitize PascalCase name
             type_name = re.sub(r'[^a-zA-Z0-9]', '', type_name)
             if not type_name:
@@ -201,7 +213,7 @@ class SplSemanticExportSkill:
                 f_name = re.sub(r'[^a-zA-Z0-9_]', '', f_name)
                 if not f_name:
                     continue
-                
+
                 fields_ir.append(TypeFieldIR(
                     name=f_name,
                     spl_type=f.get("spl_type", "text"),
@@ -252,7 +264,7 @@ class SplSemanticExportSkill:
             actors_mapping[f"Actor_{actor_id}"] = actor_name
             ir.audiences[str(actor_id)] = f"{actor_name}: {actor.get('actor_description')}"
             ir.semantic_identifier_map[f"actor:{actor_id}"] = f"Actor_{actor_id}"
-            
+
         ir.concepts["ProjectDescription"] = ir.project_desc
         ir.concepts["UserRequirements"] = ir.user_reqs
 
@@ -263,10 +275,10 @@ class SplSemanticExportSkill:
             scope_obj = feat.get("scope") or {}
             scope_status = scope_obj.get("scope_status") or "current"
             scope_reason = scope_obj.get("reason", "")
-            
+
             reason_str = f" Reason: {scope_reason}" if scope_reason else ""
             ir.constraints.append(f"Feature_{feat_id} {feat_name} is {scope_status}.{reason_str}")
-            
+
             ir.variables[feat_name] = {
                 "id_str": f"Feature_{feat_id}",
                 "desc": f"Scope: {scope_status}. Parent: Feature_{feat.get('parent_id') or 'None'}."
@@ -409,7 +421,7 @@ class SplSemanticExportSkill:
 
     async def _extract_scenarios_async(self, payload: SplExportInputDict, ir: SplSemanticIR, ask_fn: Callable[[str], Any]) -> None:
         features = payload.get("features", [])
-        
+
         # Parallel scenarios extraction for all features
         results = await asyncio.gather(*(
             self._extract_single_feature_scenarios(
@@ -419,8 +431,8 @@ class SplSemanticExportSkill:
             )
             for feat in features
         ))
-        
-        all_scenarios: List[ScenarioIR] = []
+
+        all_scenarios: list[ScenarioIR] = []
         for res_list in results:
             if res_list:
                 all_scenarios.extend(res_list)
@@ -434,7 +446,7 @@ class SplSemanticExportSkill:
                 if feat_id and feat_id in worker.covered_feature_ids:
                     scen.worker_id = worker.worker_id
                     worker.scenarios.append(scen)
-                    
+
                     # Populating Scenario trace links and semantic identifier mapping
                     scen_ident = f"Feature_{scen.source_scenario_id}"
                     ir.semantic_identifier_map[f"scenario:{scen.source_scenario_id}"] = scen_ident
@@ -443,7 +455,7 @@ class SplSemanticExportSkill:
                         source_kind="scenario",
                         source_id=str(scen.source_scenario_id)
                     ))
-                    
+
                     # Add trace links for each individual mapped AC ID
                     for ac_id in scen.source_acceptance_criterion_ids:
                         ir.trace_links.append(TraceLinkIR(
@@ -457,7 +469,7 @@ class SplSemanticExportSkill:
         feat: dict,
         ask_fn: Callable[[str], Any],
         output_language: str,
-    ) -> List[ScenarioIR]:
+    ) -> list[ScenarioIR]:
         feat_id = feat.get("feature_id")
         scenarios = feat.get("scenarios", [])
         if not scenarios:
@@ -521,7 +533,7 @@ class SplSemanticExportSkill:
                     return feat.get("feature_id")
         return None
 
-    async def _run_llm_coverage_review_async(self, payload: SplExportInputDict, ir: SplSemanticIR, val_report: Dict[str, Any]) -> None:
+    async def _run_llm_coverage_review_async(self, payload: SplExportInputDict, ir: SplSemanticIR, val_report: dict[str, Any]) -> None:
         orig_features = [f.get("feature_name") for f in payload.get("features", [])]
         orig_flows = [f.get("flow_name") for f in payload.get("flows", [])]
         orig_bos = [b.get("business_object_name") for b in payload.get("business_objects", [])]

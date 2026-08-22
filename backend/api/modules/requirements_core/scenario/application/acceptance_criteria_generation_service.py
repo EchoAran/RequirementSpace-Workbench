@@ -13,6 +13,7 @@ from backend.schemas import (
     FeatureNode,
     ScenarioNode,
 )
+
 from .acceptance_criteria_generation_context import (
     load_acceptance_criteria_generation_context,
 )
@@ -146,18 +147,22 @@ class AcceptanceCriteriaGenerationService:
         draft_id: str,
         owner_user_id: int,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
+        ws_id = workspace_id if workspace_id is not None else draft.get("workspace_id")
 
         result = await self._persist_acceptance_criteria_generation_draft(
             draft=draft,
             session=session,
+            workspace_id=ws_id,
         )
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what"},
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=ws_id,
         )
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
@@ -183,6 +188,7 @@ class AcceptanceCriteriaGenerationService:
         project_id: int,
         scenario_ids: list[int],
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         draft_payload, _ = await self._generate_preview(
             project_id=project_id,
@@ -190,17 +196,20 @@ class AcceptanceCriteriaGenerationService:
             generation_mode="batch",
             user_feedback=None,
             session=session,
+            workspace_id=workspace_id,
         )
 
         result = await self._persist_acceptance_criteria_generation_draft(
             draft=draft_payload,
             session=session,
+            workspace_id=workspace_id,
         )
         await get_notifier().mark_stale(
             project_id=project_id,
             stages={"what"},
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return result
@@ -221,6 +230,7 @@ class AcceptanceCriteriaGenerationService:
         generation_mode: str,
         user_feedback: str | None,
         session,
+        workspace_id: int | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -231,6 +241,7 @@ class AcceptanceCriteriaGenerationService:
             project_id=project_id,
             scenario_ids=scenario_ids,
             session=session,
+            workspace_id=workspace_id,
         )
 
         generated_acceptance_criteria = (
@@ -448,19 +459,21 @@ class AcceptanceCriteriaGenerationService:
     async def _persist_acceptance_criteria_generation_draft(
         draft: dict,
         session,
+        workspace_id: int | None = None,
     ) -> dict:
         from backend.database.model import ScenarioAcceptanceCriterionModel
 
         project_id = draft["project_id"]
         scenario_ids = draft["scenario_ids"]
 
-        existing_criteria_result = await session.execute(
-            select(ScenarioAcceptanceCriterionModel.id).where(
-                ScenarioAcceptanceCriterionModel.scenario_id.in_(
-                    scenario_ids
-                )
+        stmt = select(ScenarioAcceptanceCriterionModel.id).where(
+            ScenarioAcceptanceCriterionModel.scenario_id.in_(
+                scenario_ids
             )
         )
+        if workspace_id is not None:
+            stmt = stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
+        existing_criteria_result = await session.execute(stmt)
 
         if existing_criteria_result.first() is not None:
             raise ValueError("acceptance_criteria_already_exist")
@@ -474,6 +487,7 @@ class AcceptanceCriteriaGenerationService:
             ):
                 session.add(
                     ScenarioAcceptanceCriterionModel(
+                        workspace_id=workspace_id,
                         scenario_id=item["scenario_id"],
                         position=position,
                         content=criterion,

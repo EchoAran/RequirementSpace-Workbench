@@ -1,16 +1,15 @@
 import logging
 import time
-from sqlalchemy import select
-from fastapi import BackgroundTasks
 
-from backend.schemas import (
-    Finding,
-    FindingType,
-    BlockingScope,
+from fastapi import BackgroundTasks
+from sqlalchemy import select
+
+from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import (
+    NextSuggestionService,
 )
-from backend.core.findings.what_finding_policy import WhatFindingPolicy
 from backend.core.findings.how_finding_policy import HowFindingPolicy
 from backend.core.findings.scope_finding_policy import ScopeFindingPolicy
+from backend.core.findings.what_finding_policy import WhatFindingPolicy
 from backend.core.issue_capabilities import (
     get_issue_capability,
 )
@@ -20,7 +19,12 @@ from backend.core.logging.events import (
     FINDING_DETECTION_FAILED,
     FINDING_DETECTION_STARTED,
 )
-from backend.api.modules.diagnosis_quality.next_suggestion.application.next_suggestion_service import NextSuggestionService
+from backend.schemas import (
+    BlockingScope,
+    Finding,
+    FindingType,
+)
+
 from .finding_list_helpers import (
     build_next_suggestion_finding,
     filter_gates_by_action,
@@ -90,6 +94,7 @@ class FindingService:
                 project_id,
                 stage_clean,
                 session,
+                workspace_id=workspace_id,
             )
 
             next_findings = []
@@ -101,6 +106,7 @@ class FindingService:
                         session=session,
                         background_tasks=background_tasks,
                         public_project_id=public_project_id,
+                        workspace_id=workspace_id,
                     )
                     sugg = res.get("suggestion")
                     finding = build_next_suggestion_finding(s, sugg)
@@ -180,7 +186,7 @@ class FindingService:
                         (time.perf_counter() - policy_start) * 1000
                     ),
                 )
-        overrides = await self._load_overrides(project_id, session)
+        overrides = await self._load_overrides(project_id, session, workspace_id=workspace_id)
         return [
             finding
             for finding in findings

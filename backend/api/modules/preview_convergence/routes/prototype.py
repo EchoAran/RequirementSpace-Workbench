@@ -1,17 +1,16 @@
-from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.ownership import require_owned_project
+from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
 from backend.api.modules.preview_convergence.schemas.prototype import (
     PrototypePreviewGenerateRequest,
     PrototypePreviewNotFoundResponse,
     PrototypePreviewResponse,
 )
-from backend.api.modules.preview_convergence.ports import get_prototype_generation_service
 from backend.database.database import get_session
-from backend.api.dependencies.llm import get_llm_context
-
+from backend.database.model import ProjectModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}",

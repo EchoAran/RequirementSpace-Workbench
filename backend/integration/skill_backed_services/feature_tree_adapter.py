@@ -7,7 +7,6 @@ from typing import Any
 
 from backend.schemas import ActorNode
 
-
 ROLE_TAG_PATTERN = re.compile(r"\s*\[Role:\s*(?P<role>[^\]]+)\]\s*$", re.IGNORECASE)
 
 
@@ -140,7 +139,7 @@ class FeatureTreeAdapter:
         if "features" in feature_tree and isinstance(feature_tree["features"], list):
             return self._normalize_current_style_features(feature_tree["features"], actors)
 
-        level_keys = [str(key) for key in feature_tree.keys()]
+        level_keys = [str(key) for key in feature_tree]
         if "L1" not in level_keys:
             raise ValueError("invalid_root_feature_count")
 

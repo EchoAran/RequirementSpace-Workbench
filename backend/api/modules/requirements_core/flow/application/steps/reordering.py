@@ -1,3 +1,5 @@
+import itertools
+
 from sqlalchemy import insert, select
 
 from backend.database.model import FlowModel, FlowStepModel, flow_step_next_table
@@ -68,7 +70,7 @@ async def replace_with_linear_topology(
             "source_step_id": source_id,
             "target_step_id": target_id,
         }
-        for source_id, target_id in zip(step_ids, step_ids[1:])
+        for source_id, target_id in itertools.pairwise(step_ids)
     ]
     if edges:
         await session.execute(insert(flow_step_next_table), edges)

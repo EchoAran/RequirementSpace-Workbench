@@ -4,6 +4,7 @@ Analyzes flow context and returns structured manual step recommendations.
 """
 
 import json
+
 from sqlalchemy import select
 
 from backend.core.issue_resolution.ai.base_ai_solver import BaseIssueAISolver, RepairResult
@@ -11,7 +12,14 @@ from backend.core.issue_resolution.ai.prompts.flow_without_steps_prompt import (
     FLOW_WITHOUT_STEPS_SYSTEM_PROMPT,
     FLOW_WITHOUT_STEPS_USER_PROMPT_TEMPLATE,
 )
-from backend.database.model import ActorModel, BusinessObjectModel, FeatureModel, FlowModel, ProjectModel, flow_feature_table
+from backend.database.model import (
+    ActorModel,
+    BusinessObjectModel,
+    FeatureModel,
+    FlowModel,
+    ProjectModel,
+    flow_feature_table,
+)
 
 
 class FlowWithoutStepsSolver(BaseIssueAISolver):

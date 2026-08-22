@@ -1,11 +1,12 @@
+from sqlalchemy import delete
+
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
 from backend.api.modules.requirements_core.ports import get_acceptance_criteria_generation_service
 from backend.database.model import ScenarioAcceptanceCriterionModel
-from sqlalchemy import delete
 
 
 class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
@@ -40,6 +41,7 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             scenario_ids=scenario_ids,
             user_feedback=combined,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
 
         criteria = response_payload.get("acceptance_criteria", [])
@@ -86,9 +88,9 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 )
             )
             await session.flush()
-        """Persist AC payload — append mode."""
+        workspace_id = kwargs.get("workspace_id")
         result = await self._service._persist_acceptance_criteria_generation_draft(
-            draft=payload, session=session,
+            draft=payload, session=session, workspace_id=workspace_id,
         )
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(
@@ -96,6 +98,7 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"what"},
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
+            workspace_id=workspace_id,
         )
         return result
 

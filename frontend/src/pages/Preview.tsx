@@ -23,7 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import {
-  buildProjectRoute,
+  buildProjectRouteWithBranch,
   buildRolePages,
   buildStepDetail,
 } from '@/core/selectors';
@@ -103,13 +103,122 @@ export function Preview() {
   const [progressSubtitle, setProgressSubtitle] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Keep a ref of activeShadowDraft to avoid stale closures in progress setInterval
   const activeShadowDraftRef = useRef(activeShadowDraft);
-  useEffect(() => {
-    activeShadowDraftRef.current = activeShadowDraft;
-  }, [activeShadowDraft]);
+  activeShadowDraftRef.current = activeShadowDraft;
 
-  // On page entry, only load existing preview state. Do not auto-trigger shadow convergence.
+  const stageProgress = useWorkspaceStore((s) => s.stageProgress);
+  const branchRef = useWorkspaceStore((s) => s.branchRef);
+
+  const isWhatComplete = useMemo(() => {
+    const whatStage = stageProgress?.stages?.find((s: any) => s.stage === 'what');
+    if (stageProgress?.stages && whatStage) {
+      return Boolean(whatStage.unlocked && (whatStage.statusCode === 'ready' || whatStage.statusCode === 'ready_to_advance' || whatStage.content_complete || ((ir?.actors || []).length > 0 && (ir?.features || []).length > 0)));
+    }
+    return (ir?.actors || []).length > 0 && (ir?.features || []).length > 0;
+  }, [stageProgress, ir]);
+
+  const isHowComplete = useMemo(() => {
+    const howStage = stageProgress?.stages?.find((s: any) => s.stage === 'how');
+    if (stageProgress?.stages && howStage) {
+      return Boolean(howStage.unlocked && (howStage.statusCode === 'ready' || howStage.statusCode === 'ready_to_advance' || howStage.content_complete || ((ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0)));
+    }
+    return (ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0;
+  }, [stageProgress, ir]);
+
+  const isScopeComplete = useMemo(() => {
+    const scopeStage = stageProgress?.stages?.find((s: any) => s.stage === 'scope');
+    if (stageProgress?.stages && scopeStage) {
+      return Boolean(scopeStage.unlocked && (scopeStage.statusCode === 'ready' || scopeStage.statusCode === 'ready_to_advance' || scopeStage.content_complete || (ir?.features || []).some((f: any) => f.scope !== null && f.scope !== undefined)));
+    }
+    return (ir?.features || []).some((feature: any) => feature.scope !== null && feature.scope !== undefined);
+  }, [stageProgress, ir]);
+
+  const isPreviewReady = isWhatComplete && isHowComplete && isScopeComplete;
+
+  // Dynamic substitution of ir with virtual requirement space during shadow ready status
+  // When isPreviewReady is true, the real project is complete, so never use shadow draft.
+  const spaceToUse = useMemo(() => {
+    if (!isPreviewReady && activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && activeShadowDraft.shadowSnapshotJson) {
+      const snap = activeShadowDraft.shadowSnapshotJson;
+      return {
+        projectId: ir?.projectId,
+        projectName: snap.project_name || snap.projectName || snap.name || ir?.projectName,
+        projectDescription: snap.project_description || snap.projectDescription || snap.description || ir?.projectDescription,
+        userRequirements: snap.user_requirements || snap.userRequirements || ir?.userRequirements,
+        actors: snap.actors?.map((a: any) => ({
+          actorId: a.actorId || a.id || a.actor_id,
+          actorName: a.actorName || a.name || a.actor_name,
+          actorDescription: a.actorDescription || a.description || a.actor_description
+        })) || [],
+        actorsCompatible: snap.actors?.map((a: any) => ({
+          id: (a.actorId || a.id || a.actor_id)?.toString(),
+          title: a.actorName || a.name || a.actor_name,
+          desc: a.actorDescription || a.description || a.actor_description
+        })) || [],
+        features: snap.features?.map((f: any) => ({
+          featureId: f.featureId || f.id || f.feature_id,
+          featureName: f.featureName || f.name || f.feature_name,
+          featureDescription: f.featureDescription || f.description || f.feature_description,
+          actorIds: f.actorIds || f.actor_ids || [],
+          parentId: f.parentId || f.parent_id,
+          childrenIds: f.childrenIds || f.children_ids || [],
+          scenarios: f.scenarios?.map((s: any) => ({
+            scenarioId: s.scenarioId || s.id || s.scenario_id,
+            scenarioName: s.scenarioName || s.name || s.scenario_name,
+            scenarioContent: s.scenarioContent || s.content || s.scenario_content,
+            featureId: s.featureId || s.feature_id,
+            actorId: s.actorId || s.actor_id,
+            acceptanceCriteria: (s.acceptance_criteria || s.acceptanceCriteria)?.map((ac: any) => ({
+              criterionId: ac.criterionId || ac.id || ac.criterion_id,
+              criterionContent: ac.criterionContent || ac.content || ac.criterion_content,
+              position: ac.position
+            })) || []
+          })) || [],
+          scope: f.scope ? {
+            scopeId: f.scope.scopeId || f.scope.id || f.scope.scope_id,
+            scopeStatus: f.scope.scopeStatus || f.scope.scope_status || f.scope.status,
+            reason: f.scope.reason,
+            kanoCategory: f.scope.kanoCategory || f.scope.kano_category,
+            kanoCategoryName: f.scope.kanoCategoryName || f.scope.kano_category_name
+          } : null
+        })) || [],
+        businessObjects: snap.business_objects?.map((bo: any) => ({
+          businessObjectId: bo.businessObjectId || bo.id || bo.business_object_id,
+          businessObjectName: bo.businessObjectName || bo.name || bo.business_object_name,
+          businessObjectDescription: bo.businessObjectDescription || bo.description || bo.business_object_description,
+          businessObjectAttributes: (bo.business_object_attributes || bo.businessObjectAttributes)?.map((attr: any) => ({
+            businessObjectAttributeId: attr.businessObjectAttributeId || attr.id || attr.business_object_attribute_id,
+            businessObjectAttributeName: attr.businessObjectAttributeName || attr.name || attr.business_object_attribute_name,
+            businessObjectAttributeDescription: attr.businessObjectAttributeDescription || attr.description || attr.business_object_attribute_description,
+            businessObjectAttributeType: attr.businessObjectAttributeType || attr.data_type || attr.business_object_attribute_type,
+            businessObjectAttributeExample: attr.businessObjectAttributeExample || attr.example || attr.business_object_attribute_example
+          })) || []
+        })) || [],
+        flows: snap.flows?.map((fl: any) => ({
+          flowId: fl.flowId || fl.id || fl.flow_id,
+          flowName: fl.flowName || fl.name || fl.flow_name,
+          flowDescription: fl.flowDescription || fl.description || fl.flow_description,
+          featureIds: fl.featureIds || fl.feature_ids || [],
+          flowSteps: (fl.flow_steps || fl.flowSteps)?.map((step: any) => ({
+            stepId: step.stepId || step.id || step.step_id,
+            stepName: step.stepName || step.name || step.step_name,
+            stepDescription: step.stepDescription || step.description || step.step_description,
+            stepType: step.stepType || step.step_type || step.stepType,
+            position: step.position,
+            actorIds: step.actorIds || step.actor_ids || [],
+            inputBusinessObjectIds: step.inputBusinessObjectIds || step.input_business_object_ids || [],
+            outputBusinessObjectIds: step.outputBusinessObjectIds || step.output_business_object_ids || [],
+            nextStepIds: step.nextStepIds || step.next_step_ids || []
+          })) || []
+        })) || [],
+        findings: [],
+        perceptionSlot: null
+      };
+    }
+    return ir;
+  }, [ir, activeShadowDraft, isPreviewReady]);
+
+  // On page entry or branch switch, only load existing preview state. Do not auto-trigger shadow convergence.
   useEffect(() => {
     let cancelled = false;
     const projectId = ir?.projectId;
@@ -118,25 +227,19 @@ export function Preview() {
       return;
     }
 
-    const isRealWhatComplete = (ir?.actors || []).length > 0 && (ir?.features || []).length > 0;
-    const isRealHowComplete = (ir?.flows || []).length > 0 && (ir?.businessObjects || []).length > 0;
-    const isRealScopeComplete = (ir?.features || []).some((feature) => feature.scope !== null);
-    const isRealPreviewReady = isRealWhatComplete && isRealHowComplete && isRealScopeComplete;
-
-    if (isRealPreviewReady) {
+    if (isPreviewReady) {
       useWorkspaceStore.setState({ activeShadowDraft: null });
       setIsDraftInitializing(true);
       workspaceApi.getLatestPrototypePreview(projectId)
         .then((res) => {
           if (!cancelled) {
-            if (res && !('detail' in res)) {
+            if (res && !('detail' in res) && (res as any).prototypeId && (res as any).message !== 'prototype_preview_not_found') {
               setPrototype(res);
               if (res.status === 'generating') {
                 setPrototypeState('loading');
                 setPrototypeError(null);
               } else if (res.status === 'failed') {
                 setPrototypeState('error');
-                setPrototypeError(res.errorMessage || t('preview.full.prototypeFailure'));
               } else {
                 setPrototypeState('ready');
                 setPrototypeError(null);
@@ -175,11 +278,10 @@ export function Preview() {
           }
         });
     }
-
     return () => {
       cancelled = true;
     };
-  }, [ir?.projectId, ir?.actors?.length, ir?.features?.length, ir?.flows?.length, ir?.businessObjects?.length]);
+  }, [ir?.projectId, branchRef, isPreviewReady]);
 
   // Resume a persisted prototype job after the POST returns or the page refreshes.
   useEffect(() => {
@@ -216,6 +318,7 @@ export function Preview() {
       if (timer) clearTimeout(timer);
     };
   }, [prototype?.prototypeId, prototype?.status, ir?.projectId]);
+
 
   // Unified Polling Driver for activeShadowDraft when status is generating
   useEffect(() => {
@@ -382,9 +485,9 @@ export function Preview() {
     return () => clearInterval(interval);
   }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, hasRequestedShadowPreview, t]);
 
-  // Set prototype state and values based on activeShadowDraft
+  // Set prototype state and values based on activeShadowDraft in unconverged shadow mode
   useEffect(() => {
-    if (isPostCommitCompiling) return;
+    if (isPreviewReady || isPostCommitCompiling) return;
 
     if (!activeShadowDraft) {
       setPrototype(null);
@@ -393,7 +496,11 @@ export function Preview() {
     }
 
     if (activeShadowDraft.source === 'real_project') {
-      setPrototype(activeShadowDraft.prototypePreview);
+      if (activeShadowDraft.prototypePreview?.prototypeId) {
+        setPrototype(activeShadowDraft.prototypePreview);
+      } else {
+        setPrototype(null);
+      }
       if (activeShadowDraft.status === 'generating') {
         setPrototypeState('loading');
         setPrototypeError(null);
@@ -411,9 +518,14 @@ export function Preview() {
         setPrototypeState('loading');
         setPrototypeError(null);
       } else if (status === 'ready') {
-        setPrototype(activeShadowDraft.prototypePreview);
-        setPrototypeState('ready');
-        setPrototypeError(null);
+        if (activeShadowDraft.prototypePreview?.prototypeId) {
+          setPrototype(activeShadowDraft.prototypePreview);
+          setPrototypeState('ready');
+          setPrototypeError(null);
+        } else {
+          setPrototype(null);
+          setPrototypeState('idle');
+        }
       } else if (status === 'failed') {
         setPrototype(null);
         setPrototypeState('error');
@@ -423,7 +535,7 @@ export function Preview() {
         setPrototypeState('idle');
       }
     }
-  }, [activeShadowDraft, isPostCommitCompiling]);
+  }, [activeShadowDraft, isPreviewReady, isPostCommitCompiling]);
 
   // Polling driver for real prototype after committing shadow draft
   useEffect(() => {
@@ -478,103 +590,19 @@ export function Preview() {
     };
   }, [isPostCommitCompiling, ir?.projectId]);
 
-  // Dynamic substitution of ir with virtual requirement space during shadow ready status
-  const spaceToUse = useMemo(() => {
-    if (activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && activeShadowDraft.shadowSnapshotJson) {
-      const snap = activeShadowDraft.shadowSnapshotJson;
-      return {
-        projectId: ir?.projectId,
-        projectName: snap.project_name || snap.projectName || snap.name || ir?.projectName,
-        projectDescription: snap.project_description || snap.projectDescription || snap.description || ir?.projectDescription,
-        userRequirements: snap.user_requirements || snap.userRequirements || ir?.userRequirements,
-        actors: snap.actors?.map((a: any) => ({
-          actorId: a.actorId || a.id || a.actor_id,
-          actorName: a.actorName || a.name || a.actor_name,
-          actorDescription: a.actorDescription || a.description || a.actor_description
-        })) || [],
-        actorsCompatible: snap.actors?.map((a: any) => ({
-          id: (a.actorId || a.id || a.actor_id)?.toString(),
-          title: a.actorName || a.name || a.actor_name,
-          desc: a.actorDescription || a.description || a.actor_description
-        })) || [],
-        features: snap.features?.map((f: any) => ({
-          featureId: f.featureId || f.id || f.feature_id,
-          featureName: f.featureName || f.name || f.feature_name,
-          featureDescription: f.featureDescription || f.description || f.feature_description,
-          actorIds: f.actorIds || f.actor_ids || [],
-          parentId: f.parentId || f.parent_id,
-          childrenIds: f.childrenIds || f.children_ids || [],
-          scenarios: f.scenarios?.map((s: any) => ({
-            scenarioId: s.scenarioId || s.id || s.scenario_id,
-            scenarioName: s.scenarioName || s.name || s.scenario_name,
-            scenarioContent: s.scenarioContent || s.content || s.scenario_content,
-            featureId: s.featureId || s.feature_id,
-            actorId: s.actorId || s.actor_id,
-            acceptanceCriteria: (s.acceptance_criteria || s.acceptanceCriteria)?.map((ac: any) => ({
-              criterionId: ac.criterionId || ac.id || ac.criterion_id,
-              criterionContent: ac.criterionContent || ac.content || ac.criterion_content,
-              position: ac.position
-            })) || []
-          })) || [],
-          scope: f.scope ? {
-            scopeId: f.scope.scopeId || f.scope.id || f.scope.scope_id,
-            scopeStatus: f.scope.scopeStatus || f.scope.scope_status || f.scope.status,
-            reason: f.scope.reason,
-            kanoCategory: f.scope.kanoCategory || f.scope.kano_category,
-            kanoCategoryName: f.scope.kanoCategoryName || f.scope.kano_category_name
-          } : null
-        })) || [],
-        businessObjects: snap.business_objects?.map((bo: any) => ({
-          businessObjectId: bo.businessObjectId || bo.id || bo.business_object_id,
-          businessObjectName: bo.businessObjectName || bo.name || bo.business_object_name,
-          businessObjectDescription: bo.businessObjectDescription || bo.description || bo.business_object_description,
-          businessObjectAttributes: (bo.business_object_attributes || bo.businessObjectAttributes)?.map((attr: any) => ({
-            businessObjectAttributeId: attr.businessObjectAttributeId || attr.id || attr.business_object_attribute_id,
-            businessObjectAttributeName: attr.businessObjectAttributeName || attr.name || attr.business_object_attribute_name,
-            businessObjectAttributeDescription: attr.businessObjectAttributeDescription || attr.description || attr.business_object_attribute_description,
-            businessObjectAttributeType: attr.businessObjectAttributeType || attr.data_type || attr.business_object_attribute_type,
-            businessObjectAttributeExample: attr.businessObjectAttributeExample || attr.example || attr.business_object_attribute_example
-          })) || []
-        })) || [],
-        flows: snap.flows?.map((fl: any) => ({
-          flowId: fl.flowId || fl.id || fl.flow_id,
-          flowName: fl.flowName || fl.name || fl.flow_name,
-          flowDescription: fl.flowDescription || fl.description || fl.flow_description,
-          featureIds: fl.featureIds || fl.feature_ids || [],
-          flowSteps: (fl.flow_steps || fl.flowSteps)?.map((step: any) => ({
-            stepId: step.stepId || step.id || step.step_id,
-            stepName: step.stepName || step.name || step.step_name,
-            stepDescription: step.stepDescription || step.description || step.step_description,
-            stepType: step.stepType || step.step_type || step.stepType,
-            position: step.position,
-            actorIds: step.actorIds || step.actor_ids || [],
-            inputBusinessObjectIds: step.inputBusinessObjectIds || step.input_business_object_ids || [],
-            outputBusinessObjectIds: step.outputBusinessObjectIds || step.output_business_object_ids || [],
-            nextStepIds: step.nextStepIds || step.next_step_ids || []
-          })) || []
-        })) || [],
-        findings: [],
-        perceptionSlot: null
-      };
-    }
-    return ir;
-  }, [ir, activeShadowDraft]);
 
-  const isWhatComplete = (spaceToUse?.actors || []).length > 0 && (spaceToUse?.features || []).length > 0;
-  const isHowComplete = (spaceToUse?.flows || []).length > 0 && (spaceToUse?.businessObjects || []).length > 0;
-  const isScopeComplete = (spaceToUse?.features || []).some((feature: any) => feature.scope !== null);
-  const isPreviewReady = isWhatComplete && isHowComplete && isScopeComplete;
 
   const actors = useMemo(() => spaceToUse?.actorsCompatible || [], [spaceToUse]);
   const issues = useMemo(() => spaceToUse?.findings || [], [spaceToUse]);
   const activeRole = actors[activeRoleIndex];
-  
+
   const pages = useMemo(() => {
     if (!spaceToUse || !activeRole) return [];
     return buildRolePages(spaceToUse as any, activeRole.id);
   }, [activeRole, spaceToUse]);
 
   const unresolvedIssues = issues.filter((finding: any) => (finding.status || 'open') === 'open');
+
   const rolePrototypePages = useMemo(() => {
     if (!prototype?.pages?.length || !activeRole) return [];
     return prototype.pages.filter((page) => String(page.roleId) === String(activeRole.id));
@@ -594,6 +622,15 @@ export function Preview() {
     () => (prototype ? composePrototypeSrcDoc(activePrototypePage || prototype) : ''),
     [activePrototypePage, prototype],
   );
+
+  const hasCompiledPrototype = useMemo(() => {
+    if (!prototype || !prototype.prototypeId) return false;
+    if (prototype.status === 'failed' || (prototype as any).message === 'prototype_preview_not_found') return false;
+    if (prototype.status === 'generating') return true;
+    const hasHtml = Boolean(prototype.html && prototype.html.trim().length > 0);
+    const hasPages = Boolean(prototype.pages && prototype.pages.length > 0);
+    return hasHtml || hasPages;
+  }, [prototype]);
 
   const flows = useMemo(() => spaceToUse?.flows || [], [spaceToUse]);
 
@@ -711,7 +748,7 @@ export function Preview() {
         }
       } catch (error) {
         setPrototypeState('error');
-      setPrototypeError(error instanceof Error ? error.message : t('preview.full.prototypeFailure'));
+        setPrototypeError(error instanceof Error ? error.message : t('preview.full.prototypeFailure'));
       }
     });
   };
@@ -742,7 +779,7 @@ export function Preview() {
     try {
       await discardShadowDraft(activeShadowDraft.draftId);
       showToast(t('preview.full.shadowDiscarded'));
-      navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/overview'));
+      navigate(buildProjectRouteWithBranch(spaceToUse?.projectId || ir?.projectId, '/overview', useWorkspaceStore.getState().branchRef));
     } catch (err) {
       showToast(t('preview.full.discardFailed', { error: err instanceof Error ? err.message : String(err) }));
     }
@@ -752,7 +789,7 @@ export function Preview() {
     if (!activeShadowDraft?.draftId) return;
     if (!window.confirm(t('preview.full.commitConfirm'))) return;
     try {
-      setIsPostCommitCompiling(true); // Trigger compiling overlay in prototype pane
+      setIsPostCommitCompiling(true);
       await commitShadowDraft(activeShadowDraft.draftId);
       showToast(t('preview.full.shadowMerged'));
     } catch (err) {
@@ -808,19 +845,19 @@ export function Preview() {
               title="What"
               ready={isWhatComplete}
               description={t('preview.full.whatRequirement')}
-              onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/what'))}
+              onClick={() => navigate(buildProjectRouteWithBranch(spaceToUse?.projectId || ir?.projectId, '/what', useWorkspaceStore.getState().branchRef))}
             />
             <ReadinessCard
               title="How"
               ready={isHowComplete}
               description={t('preview.full.howRequirement')}
-              onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/flow'))}
+              onClick={() => navigate(buildProjectRouteWithBranch(spaceToUse?.projectId || ir?.projectId, '/flow', useWorkspaceStore.getState().branchRef))}
             />
             <ReadinessCard
               title="Scope"
               ready={isScopeComplete}
               description={t('preview.full.scopeRequirement')}
-              onClick={() => navigate(buildProjectRoute(spaceToUse?.projectId || ir?.projectId, '/scope'))}
+              onClick={() => navigate(buildProjectRouteWithBranch(spaceToUse?.projectId || ir?.projectId, '/scope', useWorkspaceStore.getState().branchRef))}
             />
           </div>
 
@@ -862,7 +899,6 @@ export function Preview() {
 
       <div className="flex-1 p-6 pb-24 overflow-y-auto w-full">
         <div className="max-w-[1240px] mx-auto space-y-8 animate-in fade-in flex flex-col">
-          
           {/* Header Banner */}
           <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between lg:items-center gap-6">
             <div className="space-y-1">
@@ -959,20 +995,20 @@ export function Preview() {
           </section>
 
           {/* Shadow Sandbox Banner */}
-          {activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && (
+          {!isPreviewReady && activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && (
             <div className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-slate-50 p-5 shadow-sm animate-in slide-in-from-top duration-300">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div className="space-y-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-indigo-700 shadow-sm">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            {t('preview.full.shadowTitle')}
+                    {t('preview.full.shadowTitle')}
                   </div>
                   <div className="space-y-1.5">
                     <h3 className="text-sm font-black tracking-tight text-slate-900">
-            {t('preview.full.shadowSubtitle')}
+                      {t('preview.full.shadowSubtitle')}
                     </h3>
                     <p className="text-xs leading-relaxed text-slate-500">
-            {t('preview.full.shadowDescription')}
+                      {t('preview.full.shadowDescription')}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
@@ -989,7 +1025,7 @@ export function Preview() {
                       {t('preview.aiShadowFlowsCount', { count: activeShadowDraft.shadowSummary?.flows || 0 })}
                     </span>
                     <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-emerald-700 shadow-sm">
-            {t('preview.full.kanoEvaluated')}
+                      {t('preview.full.kanoEvaluated')}
                     </span>
                   </div>
                 </div>
@@ -998,7 +1034,7 @@ export function Preview() {
                   <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <input
                       type="text"
-            placeholder={t('preview.full.feedbackPlaceholder')}
+                      placeholder={t('preview.full.feedbackPlaceholder')}
                       value={feedbackText}
                       onChange={(e) => setFeedbackText(e.target.value)}
                       className="flex-1 border-0 bg-transparent px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none"
@@ -1008,7 +1044,7 @@ export function Preview() {
                       onClick={handleRegenerate}
                       className="border-l border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
                     >
-            {t('preview.full.regenerate')}
+                      {t('preview.full.regenerate')}
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2.5">
@@ -1017,14 +1053,14 @@ export function Preview() {
                       onClick={handleDiscard}
                       className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
                     >
-            {t('preview.full.discard')}
+                      {t('preview.full.discard')}
                     </button>
                     <button
                       type="button"
                       onClick={handleCommit}
                       className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
                     >
-            {t('preview.full.commit')}
+                      {t('preview.full.commit')}
                     </button>
                   </div>
                 </div>
@@ -1032,206 +1068,265 @@ export function Preview() {
             </div>
           )}
 
-          {/* Integrated Side-by-Side Interactive Prototype & Blueprints Panel */}
-          <section className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
-            <div className="border-b border-slate-200 px-6 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
-              <div>
-                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <MonitorPlay className="w-5 h-5 text-teal-600" />
-            {t('preview.full.quickPrototype')}
-                </h3>
+          {/* Integrated Interactive Prototype Section */}
+          {!hasCompiledPrototype ? (
+            /* Full-width Onboarding & Prototype Generation Hero Card */
+            <section className="bg-white rounded-3xl border border-slate-200 shadow-md p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-300">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-teal-500/10 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-inner">
+                <MonitorPlay className="w-10 h-10 text-indigo-600" />
               </div>
-              
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={openPrototypeInWindow}
-                  disabled={!prototypeSrcDoc || prototypeState === 'loading'}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors bg-white flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-            {t('preview.full.openPrototype')}
-                </button>
+
+              <div className="space-y-3 max-w-xl">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                  {isPreviewReady
+                    ? t('preview.full.readyToCompileTitle', '前置规约已齐备，准备编译交互式原型')
+                    : t('preview.full.noPrototypeTitle', '尚未生成交互式原型')}
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-lg mx-auto font-medium">
+                  {isPreviewReady
+                    ? t('preview.full.readyToCompileDesc', '系统已汇聚参与者角色、功能特征树、业务流程泳道及交付范围决策，点击下方按钮即可一键编译生成完整多角色运行态交互原型。')
+                    : t('preview.full.incompleteCompileDesc', '当前项目前置阶段尚未全部收敛，可点击下方生成临时影子原型探索或前往补齐前置规约。')}
+                </p>
+              </div>
+
+              {/* Summary Metric Badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-xl">
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col items-center gap-1.5 shadow-2xs">
+                  <User className="w-5 h-5 text-indigo-600" />
+                  <span className="text-lg font-black text-slate-800">{(ir?.actors || []).length}</span>
+                  <span className="text-[11px] font-bold text-slate-400">{t('nav.stageName.what')} / 角色</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col items-center gap-1.5 shadow-2xs">
+                  <Folder className="w-5 h-5 text-indigo-600" />
+                  <span className="text-lg font-black text-slate-800">{(ir?.features || []).length}</span>
+                  <span className="text-[11px] font-bold text-slate-400">{t('nav.stageName.what')} / 功能点</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col items-center gap-1.5 shadow-2xs">
+                  <Workflow className="w-5 h-5 text-indigo-600" />
+                  <span className="text-lg font-black text-slate-800">{(ir?.flows || []).length}</span>
+                  <span className="text-[11px] font-bold text-slate-400">{t('nav.stageName.how')} / 流程泳道</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
                 <button
                   type="button"
                   onClick={() => void generatePrototype()}
                   disabled={prototypeState === 'loading'}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-md"
+                  className="inline-flex items-center gap-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 px-8 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-600/20 transition-all hover:shadow-indigo-600/30 active:scale-[0.98] cursor-pointer disabled:opacity-60"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${prototypeState === 'loading' ? 'animate-spin' : ''}`} />
-            {prototype ? t('preview.full.regeneratePrototype') : t('preview.full.generatePrototype')}
+                  <Sparkles className={`w-4 h-4 text-amber-300 ${prototypeState === 'loading' ? 'animate-spin' : 'animate-pulse'}`} />
+                  <span>
+                    {prototypeState === 'loading'
+                      ? t('preview.full.generatingPrototype')
+                      : t('preview.full.compilePrototypeBtn', '一键编译生成交互式原型')}
+                  </span>
                 </button>
               </div>
-            </div>
+            </section>
+          ) : (
+            /* Side-by-Side Interactive Prototype & Blueprints Panel when prototype is compiled */
+            <section className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden animate-in fade-in">
+              <div className="border-b border-slate-200 px-6 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <MonitorPlay className="w-5 h-5 text-teal-600" />
+                    {t('preview.full.quickPrototype')}
+                  </h3>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={openPrototypeInWindow}
+                    disabled={!prototypeSrcDoc || prototypeState === 'loading'}
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors bg-white flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {t('preview.full.openPrototype')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void generatePrototype()}
+                    disabled={prototypeState === 'loading'}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-md"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${prototypeState === 'loading' ? 'animate-spin' : ''}`} />
+                    {t('preview.full.regeneratePrototype')}
+                  </button>
+                </div>
+              </div>
 
-            {/* Viewport Split Screen */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 border-t border-slate-100">
-              
-              {/* Left Column: Interactive Prototype Simulator */}
-              <div className="lg:col-span-7 bg-slate-100/50 p-6 border-r border-slate-200 flex flex-col justify-center">
-                <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col h-[740px]">
-                  <div className="h-10 px-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-                    <div className="flex gap-1.5 items-center">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
-                      <span className="ml-3 text-xs text-slate-400 font-mono select-none truncate">
-                        /projects/{spaceToUse?.projectId || 'current'}/roles/{activeRole?.title || 'role'}/{activePrototypePage?.featureName || 'prototype'}
+              {/* Viewport Split Screen */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 border-t border-slate-100">
+                
+                {/* Left Column: Interactive Prototype Simulator */}
+                <div className="lg:col-span-7 bg-slate-100/50 p-6 border-r border-slate-200 flex flex-col justify-center">
+                  <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col h-[740px]">
+                    <div className="h-10 px-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+                      <div className="flex gap-1.5 items-center">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
+                        <span className="ml-3 text-xs text-slate-400 font-mono select-none truncate">
+                          /projects/{spaceToUse?.projectId || 'current'}/roles/{activeRole?.title || 'role'}/{activePrototypePage?.featureName || 'prototype'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-slate-200 border border-slate-300 text-slate-500 px-2 py-0.5 rounded font-mono font-bold select-none">
+                        PROTOTYPE SIMULATION
                       </span>
                     </div>
-                    <span className="text-[10px] bg-slate-200 border border-slate-300 text-slate-500 px-2 py-0.5 rounded font-mono font-bold select-none">
-                      PROTOTYPE SIMULATION
+                    {rolePrototypePages.length > 0 && (
+                      <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 flex flex-wrap gap-2">
+                        {rolePrototypePages.map((page) => (
+                          <button
+                            key={page.pageId}
+                            type="button"
+                            onClick={() => setActivePrototypePageId(page.pageId)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                              activePrototypePage?.pageId === page.pageId
+                                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                                : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-700'
+                            }`}
+                          >
+                            {page.featureName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex-1 bg-white relative animate-in fade-in">
+                      {prototypeState === 'loading' ? (
+                        <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-slate-50 space-y-4">
+                          <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-650 animate-spin" />
+                          <h4 className="text-xs font-black text-slate-800 tracking-wide select-none">
+                            <span className="flex items-center gap-1.5 justify-center">
+                              <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" />
+                              {isPostCommitCompiling ? t('preview.full.compilingCommitted') : t('preview.full.generatingPrototype')}
+                            </span>
+                          </h4>
+                          <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">
+                            {isPostCommitCompiling
+                              ? t('preview.full.compilingCommittedDescription')
+                              : t('preview.full.generatingPrototypeDescription')}
+                          </p>
+                        </div>
+                      ) : prototypeState === 'error' ? (
+                        <PrototypePlaceholder label={prototypeError || t('preview.full.assemblyFailure')} tone="error" />
+                      ) : (
+                        <iframe
+                          key={prototype.shadowDraftId || prototype.prototypeId}
+                          title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} prototype`}
+                          srcDoc={prototypeSrcDoc}
+                          className="w-full h-full border-0 bg-white"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Dynamic Role Blueprint Specifications */}
+                <div className="lg:col-span-5 p-6 overflow-y-auto max-h-[788px] space-y-6 flex flex-col">
+                  <div className="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                      <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> {t('preview.full.roleSpecs')}</span>
+                    </h4>
+                    <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded">
+                      {t('preview.full.pageCount', { count: pages.length })}
                     </span>
                   </div>
-                  {rolePrototypePages.length > 0 && (
-                    <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 flex flex-wrap gap-2">
-                      {rolePrototypePages.map((page) => (
-                        <button
-                          key={page.pageId}
-                          type="button"
-                          onClick={() => setActivePrototypePageId(page.pageId)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                            activePrototypePage?.pageId === page.pageId
-                              ? 'bg-teal-50 text-teal-700 border-teal-200'
-                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-700'
-                          }`}
-                        >
-                          {page.featureName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex-1 bg-white relative animate-in fade-in">
-                    {prototypeState === 'loading' ? (
-                      <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-slate-50 space-y-4">
-                        <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-indigo-650 animate-spin" />
-                        <h4 className="text-xs font-black text-slate-800 tracking-wide select-none">
-                          <span className="flex items-center gap-1.5 justify-center">
-                            <Sparkles className="w-4 h-4 text-indigo-500 animate-pulse shrink-0" />
-              {isPostCommitCompiling ? t('preview.full.compilingCommitted') : t('preview.full.generatingPrototype')}
-                          </span>
-                        </h4>
-                        <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">
-                          {isPostCommitCompiling
-                ? t('preview.full.compilingCommittedDescription')
-                : t('preview.full.generatingPrototypeDescription')}
-                        </p>
+
+                  {/* Role Tabs inside Specification container */}
+                  <div className="flex flex-wrap items-center gap-1.5 shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                    {actors.map((actor: any, idx: number) => (
+                      <button
+                        key={actor.id}
+                        type="button"
+                        onClick={() => setActiveRoleIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          activeRoleIndex === idx 
+                            ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100/50' 
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.title}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Active Role Content */}
+                  <div className="space-y-4 flex-1">
+                    {pages.length === 0 ? (
+                      <div className="p-8 text-center bg-slate-50/50 rounded-2xl border border-slate-100 space-y-3 my-auto">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
+                          <Eye className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h5 className="font-bold text-slate-700 text-xs">{t('preview.full.noRolePreview')}</h5>
+                          <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                            {t('preview.full.noRolePreviewDescription')}
+                          </p>
+                        </div>
                       </div>
-                    ) : prototypeState === 'error' ? (
-              <PrototypePlaceholder label={prototypeError || t('preview.full.assemblyFailure')} tone="error" />
-                    ) : prototype ? (
-                       <iframe
-                        key={prototype.shadowDraftId || prototype.prototypeId}
-                        title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} prototype`}
-                        srcDoc={prototypeSrcDoc}
-                        className="w-full h-full border-0 bg-white"
-                      />
                     ) : (
-              <PrototypePlaceholder label={t('preview.full.noPrototype')} />
+                      pages.map((page: any) => (
+                        <div key={page.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h5 className="font-black text-slate-800 text-sm flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                              {page.name}
+                            </h5>
+                            <p className="text-xs text-slate-500 mt-1 leading-relaxed font-medium">{page.desc}</p>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.acceptanceScenarios')}</span>
+                              {page.scenarios.length === 0 ? (
+                                <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">{t('preview.full.noAcceptanceScenarios')}</span>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  {page.scenarios.map((scenario: any) => (
+                                    <div
+                                      key={scenario.scenarioId}
+                                      onClick={() => setSelectedObject({ ...scenario, kind: 'scenario' })}
+                                      className="w-full text-left bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer"
+                                    >
+                                      <h6 className="font-bold text-slate-800 text-xs truncate">{scenario.scenarioName}</h6>
+                                      <p className="text-[10px] text-slate-500 leading-relaxed bg-white border border-slate-100 p-2 rounded-lg italic">
+                                        "{scenario.scenarioContent}"
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.executionSteps')}</span>
+                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                                {page.relatedSteps.length === 0 ? (
+                                  <span className="text-xs text-slate-400 italic">{t('preview.full.noExecutionSteps')}</span>
+                                ) : (
+                                  page.relatedSteps.map((stepName: string, idx: number) => (
+                                    <div key={`${stepName}-${idx}`} className="bg-white rounded-lg p-2.5 border border-slate-200/50 shadow-sm flex items-center justify-between">
+                                      <span className="text-[10px] font-bold text-slate-700 truncate">{stepName}</span>
+                                      <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold shrink-0">
+                                        {t('preview.full.actorInitiated')}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
               </div>
-
-              {/* Right Column: Dynamic Role Blueprint Specifications */}
-              <div className="lg:col-span-5 p-6 overflow-y-auto max-h-[788px] space-y-6 flex flex-col">
-                <div className="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-              <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> {t('preview.full.roleSpecs')}</span>
-                  </h4>
-                  <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded">
-              {t('preview.full.pageCount', { count: pages.length })}
-                  </span>
-                </div>
-
-                {/* Role Tabs inside Specification container */}
-                <div className="flex flex-wrap items-center gap-1.5 shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                  {actors.map((actor: any, idx: number) => (
-                    <button
-                      key={actor.id}
-                      type="button"
-                      onClick={() => setActiveRoleIndex(idx)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                        activeRoleIndex === idx 
-                          ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100/50' 
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.title}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex-1 space-y-6">
-                  {pages.length === 0 ? (
-                    <div className="text-center py-24 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-3">
-                      <div className="mx-auto w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
-                        <Eye className="w-5 h-5" />
-                      </div>
-                  <div className="text-xs font-extrabold text-slate-700">{t('preview.full.noRolePreview')}</div>
-                      <div className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                    {t('preview.full.noRolePreviewDescription')}
-                      </div>
-                    </div>
-                  ) : (
-                    pages.map((page) => (
-                      <div key={page.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 hover:border-slate-300 transition-colors">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h5 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                            {page.name}
-                          </h5>
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed font-medium">{page.desc}</p>
-                        </div>
-                        
-                        <div className="space-y-4">
-                          <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.acceptanceScenarios')}</span>
-                            {page.scenarios.length === 0 ? (
-                    <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">{t('preview.full.noAcceptanceScenarios')}</span>
-                            ) : (
-                              <div className="space-y-2.5">
-                                {page.scenarios.map((scenario: any) => (
-                                  <div
-                                    key={scenario.scenarioId}
-                                    onClick={() => setSelectedObject({ ...scenario, kind: 'scenario' })}
-                                    className="w-full text-left bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer"
-                                  >
-                                    <h6 className="font-bold text-slate-800 text-xs truncate">{scenario.scenarioName}</h6>
-                                    <p className="text-[10px] text-slate-500 leading-relaxed bg-white border border-slate-100 p-2 rounded-lg italic">
-                                      "{scenario.scenarioContent}"
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.executionSteps')}</span>
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-                              {page.relatedSteps.length === 0 ? (
-                    <span className="text-xs text-slate-400 italic">{t('preview.full.noExecutionSteps')}</span>
-                              ) : (
-                                page.relatedSteps.map((stepName: string, idx: number) => (
-                                  <div key={`${stepName}-${idx}`} className="bg-white rounded-lg p-2.5 border border-slate-200/50 shadow-sm flex items-center justify-between">
-                                    <span className="text-[10px] font-bold text-slate-700 truncate">{stepName}</span>
-                                    <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold shrink-0">
-                  {t('preview.full.actorInitiated')}
-                                    </span>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Active Issues Alert */}
           {unresolvedIssues.length > 0 && (

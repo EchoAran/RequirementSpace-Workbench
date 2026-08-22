@@ -78,42 +78,50 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
   };
 
   return (
-    <div ref={dialogRef} className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" aria-label={t('versionControl.commitDialog.title')}>
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
-          <GitCommitHorizontal className="h-5 w-5 text-indigo-600" />
-          <h2 className="text-base font-bold text-slate-800">{t('versionControl.commitDialog.title')}</h2>
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('versionControl.commitDialog.title')}
+    >
+      <div className="w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm shrink-0">
+            <GitCommitHorizontal className="h-5 w-5" />
+          </div>
+          <h2 className="text-base font-black text-slate-900 tracking-tight">{t('versionControl.commitDialog.title')}</h2>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-4 p-6 text-left">
           {isProtected && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              <p>{t('versionControl.commitDisabledProtected')}</p>
+            <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-800">
+              <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <p className="font-medium leading-relaxed">{t('versionControl.commitDisabledProtected')}</p>
             </div>
           )}
 
           {!isProtected && !canWrite && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-600 font-medium">
               {t('versionControl.commitDialog.noPermission') || 'no permission'}
             </div>
           )}
 
           {!isProtected && !hasChanges && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-600 font-medium">
               {t('versionControl.commitDisabledNoChanges')}
             </div>
           )}
 
           {isConflict && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-              <p className="font-semibold">{t('versionControl.commitDialog.conflictTitle')}</p>
-              <p className="mt-1">{t('versionControl.commitDialog.conflictMessage')}</p>
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs text-rose-800 space-y-2">
+              <p className="font-bold">{t('versionControl.commitDialog.conflictTitle')}</p>
+              <p className="font-medium leading-relaxed">{t('versionControl.commitDialog.conflictMessage')}</p>
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
                   onClick={refresh}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   {t('versionControl.commitDialog.refresh')}
@@ -122,7 +130,7 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
                   <button
                     type="button"
                     onClick={() => { onClose(); onCompare(); }}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100/50 transition-all cursor-pointer"
                   >
                     {t('versionControl.commitDialog.compare')}
                   </button>
@@ -134,7 +142,7 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
           {!isProtected && (
             <>
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-600">
+                <span className="mb-1.5 block text-xs font-bold text-slate-700">
                   {t('versionControl.commitDialog.messageLabel')}
                 </span>
                 <textarea
@@ -142,16 +150,16 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
                   onChange={(e) => setMessage(e.target.value)}
                   rows={3}
                   placeholder={t('versionControl.commitDialog.messagePlaceholder')}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-800 font-medium outline-none focus:bg-white focus:border-indigo-500 transition-all shadow-xs"
                 />
               </label>
 
-              <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <p className="mb-1 text-xs font-semibold text-slate-500">{t('versionControl.commitDialog.summaryTitle')}</p>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 space-y-1">
+                <p className="text-[11px] font-bold text-slate-500">{t('versionControl.commitDialog.summaryTitle')}</p>
                 {summaryLoading ? (
-                  <p className="text-xs text-slate-400">{t('shell.loading')}</p>
+                  <p className="text-xs text-slate-400 font-medium">{t('shell.loading')}</p>
                 ) : summary ? (
-                  <p className="text-xs text-slate-700">
+                  <p className="text-xs text-slate-700 font-medium">
                     {t('versionControl.repository.changeSummary', {
                       added: summary.total_added,
                       removed: summary.total_removed,
@@ -159,17 +167,17 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
                     })}
                   </p>
                 ) : (
-                  <p className="text-xs text-slate-400">{t('versionControl.diff.empty')}</p>
+                  <p className="text-xs text-slate-400 font-medium">{t('versionControl.diff.empty')}</p>
                 )}
               </div>
 
-              <p className="flex items-center gap-1.5 text-xs text-slate-400">
+              <p className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
                 <GitFork className="h-3.5 w-3.5" />
-                {t('versionControl.commitDialog.expectedHead')}: {currentBranch?.head_commit_public_id?.slice(0, 8) || '-'}
+                {t('versionControl.commitDialog.expectedHead')}: <span className="font-mono text-slate-600">{currentBranch?.head_commit_public_id?.slice(0, 8) || '-'}</span>
               </p>
 
               {commitError && !isConflict && (
-                <p className="text-xs text-rose-600">
+                <p className="text-xs font-bold text-rose-600">
                   {commitError.startsWith('versionControl.') ? t(commitError) : commitError}
                 </p>
               )}
@@ -177,11 +185,11 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
           )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+        <div className="flex justify-end gap-2.5 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
           >
             {t('versionControl.commitDialog.cancel')}
           </button>
@@ -189,7 +197,7 @@ export function CommitDialog({ open, onClose, onCompare }: CommitDialogProps) {
             type="button"
             onClick={submit}
             disabled={!canWrite || !message.trim() || commitLoading}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300 transition-all cursor-pointer"
           >
             <GitCommitHorizontal className="h-4 w-4" />
             {commitLoading ? t('shell.loading') : t('versionControl.commit')}

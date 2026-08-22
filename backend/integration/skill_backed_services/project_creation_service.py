@@ -4,13 +4,12 @@ import re
 from typing import Any
 
 from backend.api.modules.project_lifecycle.ports import ActorFeaturePreviewGeneratorPort
-from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.generators.actors_generator import ActorsGenerator, ActorsGeneratorInput
+from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.integration.skill_backed_services.feature_tree_adapter import FeatureTreeAdapter
 from backend.integration.skill_backed_services.llm_json_client import SkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.schemas import ActorNode
-
 
 _feature_number_pattern = re.compile(r"^F\d{3}(?:-\d{3})*$")
 

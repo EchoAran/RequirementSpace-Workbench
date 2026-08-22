@@ -2,31 +2,17 @@
 Version Control Merge Request REST API Routes.
 MR 创建、列表、详情、评论、审批、关闭。
 """
-from typing import Optional
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.project_access import require_project_member
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel
-from backend.api.modules.version_control.schemas import (
-    MergeRequestCreateRequest,
-    MergeReviewRequest,
-    MergeCommentCreateRequest,
-    MergeRequestDetailResponse,
-    MergeReviewResponse,
-    MergeCommentResponse,
-    MergeRequestPreviewRequest,
-    MergeRequestPreviewResponse,
-    MergeRequestListResponse,
-    MergePreviewResponse,
-    MergeRequestPayload,
-    MergeResponse,
+from backend.api.modules.version_control.application import (
+    merge_execution,
+    merge_service,
 )
-from backend.api.modules.version_control.application import merge_service
-from backend.api.modules.version_control.application import merge_execution
 from backend.api.modules.version_control.application.errors import (
     HeadChangedError,
     MergeBlockedError,
@@ -34,6 +20,25 @@ from backend.api.modules.version_control.application.errors import (
 )
 from backend.api.modules.version_control.audit import record_vc_event
 from backend.api.modules.version_control.observability import audit_vc_failure
+from backend.api.modules.version_control.schemas import (
+    MergeCommentCreateRequest,
+    MergeCommentResponse,
+    MergePreviewResponse,
+    MergeRequestCreateRequest,
+    MergeRequestDetailResponse,
+    MergeRequestListResponse,
+    MergeRequestPayload,
+    MergeRequestPreviewRequest,
+    MergeRequestPreviewResponse,
+    MergeResponse,
+    MergeReviewRequest,
+    MergeReviewResponse,
+)
+from backend.core.logging import get_logger
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/merge-requests",
@@ -71,6 +76,7 @@ async def create_merge_request(
         await session.commit()
         return result
     except ValueError as e:
+        await session.rollback()
         err = str(e)
         status_code_map = {
             MR_NOT_FOUND: 404,
@@ -88,12 +94,19 @@ async def create_merge_request(
         }
         code = status_code_map.get(err, 400)
         raise HTTPException(status_code=code, detail=err)
+    except HTTPException:
+        await session.rollback()
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.exception("create_merge_request unexpected error")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("", response_model=MergeRequestListResponse)
 async def list_merge_requests(
     project_id: str,
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user: UserModel = Depends(get_current_user),

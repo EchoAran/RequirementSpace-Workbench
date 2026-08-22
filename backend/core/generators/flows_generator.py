@@ -1,22 +1,23 @@
-from dataclasses import dataclass
 import json
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any
 
+from backend.core.generators.base_generator import BaseGenerator, GenerateInput
 from backend.core.generators.prompts import (
     business_object_in_flows_prompt,
     business_objects_generate_prompt,
-    flows_generate_prompt,
     flows_generate_combined_prompt,
+    flows_generate_prompt,
 )
-from backend.core.generators.base_generator import BaseGenerator, GenerateInput
-from backend.schemas import FeatureNode, ActorNode
+from backend.schemas import ActorNode, FeatureNode
+
 
 # 为流程生成器定义专属的输入类型
 @dataclass
 class FlowsGeneratorInput(GenerateInput):
     user_requirements: str
-    actors: List[ActorNode]
-    features: List[FeatureNode]
+    actors: list[ActorNode]
+    features: list[FeatureNode]
     user_feedback: str | None = None
 
 class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
@@ -24,7 +25,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
         self,
         input_data: FlowsGeneratorInput,
         use_combined_prompt: bool = False,
-    ) -> Dict:
+    ) -> dict:
         actors, features = self._serialize_prompt_context(input_data)
         if use_combined_prompt:
             return await self._generate_combined(

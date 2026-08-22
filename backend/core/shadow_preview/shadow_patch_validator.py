@@ -17,7 +17,7 @@ class _PatchSections:
     scopes: list
 
     @classmethod
-    def from_patch(cls, patch: dict) -> "_PatchSections":
+    def from_patch(cls, patch: dict) -> _PatchSections:
         return cls(
             actors=patch.get("actors_added", []),
             features=patch.get("features_added", []),

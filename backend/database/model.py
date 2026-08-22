@@ -1,23 +1,24 @@
 from __future__ import annotations
 
-from datetime import datetime
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
-    DateTime,
+    JSON,
+    Boolean,
+    CheckConstraint,
     Column,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
-    JSON,
+    LargeBinary,
     String,
     Table,
     Text,
     UniqueConstraint,
-    LargeBinary,
-    Boolean,
-    CheckConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
@@ -26,6 +27,7 @@ class Base(DeclarativeBase):
     pass
 
 from zoneinfo import ZoneInfo
+
 BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
 def beijing_now() -> datetime:
@@ -45,7 +47,7 @@ class TimestampMixin:
         nullable=False,
     )
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     ADMIN = "admin"
     USER = "user"
 
@@ -72,24 +74,24 @@ class UserModel(TimestampMixin, Base):
         return value
 
     # Relationships
-    projects: Mapped[list["ProjectModel"]] = relationship(
+    projects: Mapped[list[ProjectModel]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
     )
-    auth_sessions: Mapped[list["AuthSessionModel"]] = relationship(
+    auth_sessions: Mapped[list[AuthSessionModel]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
-    llm_config: Mapped["UserLLMConfigModel | None"] = relationship(
+    llm_config: Mapped[UserLLMConfigModel | None] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=False,
     )
-    generative_drafts: Mapped[list["GenerativeDraftModel"]] = relationship(
+    generative_drafts: Mapped[list[GenerativeDraftModel]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
     )
-    project_memberships: Mapped[list["ProjectMemberModel"]] = relationship(
+    project_memberships: Mapped[list[ProjectMemberModel]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="[ProjectMemberModel.user_id]",
@@ -135,7 +137,7 @@ class AuthSessionModel(TimestampMixin, Base):
     user: Mapped[UserModel] = relationship(back_populates="auth_sessions")
 
 
-class ProjectMemberRole(str, enum.Enum):
+class ProjectMemberRole(enum.StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     EDITOR = "editor"
@@ -143,7 +145,7 @@ class ProjectMemberRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
-class ProjectMemberStatus(str, enum.Enum):
+class ProjectMemberStatus(enum.StrEnum):
     ACTIVE = "active"
     INVITED = "invited"
     REMOVED = "removed"
@@ -183,12 +185,12 @@ class ProjectMemberModel(TimestampMixin, Base):
     )
 
     # Relationships
-    project: Mapped["ProjectModel"] = relationship(back_populates="members")
-    user: Mapped["UserModel"] = relationship(
+    project: Mapped[ProjectModel] = relationship(back_populates="members")
+    user: Mapped[UserModel] = relationship(
         back_populates="project_memberships",
         foreign_keys=[user_id],
     )
-    invited_by: Mapped["UserModel | None"] = relationship(
+    invited_by: Mapped[UserModel | None] = relationship(
         foreign_keys=[invited_by_user_id],
     )
 
@@ -197,7 +199,7 @@ class ProjectMemberModel(TimestampMixin, Base):
     )
 
 
-class ConfirmationStatus(str, enum.Enum):
+class ConfirmationStatus(enum.StrEnum):
     """标记对象的确认状态：AI生成、待确认、已确认"""
     AI_ASSUMPTION = "ai_assumption"
     NEEDS_CONFIRMATION = "needs_confirmation"
@@ -329,7 +331,7 @@ class ProjectModel(TimestampMixin, Base):
         return value
 
     owner: Mapped[UserModel] = relationship(back_populates="projects")
-    members: Mapped[list["ProjectMemberModel"]] = relationship(
+    members: Mapped[list[ProjectMemberModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -337,11 +339,14 @@ class ProjectModel(TimestampMixin, Base):
     kano_status: Mapped[str] = mapped_column(String(50), default="missing", nullable=False)
     unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
-    perception_slot: Mapped[PerceptionSlotModel | None] = relationship(
+    perception_slots: Mapped[list[PerceptionSlotModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
-        uselist=False,
     )
+
+    @property
+    def perception_slot(self) -> PerceptionSlotModel | None:
+        return self.perception_slots[0] if self.perception_slots else None
     perception_jobs: Mapped[list[PerceptionJobModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
@@ -354,15 +359,15 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    scenarios: Mapped[list["ScenarioModel"]] = relationship(
+    scenarios: Mapped[list[ScenarioModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+    gherkin_specs: Mapped[list[GherkinSpecModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    prototype_previews: Mapped[list["PrototypePreviewModel"]] = relationship(
+    prototype_previews: Mapped[list[PrototypePreviewModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -394,27 +399,27 @@ class ProjectModel(TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    issue_overrides: Mapped[list["IssueOverrideModel"]] = relationship(
+    issue_overrides: Mapped[list[IssueOverrideModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    finding_overrides: Mapped[list["FindingOverrideModel"]] = relationship(
+    finding_overrides: Mapped[list[FindingOverrideModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    ai_add_sessions: Mapped[list["AIAddSessionModel"]] = relationship(
+    ai_add_sessions: Mapped[list[AIAddSessionModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    branches: Mapped[list["RequirementBranchModel"]] = relationship(
+    branches: Mapped[list[RequirementBranchModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    commits: Mapped[list["RequirementCommitModel"]] = relationship(
+    commits: Mapped[list[RequirementCommitModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    workspaces: Mapped[list["BranchWorkspaceModel"]] = relationship(
+    workspaces: Mapped[list[BranchWorkspaceModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -422,31 +427,69 @@ class ProjectModel(TimestampMixin, Base):
 
 class PerceptionSlotModel(TimestampMixin, Base):
     __tablename__ = "perception_slots"
+    __table_args__ = (
+        Index(
+            "uq_perception_slots_workspace",
+            "project_id",
+            "workspace_id",
+            unique=True,
+            sqlite_where=text("workspace_id IS NOT NULL"),
+            postgresql_where=text("workspace_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_perception_slots_legacy",
+            "project_id",
+            unique=True,
+            sqlite_where=text("workspace_id IS NULL"),
+            postgresql_where=text("workspace_id IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     perception_kind: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
-    project: Mapped[ProjectModel] = relationship(back_populates="perception_slot")
+    project: Mapped[ProjectModel] = relationship(back_populates="perception_slots")
+    workspace: Mapped[BranchWorkspaceModel | None] = relationship(back_populates="perception_slots")
 
 
 class PerceptionJobModel(TimestampMixin, Base):
     __tablename__ = "perception_jobs"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_perception_jobs_workspace_context",
+            "project_id",
+            "workspace_id",
+            "stage",
+            "perception_kind",
+            "target_type",
+            "target_id",
+            "context_hash",
+            unique=True,
+            sqlite_where=text("workspace_id IS NOT NULL"),
+            postgresql_where=text("workspace_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_perception_jobs_legacy_context",
             "project_id",
             "stage",
             "perception_kind",
             "target_type",
             "target_id",
             "context_hash",
-            name="uq_perception_job_context",
+            unique=True,
+            sqlite_where=text("workspace_id IS NULL"),
+            postgresql_where=text("workspace_id IS NULL"),
         ),
         Index("ix_perception_jobs_project_stage", "project_id", "stage"),
         Index("ix_perception_jobs_status", "status"),
@@ -480,8 +523,14 @@ class PerceptionJobModel(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     project: Mapped[ProjectModel] = relationship(back_populates="perception_jobs")
+    workspace: Mapped[BranchWorkspaceModel | None] = relationship(back_populates="perception_jobs")
 
 
 class RequirementBranchModel(TimestampMixin, Base):
@@ -531,19 +580,19 @@ class RequirementBranchModel(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
 
     # Relationships
-    project: Mapped["ProjectModel"] = relationship(back_populates="branches")
-    workspace: Mapped["BranchWorkspaceModel | None"] = relationship(
+    project: Mapped[ProjectModel] = relationship(back_populates="branches")
+    workspace: Mapped[BranchWorkspaceModel | None] = relationship(
         back_populates="branch",
         cascade="all, delete-orphan",
         uselist=False,
     )
-    head_commit: Mapped["RequirementCommitModel | None"] = relationship(
+    head_commit: Mapped[RequirementCommitModel | None] = relationship(
         foreign_keys=[head_commit_id],
     )
-    source_commit: Mapped["RequirementCommitModel | None"] = relationship(
+    source_commit: Mapped[RequirementCommitModel | None] = relationship(
         foreign_keys=[source_commit_id],
     )
-    created_by: Mapped["UserModel | None"] = relationship(
+    created_by: Mapped[UserModel | None] = relationship(
         foreign_keys=[created_by_user_id],
     )
 
@@ -590,11 +639,11 @@ class RequirementCommitModel(TimestampMixin, Base):
     summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
-    project: Mapped["ProjectModel"] = relationship(back_populates="commits")
-    author: Mapped["UserModel | None"] = relationship(
+    project: Mapped[ProjectModel] = relationship(back_populates="commits")
+    author: Mapped[UserModel | None] = relationship(
         foreign_keys=[author_user_id],
     )
-    parent_relations: Mapped[list["RequirementCommitParentModel"]] = relationship(
+    parent_relations: Mapped[list[RequirementCommitParentModel]] = relationship(
         back_populates="commit",
         foreign_keys="[RequirementCommitParentModel.commit_id]",
         cascade="all, delete-orphan",
@@ -626,17 +675,18 @@ class RequirementCommitParentModel(Base):
     parent_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
-    commit: Mapped["RequirementCommitModel"] = relationship(
+    commit: Mapped[RequirementCommitModel] = relationship(
         foreign_keys=[commit_id],
         back_populates="parent_relations",
     )
-    parent_commit: Mapped["RequirementCommitModel"] = relationship(
+    parent_commit: Mapped[RequirementCommitModel] = relationship(
         foreign_keys=[parent_commit_id],
     )
 
 
 from sqlalchemy import event, select
 from sqlalchemy.orm import Session
+
 
 @event.listens_for(RequirementCommitModel, "before_update")
 def prevent_commit_update(mapper, connection, target: RequirementCommitModel):
@@ -718,8 +768,16 @@ class BranchWorkspaceModel(TimestampMixin, Base):
     unlocked_stages: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
     # Relationships
-    project: Mapped["ProjectModel"] = relationship(back_populates="workspaces")
-    branch: Mapped["RequirementBranchModel"] = relationship(back_populates="workspace")
+    project: Mapped[ProjectModel] = relationship(back_populates="workspaces")
+    branch: Mapped[RequirementBranchModel] = relationship(back_populates="workspace")
+    perception_slots: Mapped[list[PerceptionSlotModel]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    perception_jobs: Mapped[list[PerceptionJobModel]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
 
 
 class ActorModel(TimestampMixin, Base):
@@ -765,7 +823,7 @@ class ActorModel(TimestampMixin, Base):
         cascade="all, delete",
         passive_deletes=True,
     )
-    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+    gherkin_specs: Mapped[list[GherkinSpecModel]] = relationship(
         back_populates="actor",
         cascade="all, delete",
         passive_deletes=True,
@@ -819,13 +877,13 @@ class FeatureRelationModel(TimestampMixin, Base):
 
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    parent: Mapped["FeatureModel"] = relationship(
+    parent: Mapped[FeatureModel] = relationship(
         "FeatureModel",
         foreign_keys=[parent_feature_id],
         back_populates="child_relations",
     )
 
-    child: Mapped["FeatureModel"] = relationship(
+    child: Mapped[FeatureModel] = relationship(
         "FeatureModel",
         foreign_keys=[child_feature_id],
         back_populates="parent_relation",
@@ -867,12 +925,12 @@ class FeatureModel(TimestampMixin, Base):
         server_default=ConfirmationStatus.AI_ASSUMPTION.value,
     )
 
-    project: Mapped["ProjectModel"] = relationship(
+    project: Mapped[ProjectModel] = relationship(
         back_populates="features",
         foreign_keys=[project_id],
     )
 
-    child_relations: Mapped[list["FeatureRelationModel"]] = relationship(
+    child_relations: Mapped[list[FeatureRelationModel]] = relationship(
         "FeatureRelationModel",
         foreign_keys="FeatureRelationModel.parent_feature_id",
         back_populates="parent",
@@ -880,7 +938,7 @@ class FeatureModel(TimestampMixin, Base):
         order_by="FeatureRelationModel.position",
     )
 
-    parent_relation: Mapped["FeatureRelationModel | None"] = relationship(
+    parent_relation: Mapped[FeatureRelationModel | None] = relationship(
         "FeatureRelationModel",
         foreign_keys="FeatureRelationModel.child_feature_id",
         back_populates="child",
@@ -888,25 +946,25 @@ class FeatureModel(TimestampMixin, Base):
         passive_deletes=True,
     )
 
-    actors: Mapped[list["ActorModel"]] = relationship(
+    actors: Mapped[list[ActorModel]] = relationship(
         secondary=feature_actor_table,
         back_populates="features",
     )
 
-    scenarios: Mapped[list["ScenarioModel"]] = relationship(
+    scenarios: Mapped[list[ScenarioModel]] = relationship(
         back_populates="feature",
         cascade="all, delete-orphan",
     )
-    gherkin_specs: Mapped[list["GherkinSpecModel"]] = relationship(
+    gherkin_specs: Mapped[list[GherkinSpecModel]] = relationship(
         back_populates="feature",
     )
 
-    flows: Mapped[list["FlowModel"]] = relationship(
+    flows: Mapped[list[FlowModel]] = relationship(
         secondary=flow_feature_table,
         back_populates="features",
     )
 
-    scope: Mapped["ScopeModel | None"] = relationship(
+    scope: Mapped[ScopeModel | None] = relationship(
         back_populates="feature",
         cascade="all, delete-orphan",
         uselist=False,
@@ -963,7 +1021,7 @@ class ScopeModel(TimestampMixin, Base):
         server_default=ConfirmationStatus.AI_ASSUMPTION.value,
     )
 
-    feature: Mapped["FeatureModel"] = relationship(
+    feature: Mapped[FeatureModel] = relationship(
         back_populates="scope",
     )
 
@@ -1005,7 +1063,7 @@ class ScenarioAcceptanceCriterionModel(TimestampMixin, Base):
         server_default=ConfirmationStatus.AI_ASSUMPTION.value,
     )
 
-    scenario: Mapped["ScenarioModel"] = relationship(
+    scenario: Mapped[ScenarioModel] = relationship(
         back_populates="acceptance_criteria",
     )
 
@@ -1047,7 +1105,7 @@ class GherkinSpecModel(TimestampMixin, Base):
     project: Mapped[ProjectModel] = relationship(back_populates="gherkin_specs")
     feature: Mapped[FeatureModel] = relationship(back_populates="gherkin_specs")
     actor: Mapped[ActorModel] = relationship(back_populates="gherkin_specs")
-    scenarios: Mapped[list["ScenarioModel"]] = relationship(
+    scenarios: Mapped[list[ScenarioModel]] = relationship(
         back_populates="gherkin_spec",
     )
 
@@ -1542,14 +1600,14 @@ class PreviewShadowDraftModel(TimestampMixin, Base):
     draft_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     status: Mapped[str] = mapped_column(String(50), default="generating", nullable=False)
     source: Mapped[str] = mapped_column(String(50), default="shadow_project", nullable=False)
-    
+
     base_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     shadow_snapshot_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    
+
     base_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     shadow_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     patch_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    
+
     prototype_preview_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
     committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1713,7 +1771,7 @@ class AIAddSessionModel(TimestampMixin, Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     project: Mapped[ProjectModel] = relationship(back_populates="ai_add_sessions")
-    messages: Mapped[list["AIAddMessageModel"]] = relationship(
+    messages: Mapped[list[AIAddMessageModel]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
     )
@@ -1774,9 +1832,9 @@ class CollaborationTaskModel(TimestampMixin, Base):
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
-    creator: Mapped["UserModel"] = relationship(foreign_keys=[created_by_user_id])
-    assignee: Mapped["UserModel"] = relationship(foreign_keys=[assigned_to_user_id])
+    project: Mapped[ProjectModel] = relationship(foreign_keys=[project_id])
+    creator: Mapped[UserModel] = relationship(foreign_keys=[created_by_user_id])
+    assignee: Mapped[UserModel] = relationship(foreign_keys=[assigned_to_user_id])
 
 
 class ProjectLLMConfigModel(TimestampMixin, Base):
@@ -1802,7 +1860,7 @@ class ProjectLLMConfigModel(TimestampMixin, Base):
         nullable=False,
     )
 
-    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
+    project: Mapped[ProjectModel] = relationship(foreign_keys=[project_id])
 
 
 class NotificationModel(TimestampMixin, Base):
@@ -1830,9 +1888,9 @@ class NotificationModel(TimestampMixin, Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    recipient: Mapped["UserModel"] = relationship(foreign_keys=[recipient_user_id])
-    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
-    task: Mapped["CollaborationTaskModel | None"] = relationship(foreign_keys=[task_id])
+    recipient: Mapped[UserModel] = relationship(foreign_keys=[recipient_user_id])
+    project: Mapped[ProjectModel] = relationship(foreign_keys=[project_id])
+    task: Mapped[CollaborationTaskModel | None] = relationship(foreign_keys=[task_id])
 
 
 class TaskCommentModel(TimestampMixin, Base):
@@ -1850,8 +1908,8 @@ class TaskCommentModel(TimestampMixin, Base):
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
-    task: Mapped["CollaborationTaskModel"] = relationship(foreign_keys=[task_id])
-    author: Mapped["UserModel"] = relationship(foreign_keys=[author_user_id])
+    task: Mapped[CollaborationTaskModel] = relationship(foreign_keys=[task_id])
+    author: Mapped[UserModel] = relationship(foreign_keys=[author_user_id])
 
 
 class TaskAssigneeModel(TimestampMixin, Base):
@@ -1871,8 +1929,8 @@ class TaskAssigneeModel(TimestampMixin, Base):
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    task: Mapped["CollaborationTaskModel"] = relationship(foreign_keys=[task_id])
-    assignee: Mapped["UserModel"] = relationship(foreign_keys=[assignee_user_id])
+    task: Mapped[CollaborationTaskModel] = relationship(foreign_keys=[task_id])
+    assignee: Mapped[UserModel] = relationship(foreign_keys=[assignee_user_id])
 
 
 class KnowledgeWorkspaceModel(TimestampMixin, Base):
@@ -1899,8 +1957,8 @@ class KnowledgeWorkspaceModel(TimestampMixin, Base):
     scope: Mapped[str] = mapped_column(String(50), default="project_creation", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)  # active, attached, expired
 
-    owner: Mapped["UserModel"] = relationship(foreign_keys=[owner_user_id])
-    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
+    owner: Mapped[UserModel] = relationship(foreign_keys=[owner_user_id])
+    project: Mapped[ProjectModel | None] = relationship(foreign_keys=[project_id])
 
 
 class KnowledgeDocumentModel(TimestampMixin, Base):
@@ -1939,9 +1997,9 @@ class KnowledgeDocumentModel(TimestampMixin, Base):
     ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    workspace: Mapped["KnowledgeWorkspaceModel | None"] = relationship(foreign_keys=[workspace_id])
-    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
-    owner: Mapped["UserModel"] = relationship(foreign_keys=[owner_user_id])
+    workspace: Mapped[KnowledgeWorkspaceModel | None] = relationship(foreign_keys=[workspace_id])
+    project: Mapped[ProjectModel | None] = relationship(foreign_keys=[project_id])
+    owner: Mapped[UserModel] = relationship(foreign_keys=[owner_user_id])
 
 
 class KnowledgeChunkModel(TimestampMixin, Base):
@@ -1969,9 +2027,9 @@ class KnowledgeChunkModel(TimestampMixin, Base):
     token_estimate: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    document: Mapped["KnowledgeDocumentModel"] = relationship(foreign_keys=[document_id])
-    project: Mapped["ProjectModel | None"] = relationship(foreign_keys=[project_id])
-    workspace: Mapped["KnowledgeWorkspaceModel | None"] = relationship(foreign_keys=[workspace_id])
+    document: Mapped[KnowledgeDocumentModel] = relationship(foreign_keys=[document_id])
+    project: Mapped[ProjectModel | None] = relationship(foreign_keys=[project_id])
+    workspace: Mapped[KnowledgeWorkspaceModel | None] = relationship(foreign_keys=[workspace_id])
 
 
 class ProjectGenerationStrategyConfigModel(TimestampMixin, Base):
@@ -1993,12 +2051,11 @@ class ProjectGenerationStrategyConfigModel(TimestampMixin, Base):
         nullable=True,
     )
 
-    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
-    updated_by: Mapped["UserModel | None"] = relationship(foreign_keys=[updated_by_user_id])
+    project: Mapped[ProjectModel] = relationship(foreign_keys=[project_id])
+    updated_by: Mapped[UserModel | None] = relationship(foreign_keys=[updated_by_user_id])
 
 
 from sqlalchemy import event, text
-
 
 # ============================================================
 # Merge Request Models (Phase 5)
@@ -2070,20 +2127,20 @@ class MergeRequestModel(TimestampMixin, Base):
         nullable=True,
     )
 
-    project: Mapped["ProjectModel"] = relationship(foreign_keys=[project_id])
-    source_branch: Mapped["RequirementBranchModel"] = relationship(foreign_keys=[source_branch_id])
-    target_branch: Mapped["RequirementBranchModel"] = relationship(foreign_keys=[target_branch_id])
-    merge_base: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[merge_base_commit_id])
-    source_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[source_head_commit_id])
-    target_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[target_head_commit_id])
-    author: Mapped["UserModel | None"] = relationship(foreign_keys=[author_user_id])
-    merged_commit: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[merged_commit_id])
-    closed_by: Mapped["UserModel | None"] = relationship(foreign_keys=[closed_by_user_id])
-    reviews: Mapped[list["MergeReviewModel"]] = relationship(
+    project: Mapped[ProjectModel] = relationship(foreign_keys=[project_id])
+    source_branch: Mapped[RequirementBranchModel] = relationship(foreign_keys=[source_branch_id])
+    target_branch: Mapped[RequirementBranchModel] = relationship(foreign_keys=[target_branch_id])
+    merge_base: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[merge_base_commit_id])
+    source_head: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[source_head_commit_id])
+    target_head: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[target_head_commit_id])
+    author: Mapped[UserModel | None] = relationship(foreign_keys=[author_user_id])
+    merged_commit: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[merged_commit_id])
+    closed_by: Mapped[UserModel | None] = relationship(foreign_keys=[closed_by_user_id])
+    reviews: Mapped[list[MergeReviewModel]] = relationship(
         back_populates="merge_request",
         cascade="all, delete-orphan",
     )
-    comments: Mapped[list["MergeCommentModel"]] = relationship(
+    comments: Mapped[list[MergeCommentModel]] = relationship(
         back_populates="merge_request",
         cascade="all, delete-orphan",
     )
@@ -2144,10 +2201,10 @@ class MergeReviewModel(TimestampMixin, Base):
         nullable=True,
     )
 
-    merge_request: Mapped["MergeRequestModel"] = relationship(back_populates="reviews")
-    reviewer: Mapped["UserModel | None"] = relationship(foreign_keys=[reviewer_user_id])
-    stale_source_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[stale_source_head_id])
-    stale_target_head: Mapped["RequirementCommitModel | None"] = relationship(foreign_keys=[stale_target_head_id])
+    merge_request: Mapped[MergeRequestModel] = relationship(back_populates="reviews")
+    reviewer: Mapped[UserModel | None] = relationship(foreign_keys=[reviewer_user_id])
+    stale_source_head: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[stale_source_head_id])
+    stale_target_head: Mapped[RequirementCommitModel | None] = relationship(foreign_keys=[stale_target_head_id])
 
 
 class MergeCommentModel(TimestampMixin, Base):
@@ -2188,8 +2245,8 @@ class MergeCommentModel(TimestampMixin, Base):
         nullable=True,
     )
 
-    merge_request: Mapped["MergeRequestModel"] = relationship(back_populates="comments")
-    author: Mapped["UserModel | None"] = relationship(foreign_keys=[author_user_id])
+    merge_request: Mapped[MergeRequestModel] = relationship(back_populates="comments")
+    author: Mapped[UserModel | None] = relationship(foreign_keys=[author_user_id])
 
 @event.listens_for(ProjectModel, 'after_insert')
 def auto_create_project_owner_member(mapper, connection, target):

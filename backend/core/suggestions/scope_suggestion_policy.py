@@ -13,10 +13,12 @@ class ScopeSuggestionPolicy(StageSuggestionPolicy):
         project_id: int,
         session,
         public_project_id: str | None = None,
+        workspace_id: int | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
+            workspace_id=workspace_id,
         )
         pub_id = public_project_id or str(project_id)
 

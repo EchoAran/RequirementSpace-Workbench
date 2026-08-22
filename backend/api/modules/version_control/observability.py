@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
-from backend.core.logging.logger import get_logger, log_event
 from backend.api.modules.version_control.audit import record_vc_failure_event
+from backend.core.logging.logger import get_logger, log_event
 
 # 版本控制领域日志统一使用 domain 类目（默认关闭，运维按需开启 LOG_ENABLED_CATEGORIES=...,domain）。
 VC_CATEGORY = "domain"

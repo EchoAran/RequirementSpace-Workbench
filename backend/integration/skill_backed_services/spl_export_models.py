@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
+
 from backend.api.base_schema import CamelModel
 from backend.core.locale import DEFAULT_LOCALE, SupportedLocale
 
@@ -21,11 +22,11 @@ class ExportOptionsModel(CamelModel):
 
 class SplExportInput(CamelModel):
     project: ProjectSummaryModel
-    actors: List[Any] = []
-    features: List[Any] = []
-    business_objects: List[Any] = []
-    flows: List[Any] = []
-    unresolved_gates: List[Any] = []
+    actors: list[Any] = []
+    features: list[Any] = []
+    business_objects: list[Any] = []
+    flows: list[Any] = []
+    unresolved_gates: list[Any] = []
     export_options: ExportOptionsModel
 
 
@@ -37,7 +38,7 @@ class WarningSourceModel(CamelModel):
 class SplExportWarning(CamelModel):
     code: str
     message: str
-    source: Optional[WarningSourceModel] = None
+    source: WarningSourceModel | None = None
 
 
 class TraceLinkModel(CamelModel):
@@ -48,16 +49,16 @@ class TraceLinkModel(CamelModel):
 
 class CoverageReportModel(CamelModel):
     coverage_passed: bool
-    covered_current_feature_ids: List[int] = []
-    missing_current_feature_ids: List[int] = []
-    unmapped_flow_ids: List[int] = []
-    unmapped_acceptance_criterion_ids: List[int] = []
-    semantic_risks: List[str] = []
+    covered_current_feature_ids: list[int] = []
+    missing_current_feature_ids: list[int] = []
+    unmapped_flow_ids: list[int] = []
+    unmapped_acceptance_criterion_ids: list[int] = []
+    semantic_risks: list[str] = []
 
 
 class SplExportOutput(CamelModel):
     spl_text: str
     quality: str  # "syntax_shell" | "semantic_with_warnings" | "semantic_verified"
-    warnings: List[SplExportWarning] = []
-    trace_links: List[TraceLinkModel] = []
-    coverage_report: Optional[CoverageReportModel] = None
+    warnings: list[SplExportWarning] = []
+    trace_links: list[TraceLinkModel] = []
+    coverage_report: CoverageReportModel | None = None

@@ -2,22 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import llm_context_manager
 from backend.api.dependencies.ownership import require_owned_ai_add_session, require_owned_generative_draft
-from backend.database.model import UserModel, AIAddSessionModel, GenerativeDraftModel
+from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 from backend.api.modules.ai_interaction.ai_add.schemas import (
-    AIAddSessionCreateRequest,
-    AIAddSessionResponse,
-    AIAddSessionMessagesResponse,
-    AIAddMessageRequest,
-    AIAddMessageResponse,
-    AIAddGenerateDraftResponse,
     AIAddConfirmDraftResponse,
     AIAddDiscardDraftResponse,
+    AIAddGenerateDraftResponse,
+    AIAddMessageRequest,
+    AIAddMessageResponse,
+    AIAddSessionCreateRequest,
+    AIAddSessionMessagesResponse,
+    AIAddSessionResponse,
 )
-from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
-from backend.database.database import get_session
-from backend.api.dependencies.llm import llm_context_manager
 from backend.api.modules.version_control.dependencies import reject_commit_write
+from backend.database.database import get_session
+from backend.database.model import AIAddSessionModel, GenerativeDraftModel, UserModel
 
 router = APIRouter(
     prefix="/api/ai_add_sessions",
@@ -216,17 +216,21 @@ async def confirm_ai_add_draft(
     commit_guard: None = Depends(reject_commit_write),
 ):
     """Confirm and persist a generated draft."""
+    from backend.api.modules.version_control.public import map_branch_error, resolve_branch_context
     try:
-        from backend.api.modules.version_control.public import resolve_branch_context
-        branch_obj, ws_obj, perms = await db_session.run_sync(
+        _branch_obj, ws_obj, perms = await db_session.run_sync(
             lambda s: resolve_branch_context(s, draft.project_id, branch, user.id)
         )
-        if not perms.get("can_write", True):
-            raise HTTPException(
-                status_code=403,
-                detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
-            )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
 
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
         service = _get_service()
         return await service.confirm_draft(

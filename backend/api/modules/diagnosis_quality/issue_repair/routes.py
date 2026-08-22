@@ -1,20 +1,19 @@
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_project_member
-from backend.database.model import ProjectModel, UserModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.llm import get_llm_context
+from backend.api.dependencies.ownership import require_project_member
+from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_draft_service import (
+    IssueRepairDraftService,
+)
 from backend.api.modules.diagnosis_quality.issue_repair.schemas import (
     IssueRepairDraftActionResponse,
     IssueRepairDraftResponse,
 )
-from backend.api.modules.diagnosis_quality.issue_repair.application.issue_repair_draft_service import (
-    IssueRepairDraftService,
-)
-from backend.database.database import get_session
-from backend.api.dependencies.llm import get_llm_context
 from backend.api.modules.version_control.dependencies import reject_commit_write
-
+from backend.database.database import get_session
+from backend.database.model import ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/issue_repair_drafts",
@@ -37,10 +36,17 @@ async def confirm_repair_draft(
     project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    from backend.api.modules.version_control.public import (
+        map_branch_error,
+        resolve_branch_context,
     )
+    try:
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,
@@ -79,10 +85,17 @@ async def discard_repair_draft(
     project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    from backend.api.modules.version_control.public import (
+        map_branch_error,
+        resolve_branch_context,
     )
+    try:
+        _branch_obj, _ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,
@@ -117,10 +130,17 @@ async def regenerate_repair_draft(
     commit_guard: None = Depends(reject_commit_write),
 ):
     """Re-run AI solver for the old draft's issue and create a new draft."""
-    from backend.api.modules.version_control.application.branch_service import resolve_branch_context
-    branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, project.id, branch, user.id)
+    from backend.api.modules.version_control.public import (
+        map_branch_error,
+        resolve_branch_context,
     )
+    try:
+        branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
     if not perms.get("can_write", True):
         raise HTTPException(
             status_code=403,

@@ -2,20 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_choice_group_draft
 from backend.api.dependencies.llm import get_llm_context
-from backend.database.model import UserModel, GenerativeDraftModel
-from backend.api.modules.project_lifecycle.schemas.creation_choice import (
-    ProjectCreationChoiceGroupCreateRequest,
-    ProjectCreationChoiceGroupResponse,
-    ProjectCreationChoiceAcceptResponse,
-    ProjectCreationChoiceGroupDiscardResponse,
-    ProjectCreationChoiceGroupDeferResponse,
-)
+from backend.api.dependencies.ownership import require_owned_choice_group_draft
 from backend.api.modules.project_lifecycle.application.creation_choice_service import (
     ProjectCreationChoiceGroupService,
 )
+from backend.api.modules.project_lifecycle.schemas.creation_choice import (
+    ProjectCreationChoiceAcceptResponse,
+    ProjectCreationChoiceGroupCreateRequest,
+    ProjectCreationChoiceGroupDeferResponse,
+    ProjectCreationChoiceGroupDiscardResponse,
+    ProjectCreationChoiceGroupResponse,
+)
 from backend.database.database import get_session
+from backend.database.model import GenerativeDraftModel, UserModel
 
 router = APIRouter(
     prefix="/api/project_creation_choice_groups",

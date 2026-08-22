@@ -1,17 +1,19 @@
 from sqlalchemy import select
+
 from backend.database.model import (
-    ScopeModel,
-    FeatureModel,
     ConfirmationStatus,
+    FeatureModel,
+    ScopeModel,
 )
 from backend.services.audit_service import AuditService
 
 audit_service = AuditService()
-from backend.core.notifier import get_notifier
 from backend.api.modules.requirements_core.scope.schemas import (
-    ScopeUpdateRequest,
     ScopeResponse,
+    ScopeUpdateRequest,
 )
+from backend.core.notifier import get_notifier
+
 from .scope_writer import (
     build_scope_update_diff,
     capture_scope_state,
@@ -71,6 +73,7 @@ class ScopeService:
             project_id=project_id,
             stages={"scope"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -85,7 +88,7 @@ class ScopeService:
         session,
         workspace_id: int | None = None,
     ) -> dict:
-        from backend.database.model import ProjectModel, ScopeModel, FeatureModel, BranchWorkspaceModel
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
 
         async def _exec(stmt):
             res = session.execute(stmt)
@@ -147,6 +150,7 @@ class ScopeService:
             project_id=project_id,
             stages={"scope"},
             session=session,
+            workspace_id=workspace_id,
         )
 
         return {

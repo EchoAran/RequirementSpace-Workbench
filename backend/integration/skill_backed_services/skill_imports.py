@@ -5,7 +5,6 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-
 _INTEGRATION_DIR = Path(__file__).resolve().parents[1]
 
 

@@ -1,7 +1,7 @@
 """EditBusinessObjectGenerator — produces edit diff for an existing BO."""
 
 import json
-from typing import Dict, Any
+from typing import Any
 
 from backend.core.generators.single_object.base_edit_generator import (
     BaseEditGenerator,
@@ -11,7 +11,6 @@ from backend.core.generators.single_object.base_single_object_generator import (
     inject_generator_knowledge_context,
     serialize_prompt_data,
 )
-
 from backend.core.generators.single_object.prompts.edit_business_object_prompt import (
     EDIT_BUSINESS_OBJECT_GENERATE_PROMPT,
 )
@@ -28,7 +27,7 @@ class EditBusinessObjectGenerator(BaseEditGenerator):
     target_object_type = "business_object"
     editable_fields = EDITABLE_FIELDS.get("business_object", [])
 
-    async def generate(self, input_data: EditGeneratorInput) -> Dict[str, Any]:
+    async def generate(self, input_data: EditGeneratorInput) -> dict[str, Any]:
         existing_bos = input_data.project_context.get("business_objects", [])
         existing_flows = input_data.project_context.get("flows", [])
 

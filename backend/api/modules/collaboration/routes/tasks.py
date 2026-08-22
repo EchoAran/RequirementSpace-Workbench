@@ -2,28 +2,29 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from backend.api.dependencies.auth import get_current_user
+from backend.api.dependencies.project_access import require_project_editor, require_project_member
+from backend.api.modules.collaboration.application.confirmation_summary_query import (
+    load_confirmation_summary,
+)
+from backend.api.modules.collaboration.application.task_service import TaskService
+from backend.api.modules.collaboration.schemas.tasks import (
+    BatchTaskCreateRequest,
+    ConfirmationSummaryResponse,
+    TaskCreateRequest,
+    TaskDecisionRequest,
+    TaskResponse,
+    UserTaskResponse,
+)
+from backend.api.modules.optimistic_lock.public import NodeSnapshotService
+from backend.api.modules.optimistic_lock.snapshot_service import KIND_TO_MODEL
 from backend.database.database import get_session
 from backend.database.model import (
     CollaborationTaskModel,
     ProjectMemberModel,
-    UserModel,
     ProjectModel,
-)
-from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.project_access import require_project_member, require_project_role
-from backend.api.modules.collaboration.application.task_service import TaskService
-from backend.api.modules.optimistic_lock.snapshot_service import KIND_TO_MODEL
-from backend.api.modules.optimistic_lock.public import NodeSnapshotService
-from backend.api.modules.collaboration.application.confirmation_summary_query import (
-    load_confirmation_summary,
-)
-from backend.api.modules.collaboration.schemas.tasks import (
-    TaskCreateRequest,
-    BatchTaskCreateRequest,
-    TaskDecisionRequest,
-    TaskResponse,
-    ConfirmationSummaryResponse,
-    UserTaskResponse,
+    UserModel,
 )
 
 # 1. Project-scoped Tasks Router
@@ -50,10 +51,10 @@ task_service = TaskService()
 async def _map_task(session, task: CollaborationTaskModel) -> TaskResponse:
     creator_email = task.creator.email if task.creator else None
     assignee_email = task.assignee.email if task.assignee else None
-    
+
     node_name = None
     content_changed = False
-    
+
     if task.target_type and task.target_id:
         try:
             model_cls = KIND_TO_MODEL.get(task.target_type.lower())
@@ -80,7 +81,7 @@ async def _map_task(session, task: CollaborationTaskModel) -> TaskResponse:
                     if snap_res["hash"] != stored_hash:
                         content_changed = True
                         break
-            
+
             node_names = []
             for pt in task.targets[:3]:
                 model_cls = KIND_TO_MODEL.get(pt["node_kind"].lower())
@@ -129,7 +130,7 @@ async def create_confirm_node_task(
     req: TaskCreateRequest,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
-    owned_project: ProjectModel = Depends(require_project_role("editor")),
+    owned_project: ProjectModel = Depends(require_project_editor),
 ):
     task = await task_service.create_confirm_task(
         session=session,
@@ -144,7 +145,7 @@ async def create_confirm_node_task(
         due_at=req.due_at
     )
     await session.commit()
-    
+
     # Reload with relationships
     query = sa.select(CollaborationTaskModel).where(CollaborationTaskModel.id == task.id).options(
         selectinload(CollaborationTaskModel.creator),
@@ -165,7 +166,7 @@ async def list_project_tasks(
     target_type: str | None = Query(None),
     target_id: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_project_role("editor")),
+    owned_project: ProjectModel = Depends(require_project_editor),
 ):
     conditions = [CollaborationTaskModel.project_id == owned_project.id]
     if status:
@@ -188,7 +189,7 @@ async def list_project_tasks(
 
     res = await session.execute(query)
     tasks = res.scalars().all()
-    
+
     mapped_tasks = []
     for t in tasks:
         mapped_tasks.append(await _map_task(session, t))
@@ -200,7 +201,7 @@ async def get_task_details(
     project_id: str,
     task_id: int,
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_project_role("editor")),
+    owned_project: ProjectModel = Depends(require_project_editor),
 ):
     query = sa.select(CollaborationTaskModel).where(
         sa.and_(
@@ -333,7 +334,7 @@ async def create_confirm_nodes_task(
         due_at=req.due_at
     )
     await session.commit()
-    
+
     query = sa.select(CollaborationTaskModel).where(CollaborationTaskModel.id == task.id).options(
         selectinload(CollaborationTaskModel.creator),
         selectinload(CollaborationTaskModel.assignee)

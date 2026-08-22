@@ -1,6 +1,4 @@
 from backend.api.base_schema import CamelModel
-
-
 from backend.api.modules.preview_convergence.schemas.prototype import PrototypePreviewResponse
 
 

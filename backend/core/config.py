@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 
 # Resolve project root and load .env file
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -27,7 +28,7 @@ try:
     Fernet(LLM_CONFIG_ENCRYPTION_KEY.encode())
 except Exception as e:
     raise ValueError(
-        f"CRITICAL CONFIG ERROR: 'LLM_CONFIG_ENCRYPTION_KEY' is invalid: {str(e)}. "
+        f"CRITICAL CONFIG ERROR: 'LLM_CONFIG_ENCRYPTION_KEY' is invalid: {e!s}. "
         "A valid key must be 32 URL-safe base64-encoded bytes. "
         "You can generate one using: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
     )
@@ -48,7 +49,12 @@ AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", "").strip()
 AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "lax").strip().lower()
 
 # Knowledge Base Settings
-KNOWLEDGE_STORAGE_DIR = os.getenv("KNOWLEDGE_STORAGE_DIR", "storage/knowledge").strip()
+_raw_storage_dir = os.getenv("KNOWLEDGE_STORAGE_DIR", "storage/knowledge").strip()
+KNOWLEDGE_STORAGE_DIR = (
+    _raw_storage_dir
+    if os.path.isabs(_raw_storage_dir)
+    else str(ROOT_DIR / _raw_storage_dir)
+)
 try:
     KNOWLEDGE_MAX_FILE_SIZE_MB = int(os.getenv("KNOWLEDGE_MAX_FILE_SIZE_MB", "25").strip())
 except ValueError:

@@ -2,37 +2,44 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies.auth import get_current_user
-from backend.api.dependencies.ownership import require_owned_project, require_project_member, require_owned_generative_draft
 from backend.api.dependencies.llm import get_llm_context, llm_context_manager
-from backend.database.database import get_session
-from backend.database.model import UserModel, ProjectModel, GenerativeDraftModel
+from backend.api.dependencies.ownership import (
+    require_owned_generative_draft,
+    require_owned_project,
+    require_project_member,
+)
 from backend.api.modules.project_lifecycle.public import DraftRegenerateRequest
+from backend.api.modules.requirements_core.scenario.application.acceptance_criteria_generation_service import (
+    AcceptanceCriteriaGenerationService,
+)
+from backend.api.modules.requirements_core.scenario.application.scenario_generation_service import (
+    ScenarioGenerationService,
+)
+from backend.api.modules.requirements_core.scenario.application.scenario_service import ScenarioService
 from backend.api.modules.requirements_core.scenario.schemas import (
-    ScenarioCreateRequest,
-    ScenarioUpdateRequest,
-    ScenarioResponse,
-    AcceptanceCriterionCreateRequest,
-    AcceptanceCriterionUpdateRequest,
-    AcceptanceCriterionResponse,
-    ScenarioGenerationConfirmRequest,
-    ScenarioGenerationConfirmResponse,
-    ScenarioGenerationDraftDiscardResponse,
-    ScenarioGenerationDraftResponse,
-    ScenarioGenerationFullDraftCreateRequest,
-    ScenarioGenerationSingleDraftCreateRequest,
     AcceptanceCriteriaGenerationBatchDraftCreateRequest,
     AcceptanceCriteriaGenerationConfirmResponse,
     AcceptanceCriteriaGenerationDraftDiscardResponse,
     AcceptanceCriteriaGenerationDraftResponse,
     AcceptanceCriteriaGenerationFullDraftCreateRequest,
     AcceptanceCriteriaGenerationSingleDraftCreateRequest,
+    AcceptanceCriterionCreateRequest,
+    AcceptanceCriterionResponse,
+    AcceptanceCriterionUpdateRequest,
+    ScenarioCreateRequest,
+    ScenarioGenerationConfirmRequest,
+    ScenarioGenerationConfirmResponse,
+    ScenarioGenerationDraftDiscardResponse,
+    ScenarioGenerationDraftResponse,
+    ScenarioGenerationFullDraftCreateRequest,
+    ScenarioGenerationSingleDraftCreateRequest,
+    ScenarioResponse,
+    ScenarioUpdateRequest,
 )
-from backend.api.modules.requirements_core.scenario.application.scenario_service import ScenarioService
-from backend.api.modules.requirements_core.scenario.application.scenario_generation_service import ScenarioGenerationService
-from backend.api.modules.requirements_core.scenario.application.acceptance_criteria_generation_service import AcceptanceCriteriaGenerationService
-from backend.api.modules.version_control.public import resolve_branch_context
 from backend.api.modules.version_control.dependencies import reject_commit_write
-
+from backend.api.modules.version_control.public import map_branch_error, resolve_branch_context
+from backend.database.database import get_session
+from backend.database.model import GenerativeDraftModel, ProjectModel, UserModel
 
 # 1. CRUD Router
 crud_router = APIRouter(
@@ -54,12 +61,16 @@ async def create_scenario(
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
-        branch_obj, ws_obj, perms = await session.run_sync(
+        _branch_obj, ws_obj, perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
-        if not perms.get("can_write", True):
-            raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
 
+    if not perms.get("can_write", True):
+        raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.create_scenario(
             project_id=owned_project.id,
@@ -93,12 +104,16 @@ async def update_scenario(
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
-        branch_obj, ws_obj, perms = await session.run_sync(
+        _branch_obj, ws_obj, perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
-        if not perms.get("can_write", True):
-            raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
 
+    if not perms.get("can_write", True):
+        raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.update_scenario(
             project_id=owned_project.id,
@@ -136,12 +151,16 @@ async def delete_scenario(
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
-        branch_obj, ws_obj, perms = await session.run_sync(
+        _branch_obj, ws_obj, perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
-        if not perms.get("can_write", True):
-            raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
 
+    if not perms.get("can_write", True):
+        raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+
+    try:
         ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.delete_scenario(
             project_id=owned_project.id,
@@ -168,16 +187,33 @@ async def create_acceptance_criterion(
     project_id: str,
     scenario_id: int,
     request: AcceptanceCriterionCreateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.create_acceptance_criterion(
             project_id=owned_project.id,
             scenario_id=scenario_id,
             req=request,
             session=session,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         raise HTTPException(
@@ -199,17 +235,34 @@ async def update_acceptance_criterion(
     scenario_id: int,
     ac_id: int,
     request: AcceptanceCriterionUpdateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.update_acceptance_criterion(
             project_id=owned_project.id,
             scenario_id=scenario_id,
             ac_id=ac_id,
             req=request,
             session=session,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         status = 404 if "not_found" in str(error) else 400
@@ -231,20 +284,37 @@ async def delete_acceptance_criterion(
     project_id: str,
     scenario_id: int,
     ac_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    owned_project: ProjectModel = Depends(require_owned_project),
+    owned_project: ProjectModel = Depends(require_project_member),
     commit_guard: None = Depends(reject_commit_write),
 ):
     try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms.get("can_write", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
+        )
+
+    try:
+        ws_id = ws_obj.id if ws_obj else None
         return await scenario_service.delete_acceptance_criterion(
             project_id=owned_project.id,
             scenario_id=scenario_id,
             ac_id=ac_id,
             session=session,
+            workspace_id=ws_id,
         )
     except ValueError as error:
         raise HTTPException(
-            status_code=404,
+            status_code=404 if "not_found" in str(error) else 400,
             detail=str(error),
         )
     except HTTPException:

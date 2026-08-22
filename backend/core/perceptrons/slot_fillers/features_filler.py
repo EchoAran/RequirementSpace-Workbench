@@ -1,22 +1,21 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.perceptrons.slot_fillers.prompts.features_fill_agent import features_fill_prompt
 from backend.core.perceptrons.slot_fillers.base_filler import BaseFiller, FillerInput
-from backend.schemas import PerceptionSlot, FeatureNode
+from backend.core.perceptrons.slot_fillers.prompts.features_fill_agent import features_fill_prompt
+from backend.schemas import FeatureNode, PerceptionSlot
 
 
 # 为功能补充器定义专属的输入类型
 @dataclass
 class FeaturesFillerInput(FillerInput):
     user_requirements: str
-    features: List[FeatureNode]
+    features: list[FeatureNode]
     perception_description: PerceptionSlot
     user_feedback: str | None = None
 
 class FeaturesFiller(BaseFiller[FeaturesFillerInput]):
-    async def fill(self, input_data: FeaturesFillerInput) -> Dict:
+    async def fill(self, input_data: FeaturesFillerInput) -> dict:
         user_requirements_ = input_data.user_requirements
 
         features_payload = FeatureNode.schema(

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .shadow_snapshot import (
     load_snapshot_data,
-    remap_snapshot_to_pydantic,
+    remap_snapshot_to_pydantic as remap_snapshot_to_pydantic,
     serialize_snapshot,
 )
 

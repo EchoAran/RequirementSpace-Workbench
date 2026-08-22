@@ -15,10 +15,10 @@ def sanitize_message(msg: str) -> str:
     """Sanitize database URLs, API keys, Bearer tokens, and cookies to prevent log leakage."""
     if not msg:
         return ""
-    
+
     # 1. Sanitize database URLs
     msg = DB_CONN_REGEX.sub(r"\1\2:****\4", msg)
-    
+
     # 2. Sanitize structured assignment secrets
     def repl_func(match):
         key = match.group(1)
@@ -30,18 +30,18 @@ def sanitize_message(msg: str) -> str:
         else:
             # Unquoted secret is in group 5
             return f"{key}{sep}********"
-            
+
     msg = ASSIGNMENT_SECRET_REGEX.sub(repl_func, msg)
-    
+
     # 3. Sanitize Bearer tokens
     msg = BEARER_REGEX.sub("Bearer ********", msg)
-    
+
     # 4. Sanitize session cookies
     msg = COOKIE_REGEX.sub("auth_session=********", msg)
-    
+
     # 5. Sanitize bare API keys matching sk-...
     msg = API_KEY_REGEX.sub("sk-********", msg)
-    
+
     # 6. Dynamically extract current LLM config API key and replace it
     try:
         from backend.core.llm_context import current_llm_context
@@ -52,10 +52,10 @@ def sanitize_message(msg: str) -> str:
                 msg = msg.replace(raw_key, "********")
     except Exception:
         pass
-        
+
     # 7. Dynamically extract config credentials and replace them
     try:
-        from backend.core.config import LLM_CONFIG_ENCRYPTION_KEY, ADMIN_INVITE_CODE_HASH
+        from backend.core.config import ADMIN_INVITE_CODE_HASH, LLM_CONFIG_ENCRYPTION_KEY
         if LLM_CONFIG_ENCRYPTION_KEY and len(LLM_CONFIG_ENCRYPTION_KEY) >= 4 and LLM_CONFIG_ENCRYPTION_KEY in msg:
             msg = msg.replace(LLM_CONFIG_ENCRYPTION_KEY, "********")
         if ADMIN_INVITE_CODE_HASH and len(ADMIN_INVITE_CODE_HASH) >= 4 and ADMIN_INVITE_CODE_HASH in msg:

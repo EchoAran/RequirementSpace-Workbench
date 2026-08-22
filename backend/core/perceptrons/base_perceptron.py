@@ -1,9 +1,10 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.services.llm_handler_service import LLMHandler
+
 
 # 定义输入参数基类
 @dataclass
@@ -13,7 +14,7 @@ class PerceptronInput:
 # 泛型参数，支持不同子类的输入类型
 T = TypeVar('T', bound=PerceptronInput)
 
-class BasePerceptron(ABC, Generic[T]):
+class BasePerceptron[T: PerceptronInput](ABC):
     def __init__(self):
         self._llm_handler = LLMHandler()
 

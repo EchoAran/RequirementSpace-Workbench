@@ -2,8 +2,8 @@
 Logical UUID Generator and Normalizer.
 提供需求空间实体的稳定身份 `logical_uuid` 生成与回填算法。
 """
-from typing import Any
 import uuid
+from typing import Any
 
 
 def generate_logical_uuid() -> str:
@@ -24,6 +24,6 @@ def ensure_logical_uuid(entity: Any) -> str:
     current_uuid = getattr(entity, "logical_uuid", None)
     if not current_uuid:
         new_uuid = generate_logical_uuid()
-        setattr(entity, "logical_uuid", new_uuid)
+        entity.logical_uuid = new_uuid
         return new_uuid
     return str(current_uuid)

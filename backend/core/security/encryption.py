@@ -1,4 +1,5 @@
 from cryptography.fernet import Fernet
+
 from backend.core.config import LLM_CONFIG_ENCRYPTION_KEY
 
 # Initialize the Fernet cipher suite
@@ -20,4 +21,4 @@ def decrypt_llm_api_key(encrypted_api_key: str) -> str:
     try:
         return cipher_suite.decrypt(encrypted_api_key.encode("utf-8")).decode("utf-8")
     except Exception as e:
-        raise ValueError(f"Decryption failed: {str(e)}")
+        raise ValueError(f"Decryption failed: {e!s}")

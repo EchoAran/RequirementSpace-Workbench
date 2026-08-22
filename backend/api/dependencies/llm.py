@@ -1,14 +1,15 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
 
 from backend.api.dependencies.auth import get_current_user
-from backend.database.model import UserModel
 from backend.api.modules.auth_account.public import LLMConfigService
-from backend.database.database import get_session
-from backend.core.llm_context import current_llm_context, LLMRequestContext
+from backend.core.llm_context import LLMRequestContext, current_llm_context
 from backend.core.locale import resolve_effective_locale
+from backend.database.database import get_session
+from backend.database.model import UserModel
 
 llm_config_service = LLMConfigService()
 
@@ -44,8 +45,9 @@ async def llm_context_manager(
 
     project_content_locale = None
     if project_id:
-        from backend.database.model import ProjectModel
         from sqlalchemy import select
+
+        from backend.database.model import ProjectModel
         stmt = select(ProjectModel.content_locale).where(ProjectModel.id == project_id)
         res = await session.execute(stmt)
         project_content_locale = res.scalar_one_or_none()
@@ -80,8 +82,9 @@ async def get_llm_context(
     if request is not None:
         project_id_str = request.path_params.get("project_id")
         if project_id_str:
-            from backend.database.model import ProjectModel
             from sqlalchemy import select
+
+            from backend.database.model import ProjectModel
             stmt = select(ProjectModel.id).where(ProjectModel.public_id == project_id_str)
             res = await session.execute(stmt)
             project_id_int = res.scalar_one_or_none()
@@ -89,8 +92,9 @@ async def get_llm_context(
         if not project_id_int:
             session_id = request.path_params.get("session_id")
             if session_id:
-                from backend.database.model import AIAddSessionModel
                 from sqlalchemy import select
+
+                from backend.database.model import AIAddSessionModel
                 stmt = select(AIAddSessionModel.project_id).where(AIAddSessionModel.session_id == session_id)
                 res = await session.execute(stmt)
                 project_id_int = res.scalar_one_or_none()
@@ -100,8 +104,9 @@ async def get_llm_context(
             if choice_group_id:
                 try:
                     choice_group_id_int = int(choice_group_id)
-                    from backend.database.model import ChoiceGroupModel
                     from sqlalchemy import select
+
+                    from backend.database.model import ChoiceGroupModel
                     stmt = select(ChoiceGroupModel.project_id).where(ChoiceGroupModel.id == choice_group_id_int)
                     res = await session.execute(stmt)
                     project_id_int = res.scalar_one_or_none()
@@ -111,8 +116,9 @@ async def get_llm_context(
         if not project_id_int:
             draft_id = request.path_params.get("draft_id")
             if draft_id:
-                from backend.database.model import GenerativeDraftModel
                 from sqlalchemy import select
+
+                from backend.database.model import GenerativeDraftModel
                 stmt = select(GenerativeDraftModel.project_id).where(GenerativeDraftModel.draft_id == draft_id)
                 res = await session.execute(stmt)
                 project_id_int = res.scalar_one_or_none()

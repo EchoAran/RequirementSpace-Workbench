@@ -1,8 +1,11 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.database.model import NotificationModel
+
 from backend.api.modules.collaboration.schemas.notifications import NotificationResponse
+from backend.database.model import NotificationModel
+
 
 class NotificationService:
     async def list_notifications(self, user_id: int, session: AsyncSession) -> list[NotificationResponse]:
@@ -25,7 +28,7 @@ class NotificationService:
         ]
 
     async def mark_read(self, user_id: int, notification_ids: list[int] | None, session: AsyncSession) -> None:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         stmt = update(NotificationModel).where(NotificationModel.recipient_user_id == user_id).values(read_at=now)
         if notification_ids:
             stmt = stmt.where(NotificationModel.id.in_(notification_ids))

@@ -1,7 +1,7 @@
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
 from backend.api.modules.requirements_core.ports import get_scope_generation_service
 
@@ -26,6 +26,7 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             project_id=context.project_id,
             user_feedback=combined,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
 
         scopes = response_payload.get("scopes", [])
@@ -58,16 +59,23 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
+        workspace_id = kwargs.get("workspace_id")
         result = await self._service._persist_scope_generation_draft(
-            draft=payload, session=session,
+            draft=payload, session=session, workspace_id=workspace_id,
         )
-        # Update Project Kano Status to generated (completed)
-        from backend.database.model import ProjectModel
+        # Update Kano Status to generated (completed)
+        from backend.database.model import BranchWorkspaceModel, ProjectModel
         project_id = payload["project_id"]
-        project = await session.get(ProjectModel, project_id)
-        if project:
-            project.kano_status = "generated"
-            project.unlocked_stages = "what,how,scope"
+        if workspace_id is not None:
+            ws = await session.get(BranchWorkspaceModel, workspace_id)
+            if ws:
+                ws.kano_status = "generated"
+                ws.unlocked_stages = "what,how,scope"
+        else:
+            project = await session.get(ProjectModel, project_id)
+            if project:
+                project.kano_status = "generated"
+                project.unlocked_stages = "what,how,scope"
 
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(
@@ -75,6 +83,7 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"scope"},
             perception_kinds={"SCOPE"},
             session=session,
+            workspace_id=workspace_id,
         )
         return result
 

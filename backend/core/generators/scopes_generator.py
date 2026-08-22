@@ -1,20 +1,20 @@
-from dataclasses import dataclass
 import json
-from typing import Dict, List
+from dataclasses import dataclass
 
-from backend.core.generators.prompts import scopes_generate_prompt
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
+from backend.core.generators.prompts import scopes_generate_prompt
 from backend.schemas import FeatureNode
+
 
 # 为范围生成器定义专属的输入类型
 @dataclass
 class ScopesGeneratorInput(GenerateInput):
     user_requirements: str
-    features: List[FeatureNode]
+    features: list[FeatureNode]
     user_feedback: str | None = None
 
 class ScopesGenerator(BaseGenerator[ScopesGeneratorInput]):
-    async def generate(self, input_data: ScopesGeneratorInput) -> Dict:
+    async def generate(self, input_data: ScopesGeneratorInput) -> dict:
         user_requirements_ = input_data.user_requirements
         feedback = input_data.user_feedback or ""
 

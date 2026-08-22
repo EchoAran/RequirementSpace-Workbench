@@ -5,15 +5,16 @@ import { GenerationConflictDialog } from './components/shared/GenerationConflict
 import GateCheckModal from './components/shared/GateCheckModal';
 import { useWorkspaceStore, WorkspacePage, getFriendlyErrorMessage } from './store/useWorkspaceStore';
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { buildProjectRoute, extractWorkspacePage } from './core/selectors';
+import { buildProjectRoute, buildProjectRouteWithBranch, extractWorkspacePage } from './core/selectors';
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { GuestGuard } from './components/auth/GuestGuard';
-import { Lock } from 'lucide-react';
+import { Lock, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { resolveLocalizedMessage, taskStatusTitleKey } from './core/localizedMessage';
 import { getStageCheckMessage } from './core/stageProgressText';
 import { BranchSwitchConfirmDialog } from './components/version-control/BranchSwitchConfirmDialog';
+import { CreateBranchDialog } from './components/version-control/CreateBranchDialog';
 
 const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })));
 const WhatToDo = lazy(() => import('./pages/WhatToDo').then((module) => ({ default: module.WhatToDo })));
@@ -31,7 +32,9 @@ const ProjectConfiguration = lazy(() => import('./pages/ProjectConfiguration').t
 function RouteFallback() {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 p-6">
-      <div className="h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm">
+        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+      </div>
     </div>
   );
 }
@@ -129,12 +132,18 @@ function ProjectRouteBootstrap() {
 
   if (ir?.projectId !== projectId) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen w-full">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-5">
-          <div className="mx-auto h-10 w-10 rounded-full border-4 border-slate-100 border-t-indigo-600 animate-spin" />
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen w-full relative overflow-hidden font-sans">
+        {/* Ambient background glow */}
+        <div className="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-24 -bottom-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-3xl p-8 border border-slate-200/80 shadow-2xl text-center space-y-6 animate-in zoom-in-95 duration-200 relative z-10">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm">
+            <Loader2 className="h-7 w-7 animate-spin text-indigo-600" />
+          </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-black text-slate-800 tracking-tight">{t('shell.loading')}</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <h3 className="text-base font-black text-slate-900 tracking-tight">{t('shell.loading')}</h3>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
               {isLoading ? t('shell.loadingProgress') : (error || t('shell.loadingBackup'))}
             </p>
           </div>
@@ -147,7 +156,14 @@ function ProjectRouteBootstrap() {
 }
 
 function WorkspaceShell() {
+  const { t } = useTranslation();
   const ir = useWorkspaceStore((s) => s.ir);
+  const currentBranch = useWorkspaceStore((s) => s.currentBranch);
+  const canWrite = useWorkspaceStore((s) => s.workspaceCanWrite());
+  const isProtected = Boolean(currentBranch?.is_protected || currentBranch?.name === 'main');
+  const isReadOnly = !canWrite;
+  const [showCreateBranch, setShowCreateBranch] = useState(false);
+  const navigate = useNavigate();
 
   if (!ir) {
     return <Navigate to="/home" replace />;
@@ -155,10 +171,43 @@ function WorkspaceShell() {
 
   return (
     <Layout>
-      <div className="flex-1 flex w-full relative">
-        <Outlet />
-        <ScopedAIBar />
+      <div className="flex-1 flex flex-col w-full relative min-h-0">
+        {isReadOnly && (
+          <div className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50/90 px-4 py-2 text-xs text-indigo-900 shadow-xs">
+            <div className="flex items-center gap-2">
+              <Lock className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span>
+                {isProtected
+                  ? t('versionControl.protectedBranchBanner', '您正在查看受保护的 main 分支（只读模式）。如需进行结构变更或编辑模型，请从此版本创建新分支。')
+                  : t('versionControl.viewerReadOnlyBanner', '您当前对本项目仅具备只读权限，无法执行修改或提交操作。')}
+              </span>
+            </div>
+            {isProtected && (
+              <button
+                type="button"
+                onClick={() => setShowCreateBranch(true)}
+                className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 shadow-xs cursor-pointer"
+              >
+                {t('versionControl.createBranchFromHere', '从此版本创建分支')}
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 flex w-full relative min-h-0">
+          <Outlet />
+          <ScopedAIBar />
+        </div>
       </div>
+      <CreateBranchDialog
+        open={showCreateBranch}
+        onClose={() => setShowCreateBranch(false)}
+        sourceCommitPublicId={currentBranch?.head_commit_public_id}
+        onCreated={(branchPublicId) => {
+          if (ir.projectId) {
+            navigate(`/projects/${ir.projectId}/overview?branch=${encodeURIComponent(branchPublicId)}`);
+          }
+        }}
+      />
     </Layout>
   );
 }
@@ -267,15 +316,15 @@ function GlobalTaskStatus() {
   const title = t(taskStatusTitleKey(lastActionMessageToken));
 
   return (
-    <div className="fixed inset-0 z-[80] bg-slate-950/35 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white/95 shadow-2xl p-8 text-center space-y-5">
-        <div className="mx-auto relative flex h-16 w-16 items-center justify-center">
-          <div className="h-16 w-16 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
+    <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+      <div className="w-full max-w-md rounded-3xl border border-slate-200/80 bg-white/95 backdrop-blur-md shadow-2xl p-8 text-center space-y-6 animate-in zoom-in-95 duration-200">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm">
+          <Loader2 className="h-7 w-7 animate-spin text-indigo-600" />
         </div>
         <div className="space-y-2">
-          <div className="text-xs font-black tracking-[0.2em] text-indigo-600">{title}</div>
+          <div className="text-xs font-black tracking-[0.2em] text-indigo-600 uppercase font-mono">{title}</div>
           <div className="text-sm font-bold text-slate-900 leading-relaxed">{message}</div>
-          <div className="text-xs text-slate-500 leading-relaxed">
+          <div className="text-xs text-slate-500 font-medium leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
             {t('app.autoRefreshNotice')}
           </div>
         </div>
@@ -364,7 +413,8 @@ function StageRouteGuard({ children, stage }: { children: React.ReactNode; stage
   };
 
   const handleGoBack = () => {
-    navigate(buildProjectRoute(ir?.projectId, prevStageRoute as any));
+    const branchRef = useWorkspaceStore.getState().currentBranch?.public_id || useWorkspaceStore.getState().currentBranch?.name;
+    navigate(buildProjectRouteWithBranch(ir?.projectId, prevStageRoute as any, branchRef));
   };
 
   return (

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class LLMConfigResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

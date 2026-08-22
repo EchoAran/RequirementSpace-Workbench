@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-from typing_extensions import TypedDict  # using typing_extensions for python 3.8/3.9 compatibility or typing if only 3.9+
+from typing import Any
+
+from typing_extensions import (
+    TypedDict,  # using typing_extensions for python 3.8/3.9 compatibility or typing if only 3.9+
+)
 
 
 class ProjectDict(TypedDict):
@@ -20,11 +23,11 @@ class ExportOptionsDict(TypedDict, total=False):
 
 class SplExportInputDict(TypedDict):
     project: ProjectDict
-    actors: List[Dict[str, Any]]
-    features: List[Dict[str, Any]]
-    business_objects: List[Dict[str, Any]]
-    flows: List[Dict[str, Any]]
-    unresolved_gates: List[Dict[str, Any]]
+    actors: list[dict[str, Any]]
+    features: list[dict[str, Any]]
+    business_objects: list[dict[str, Any]]
+    flows: list[dict[str, Any]]
+    unresolved_gates: list[dict[str, Any]]
     export_options: ExportOptionsDict
 
 
@@ -36,7 +39,7 @@ class WarningSourceDict(TypedDict):
 class SplExportWarningDict(TypedDict):
     code: str
     message: str
-    source: Optional[WarningSourceDict]
+    source: WarningSourceDict | None
 
 
 class TraceLinkDict(TypedDict):
@@ -47,16 +50,16 @@ class TraceLinkDict(TypedDict):
 
 class CoverageReportDict(TypedDict, total=False):
     coverage_passed: bool
-    covered_current_feature_ids: List[int]
-    missing_current_feature_ids: List[int]
-    unmapped_flow_ids: List[int]
-    unmapped_acceptance_criterion_ids: List[int]
-    semantic_risks: List[str]
+    covered_current_feature_ids: list[int]
+    missing_current_feature_ids: list[int]
+    unmapped_flow_ids: list[int]
+    unmapped_acceptance_criterion_ids: list[int]
+    semantic_risks: list[str]
 
 
 class SplExportOutputDict(TypedDict):
     spl_text: str
     quality: str
-    warnings: List[SplExportWarningDict]
-    trace_links: List[TraceLinkDict]
-    coverage_report: Optional[CoverageReportDict]
+    warnings: list[SplExportWarningDict]
+    trace_links: list[TraceLinkDict]
+    coverage_report: CoverageReportDict | None

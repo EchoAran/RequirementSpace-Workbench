@@ -1,14 +1,14 @@
 from backend.core.detectors import HowIssueDetector
 from backend.core.findings.finding_factory import make_finding
-from backend.schemas import Finding, FindingType, BlockingScope, IssueStage, IssueSeverity
+from backend.schemas import BlockingScope, Finding, FindingType, IssueSeverity, IssueStage
 
 
 class HowFindingPolicy:
     def __init__(self):
         self.detector = HowIssueDetector()
 
-    async def get_findings(self, project_id: int, session) -> list[Finding]:
-        issues = await self.detector.detect(project_id, session)
+    async def get_findings(self, project_id: int, session, workspace_id: int | None = None) -> list[Finding]:
+        issues = await self.detector.detect(project_id, session, workspace_id=workspace_id)
         flow_issues = [i for i in issues if i.code == "LEAF_FEATURE_WITHOUT_FLOW"]
         other_issues = [i for i in issues if i.code != "LEAF_FEATURE_WITHOUT_FLOW"]
         findings = [
@@ -48,6 +48,8 @@ class HowFindingPolicy:
         elif issue.code in (
             "FLOW_WITHOUT_FEATURE",
             "ACTOR_ACTION_STEP_WITHOUT_ACTOR",
+            "INVALID_STEP_ACTOR",
+            "INVALID_STEP_BUSINESS_OBJECT",
             "UNREACHABLE_FLOW_STEP",
             "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
             "FLOW_WITHOUT_STEPS",

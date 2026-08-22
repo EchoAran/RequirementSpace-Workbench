@@ -4,30 +4,28 @@ Workspace State Reader & Serializer.
 这是提交创建、未提交变更摘要和语义 Diff 的公共前置能力：任何“把当前工作区变成一份可哈希快照”的
 路径都必须经由本模块，避免不同调用方各自从表结构拼装状态而出现契约漂移。
 """
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.database.model import (
-    BranchWorkspaceModel,
-    ActorModel,
-    FeatureModel,
-    FeatureRelationModel,
-    ScenarioModel,
-    ScenarioAcceptanceCriterionModel,
-    BusinessObjectModel,
-    BusinessObjectAttributeModel,
-    FlowModel,
-    FlowStepModel,
-    ScopeModel,
-)
 from backend.api.modules.version_control.domain.serializer import (
     serialize_requirement_space,
 )
+from backend.database.model import (
+    ActorModel,
+    BranchWorkspaceModel,
+    BusinessObjectModel,
+    FeatureModel,
+    FeatureRelationModel,
+    FlowModel,
+    FlowStepModel,
+    ScenarioModel,
+    ScopeModel,
+)
 
 
-def _read_actors(db: Session, ws_id: int) -> Tuple[List[Dict[str, Any]], Dict[int, str]]:
+def _read_actors(db: Session, ws_id: int) -> tuple[list[dict[str, Any]], dict[int, str]]:
     """读取工作区内的参与者，返回 (原始字典列表, id→logical_uuid 映射)。"""
     actors = db.scalars(
         select(ActorModel).where(ActorModel.workspace_id == ws_id)
@@ -45,7 +43,7 @@ def _read_actors(db: Session, ws_id: int) -> Tuple[List[Dict[str, Any]], Dict[in
     return dicts, uuid_by_id
 
 
-def _read_features(db: Session, ws_id: int) -> Tuple[List[Dict[str, Any]], Dict[int, str]]:
+def _read_features(db: Session, ws_id: int) -> tuple[list[dict[str, Any]], dict[int, str]]:
     """读取工作区内的功能及其参与者关联，返回 (原始字典列表, id→logical_uuid 映射)。"""
     stmt = (
         select(FeatureModel)
@@ -70,13 +68,13 @@ def _read_features(db: Session, ws_id: int) -> Tuple[List[Dict[str, Any]], Dict[
 def _read_feature_relations(
     db: Session,
     ws_id: int,
-    feat_uuid_by_id: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_uuid_by_id: dict[int, str],
+) -> list[dict[str, Any]]:
     """读取功能树父子边；端点功能必须落在同一工作区，否则跳过悬挂边。"""
     relations = db.scalars(
         select(FeatureRelationModel).where(FeatureRelationModel.workspace_id == ws_id)
     ).all()
-    dicts: List[Dict[str, Any]] = []
+    dicts: list[dict[str, Any]] = []
     for rel in relations:
         parent_uuid = feat_uuid_by_id.get(rel.parent_feature_id)
         child_uuid = feat_uuid_by_id.get(rel.child_feature_id)
@@ -97,9 +95,9 @@ def _read_feature_relations(
 def _read_scenarios(
     db: Session,
     ws_id: int,
-    feat_uuid_by_id: Dict[int, str],
-    actor_uuid_by_id: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_uuid_by_id: dict[int, str],
+    actor_uuid_by_id: dict[int, str],
+) -> list[dict[str, Any]]:
     """读取工作区内的场景及其验收标准；场景两端引用必须闭合。"""
     stmt = (
         select(ScenarioModel)
@@ -107,7 +105,7 @@ def _read_scenarios(
         .options(selectinload(ScenarioModel.acceptance_criteria))
     )
     scenarios = db.scalars(stmt).all()
-    dicts: List[Dict[str, Any]] = []
+    dicts: list[dict[str, Any]] = []
     for sc in scenarios:
         feat_uuid = feat_uuid_by_id.get(sc.feature_id)
         actor_uuid = actor_uuid_by_id.get(sc.actor_id)
@@ -139,7 +137,7 @@ def _read_scenarios(
 def _read_business_objects(
     db: Session,
     ws_id: int,
-) -> Tuple[List[Dict[str, Any]], Dict[int, str]]:
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
     """读取工作区内的业务对象及其属性。"""
     stmt = (
         select(BusinessObjectModel)
@@ -174,10 +172,10 @@ def _read_business_objects(
 def _read_flows(
     db: Session,
     ws_id: int,
-    feat_uuid_by_id: Dict[int, str],
-    actor_uuid_by_id: Dict[int, str],
-    bo_uuid_by_id: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_uuid_by_id: dict[int, str],
+    actor_uuid_by_id: dict[int, str],
+    bo_uuid_by_id: dict[int, str],
+) -> list[dict[str, Any]]:
     """读取工作区内的流程及其步骤、步骤参与者和输入输出业务对象、next 边。"""
     stmt = (
         select(FlowModel)
@@ -191,7 +189,7 @@ def _read_flows(
         )
     )
     flows = db.scalars(stmt).all()
-    dicts: List[Dict[str, Any]] = []
+    dicts: list[dict[str, Any]] = []
     for flow in flows:
         step_dicts = []
         for step in flow.steps:
@@ -229,13 +227,13 @@ def _read_flows(
 def _read_scopes(
     db: Session,
     ws_id: int,
-    feat_uuid_by_id: Dict[int, str],
-) -> List[Dict[str, Any]]:
+    feat_uuid_by_id: dict[int, str],
+) -> list[dict[str, Any]]:
     """读取工作区内的范围决策；范围必须归属本工作区的功能。"""
     scopes = db.scalars(
         select(ScopeModel).where(ScopeModel.workspace_id == ws_id)
     ).all()
-    dicts: List[Dict[str, Any]] = []
+    dicts: list[dict[str, Any]] = []
     for sc in scopes:
         feat_uuid = feat_uuid_by_id.get(sc.feature_id)
         if not feat_uuid:
@@ -259,7 +257,7 @@ def _read_scopes(
 def build_workspace_state_dict(
     db: Session,
     workspace: BranchWorkspaceModel,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     把 BranchWorkspace 的全部正式需求实体读取为 raw 状态字典（尚未规范化排序）。
 
@@ -295,7 +293,7 @@ def build_workspace_state_dict(
 def serialize_workspace(
     db: Session,
     workspace: BranchWorkspaceModel,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     返回 BranchWorkspace 的规范化状态字典（与 Commit state_json 完全同构，可直接比较/哈希）。
 

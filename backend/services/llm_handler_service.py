@@ -1,26 +1,21 @@
 import asyncio
 import os
-from pathlib import Path
-from typing import Iterable, Optional
-from urllib.parse import urlparse
 import time
 import traceback
+from collections.abc import Iterable
+from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
 
+from backend.core import config as core_config
+from backend.core.ai_operation_monitor import monitor_ai_operation
 from backend.core.llm_context import (
+    LLMConfigError,
+    LLMContextMissingError,
     current_llm_context,
     is_web_request_ctx,
-    LLMContextMissingError,
-    LLMConfigError,
-)
-from backend.core.ai_operation_monitor import monitor_ai_operation
-from backend.core import config as core_config
-from backend.core.llm_locale_validation import (
-    LLMContentLocaleMismatchError,
-    correction_preserves_structure,
-    validate_response_locale,
 )
 from backend.core.llm_language_protocol import (
     CONTENT_LANGUAGE_PROTOCOL_MARKER as CONTENT_LANGUAGE_PROTOCOL_MARKER,
@@ -29,8 +24,15 @@ from backend.core.llm_language_protocol import (
     language_protocol,
     remove_language_protocol,
 )
+from backend.core.llm_locale_validation import (
+    LLMContentLocaleMismatchError,
+    correction_preserves_structure,
+    validate_response_locale,
+)
 
 __all__ = ["CONTENT_LANGUAGE_PROTOCOL_MARKER", "LLMHandler"]
+import logging
+
 from backend.core.locale import DEFAULT_LOCALE
 from backend.core.logging import (
     category_enabled,
@@ -44,17 +46,15 @@ from backend.core.logging.events import (
     LLM_API_CALL_ATTEMPT,
     LLM_API_CALL_COMPLETED,
     LLM_API_CALL_FAILED,
-    LLM_PROMPT_SAMPLE,
-    LLM_LOCALE_CORRECTION_REQUESTED,
     LLM_LOCALE_CORRECTION_COMPLETED,
+    LLM_LOCALE_CORRECTION_REQUESTED,
     LLM_LOCALE_VALIDATION_COMPLETED,
     LLM_LOCALE_VALIDATION_REJECTED,
+    LLM_PROMPT_SAMPLE,
     LLM_RESPONSE_INVALID,
     LLM_RESPONSE_SAMPLE,
     LLM_RETRY_SCHEDULED,
 )
-
-import logging
 
 logger = get_logger(__name__)
 LLM_CONTENT_PREVIEW_CHARS = 200
@@ -222,7 +222,7 @@ class LLMHandler:
         protected_inputs: Iterable[str] = (),
         raise_on_failure: bool = False,
         timeout_seconds: float = 100.0,
-    ) -> Optional[str]:
+    ) -> str | None:
         query = query or ""
         locale = self.content_locale
         prompt = self._append_language_protocol(prompt, locale)
@@ -266,7 +266,7 @@ class LLMHandler:
         print_log: bool = True,
         response_format: dict | None = None,
         protected_inputs: Iterable[str] = (),
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Multi-turn chat LLM call.
         Accepts a full list of messages (system + user + assistant history)
@@ -625,7 +625,7 @@ class LLMHandler:
         query_label: str,
         raise_on_failure: bool = False,
         timeout_seconds: float = 100.0,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Shared HTTP call + retry logic for call_llm and call_chat."""
         attempts = 3
         base_delay = 0.8

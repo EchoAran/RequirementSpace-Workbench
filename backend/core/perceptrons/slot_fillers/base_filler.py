@@ -1,8 +1,9 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from backend.services.llm_handler_service import LLMHandler
+
 
 # 定义输入参数基类
 @dataclass
@@ -12,7 +13,7 @@ class FillerInput:
 # 泛型参数，支持不同子类的输入类型
 T = TypeVar('T', bound=FillerInput)
 
-class BaseFiller(ABC, Generic[T]):
+class BaseFiller[T: FillerInput](ABC):
     def __init__(self):
         self._llm_handler = LLMHandler()
 

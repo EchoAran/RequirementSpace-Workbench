@@ -1,8 +1,10 @@
-﻿import logging
+import logging
 import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from backend.database.model import KnowledgeDocumentModel, KnowledgeChunkModel
+
+from backend.database.model import KnowledgeChunkModel, KnowledgeDocumentModel
 from backend.services.knowledge.tokenizer import tokenize_for_search
 
 logger = logging.getLogger(__name__)
@@ -14,23 +16,23 @@ def extract_phrases(query: str) -> list[str]:
     """
     if not query:
         return []
-    
+
     phrases = []
-    
+
     # 1. Chinese contiguous n-grams
     chinese_seqs = re.findall(r"[\u4e00-\u9fff]+", query)
     for seq in chinese_seqs:
         s_len = len(seq)
-        for l in range(2, min(10, s_len + 1)):
-            for i in range(s_len - l + 1):
-                phrases.append(seq[i:i+l].lower())
-                
+        for length in range(2, min(10, s_len + 1)):
+            for i in range(s_len - length + 1):
+                phrases.append(seq[i:i+length].lower())
+
     # 2. English / numeric tokens of length >= 2
     tokens = tokenize_for_search(query)
     for t in tokens:
         if len(t) >= 2:
             phrases.append(t)
-            
+
     return list(set(phrases))
 
 class KnowledgeRetrievalService:

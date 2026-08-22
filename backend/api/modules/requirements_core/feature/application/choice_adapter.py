@@ -1,11 +1,13 @@
 from sqlalchemy import select
 
 from backend.api.modules.decision_workflow.ports.ports import (
-    GenerationCandidate,
-    CandidateContext,
     BaseGenerationChoiceAdapter,
+    CandidateContext,
+    GenerationCandidate,
 )
-from backend.api.modules.requirements_core.feature.application.feature_generation_service import FeatureGenerationService
+from backend.api.modules.requirements_core.feature.application.feature_generation_service import (
+    FeatureGenerationService,
+)
 from backend.database.model import FeatureModel
 
 
@@ -54,16 +56,19 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
         project_id = payload["project_id"]
-        existing = await session.execute(
-            select(FeatureModel).where(FeatureModel.project_id == project_id)
-        )
+        workspace_id = kwargs.get("workspace_id")
+
+        stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
+        if workspace_id is not None:
+            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        existing = await session.execute(stmt)
         for feature in existing.scalars().all():
             await session.delete(feature)
         await session.flush()
         """Persist feature tree — overwrite mode, rejects if features already exist."""
         try:
             result = await self._service._persist_feature_generation_draft(
-                draft=payload, session=session,
+                draft=payload, session=session, workspace_id=workspace_id,
             )
         except ValueError as e:
             if "features_already_exist" in str(e):
@@ -79,6 +84,7 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             stages={"what", "how", "scope"},
             perception_kinds={"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"},
             session=session,
+            workspace_id=workspace_id,
         )
         return result
 

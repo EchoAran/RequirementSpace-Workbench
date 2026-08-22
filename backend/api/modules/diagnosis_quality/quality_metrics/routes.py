@@ -1,11 +1,12 @@
-from backend.api.dependencies.ownership import require_owned_project
-from backend.database.model import ProjectModel
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.modules.diagnosis_quality.quality_metrics.application.quality_metrics_service import get_repair_metrics
+from backend.api.dependencies.ownership import require_owned_project
+from backend.api.modules.diagnosis_quality.quality_metrics.application.quality_metrics_service import (
+    get_repair_metrics,
+)
 from backend.database.database import get_session
-
+from backend.database.model import ProjectModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}",

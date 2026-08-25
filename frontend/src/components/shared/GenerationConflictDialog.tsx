@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 
@@ -17,11 +18,11 @@ export function GenerationConflictDialog({
   onConfirm,
 }: GenerationConflictDialogProps) {
   const { t } = useTranslation();
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={isWorking ? undefined : onClose}
     >
       <div
@@ -79,6 +80,7 @@ export function GenerationConflictDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

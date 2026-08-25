@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useWorkspaceStore, getFindingCapability } from '@/store/useWorkspaceStore';
 import { AlertTriangle, Cpu, Loader2, X, ArrowRight } from 'lucide-react';
 import { Finding } from '@/core/schema';
@@ -97,8 +98,10 @@ export default function GateCheckModal() {
   const activeDraft = useWorkspaceStore((s) => s.activeDraft);
   const pendingGenerationConflict = useWorkspaceStore((s) => s.pendingGenerationConflict);
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-slate-200/80 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -213,6 +216,7 @@ export default function GateCheckModal() {
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

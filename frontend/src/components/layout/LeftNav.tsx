@@ -260,17 +260,17 @@ export function LeftNav() {
 
   return (
     <nav className={cn(
-      "bg-white border-r border-slate-200 flex flex-col shrink-0 min-h-screen transition-all duration-300 relative",
+      "bg-white/85 backdrop-blur-xl border-r border-slate-200/80 flex flex-col shrink-0 min-h-screen transition-all duration-300 relative select-none",
       collapsed ? "w-16" : "w-64"
     )}>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-[calc(50%+2rem)] -translate-y-1/2 bg-white border border-slate-200 rounded-full w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-300 shadow-sm hover:shadow z-20 transition-all"
+        className="absolute -right-3 top-[calc(50%+2rem)] -translate-y-1/2 bg-white border border-slate-200 rounded-full w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-300 shadow-sm hover:shadow z-20 transition-all cursor-pointer"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      <div className={cn("h-16 border-b border-slate-200 flex flex-shrink-0 items-center transition-all", collapsed ? "justify-center px-0" : "px-6 gap-3")}>
+      <div className={cn("h-16 border-b border-slate-200/70 flex flex-shrink-0 items-center transition-all", collapsed ? "justify-center px-0" : "px-6 gap-3")}>
         <img src={`${import.meta.env.BASE_URL}plume-gradient.svg`} alt="Plume" className="w-7 h-7 shrink-0" />
         {!collapsed && <span className="font-bold text-lg tracking-tight italic text-slate-800">{t('nav.title')}</span>}
       </div>
@@ -343,9 +343,13 @@ export function LeftNav() {
               to={disabled ? '#' : to}
               onClick={(event) => handleNavClick(event, item.page, disabled)}
               className={cn(
-                "flex items-center rounded-xl transition-colors relative block",
+                "flex items-center rounded-xl transition-all duration-200 relative block",
                 collapsed ? "p-3 justify-center" : "p-3",
-                disabled ? "opacity-60 grayscale bg-slate-50/20 hover:bg-slate-100/50 cursor-not-allowed" : isActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "hover:bg-slate-100 text-slate-600"
+                disabled
+                  ? "opacity-50 grayscale bg-slate-50/20 hover:bg-slate-100/40 cursor-not-allowed"
+                  : isActive
+                  ? "bg-indigo-50/90 text-indigo-700 font-bold shadow-2xs before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:bg-indigo-600 before:rounded-r-full"
+                  : "hover:bg-slate-100/70 text-slate-600 hover:text-slate-900"
               )}
             >
               {InnerContent}
@@ -355,15 +359,15 @@ export function LeftNav() {
       </div>
 
       {/* 独立版本控制/需求仓库入口 */}
-      <div className={cn("border-t border-slate-200", collapsed ? "p-2" : "p-3")}>
+      <div className={cn("border-t border-slate-200/70", collapsed ? "p-2" : "p-3")}>
         <Link
           to={buildProjectRouteWithBranch(ir?.projectId, '/repo', branchRef)}
           className={cn(
             "flex items-center rounded-xl transition-all font-medium text-xs",
             collapsed ? "p-3 justify-center" : "px-3 py-2.5 gap-2.5",
             resolvedActivePage === '/repo'
-              ? "bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100"
-              : "text-slate-600 hover:bg-slate-100 border border-transparent"
+              ? "bg-indigo-50/90 text-indigo-700 font-bold border border-indigo-200/60 shadow-2xs"
+              : "text-slate-600 hover:bg-slate-100/70 border border-transparent hover:text-slate-900"
           )}
           title={t('nav.repo')}
         >
@@ -380,13 +384,13 @@ export function LeftNav() {
       </div>
 
       {!collapsed && (
-        <div className="p-4 border-t border-slate-200 shrink-0">
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-            <div className="text-xs text-slate-500 mb-1 italic">{t('nav.maturityLabel')}</div>
-            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: String(readinessScore) + '%' }}></div>
+        <div className="p-4 border-t border-slate-200/70 shrink-0">
+          <div className="bg-slate-50/80 backdrop-blur-xs rounded-xl p-3 border border-slate-200/70">
+            <div className="text-xs text-slate-500 mb-1.5 font-medium">{t('nav.maturityLabel')}</div>
+            <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all duration-500" style={{ width: String(readinessScore) + '%' }}></div>
             </div>
-            <div className="text-xs text-right mt-1 font-mono font-bold text-slate-700">{readinessScore}%</div>
+            <div className="text-xs text-right mt-1.5 font-mono font-bold text-indigo-700">{readinessScore}%</div>
           </div>
         </div>
       )}

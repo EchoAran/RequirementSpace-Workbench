@@ -565,6 +565,7 @@ class ScopeGenerationService:
 
             if scope_model is None:
                 scope_model = ScopeModel(
+                    workspace_id=workspace_id,
                     feature_id=item["feature_id"],
                     status=item["scope_status"],
                     positive_summary=item.get("positive_summary") or "",
@@ -579,6 +580,7 @@ class ScopeGenerationService:
                 session.add(scope_model)
                 continue
 
+            scope_model.workspace_id = workspace_id
             scope_model.status = item["scope_status"]
             scope_model.positive_summary = item.get("positive_summary") or ""
             scope_model.negative_summary = item.get("negative_summary") or ""

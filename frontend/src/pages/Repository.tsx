@@ -139,7 +139,7 @@ export function Repository() {
   return (
     <div className="flex-1 flex w-full relative h-full min-h-0">
       <div className="flex-1 overflow-y-auto bg-slate-50/70 p-6 pb-24 w-full">
-        <div className="mx-auto max-w-[1280px] animate-in fade-in duration-500 flex flex-col gap-6">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto animate-in fade-in duration-500 flex flex-col gap-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <GitBranch className="h-6 w-6 text-indigo-600" />

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, UserPlus, Trash2, ShieldAlert, Loader2, Users } from 'lucide-react';
 import { ProjectMember } from '@/core/schema';
@@ -99,8 +100,10 @@ export default function ProjectMembersModal({ projectId, currentUserId, onClose 
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-scale-up">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -245,6 +248,7 @@ export default function ProjectMembersModal({ projectId, currentUserId, onClose 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

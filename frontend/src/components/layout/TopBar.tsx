@@ -100,21 +100,21 @@ export function TopBar() {
   const unreadCount = notifications.filter((n: any) => !n.readAt).length;
 
   return (
-    <header className="h-16 flex-shrink-0 border-b border-slate-200 bg-white flex items-center justify-between px-6 z-15 sticky top-0">
+    <header className="h-16 flex-shrink-0 border-b border-slate-200/60 bg-white/75 backdrop-blur-md flex items-center justify-between px-6 z-30 sticky top-0 shadow-2xs">
       <div className="flex items-center gap-4">
         <button 
           onClick={() => {
             exitWorkspace();
             navigate('/home');
           }}
-          className="text-xs text-slate-500 hover:text-slate-800 transition-colors mr-2 flex items-center gap-1 font-medium cursor-pointer"
+          className="text-xs text-slate-500 hover:text-slate-900 transition-colors mr-2 flex items-center gap-1.5 font-medium cursor-pointer px-2.5 py-1 rounded-lg hover:bg-slate-100/60"
         ><ArrowLeft className="h-3.5 w-3.5" /> {t('nav.back')}</button>
-        <div className="h-4 w-[1px] bg-slate-300"></div>
-        <h1 className="text-lg font-bold text-slate-800">{ir?.projectName || (ir as any)?.name || t('home.unnamedProject')}</h1>
+        <div className="h-4 w-[1px] bg-slate-200"></div>
+        <h1 className="text-base font-semibold text-slate-800 tracking-tight">{ir?.projectName || (ir as any)?.name || t('home.unnamedProject')}</h1>
         {/* 分支上下文：分支选择器 + 未提交摘要 + 提交按钮 */}
         <VersionControlBar />
-        <div className="h-4 w-[1px] bg-slate-300"></div>
-        <span className="text-sm text-slate-500 italic">{t(getSubtitleKey(location.pathname))}</span>
+        <div className="h-4 w-[1px] bg-slate-200"></div>
+        <span className="text-xs text-slate-400 font-medium">{t(getSubtitleKey(location.pathname))}</span>
       </div>
 
       <div className="flex items-center gap-3 relative">

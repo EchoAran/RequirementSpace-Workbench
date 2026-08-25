@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { gsap } from 'gsap';
@@ -167,13 +168,13 @@ export function SystemHelpGuide() {
       </button>
 
       {/* 全屏 Help 弹层与抽屉面板 */}
-      {open && (
-        <div ref={containerRef} className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-6 md:p-10">
+      {open && typeof document !== 'undefined' && createPortal(
+        <div ref={containerRef} className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:p-6 md:p-10">
           {/* 高斯模糊背景遮罩 */}
           <div
             ref={overlayRef}
             onClick={handleClose}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
           />
 
           {/* 主面板：WeUI Panel / Modal 精致卡片 */}
@@ -396,7 +397,8 @@ export function SystemHelpGuide() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

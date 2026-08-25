@@ -372,6 +372,9 @@ class PrototypeGenerationService:
         if targets:
             return targets
 
+        if any(item.scope is not None for item in detail.features):
+            return []
+
         if generator_input.actors and generator_input.features:
             actor = generator_input.actors[0]
             feature = generator_input.features[0]
@@ -407,7 +410,7 @@ class PrototypeGenerationService:
             if (
                 feature_details_by_id.get(feature.featureId) is not None
                 and feature_details_by_id[feature.featureId].scope is not None
-                and feature_details_by_id[feature.featureId].scope.scope_status == "current"
+                and str(feature_details_by_id[feature.featureId].scope.scope_status).lower() == "current"
             )
         ]
 

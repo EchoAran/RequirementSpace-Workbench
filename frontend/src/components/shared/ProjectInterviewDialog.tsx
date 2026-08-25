@@ -8,6 +8,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, Send, Loader2, Bot, User, Check, X } from 'lucide-react';
 import { workspaceApi } from '@/lib/api';
 import { useWorkspaceStore } from '@/store/useWorkspaceStore';
@@ -132,11 +133,11 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -277,6 +278,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

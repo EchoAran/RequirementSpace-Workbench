@@ -9,6 +9,10 @@ import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewM
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
 import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { InteractiveCard } from '@/components/ui/InteractiveCard';
+import { SkeletonPreset } from '@/components/ui/SkeletonPreset';
+import { EmptyGuidance } from '@/components/ui/EmptyGuidance';
 import { 
   useWorkspaceStore, 
   selectActors, 
@@ -525,7 +529,7 @@ export function WhatToDo() {
   return (
     <div className="flex-1 flex w-full relative">
       <div className="flex-1 p-6 pb-24 overflow-y-auto w-full">
-        <div className="max-w-[1240px] mx-auto animate-in fade-in duration-500">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto animate-in fade-in duration-500">
           
           <div className="grid grid-cols-12 gap-6 h-full content-start">
             
@@ -831,20 +835,20 @@ export function WhatToDo() {
             <div className="col-span-12 space-y-6">
               
               {/* Roles Section (RE-ENABLED) */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
+              <GlassSurface className="p-6">
+                <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-200/50">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                     {t('what.actors.title')}
                     <button
                       onClick={() => setIsAddActorModalOpen(true)}
-                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                       title={t('what.actors.manualBtn')}
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setAiDialogTarget({ targetType: 'actor' })}
-                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
+                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                       title={t('what.actors.aiChatBtn')}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
@@ -853,16 +857,20 @@ export function WhatToDo() {
                   <button
                     onClick={() => void generateActors()}
                     disabled={isGenerating || isLoading}
-                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
                     {actors.length > 0 ? t('what.actors.regenerateBtn') : t('what.actors.generateBtn')}
                   </button>
                 </div>
-                {actors.length === 0 ? (
-                  <div className="text-center py-10 border border-dashed border-slate-100 rounded-xl text-xs text-slate-500 italic">
-                    {t('what.actors.emptyText')}
-                  </div>
+                {isLoading && actors.length === 0 ? (
+                  <SkeletonPreset variant="card" count={3} />
+                ) : actors.length === 0 ? (
+                  <EmptyGuidance
+                    title={t('what.actors.emptyText')}
+                    actionLabel={t('what.actors.generateBtn')}
+                    onAction={() => void generateActors()}
+                  />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {actors.map((actor: ActorNode) => {
@@ -870,19 +878,20 @@ export function WhatToDo() {
                       const actorStatus = actor.status || 'needs_confirmation';
 
                       return (
-                      <div
+                      <InteractiveCard
                         key={actor.id}
                         id={`actor-${actor.actorId}`}
+                        selected={selectedObject?.id === actor.id}
                         onClick={() => setSelectedObject(actor)}
-                        className={`bg-white rounded-xl p-4 border transition-all cursor-pointer flex flex-col gap-3 ${selectedObject?.id === actor.id ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 hover:border-indigo-300 hover:shadow-sm shadow-inner bg-slate-50/20'}`}
+                        className="flex flex-col gap-3"
                       >
                         <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-50/80 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100/80 shadow-2xs">
                               {actorTitle.charAt(0)}
                             </div>
                             <div>
-                              <h4 className="font-bold text-slate-800 text-sm tracking-wide">{actorTitle}</h4>
+                              <h4 className="font-bold text-slate-800 text-sm tracking-tight">{actorTitle}</h4>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -896,7 +905,7 @@ export function WhatToDo() {
                                   }
                                 }
                               }}
-                              className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-md text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none shadow-sm"
+                              className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
                               title={t('what.actors.deleteBtn')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -907,27 +916,26 @@ export function WhatToDo() {
                         <div className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
                           {actor.description || t('what.actors.noDesc')}
                         </div>
-                      </div>
+                      </InteractiveCard>
                     )})}
                   </div>
                 )}
-              </section>
+              </GlassSurface>
 
               {/* Tree Section */}
-              <section className="flex flex-col">
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                  <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-100">
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                      {t('what.features.title')}
-                      <button
-                        onClick={() => {
-                          setNewFeatureParentId(null);
-                          setIsParentFixed(false);
-                          setIsAddFeatureModalOpen(true);
-                        }}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        title={t('what.features.manualBtn')}
-                      >
+              <GlassSurface className="p-6">
+                <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-200/50">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    {t('what.features.title')}
+                    <button
+                      onClick={() => {
+                        setNewFeatureParentId(null);
+                        setIsParentFixed(false);
+                        setIsAddFeatureModalOpen(true);
+                      }}
+                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
+                      title={t('what.features.manualBtn')}
+                    >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </h3>
@@ -1186,8 +1194,7 @@ export function WhatToDo() {
                       );
                     })}
                   </div>
-                </div>
-              </section>
+                </GlassSurface>
 
             </div>
           </div>

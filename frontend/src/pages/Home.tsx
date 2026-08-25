@@ -151,7 +151,7 @@ export function Home() {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-10 py-8 lg:py-10 overflow-hidden flex flex-col relative z-10 min-h-0">
+      <main className="flex-1 w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto px-6 sm:px-10 py-8 lg:py-10 overflow-hidden flex flex-col relative z-10 min-h-0">
         {/* Hero Banner Section */}
         <div className="mb-8 shrink-0 animate-in fade-in slide-in-from-top-4 duration-700">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight mb-3">

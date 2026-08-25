@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { NodeKindToText } from '@/core/presentationLabels';
 import { StatusBadge } from './StatusBadge';
 
@@ -65,18 +66,23 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
           onMoveItem(itemId, columnKey);
         }
       }}
-      className={`rounded-xl p-3 flex flex-col gap-3 min-h-[450px] transition-all border-2 ${
+      className={`rounded-2xl p-3.5 flex flex-col gap-3 min-h-[450px] transition-all border-2 ${
         isDragOver 
           ? 'border-dashed border-indigo-400 bg-indigo-50/40 animate-pulse shadow-inner' 
-          : 'border-transparent bg-slate-100/50'
+          : 'border-transparent bg-slate-100/60'
       }`}
     >
-      <h4 className="font-bold text-slate-700 text-sm flex justify-between items-center px-1">
-        {title}
-        <span className="bg-slate-200/80 text-slate-600 text-xs px-2.5 py-0.5 rounded-full font-bold">{items.length}</span>
-      </h4>
+      {/* Sticky Column Header */}
+      <div className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-md py-2 px-3 -mx-1.5 -mt-1.5 rounded-xl flex justify-between items-center border border-slate-200/50 shadow-2xs">
+        <h4 className="font-extrabold text-slate-700 text-xs tracking-tight">
+          {title}
+        </h4>
+        <span className="bg-white/90 border border-slate-200 text-slate-700 text-[11px] px-2.5 py-0.5 rounded-full font-black shadow-2xs">
+          {items.length}
+        </span>
+      </div>
       
-      <div className="space-y-3">
+      <div className="space-y-3 flex-1">
         {items.map(item => {
           const originalAiRec = getOriginalAiRecommendation(item);
           const isOverridden = originalAiRec && originalAiRec !== currentColumnLabel;
@@ -122,7 +128,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                 <div className="mt-2.5 flex flex-col gap-2">
                   {isOverridden && (
                     <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-2 py-0.5 rounded w-fit select-none">
-          {t('rangeKanban.overrideAiRecommendation', { rec: originalAiRec === 'current' ? t('rangeKanban.columns.current') : t('rangeKanban.columns.postponed') })}
+                      {t('rangeKanban.overrideAiRecommendation', { rec: originalAiRec === 'current' ? t('rangeKanban.columns.current') : t('rangeKanban.columns.postponed') })}
                     </span>
                   )}
                   <button
@@ -131,9 +137,9 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                       e.stopPropagation();
                       setActiveKanoItem(item);
                     }}
-                    className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold transition-colors border border-indigo-100/50 flex items-center justify-center gap-1 shadow-sm select-none"
+                    className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-extrabold transition-colors border border-indigo-100/50 flex items-center justify-center gap-1 shadow-sm select-none cursor-pointer"
                   >
-          {t('rangeKanban.viewKanoBtn')}
+                    {t('rangeKanban.viewKanoBtn')}
                   </button>
                 </div>
               )}
@@ -149,10 +155,10 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
         })}
       </div>
       
-      {/* Kano Modal Pop-up */}
-      {activeKanoItem && activeKanoItem.scope && (
+      {/* Kano Modal Pop-up: Rendered via createPortal directly into document.body to ensure screen viewport centering */}
+      {activeKanoItem && activeKanoItem.scope && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6 select-none animate-in fade-in duration-200"
           onClick={() => setActiveKanoItem(null)}
         >
           <div 
@@ -163,7 +169,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
             <div className="p-6 pb-4 border-b border-slate-100 bg-slate-50/50 shrink-0 flex justify-between items-start">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
-        {t('rangeKanban.kanoReportTitle', { title: activeKanoItem.title })}
+                  {t('rangeKanban.kanoReportTitle', { title: activeKanoItem.title })}
                 </h3>
                 {activeKanoItem.parentModuleName && (
                   <p className="text-[10px] text-indigo-600 font-bold mt-1">{t('rangeKanban.parentModule', { name: activeKanoItem.parentModuleName })}</p>
@@ -172,9 +178,9 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
               <button 
                 type="button"
                 onClick={() => setActiveKanoItem(null)}
-                className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold"
+                className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold cursor-pointer"
               >
-          {t('rangeKanban.closeBtn')}
+                {t('rangeKanban.closeBtn')}
               </button>
             </div>
 
@@ -185,7 +191,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                 {activeKanoItem.scope.positiveSummary && (
                   <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-emerald-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-        {t('rangeKanban.positiveSummaryLabel')}
+                      {t('rangeKanban.positiveSummaryLabel')}
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-emerald-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.positiveSummary}"
@@ -196,7 +202,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                 {activeKanoItem.scope.negativeSummary && (
                   <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-4 flex flex-col gap-2">
                     <span className="font-extrabold text-rose-800 flex items-center gap-1 text-xs uppercase tracking-wider">
-        {t('rangeKanban.negativeSummaryLabel')}
+                      {t('rangeKanban.negativeSummaryLabel')}
                     </span>
                     <div className="text-slate-700 bg-white/70 border border-rose-100/50 p-3 rounded-xl italic leading-relaxed">
                       "{activeKanoItem.scope.negativeSummary}"
@@ -211,7 +217,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                   {activeKanoItem.scope.positivePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-indigo-700 flex items-center gap-1 text-xs">
-        {t('rangeKanban.positiveChartLabel')}
+                        {t('rangeKanban.positiveChartLabel')}
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -226,7 +232,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                   {activeKanoItem.scope.negativePictureBase64 && (
                     <div className="space-y-2">
                       <span className="font-extrabold text-slate-700 flex items-center gap-1 text-xs">
-        {t('rangeKanban.negativeChartLabel')}
+                        {t('rangeKanban.negativeChartLabel')}
                       </span>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] flex items-center justify-center p-3 shadow-md">
                         <img 
@@ -254,13 +260,14 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
               <button
                 type="button"
                 onClick={() => setActiveKanoItem(null)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm font-semibold"
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
                 {t('rangeKanban.closeReportBtn')}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

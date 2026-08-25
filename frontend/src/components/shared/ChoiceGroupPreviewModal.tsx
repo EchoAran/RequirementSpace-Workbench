@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   RefreshCw,
@@ -903,8 +904,9 @@ export function ChoiceGroupPreviewModal({
     );
     const activeSubtask = subtasks[subtaskIndex];
 
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-md transition-all duration-300">
+    if (typeof document === 'undefined') return null;
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-md transition-all duration-300">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-md mx-4 p-8 scale-in duration-300 animate-in">
           <div className="text-center">
             {/* Clean Halo Spinner */}
@@ -990,7 +992,8 @@ export function ChoiceGroupPreviewModal({
             </div>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -1006,8 +1009,9 @@ export function ChoiceGroupPreviewModal({
 
   /* ── All-failed state ────────────────────────────────── */
   if (successfulChoices.length === 0) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    if (typeof document === 'undefined') return null;
+    return createPortal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg mx-4 p-8 text-center">
           <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-bold text-slate-800 mb-2">{t('choiceGroupPreview.failTitle')}</h3>
@@ -1039,7 +1043,8 @@ export function ChoiceGroupPreviewModal({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -1054,8 +1059,10 @@ export function ChoiceGroupPreviewModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm select-text">
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm select-text animate-in fade-in duration-200">
       <div className={`bg-white rounded-3xl shadow-2xl border border-slate-200 w-full mx-4 max-h-[90vh] flex flex-col transition-all duration-300 max-w-5xl`}>
         {/* Header */}
         <div className="p-6 border-b border-slate-100 shrink-0 bg-slate-50/50 rounded-t-3xl">
@@ -1226,6 +1233,7 @@ export function ChoiceGroupPreviewModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -282,7 +282,7 @@ export function AccountSettings() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 relative z-10 space-y-6">
+      <main className="flex-1 w-full max-w-5xl 2xl:max-w-6xl mx-auto px-4 sm:px-6 py-8 relative z-10 space-y-6">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">{t('settings.account.pageTitle')}</h1>
           <p className="text-xs text-slate-500 font-medium mt-1">

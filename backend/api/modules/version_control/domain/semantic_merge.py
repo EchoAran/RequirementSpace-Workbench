@@ -387,7 +387,25 @@ def _merge_ordered_items(
             order_seq = target_rel
 
     final_uuids = [u for u in order_seq if u in kept]
-    new_uuids = [u for u in sorted(kept) if u not in final_uuids]
+    target_new_order = [
+        e["logical_uuid"]
+        for e in sorted(
+            target_list,
+            key=lambda e: (e.get("position", 0), e.get("logical_uuid", "")),
+        )
+        if e["logical_uuid"] not in base_map and e["logical_uuid"] in kept
+    ]
+    source_new_order = [
+        e["logical_uuid"]
+        for e in sorted(
+            source_list,
+            key=lambda e: (e.get("position", 0), e.get("logical_uuid", "")),
+        )
+        if e["logical_uuid"] not in base_map and e["logical_uuid"] in kept
+    ]
+    new_uuids = target_new_order + [
+        u for u in source_new_order if u not in target_new_order
+    ]
 
     # 同位置并发新增检测：两侧各自新增了项，且 target/source 在 base 的同一相对插入点新增。
     # 阶段文档要求“同位置排序竞争”产生冲突，而非静默按 UUID 排序丢弃两侧声明的位置。

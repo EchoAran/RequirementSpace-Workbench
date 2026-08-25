@@ -9,6 +9,7 @@ import {
   ProjectMember,
   KnowledgeWorkspace,
   KnowledgeDocument,
+  Finding,
 } from '@/core/schema';
 import {
   BranchSummary,
@@ -57,6 +58,26 @@ export const workspaceApi = {
   },
   getStageProgress: async (projectId: string): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/stage-progress`);
+  },
+  /** 聚合工作区初始水合数据（单次往返获取详情、多视图Findings、未决抉择组与Stage进度）。 */
+  getWorkspaceHydration: async (
+    projectId: string | number,
+    branch?: string | null,
+  ): Promise<{
+    projectId: string;
+    projectDetail?: RequirementSpace;
+    backendFindings: Finding[];
+    findingsByView: {
+      issues: Finding[];
+      next_action: Finding[];
+      gate: Finding[];
+      health: Finding[];
+    };
+    choiceGroups: any[];
+    stageProgress?: any;
+  }> => {
+    const params = branch && branch !== 'main' ? `?branch=${encodeURIComponent(branch)}` : '';
+    return http.get<any>(`/projects/${projectId}/hydrate${params}`);
   },
   /** 更新任意节点的确认状态（`ai_assumption` / `needs_confirmation` / `confirmed`）。 */
   updateNodeConfirmationStatus: async (

@@ -169,10 +169,6 @@ def migrate_project_to_version_control(
             )
         ).first()
         if workspace:
-            workspace.user_requirements = project.user_requirements or ""
-            workspace.kano_status = project.kano_status or "missing"
-            workspace.unlocked_stages = project.unlocked_stages or ""
-
             _backfill_actors(db, project.id, workspace.id)
             _, _, feat_map = _backfill_features_and_relations(db, project.id, workspace.id)
             _backfill_scenarios(db, project.id, workspace.id, feat_map)

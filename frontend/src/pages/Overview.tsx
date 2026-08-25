@@ -12,6 +12,7 @@ import {
   selectChoices
 } from '@/store/useWorkspaceStore';
 import { Cpu, Database, Sliders } from 'lucide-react';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { findingProjection } from '@/core/findingPresentation';
 import { getAuditActionTypeLabel, getAuditSummary } from '@/core/auditActionLabels';
 import { useTranslation } from 'react-i18next';
@@ -237,9 +238,9 @@ export function Overview() {
 
   return (
     <div className="flex-1 flex w-full relative">
-      <div className="flex-1 overflow-y-auto bg-slate-50/70 p-6 pb-24 w-full">
-        <div className="mx-auto max-w-[1320px] animate-in fade-in duration-500 flex flex-col gap-6">
-          <section className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 px-6 py-6 shadow-sm">
+      <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6 pb-24 w-full">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto animate-in fade-in duration-500 flex flex-col gap-6">
+          <GlassSurface variant="elevated" className="p-6">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-3">
@@ -261,7 +262,7 @@ export function Overview() {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white/85 xl:min-w-[420px]">
+              <div className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/90 backdrop-blur-sm xl:min-w-[420px] shadow-xs">
                 <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                   {headlineStats.map((item) => (
                     <div key={item.label} className="px-5 py-4">
@@ -272,12 +273,12 @@ export function Overview() {
                 </div>
               </div>
             </div>
-          </section>
+          </GlassSurface>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white px-6 py-5 shadow-sm">
+          <GlassSurface className="p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-black text-slate-900">{t('overview.sections.configTitle')}</h2>
+                <h2 className="text-base font-bold text-slate-900">{t('overview.sections.configTitle')}</h2>
                 <p className="mt-1 text-xs font-medium text-slate-500">{t('overview.sections.configSubtitle')}</p>
               </div>
               <button
@@ -288,7 +289,7 @@ export function Overview() {
                   const suffix = b && b !== 'main' ? `?branch=${encodeURIComponent(b)}` : '';
                   navigate(`/projects/${ir.projectId}/configuration${suffix}`);
                 }}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-2xs transition-colors hover:bg-slate-50 cursor-pointer"
               >
                 {t('overview.sections.configBtn')}
               </button>
@@ -306,11 +307,11 @@ export function Overview() {
                       const bParam = b && b !== 'main' ? `&branch=${encodeURIComponent(b)}` : '';
                       navigate(`/projects/${ir.projectId}/configuration?tab=${card.key}${bParam}`);
                     }}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-left transition-all hover:border-indigo-200 hover:bg-white hover:shadow-sm"
+                    className="rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xs p-4 text-left transition-all interactive-card hover:border-indigo-300 hover:shadow-sm cursor-pointer"
                   >
                     <div className="flex items-center gap-2">
                       <Icon className="h-4 w-4 text-indigo-600" />
-                      <span className="text-sm font-black text-slate-900">{card.title}</span>
+                      <span className="text-sm font-bold text-slate-900">{card.title}</span>
                     </div>
                     <div className="mt-3 text-sm font-bold text-slate-700">{card.summary}</div>
                     <div className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{card.meta}</div>
@@ -318,7 +319,7 @@ export function Overview() {
                 );
               })}
             </div>
-        </section>
+          </GlassSurface>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             <div className="xl:col-span-8 flex flex-col">

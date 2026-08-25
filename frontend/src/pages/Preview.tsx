@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   CheckSquare,
@@ -18,6 +19,14 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Maximize2,
+  Smartphone,
+  Tablet,
+  Monitor,
+  MoreHorizontal,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { FlowStepCard } from '@/components/shared/FlowStepCard';
@@ -30,6 +39,7 @@ import {
 import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
 import { withAuditActionTypeLabel } from '@/core/auditActionLabels';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 
 type PrototypePreview = {
   prototypeId: number;
@@ -60,6 +70,7 @@ type PrototypePage = {
 };
 
 type PrototypeState = 'idle' | 'loading' | 'ready' | 'error';
+type DeviceViewport = 'desktop' | 'tablet' | 'mobile';
 
 export function Preview() {
   const { t, i18n } = useTranslation();
@@ -98,6 +109,11 @@ export function Preview() {
   const [hasRequestedShadowPreview, setHasRequestedShadowPreview] = useState(false);
   const [isPostCommitCompiling, setIsPostCommitCompiling] = useState(false);
   
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
+  const [isPreviewMenuOpen, setIsPreviewMenuOpen] = useState(false);
+  const [deviceViewport, setDeviceViewport] = useState<DeviceViewport>('desktop');
+
   // Custom states for smart loading modal overlay and animated progress bar
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [progressSubtitle, setProgressSubtitle] = useState('');
@@ -610,17 +626,17 @@ export function Preview() {
 
   const activePrototypePage = useMemo(() => {
     if (!prototype) return null;
-    return (
-      rolePrototypePages.find((page) => page.pageId === activePrototypePageId) ||
-      rolePrototypePages[0] ||
-      prototype.pages?.[0] ||
-      null
-    );
-  }, [activePrototypePageId, prototype, rolePrototypePages]);
+    if (!activeRole) return prototype.pages?.[0] || null;
+    return rolePrototypePages.find((page) => page.pageId === activePrototypePageId) || rolePrototypePages[0] || null;
+  }, [activePrototypePageId, activeRole, prototype, rolePrototypePages]);
 
   const prototypeSrcDoc = useMemo(
-    () => (prototype ? composePrototypeSrcDoc(activePrototypePage || prototype) : ''),
-    [activePrototypePage, prototype],
+    () => {
+      if (!prototype) return '';
+      if (activeRole && prototype.pages?.length && !activePrototypePage) return '';
+      return composePrototypeSrcDoc(activePrototypePage || prototype);
+    },
+    [activePrototypePage, activeRole, prototype],
   );
 
   const hasCompiledPrototype = useMemo(() => {
@@ -898,9 +914,9 @@ export function Preview() {
       )}
 
       <div className="flex-1 p-6 pb-24 overflow-y-auto w-full">
-        <div className="max-w-[1240px] mx-auto space-y-8 animate-in fade-in flex flex-col">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto space-y-8 animate-in fade-in flex flex-col">
           {/* Header Banner */}
-          <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between lg:items-center gap-6">
+          <GlassSurface className="p-6 flex flex-col lg:flex-row justify-between lg:items-center gap-6 relative z-30">
             <div className="space-y-1">
               <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 <LayoutDashboard className="w-5 h-5 text-indigo-600 shrink-0" />
@@ -915,14 +931,19 @@ export function Preview() {
                 type="button"
                 onClick={() => setIsExportMenuOpen((prev) => !prev)}
                 disabled={exportState === 'exporting'}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/90 backdrop-blur-xs px-4 py-2.5 text-xs font-bold text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-white disabled:opacity-60 cursor-pointer"
               >
                 <FileDown className="h-3.5 w-3.5 text-indigo-500" />
             {t('preview.exportSection')}
                 <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {isExportMenuOpen && (
-                <div className="absolute right-0 top-[calc(100%+10px)] z-20 min-w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsExportMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-[calc(100%+10px)] z-50 min-w-[280px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xl p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
                   <button
                     type="button"
                     onClick={() => {
@@ -990,9 +1011,10 @@ export function Preview() {
             {t('preview.full.exportAuditLogs')}
                   </button>
                 </div>
+                </>
               )}
             </div>
-          </section>
+          </GlassSurface>
 
           {/* Shadow Sandbox Banner */}
           {!isPreviewReady && activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && (
@@ -1071,7 +1093,7 @@ export function Preview() {
           {/* Integrated Interactive Prototype Section */}
           {!hasCompiledPrototype ? (
             /* Full-width Onboarding & Prototype Generation Hero Card */
-            <section className="bg-white rounded-3xl border border-slate-200 shadow-md p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-300">
+            <GlassSurface variant="elevated" className="p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-8">
               <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-teal-500/10 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-inner">
                 <MonitorPlay className="w-10 h-10 text-indigo-600" />
               </div>
@@ -1123,57 +1145,123 @@ export function Preview() {
                   </span>
                 </button>
               </div>
-            </section>
+            </GlassSurface>
           ) : (
             /* Side-by-Side Interactive Prototype & Blueprints Panel when prototype is compiled */
-            <section className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden animate-in fade-in">
-              <div className="border-b border-slate-200 px-6 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
-                <div>
+            <GlassSurface className="relative overflow-visible p-0">
+              <div className="border-b border-slate-200/60 px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
+                <div className="flex items-center gap-3">
                   <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
                     <MonitorPlay className="w-5 h-5 text-teal-600" />
                     {t('preview.full.quickPrototype')}
                   </h3>
+
                 </div>
                 
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Fullscreen Mode Button */}
                   <button
                     type="button"
-                    onClick={openPrototypeInWindow}
+                    onClick={() => setIsFullscreenPreview(true)}
                     disabled={!prototypeSrcDoc || prototypeState === 'loading'}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors bg-white flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
+                    className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors bg-white flex items-center gap-1.5 disabled:opacity-50 shadow-sm cursor-pointer"
+                    title={t('preview.full.fullscreenPreview')}
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    {t('preview.full.openPrototype')}
+                    <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
+                    <span className="hidden md:inline">{t('preview.full.fullscreenPreview')}</span>
                   </button>
+
+                  {/* Regenerate button */}
                   <button
                     type="button"
                     onClick={() => void generatePrototype()}
                     disabled={prototypeState === 'loading'}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-md"
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-md cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${prototypeState === 'loading' ? 'animate-spin' : ''}`} />
                     {t('preview.full.regeneratePrototype')}
+                  </button>
+
+                  {/* Secondary Preview Actions */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsPreviewMenuOpen((open) => !open)}
+                      className="h-9 w-9 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors bg-white inline-flex items-center justify-center cursor-pointer"
+                      aria-label={t('preview.full.morePreviewActions')}
+                      aria-expanded={isPreviewMenuOpen}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {isPreviewMenuOpen && (
+                      <>
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-40 cursor-default"
+                          aria-label={t('common.close')}
+                          onClick={() => setIsPreviewMenuOpen(false)}
+                        />
+                        <div className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPreviewMenuOpen(false);
+                              openPrototypeInWindow();
+                            }}
+                            disabled={!prototypeSrcDoc || prototypeState === 'loading'}
+                            className="w-full rounded-lg px-3 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                            {t('preview.full.openPrototype')}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Collapse / Expand Specs Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsRightPanelCollapsed((prev) => !prev)}
+                    className={`px-3 py-2 rounded-xl border transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                      isRightPanelCollapsed
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                    title={isRightPanelCollapsed ? t('preview.full.expandSpecs') : t('preview.full.collapseSpecs')}
+                  >
+                    {isRightPanelCollapsed ? (
+                      <>
+                        <PanelRightOpen className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>{t('preview.full.expandSpecs')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <PanelRightClose className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="hidden sm:inline">{t('preview.full.collapseSpecs')}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
 
               {/* Viewport Split Screen */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 border-t border-slate-100">
+              <div className="grid grid-cols-1 lg:grid-cols-12 border-t border-slate-100 relative">
                 
-                {/* Left Column: Interactive Prototype Simulator */}
-                <div className="lg:col-span-7 bg-slate-100/50 p-6 border-r border-slate-200 flex flex-col justify-center">
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden flex flex-col h-[740px]">
+                {/* Prototype Simulator Column (Takes 12 columns when specs collapsed, 7 columns when expanded) */}
+                <div className={`${isRightPanelCollapsed ? 'lg:col-span-12' : 'lg:col-span-7 border-r border-slate-200'} bg-slate-100/50 p-6 flex flex-col justify-center transition-all duration-300`}>
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col h-[740px] w-full transition-all duration-300">
                     <div className="h-10 px-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-                      <div className="flex gap-1.5 items-center">
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
+                      <div className="flex gap-1.5 items-center min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block shrink-0" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shrink-0" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shrink-0" />
                         <span className="ml-3 text-xs text-slate-400 font-mono select-none truncate">
                           /projects/{spaceToUse?.projectId || 'current'}/roles/{activeRole?.title || 'role'}/{activePrototypePage?.featureName || 'prototype'}
                         </span>
                       </div>
-                      <span className="text-[10px] bg-slate-200 border border-slate-300 text-slate-500 px-2 py-0.5 rounded font-mono font-bold select-none">
-                        PROTOTYPE SIMULATION
+                      <span className="text-[10px] bg-slate-200 border border-slate-300 text-slate-500 px-2 py-0.5 rounded font-mono font-bold select-none shrink-0 ml-2">
+                        1440px FIT
                       </span>
                     </div>
                     {rolePrototypePages.length > 0 && (
@@ -1183,7 +1271,7 @@ export function Preview() {
                             key={page.pageId}
                             type="button"
                             onClick={() => setActivePrototypePageId(page.pageId)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                               activePrototypePage?.pageId === page.pageId
                                 ? 'bg-teal-50 text-teal-700 border-teal-200'
                                 : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-700'
@@ -1212,120 +1300,138 @@ export function Preview() {
                         </div>
                       ) : prototypeState === 'error' ? (
                         <PrototypePlaceholder label={prototypeError || t('preview.full.assemblyFailure')} tone="error" />
+                      ) : activeRole && prototype.pages?.length && rolePrototypePages.length === 0 ? (
+                        <PrototypePlaceholder label={t('preview.full.noGeneratedRolePreview')} />
                       ) : (
-                        <iframe
-                          key={prototype.shadowDraftId || prototype.prototypeId}
+                        <ScaledPrototypeFrame
+                          frameKey={activePrototypePage?.pageId || prototype.shadowDraftId || prototype.prototypeId}
                           title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} prototype`}
                           srcDoc={prototypeSrcDoc}
-                          className="w-full h-full border-0 bg-white"
+                          viewport="desktop"
+                          showScale
                         />
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right Column: Dynamic Role Blueprint Specifications */}
-                <div className="lg:col-span-5 p-6 overflow-y-auto max-h-[788px] space-y-6 flex flex-col">
-                  <div className="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                      <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> {t('preview.full.roleSpecs')}</span>
-                    </h4>
-                    <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded">
-                      {t('preview.full.pageCount', { count: pages.length })}
-                    </span>
-                  </div>
-
-                  {/* Role Tabs inside Specification container */}
-                  <div className="flex flex-wrap items-center gap-1.5 shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                    {actors.map((actor: any, idx: number) => (
-                      <button
-                        key={actor.id}
-                        type="button"
-                        onClick={() => setActiveRoleIndex(idx)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          activeRoleIndex === idx 
-                            ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100/50' 
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                      >
-                        <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.title}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Active Role Content */}
-                  <div className="space-y-4 flex-1">
-                    {pages.length === 0 ? (
-                      <div className="p-8 text-center bg-slate-50/50 rounded-2xl border border-slate-100 space-y-3 my-auto">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
-                          <Eye className="w-5 h-5" />
-                        </div>
-                        <div className="space-y-1">
-                          <h5 className="font-bold text-slate-700 text-xs">{t('preview.full.noRolePreview')}</h5>
-                          <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
-                            {t('preview.full.noRolePreviewDescription')}
-                          </p>
-                        </div>
+                {/* Right Column: Dynamic Role Blueprint Specifications (shown when not collapsed) */}
+                {!isRightPanelCollapsed && (
+                  <div className="lg:col-span-5 p-6 overflow-y-auto max-h-[788px] space-y-6 flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="border-b border-slate-100 pb-3 flex items-center justify-between shrink-0">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                        <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-slate-500 shrink-0" /> {t('preview.full.roleSpecs')}</span>
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded">
+                          {t('preview.full.pageCount', { count: pages.length })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsRightPanelCollapsed(true)}
+                          className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer"
+                          title={t('preview.full.collapseSpecs')}
+                        >
+                          <PanelRightClose className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    ) : (
-                      pages.map((page: any) => (
-                        <div key={page.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                          <div className="border-b border-slate-100 pb-3">
-                            <h5 className="font-black text-slate-800 text-sm flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                              {page.name}
-                            </h5>
-                            <p className="text-xs text-slate-500 mt-1 leading-relaxed font-medium">{page.desc}</p>
+                    </div>
+
+                    {/* Role Tabs inside Specification container */}
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                      {actors.map((actor: any, idx: number) => (
+                        <button
+                          key={actor.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveRoleIndex(idx);
+                            setActivePrototypePageId('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            activeRoleIndex === idx
+                              ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100/50'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.title}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Active Role Content */}
+                    <div className="space-y-4 flex-1">
+                      {pages.length === 0 ? (
+                        <div className="p-8 text-center bg-slate-50/50 rounded-2xl border border-slate-100 space-y-3 my-auto">
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
+                            <Eye className="w-5 h-5" />
                           </div>
-                          
-                          <div className="space-y-4">
-                            <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.acceptanceScenarios')}</span>
-                              {page.scenarios.length === 0 ? (
-                                <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">{t('preview.full.noAcceptanceScenarios')}</span>
-                              ) : (
-                                <div className="space-y-2.5">
-                                  {page.scenarios.map((scenario: any) => (
-                                    <div
-                                      key={scenario.scenarioId}
-                                      onClick={() => setSelectedObject({ ...scenario, kind: 'scenario' })}
-                                      className="w-full text-left bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer"
-                                    >
-                                      <h6 className="font-bold text-slate-800 text-xs truncate">{scenario.scenarioName}</h6>
-                                      <p className="text-[10px] text-slate-500 leading-relaxed bg-white border border-slate-100 p-2 rounded-lg italic">
-                                        "{scenario.scenarioContent}"
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                          <div className="space-y-1">
+                            <h5 className="font-bold text-slate-700 text-xs">{t('preview.full.noRolePreview')}</h5>
+                            <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                              {t('preview.full.noRolePreviewDescription')}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        pages.map((page: any) => (
+                          <div key={page.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                            <div className="border-b border-slate-100 pb-3">
+                              <h5 className="font-black text-slate-800 text-sm flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                {page.name}
+                              </h5>
+                              <p className="text-xs text-slate-500 mt-1 leading-relaxed font-medium">{page.desc}</p>
                             </div>
 
-                            <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.executionSteps')}</span>
-                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-                                {page.relatedSteps.length === 0 ? (
-                                  <span className="text-xs text-slate-400 italic">{t('preview.full.noExecutionSteps')}</span>
+                            <div className="space-y-4">
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.acceptanceScenarios')}</span>
+                                {page.scenarios.length === 0 ? (
+                                  <span className="text-xs text-slate-400 italic block bg-slate-50 p-2.5 rounded-xl border border-slate-100">{t('preview.full.noAcceptanceScenarios')}</span>
                                 ) : (
-                                  page.relatedSteps.map((stepName: string, idx: number) => (
-                                    <div key={`${stepName}-${idx}`} className="bg-white rounded-lg p-2.5 border border-slate-200/50 shadow-sm flex items-center justify-between">
-                                      <span className="text-[10px] font-bold text-slate-700 truncate">{stepName}</span>
-                                      <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold shrink-0">
-                                        {t('preview.full.actorInitiated')}
-                                      </span>
-                                    </div>
-                                  ))
+                                  <div className="space-y-2.5">
+                                    {page.scenarios.map((scenario: any) => (
+                                      <div
+                                        key={scenario.scenarioId}
+                                        onClick={() => setSelectedObject({ ...scenario, kind: 'scenario' })}
+                                        className="w-full text-left bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer"
+                                      >
+                                        <h6 className="font-bold text-slate-800 text-xs truncate">{scenario.scenarioName}</h6>
+                                        <p className="text-[10px] text-slate-500 leading-relaxed bg-white border border-slate-100 p-2 rounded-lg italic">
+                                          "{scenario.scenarioContent}"
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('preview.full.executionSteps')}</span>
+                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                                  {page.relatedSteps.length === 0 ? (
+                                    <span className="text-xs text-slate-400 italic">{t('preview.full.noExecutionSteps')}</span>
+                                  ) : (
+                                    page.relatedSteps.map((stepName: string, idx: number) => (
+                                      <div key={`${stepName}-${idx}`} className="bg-white rounded-lg p-2.5 border border-slate-200/50 shadow-sm flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-slate-700 truncate">{stepName}</span>
+                                        <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold shrink-0">
+                                          {t('preview.full.actorInitiated')}
+                                        </span>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
-            </section>
+            </GlassSurface>
           )}
 
           {/* Active Issues Alert */}
@@ -1511,30 +1617,31 @@ export function Preview() {
             </div>
 
             {/* Sub-steps Checklist */}
-            {isShadowOverlay ? (
-            <div className="w-full space-y-3 bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6">
-              {[
-                { label: t('preview.full.stepWhat'), checkKey: 'what', threshold: 35 },
-                { label: t('preview.full.stepHow'), checkKey: 'how', threshold: 70 },
-                { label: t('preview.full.stepScope'), checkKey: 'scope', threshold: 90 },
-                { label: t('preview.full.stepAssembly'), checkKey: 'all', threshold: 100 }
-              ].map((step, idx) => {
+            <div className="w-full space-y-3 bg-slate-50/80 border border-slate-200/60 p-5 rounded-2xl mb-6">
+              {(isShadowOverlay
+                ? [
+                    { label: t('preview.full.stepWhat'), checkKey: 'what', threshold: 35 },
+                    { label: t('preview.full.stepHow'), checkKey: 'how', threshold: 70 },
+                    { label: t('preview.full.stepScope'), checkKey: 'scope', threshold: 90 },
+                    { label: t('preview.full.stepAssembly'), checkKey: 'all', threshold: 100 },
+                  ]
+                : [
+                    { label: t('preview.full.stepInteractiveParse'), checkKey: 'what', threshold: 30 },
+                    { label: t('preview.full.stepInteractiveFlow'), checkKey: 'how', threshold: 65 },
+                    { label: t('preview.full.stepInteractiveUi'), checkKey: 'scope', threshold: 90 },
+                    { label: t('preview.full.stepInteractiveAssembly'), checkKey: 'all', threshold: 100 },
+                  ]
+              ).map((step, idx, arr) => {
                 const isFailed = activeShadowDraft?.status === 'failed';
-                const isStepFinished = 
-                  step.checkKey === 'all' 
-                    ? (smoothProgress === 100)
-                    : (!(activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || []).includes(step.checkKey) || smoothProgress >= step.threshold);
-                
-                const isStepActive = 
-                  !isFailed && !isStepFinished && (
-                    idx === 0 
-                      ? (smoothProgress < 35)
-                      : idx === 1
-                        ? (smoothProgress >= 35 && smoothProgress < 70)
-                        : idx === 2
-                          ? (smoothProgress >= 70 && smoothProgress < 90)
-                          : (smoothProgress >= 90 && smoothProgress < 100)
-                  );
+                const isStepFinished = isShadowOverlay
+                  ? (step.checkKey === 'all'
+                      ? smoothProgress === 100
+                      : !(activeShadowDraft?.unreadyGates || activeShadowDraft?.unready_gates || []).includes(step.checkKey) || smoothProgress >= step.threshold)
+                  : smoothProgress >= step.threshold;
+
+                const prevThreshold = idx === 0 ? 0 : arr[idx - 1].threshold;
+                const isStepActive =
+                  !isFailed && !isStepFinished && smoothProgress >= prevThreshold && smoothProgress < step.threshold;
 
                 const isStepFailed = isFailed && isStepActive;
 
@@ -1560,12 +1667,6 @@ export function Preview() {
                 );
               })}
             </div>
-            ) : (
-            <div className="w-full bg-slate-50 border border-slate-200/60 p-5 rounded-2xl mb-6 text-center">
-              <div className="text-xs font-bold text-slate-700">{t('preview.full.interactiveGenerating')}</div>
-              <div className="mt-1 text-[11px] text-slate-500">{t('preview.full.interactiveGeneratingDescription')}</div>
-            </div>
-            )}
 
             {/* Error message collapsible container (collapsible terminal box) */}
             {activeShadowDraft?.status === 'failed' && (
@@ -1614,6 +1715,119 @@ export function Preview() {
         </div>
       )}
 
+      {/* Fullscreen Interactive Prototype Modal */}
+      {isFullscreenPreview && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-200">
+          {/* Fullscreen Top Control Bar */}
+          <div className="h-14 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <MonitorPlay className="w-5 h-5 text-teal-400" />
+                <span className="text-sm font-black text-white tracking-tight">
+                  {t('preview.full.fullscreenPreview')}
+                </span>
+              </div>
+
+              {/* Role Page Selectors in Fullscreen */}
+              {rolePrototypePages.length > 0 && (
+                <div className="hidden md:flex items-center gap-1.5 overflow-x-auto max-w-xl">
+                  {rolePrototypePages.map((page) => (
+                    <button
+                      key={page.pageId}
+                      type="button"
+                      onClick={() => setActivePrototypePageId(page.pageId)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        activePrototypePage?.pageId === page.pageId
+                          ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
+                          : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/50'
+                      }`}
+                    >
+                      {page.featureName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Device Viewport Switcher */}
+              <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700" role="group" aria-label={t('preview.full.viewportPresets')}>
+                <button
+                  type="button"
+                  onClick={() => setDeviceViewport('desktop')}
+                  aria-pressed={deviceViewport === 'desktop'}
+                  className={`h-9 px-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                    deviceViewport === 'desktop'
+                      ? 'bg-slate-700 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={t('preview.full.desktopView')}
+                >
+                  <Monitor className="w-4 h-4" />
+                  <span className="hidden lg:inline">1440</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeviceViewport('tablet')}
+                  aria-pressed={deviceViewport === 'tablet'}
+                  className={`h-9 px-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                    deviceViewport === 'tablet'
+                      ? 'bg-slate-700 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={t('preview.full.tabletView')}
+                >
+                  <Tablet className="w-4 h-4" />
+                  <span className="hidden lg:inline">768</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeviceViewport('mobile')}
+                  aria-pressed={deviceViewport === 'mobile'}
+                  className={`h-9 px-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                    deviceViewport === 'mobile'
+                      ? 'bg-slate-700 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={t('preview.full.mobileView')}
+                >
+                  <Smartphone className="w-4 h-4" />
+                  <span className="hidden lg:inline">375</span>
+                </button>
+              </div>
+
+              {/* Close Fullscreen Button */}
+              <button
+                type="button"
+                onClick={() => setIsFullscreenPreview(false)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+                <span>{t('preview.full.exitFullscreen')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Fullscreen Iframe Viewport */}
+          <div className="flex-1 min-h-0 bg-slate-900/60 p-4 sm:p-6 flex items-center justify-center overflow-hidden">
+            {activeRole && prototype?.pages?.length && rolePrototypePages.length === 0 ? (
+              <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-8 text-center text-sm font-bold text-slate-300">
+                {t('preview.full.noGeneratedRolePreview')}
+              </div>
+            ) : (
+              <ScaledPrototypeFrame
+                frameKey={`fullscreen-${activePrototypePage?.pageId || prototype?.shadowDraftId || prototype?.prototypeId}`}
+                title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} full prototype`}
+                srcDoc={prototypeSrcDoc}
+                viewport={deviceViewport}
+                showScale
+              />
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       <RightObjectPanel />
     </div>
   );
@@ -1629,6 +1843,75 @@ function PrototypePlaceholder({
   return (
     <div className={`h-full flex items-center justify-center text-xs font-bold leading-normal p-8 text-center ${tone === 'error' ? 'text-rose-600 bg-rose-50' : 'text-slate-400 bg-white'}`}>
       {label}
+    </div>
+  );
+}
+
+const PROTOTYPE_VIEWPORT_WIDTHS: Record<DeviceViewport, number> = {
+  desktop: 1440,
+  tablet: 768,
+  mobile: 375,
+};
+
+function ScaledPrototypeFrame({
+  frameKey,
+  title,
+  srcDoc,
+  viewport,
+  showScale = false,
+}: {
+  frameKey: string | number;
+  title: string;
+  srcDoc: string;
+  viewport: DeviceViewport;
+  showScale?: boolean;
+}) {
+  const { t } = useTranslation();
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageWidth, setStageWidth] = useState(0);
+  const logicalWidth = PROTOTYPE_VIEWPORT_WIDTHS[viewport];
+  const scale = stageWidth > 0 ? Math.min(1, stageWidth / logicalWidth) : 1;
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const updateWidth = () => setStageWidth(stage.clientWidth);
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={stageRef} className="relative h-full w-full min-h-0 min-w-0 overflow-hidden bg-slate-200/70 flex justify-center">
+      <div
+        className="h-full overflow-hidden bg-white transition-[width] duration-200 motion-reduce:transition-none"
+        style={{ width: logicalWidth * scale }}
+      >
+        <iframe
+          key={frameKey}
+          title={title}
+          srcDoc={srcDoc}
+          className="border-0 bg-white origin-top-left transition-transform duration-200 motion-reduce:transition-none"
+          style={{
+            width: logicalWidth,
+            height: `${100 / scale}%`,
+            transform: `scale(${scale})`,
+          }}
+        />
+      </div>
+      {showScale && (
+        <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-slate-950/75 px-2 py-1 text-[10px] font-bold text-slate-200">
+          {t('preview.full.fitScale', { scale: Math.round(scale * 100) })}
+        </span>
+      )}
     </div>
   );
 }

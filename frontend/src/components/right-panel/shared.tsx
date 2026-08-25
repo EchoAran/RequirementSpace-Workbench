@@ -8,8 +8,6 @@ import {
 } from '@/core/schema';
 import { NodeKindToText, ScopeStatusToText } from '@/core/presentationLabels';
 
-
-
 export function PanelShell({
   title,
   subtitle,
@@ -21,12 +19,12 @@ export function PanelShell({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="w-full h-full bg-white overflow-y-auto">
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-5 py-4">
-        <div className="text-xs font-bold uppercase tracking-widest text-slate-400">{subtitle || t('panel.node')}</div>
-        <h2 className="text-lg font-bold text-slate-900 mt-1">{title}</h2>
+    <div className="w-full h-full bg-slate-50/30 overflow-y-auto">
+      <div className="sticky top-0 z-10 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 px-6 py-4.5 shadow-2xs">
+        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{subtitle || t('panel.node')}</div>
+        <h2 className="text-base font-extrabold text-slate-900 mt-0.5 tracking-tight truncate">{title}</h2>
       </div>
-      <div className="p-5 space-y-5">{children}</div>
+      <div className="p-6 space-y-6">{children}</div>
     </div>
   );
 }
@@ -43,7 +41,7 @@ export function Section({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">{title}</h3>
+        <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{title}</h3>
         {action}
       </div>
       <div className="space-y-3">{children}</div>
@@ -66,20 +64,20 @@ export function TextField({
 }) {
   return (
     <label className="block space-y-1.5">
-      <div className="text-xs text-slate-500 font-medium">{label}</div>
+      <div className="text-xs text-slate-500 font-semibold">{label}</div>
       {multiline ? (
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 min-h-[88px]"
+          className="w-full rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-xs px-3.5 py-2.5 text-xs text-slate-800 min-h-[90px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all leading-relaxed shadow-2xs"
         />
       ) : (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
+          className="w-full rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-xs px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium shadow-2xs"
         />
       )}
     </label>
@@ -101,12 +99,12 @@ export function SelectField({
 }) {
   return (
     <label className="block space-y-1.5">
-      <div className="text-xs text-slate-500 font-medium">{label}</div>
+      <div className="text-xs text-slate-500 font-semibold">{label}</div>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 bg-white disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+        className="w-full rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-xs px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:bg-slate-100/60 disabled:text-slate-400 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -119,7 +117,7 @@ export function SelectField({
 }
 
 export function ActionRow({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-2">{children}</div>;
+  return <div className="grid grid-cols-2 gap-2.5">{children}</div>;
 }
 
 export function ActionButton({
@@ -135,19 +133,19 @@ export function ActionButton({
 }) {
   const className =
     variant === 'primary'
-      ? 'bg-slate-900 text-white hover:bg-slate-800 border-slate-900'
+      ? 'bg-slate-900 text-white hover:bg-slate-800 border-slate-900 shadow-2xs'
       : variant === 'danger'
-        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200'
-        : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200';
+        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200/80'
+        : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200/80 shadow-2xs';
 
-  const disabledClass = disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '';
+  const disabledClass = disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer active:scale-98';
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${className} ${disabledClass}`}
+      className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all ${className} ${disabledClass}`}
     >
       {children}
     </button>
@@ -155,7 +153,7 @@ export function ActionButton({
 }
 
 export function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">{children}</span>;
+  return <span className="inline-flex px-2.5 py-1 rounded-full bg-slate-100/90 text-slate-700 text-[11px] font-bold border border-slate-200/60">{children}</span>;
 }
 
 export function LinkList({

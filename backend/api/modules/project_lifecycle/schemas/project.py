@@ -260,3 +260,21 @@ class StageProgressItem(CamelModel):
 class StageProgressResponse(CamelModel):
     project_id: str
     stages: list[StageProgressItem]
+
+
+# ----------------- Unified Workspace Hydration (Acceleration) -----------------
+
+class FindingsByView(CamelModel):
+    issues: list[FindingResponse] = []
+    next_action: list[FindingResponse] = []
+    gate: list[FindingResponse] = []
+    health: list[FindingResponse] = []
+
+class WorkspaceHydrationResponse(CamelModel):
+    project_id: str
+    project_detail: ProjectDetailResponse | None = None
+    backend_findings: list[FindingResponse] = []
+    findings_by_view: FindingsByView = FindingsByView()
+    choice_groups: list[dict] = []
+    stage_progress: StageProgressResponse | None = None
+

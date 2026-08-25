@@ -1076,26 +1076,70 @@ const loadWorkspaceHydration = async (
   expectedVersion: number,
   getState: () => WorkspaceState,
 ): Promise<WorkspaceHydrationData | null> => {
-  const findings = await loadBackendFindingsAndViews(projectId);
-  if (getState().sessionVersion !== expectedVersion) return null;
-
-  const backendChoiceGroups: Record<string, ChoiceGroup> = {};
+  const branchRef = getState().branchRef;
   try {
-    const groups = await workspaceApi.listChoiceGroups(projectId, 'open');
-    if (getState().sessionVersion !== expectedVersion) return null;
-    for (const group of groups) {
-      const compatible = mapBackendChoiceGroupToCompatible(group);
-      backendChoiceGroups[compatible.id] = compatible;
-    }
-  } catch (error) {
-    console.warn('Failed to load choice groups:', error);
-  }
+    // 1. Try unified single-roundtrip hydration API first (7x network speedup)
+    const [hydrationRes] = await Promise.all([
+      workspaceApi.getWorkspaceHydration(projectId, branchRef),
+      getState().loadAuditLogs(projectId).catch((err) => {
+        console.warn('Failed to load audit logs:', err);
+      }),
+    ]);
 
-  await getState().loadAuditLogs(projectId);
-  if (getState().sessionVersion !== expectedVersion) return null;
-  await getState().loadStageProgress(projectId);
-  if (getState().sessionVersion !== expectedVersion) return null;
-  return { ...findings, backendChoiceGroups };
+    if (getState().sessionVersion !== expectedVersion) return null;
+
+    if (hydrationRes?.stageProgress) {
+      useWorkspaceStore.setState({ stageProgress: hydrationRes.stageProgress });
+    }
+
+    const backendChoiceGroups: Record<string, ChoiceGroup> = {};
+    if (Array.isArray(hydrationRes?.choiceGroups)) {
+      for (const group of hydrationRes.choiceGroups) {
+        const compatible = mapBackendChoiceGroupToCompatible(group);
+        backendChoiceGroups[compatible.id] = compatible;
+      }
+    }
+
+    return {
+      backendFindings: hydrationRes.backendFindings || [],
+      findingsByView: hydrationRes.findingsByView || {
+        issues: [],
+        next_action: [],
+        gate: [],
+        health: [],
+      },
+      backendChoiceGroups,
+    };
+  } catch (hydrationErr) {
+    console.warn('Unified hydration failed, falling back to parallel requests:', hydrationErr);
+
+    // 2. Resilient fallback to concurrent parallel requests
+    const [findingsResult, choiceGroupsResult] = await Promise.all([
+      loadBackendFindingsAndViews(projectId),
+      workspaceApi.listChoiceGroups(projectId, 'open').catch((error) => {
+        console.warn('Failed to load choice groups:', error);
+        return [];
+      }),
+      getState().loadAuditLogs(projectId).catch((err) => {
+        console.warn('Failed to load audit logs:', err);
+      }),
+      getState().loadStageProgress(projectId).catch((err) => {
+        console.warn('Failed to load stage progress:', err);
+      }),
+    ]);
+
+    if (getState().sessionVersion !== expectedVersion) return null;
+
+    const backendChoiceGroups: Record<string, ChoiceGroup> = {};
+    if (Array.isArray(choiceGroupsResult)) {
+      for (const group of choiceGroupsResult) {
+        const compatible = mapBackendChoiceGroupToCompatible(group);
+        backendChoiceGroups[compatible.id] = compatible;
+      }
+    }
+
+    return { ...findingsResult, backendChoiceGroups };
+  }
 };
 
 const buildOpenedWorkspaceState = (

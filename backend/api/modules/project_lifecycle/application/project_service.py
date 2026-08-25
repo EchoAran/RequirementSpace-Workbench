@@ -3,8 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.api.modules.project_lifecycle.schemas.project import (
+    FindingsByView,
     ProjectDetailResponse,
     ProjectListItemResponse,
+    WorkspaceHydrationResponse,
 )
 from backend.core.detectors import (
     HowIssueDetector,
@@ -712,3 +714,78 @@ class ProjectService:
             "unlocked_stages": ordered_unlocked,
             "blocking_findings": [],
         }
+
+    async def get_workspace_hydration(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        branch_ref: str | None = None,
+        user_id: int | None = None,
+        background_tasks = None,
+    ) -> WorkspaceHydrationResponse:
+        """Unified aggregation for workspace entry, reducing 7 waterfall HTTP requests to 1 roundtrip."""
+        from backend.api.modules.decision_workflow.public import ChoiceService
+        from backend.api.modules.diagnosis_quality.public import FindingResponse, FindingService
+
+        detail = await self.get_project_detail(
+            project_id=project_id,
+            session=session,
+            branch_ref=branch_ref,
+            user_id=user_id,
+        )
+
+        stage_progress_dict = await self.get_stage_progress(
+            project_id=project_id,
+            public_project_id=detail.project_id,
+            session=session,
+            branch_ref=branch_ref,
+            user_id=user_id,
+        )
+
+        _branch_obj, ws_obj, _perms = await _safe_resolve_branch_context(
+            session, project_id, branch_ref, user_id
+        )
+        ws_id = ws_obj.id if ws_obj else None
+
+        finding_service = FindingService()
+        findings_dict = await finding_service.list_all_findings_views(
+            project_id=project_id,
+            session=session,
+            stage="all",
+            background_tasks=background_tasks,
+            public_project_id=detail.project_id,
+            workspace_id=ws_id,
+        )
+
+        choice_service = ChoiceService()
+        raw_choices = await choice_service.list_choice_groups(
+            project_id=project_id,
+            session=session,
+            status="open",
+            workspace_id=ws_id,
+        )
+        choice_groups = [
+            cg.model_dump() if hasattr(cg, "model_dump") else cg
+            for cg in raw_choices
+        ]
+
+        issues_res = [FindingResponse.model_validate(f) for f in findings_dict.get("issues", [])]
+        next_res = [FindingResponse.model_validate(f) for f in findings_dict.get("next_action", [])]
+        gate_res = [FindingResponse.model_validate(f) for f in findings_dict.get("gate", [])]
+        health_res = [FindingResponse.model_validate(f) for f in findings_dict.get("health", [])]
+
+        all_findings = issues_res + next_res + gate_res + health_res
+
+        return WorkspaceHydrationResponse(
+            project_id=detail.project_id,
+            project_detail=detail,
+            backend_findings=all_findings,
+            findings_by_view=FindingsByView(
+                issues=issues_res,
+                next_action=next_res,
+                gate=gate_res,
+                health=health_res,
+            ),
+            choice_groups=choice_groups,
+            stage_progress=stage_progress_dict,
+        )

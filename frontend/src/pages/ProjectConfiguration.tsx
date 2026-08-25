@@ -507,7 +507,7 @@ export function ProjectConfiguration() {
 
   return (
     <div className="flex-1 min-h-screen bg-slate-50 flex flex-col font-sans p-6 overflow-y-auto">
-      <div className="max-w-5xl mx-auto w-full space-y-6">
+      <div className="w-full max-w-6xl 2xl:max-w-[1560px] 3xl:max-w-[1760px] mx-auto space-y-6">
         
         {/* Breadcrumb / Header */}
         <div className="flex flex-col gap-2">

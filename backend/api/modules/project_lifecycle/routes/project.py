@@ -24,6 +24,7 @@ from backend.api.modules.project_lifecycle.schemas.project import (
     StageProgressResponse,
     StageTransitionRequest,
     StageTransitionResponse,
+    WorkspaceHydrationResponse,
 )
 from backend.core.locale import resolve_effective_locale
 from backend.database.model import ProjectModel, UserModel
@@ -86,6 +87,36 @@ async def get_project_detail(
     except (ValueError, PermissionError) as error:
         from backend.api.modules.version_control.public import map_branch_error
         raise map_branch_error(error)
+
+
+@router.get(
+    "/{project_id}/hydrate",
+    response_model=WorkspaceHydrationResponse,
+)
+async def get_workspace_hydration(
+    project_id: str,
+    request: Request,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    owned_project: ProjectModel = Depends(require_project_member),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        hydration = await project_service.get_workspace_hydration(
+            project_id=owned_project.id,
+            session=session,
+            branch_ref=branch,
+            user_id=user.id,
+        )
+        cache_key = f"project_member:{project_id}:{user.id}"
+        cached = getattr(request.state, cache_key, None)
+        if cached and hydration.project_detail:
+            hydration.project_detail.current_user_role = cached[1].role
+        return hydration
+    except (ValueError, PermissionError) as error:
+        from backend.api.modules.version_control.public import map_branch_error
+        raise map_branch_error(error)
+
 
 
 @router.post(

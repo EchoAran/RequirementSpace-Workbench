@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Sparkles, CheckCircle2, AlertTriangle, XCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useWorkspaceStore } from '../../store/useWorkspaceStore';
 
@@ -75,9 +76,11 @@ export function ConfirmTransitionModal({
 
   const isAnyLoading = isWorking || isStoreDiagnosing || status === 'diagnosing';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
       onClick={!isAnyLoading ? onClose : undefined}
     >
       <div 
@@ -270,6 +273,7 @@ export function ConfirmTransitionModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

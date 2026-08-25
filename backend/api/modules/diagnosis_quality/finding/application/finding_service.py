@@ -120,6 +120,71 @@ class FindingService:
 
         return []
 
+    async def list_all_findings_views(
+        self,
+        project_id: int,
+        session,
+        stage: str = "all",
+        action: str | None = None,
+        background_tasks: BackgroundTasks | None = None,
+        public_project_id: str | None = None,
+        workspace_id: int | None = None,
+    ) -> dict[str, list[Finding]]:
+        """Collect and partition findings into all 4 views (issues, health, gate, next_action) in a single pass."""
+        stage_clean, _ = normalize_finding_filters(stage, "issues")
+
+        findings = await self._collect_structural_findings(
+            project_id,
+            stage_clean,
+            "issues",
+            session,
+            workspace_id=workspace_id,
+        )
+        overrides = await self._load_overrides(project_id, session, workspace_id=workspace_id)
+        if overrides:
+            findings = [f for f in findings if f.findingId not in overrides]
+
+        issues = [f for f in findings if f.type == FindingType.ISSUE]
+        self._attach_capability(issues)
+
+        health = [f for f in findings if f.type == FindingType.QUALITY_HINT]
+        self._attach_capability(health)
+
+        gate = [f for f in findings if f.type == FindingType.GATE_CONDITION or f.blockingScope != BlockingScope.NONE]
+        self._attach_capability(gate)
+        gate_filtered = filter_gates_by_action(gate, action)
+
+        stages_to_suggest = await suggestion_stages(
+            project_id,
+            stage_clean,
+            session,
+            workspace_id=workspace_id,
+        )
+        next_findings = []
+        for s in stages_to_suggest:
+            try:
+                res = await self._next_suggestion_service.get_next_suggestion(
+                    project_id=project_id,
+                    stage=s,
+                    session=session,
+                    background_tasks=background_tasks,
+                    public_project_id=public_project_id,
+                    workspace_id=workspace_id,
+                )
+                sugg = res.get("suggestion")
+                finding = build_next_suggestion_finding(s, sugg)
+                if finding:
+                    next_findings.append(finding)
+            except Exception as e:
+                logger.exception(f"Error loading next suggestions for stage {s}: {e}")
+
+        return {
+            "issues": issues,
+            "health": health,
+            "gate": gate_filtered,
+            "next_action": next_findings,
+        }
+
     async def _collect_structural_findings(
         self,
         project_id: int,

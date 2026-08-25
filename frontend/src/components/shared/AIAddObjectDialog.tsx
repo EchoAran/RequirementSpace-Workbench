@@ -1,7 +1,7 @@
-/**
+﻿/**
  * AIAddObjectDialog — conversational dialog for AI-powered single-object addition.
  *
- * Wraps the interview → draft → confirm lifecycle into a chat UI.
+ * Wraps the interview -> draft -> confirm lifecycle into a chat UI.
  * Uses the backend's ai_add_session endpoints to drive a multi-turn interview,
  * then generates a previewable draft that the user can confirm or discard.
  *
@@ -13,6 +13,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Send,
   Sparkles,
@@ -48,8 +49,6 @@ interface ChatMessage {
 }
 
 type DialogStep = 'creating' | 'chat' | 'ready' | 'generating' | 'preview' | 'confirming' | 'done';
-
-
 
 export function AIAddObjectDialog({
   isOpen,
@@ -182,7 +181,6 @@ export function AIAddObjectDialog({
   }, []);
 
   const handleClose = useCallback(() => {
-    // Discard draft if exists
     if (draft) {
       workspaceApi.discardAIAddObjectDraft(draft.draftId ?? draft.draft_id).catch(() => {});
     }
@@ -206,9 +204,11 @@ export function AIAddObjectDialog({
   const targetLabel = targetLabels[targetType] || targetType;
   const preview = draft?.preview ?? {};
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
       onClick={handleClose}
     >
       <div
@@ -238,7 +238,7 @@ export function AIAddObjectDialog({
             </div>
             <button
               onClick={handleClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -362,14 +362,14 @@ export function AIAddObjectDialog({
             <div className="flex gap-2">
               <button
                 onClick={handleGenerateDraft}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 {t('addObjectDialog.generateDraftBtn')}
               </button>
               <button
                 onClick={handleRestart}
-                className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 {t('addObjectDialog.continueChatBtn')}
               </button>
@@ -381,7 +381,7 @@ export function AIAddObjectDialog({
               <button
                 onClick={handleConfirm}
                 disabled={isConfirming}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
               >
                 {isConfirming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -393,7 +393,7 @@ export function AIAddObjectDialog({
               <button
                 onClick={handleDiscard}
                 disabled={isConfirming}
-                className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+                className="px-4 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {t('addObjectDialog.discardBtn')}
               </button>
@@ -420,7 +420,7 @@ export function AIAddObjectDialog({
               <button
                 onClick={handleSend}
                 disabled={!inputValue.trim() || isSending}
-                className="self-end p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="self-end p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -432,6 +432,7 @@ export function AIAddObjectDialog({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

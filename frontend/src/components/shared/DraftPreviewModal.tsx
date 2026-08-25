@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 import { ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
@@ -333,12 +334,12 @@ function FlowDraftPreview({ draft }: { draft: any }) {
   const { t } = useTranslation();
   const [feedback, setFeedback] = useState('');
 
-  if (!draftType) return null;
+  if (!draftType || typeof document === 'undefined') return null;
   const actualConfirmLabel = confirmLabel || t('draftPreview.confirmLabel');
   if (!draft) {
     if (isWorking) {
-      return (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 backdrop-blur-md transition-all duration-300">
+      return createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-md mx-4 p-8 scale-in duration-300 animate-in">
             <div className="text-center">
               <div className="relative w-16 h-16 mx-auto mb-6 flex items-center justify-center">
@@ -352,7 +353,8 @@ function FlowDraftPreview({ draft }: { draft: any }) {
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       );
     }
     return null;
@@ -360,8 +362,8 @@ function FlowDraftPreview({ draft }: { draft: any }) {
 
   const items = getDraftItems(draft, draftType);
 
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
           <div className="flex min-w-0 items-start gap-3">
@@ -530,6 +532,7 @@ function FlowDraftPreview({ draft }: { draft: any }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

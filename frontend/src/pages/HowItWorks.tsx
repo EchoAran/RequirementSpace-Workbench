@@ -13,6 +13,8 @@ import {
   useWorkspaceStore,
   selectSelectedObject,
 } from '@/store/useWorkspaceStore';
+import { GlassSurface } from '@/components/ui/GlassSurface';
+import { EmptyGuidance } from '@/components/ui/EmptyGuidance';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import { FocusFlowCanvasModal } from '@/components/shared/FocusFlowCanvasModal';
 import type { ActorNode, BusinessObjectNode, FeatureNode } from '@/core/schema';
@@ -431,7 +433,7 @@ export function HowItWorks() {
         }
       `}</style>
       <div className="flex-1 p-6 pb-24 overflow-y-auto w-full">
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 space-y-8">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto animate-in fade-in duration-500 space-y-8">
 
           <div className="flex flex-col gap-6 h-full content-start">
 
@@ -530,34 +532,28 @@ export function HowItWorks() {
             )}
 
             {/* System Business Flow Models */}
-            <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative w-full">
-              <div className="flex items-start justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
+            <GlassSurface className="p-6 relative w-full">
+              <div className="flex items-start justify-between gap-4 mb-6 border-b border-slate-200/50 pb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">{t('how.title')}</h2>
+                    <h2 className="text-lg font-bold text-slate-900 tracking-tight">{t('how.title')}</h2>
                     <div className="relative group">
                       <button
                         onClick={() => setIsAddFlowModalOpen(true)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                         aria-label={t('how.manualFlowBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
-                      <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        {t('how.manualFlowBtn')}
-                      </div>
                     </div>
                     <div className="relative group">
                       <button
                         onClick={() => setAiDialogTarget({ targetType: 'flow' })}
-                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
+                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                         aria-label={t('how.aiChatFlowBtn')}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                       </button>
-                      <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        {t('how.aiChatFlowBtn')}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -565,7 +561,7 @@ export function HowItWorks() {
                   <button
                     onClick={() => void generateFlowsAndObjects()}
                     disabled={isGenerating || isLoading}
-                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
                   >
                     <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isGenerating || isLoading ? 'animate-pulse' : ''}`} />
                     {hasFlowsOrBusinessObjects ? t('how.regenerateBtn') : t('how.generateBtn')}
@@ -573,23 +569,13 @@ export function HowItWorks() {
                 </div>
               </div>
 
-              <div className="space-y-8">
+              <div className="space-y-6">
                 {(!ir?.flows || ir.flows.length === 0) && (
-                  <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl text-slate-500 italic text-sm flex flex-col items-center justify-center gap-4 select-none">
-                    <span>{t('how.emptyTip')}</span>
-                    <div className="relative group">
-                      <button
-                        onClick={() => setIsAddFlowModalOpen(true)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                        aria-label={t('how.manualCreateBtn')}
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                      <div className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-                        {t('how.manualCreateBtn')}
-                      </div>
-                    </div>
-                  </div>
+                  <EmptyGuidance
+                    title={t('how.emptyTip')}
+                    actionLabel={t('how.manualCreateBtn')}
+                    onAction={() => setIsAddFlowModalOpen(true)}
+                  />
                 )}
 
                 {(ir?.flows || []).map((flow) => {
@@ -1130,11 +1116,11 @@ export function HowItWorks() {
                   );
                 })}
               </div>
-            </section>
+            </GlassSurface>
 
             {/* NEW/PORTED: Manual Business Object list management */}
-            <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative w-full">
-              <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-3">
+            <GlassSurface className="p-6 relative w-full">
+              <div className="flex justify-between items-center mb-6 border-b border-slate-200/50 pb-3">
                 <div className="flex-1">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                     <span className="flex items-center gap-2"><Database className="w-5 h-5 text-indigo-600 shrink-0" /> {t('how.businessObjectsTitle')}</span>
@@ -1256,7 +1242,7 @@ export function HowItWorks() {
                   })}
                 </div>
               )}
-            </section>
+            </GlassSurface>
 
           </div>
         </div>

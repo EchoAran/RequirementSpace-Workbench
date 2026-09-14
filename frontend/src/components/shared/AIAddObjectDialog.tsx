@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AIAddObjectDialog — conversational dialog for AI-powered single-object addition.
  *
  * Wraps the interview -> draft -> confirm lifecycle into a chat UI.
@@ -85,7 +85,7 @@ export function AIAddObjectDialog({
           anchor: anchor || {},
         });
         if (cancelled) return;
-        setSessionId(session.sessionId ?? session.session_id);
+        setSessionId(session.sessionId);
         setStep('chat');
       } catch (err: any) {
         if (cancelled) return;
@@ -112,8 +112,8 @@ export function AIAddObjectDialog({
 
     try {
       const res = await workspaceApi.sendAIAddSessionMessage(sessionId, text);
-      setMessages(prev => [...prev, { role: 'assistant', content: res.assistantMessage ?? res.assistant_message ?? '' }]);
-      if (res.isReadyToGenerate ?? res.is_ready_to_generate) {
+      setMessages(prev => [...prev, { role: 'assistant', content: res.assistantMessage ?? '' }]);
+      if (res.isReadyToGenerate) {
         setStep('ready');
       }
     } catch (err: any) {
@@ -149,7 +149,7 @@ export function AIAddObjectDialog({
     setIsConfirming(true);
     setError(null);
     try {
-      await workspaceApi.confirmAIAddObjectDraft(draft.draftId ?? draft.draft_id);
+      await workspaceApi.confirmAIAddObjectDraft(draft.draftId);
       setStep('done');
       onConfirm();
       setTimeout(() => onClose(), 1200);
@@ -163,7 +163,7 @@ export function AIAddObjectDialog({
   const handleDiscard = useCallback(async () => {
     if (!draft) return;
     try {
-      await workspaceApi.discardAIAddObjectDraft(draft.draftId ?? draft.draft_id);
+      await workspaceApi.discardAIAddObjectDraft(draft.draftId);
     } catch {
       // Ignore discard errors
     }
@@ -182,7 +182,7 @@ export function AIAddObjectDialog({
 
   const handleClose = useCallback(() => {
     if (draft) {
-      workspaceApi.discardAIAddObjectDraft(draft.draftId ?? draft.draft_id).catch(() => {});
+      workspaceApi.discardAIAddObjectDraft(draft.draftId).catch(() => {});
     }
     setDraft(null);
     setMessages([]);

@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Eye,
   FileDown,
-  LayoutDashboard,
   MonitorPlay,
   RefreshCw,
   Sparkles,
@@ -29,15 +28,14 @@ import {
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { FlowStepCard } from '@/components/shared/FlowStepCard';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import {
   buildProjectRouteWithBranch,
   buildRolePages,
-  buildStepDetail,
 } from '@/core/selectors';
-import { selectSelectedObject, useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { useWorkspaceStore } from '@/store/useWorkspaceStore';
 import { workspaceApi } from '@/lib/api';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { withAuditActionTypeLabel } from '@/core/auditActionLabels';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 
@@ -76,14 +74,11 @@ export function Preview() {
   const { t, i18n } = useTranslation();
   const {
     setSelectedObject,
-    setHighlightTarget,
-    highlightTarget,
   } = useWorkspaceStore();
   const navigate = useNavigate();
 
   const ir = useWorkspaceStore((state) => state.ir);
   const auditLogs = useWorkspaceStore((state) => state.auditLogs);
-  const selectedObject = useWorkspaceStore(selectSelectedObject);
 
   const activeShadowDraft = useWorkspaceStore((state) => state.activeShadowDraft);
   const getActiveShadowDraft = useWorkspaceStore((state) => state.getActiveShadowDraft);
@@ -97,11 +92,11 @@ export function Preview() {
   const [activeRoleIndex, setActiveRoleIndex] = useState(0);
   const [exportState, setExportState] = useState<'idle' | 'exporting' | 'success'>('idle');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [prototype, setPrototype] = useState<PrototypePreview | null>(null);
   const [prototypeState, setPrototypeState] = useState<PrototypeState>('idle');
   const [prototypeError, setPrototypeError] = useState<string | null>(null);
   const [activePrototypePageId, setActivePrototypePageId] = useState<string>('');
-  const [selectedFlowId, setSelectedFlowId] = useState<number | null>(null);
 
   const [feedbackText, setFeedbackText] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -109,10 +104,27 @@ export function Preview() {
   const [hasRequestedShadowPreview, setHasRequestedShadowPreview] = useState(false);
   const [isPostCommitCompiling, setIsPostCommitCompiling] = useState(false);
   
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useLocalStorageState('preview-right-panel-collapsed', false);
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
   const [isPreviewMenuOpen, setIsPreviewMenuOpen] = useState(false);
+  const previewMenuRef = useRef<HTMLDivElement>(null);
   const [deviceViewport, setDeviceViewport] = useState<DeviceViewport>('desktop');
+
+  // 菜单打开期间监听外部点击以关闭（fixed 捕获层会被玻璃容器的 backdrop-filter 困住，故改用文档监听）
+  useEffect(() => {
+    if (!isExportMenuOpen && !isPreviewMenuOpen) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (isExportMenuOpen && exportMenuRef.current && !exportMenuRef.current.contains(target)) {
+        setIsExportMenuOpen(false);
+      }
+      if (isPreviewMenuOpen && previewMenuRef.current && !previewMenuRef.current.contains(target)) {
+        setIsPreviewMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isExportMenuOpen, isPreviewMenuOpen]);
 
   // Custom states for smart loading modal overlay and animated progress bar
   const [smoothProgress, setSmoothProgress] = useState(0);
@@ -122,8 +134,13 @@ export function Preview() {
   const activeShadowDraftRef = useRef(activeShadowDraft);
   activeShadowDraftRef.current = activeShadowDraft;
 
+  const generationFailed = prototypeState === 'error' || activeShadowDraft?.status === 'failed';
+  const generationError = prototypeError || activeShadowDraft?.errorMessage || t('preview.full.prototypeFailure');
+
   const stageProgress = useWorkspaceStore((s) => s.stageProgress);
   const branchRef = useWorkspaceStore((s) => s.branchRef);
+  const branchRefCurrent = useRef(branchRef);
+  branchRefCurrent.current = branchRef;
 
   const isWhatComplete = useMemo(() => {
     const whatStage = stageProgress?.stages?.find((s: any) => s.stage === 'what');
@@ -151,6 +168,17 @@ export function Preview() {
 
   const isPreviewReady = isWhatComplete && isHowComplete && isScopeComplete;
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('prototype-preview-updated', { detail: {
+      projectId: ir?.projectId,
+      branchRef,
+      status: prototypeState === 'error' ? 'failed' : prototype?.status || 'idle',
+      compiled: prototypeState === 'ready' && Boolean(prototype?.pages?.length
+        ? prototype.pages.every(page => page.status === 'ready' && page.html.trim())
+        : prototype?.html?.trim()),
+    } }));
+  }, [prototype, prototypeState, ir?.projectId, branchRef]);
+
   // Dynamic substitution of ir with virtual requirement space during shadow ready status
   // When isPreviewReady is true, the real project is complete, so never use shadow draft.
   const spaceToUse = useMemo(() => {
@@ -158,77 +186,49 @@ export function Preview() {
       const snap = activeShadowDraft.shadowSnapshotJson;
       return {
         projectId: ir?.projectId,
-        projectName: snap.project_name || snap.projectName || snap.name || ir?.projectName,
-        projectDescription: snap.project_description || snap.projectDescription || snap.description || ir?.projectDescription,
-        userRequirements: snap.user_requirements || snap.userRequirements || ir?.userRequirements,
-        actors: snap.actors?.map((a: any) => ({
-          actorId: a.actorId || a.id || a.actor_id,
-          actorName: a.actorName || a.name || a.actor_name,
-          actorDescription: a.actorDescription || a.description || a.actor_description
-        })) || [],
-        actorsCompatible: snap.actors?.map((a: any) => ({
-          id: (a.actorId || a.id || a.actor_id)?.toString(),
-          title: a.actorName || a.name || a.actor_name,
-          desc: a.actorDescription || a.description || a.actor_description
-        })) || [],
-        features: snap.features?.map((f: any) => ({
-          featureId: f.featureId || f.id || f.feature_id,
-          featureName: f.featureName || f.name || f.feature_name,
-          featureDescription: f.featureDescription || f.description || f.feature_description,
-          actorIds: f.actorIds || f.actor_ids || [],
-          parentId: f.parentId || f.parent_id,
-          childrenIds: f.childrenIds || f.children_ids || [],
-          scenarios: f.scenarios?.map((s: any) => ({
-            scenarioId: s.scenarioId || s.id || s.scenario_id,
-            scenarioName: s.scenarioName || s.name || s.scenario_name,
-            scenarioContent: s.scenarioContent || s.content || s.scenario_content,
-            featureId: s.featureId || s.feature_id,
-            actorId: s.actorId || s.actor_id,
-            acceptanceCriteria: (s.acceptance_criteria || s.acceptanceCriteria)?.map((ac: any) => ({
-              criterionId: ac.criterionId || ac.id || ac.criterion_id,
-              criterionContent: ac.criterionContent || ac.content || ac.criterion_content,
+        projectName: snap.project_name,
+        projectDescription: snap.project_description,
+        userRequirements: snap.user_requirements,
+        actors: snap.actors.map((a: any) => ({
+          actorId: a.actor_id,
+          actorName: a.actor_name,
+          actorDescription: a.actor_description
+        })),
+        features: snap.features.map((f: any) => ({
+          featureId: f.feature_id,
+          featureName: f.feature_name,
+          featureDescription: f.feature_description,
+          actorIds: f.actor_ids,
+          parentId: f.parent_id,
+          childrenIds: f.children_ids,
+          scenarios: f.scenarios.map((s: any) => ({
+            scenarioId: s.scenario_id,
+            scenarioName: s.scenario_name,
+            scenarioContent: s.scenario_content,
+            featureId: s.feature_id,
+            actorId: s.actor_id,
+            acceptanceCriteria: s.acceptance_criteria.map((ac: any) => ({
+              criterionId: ac.criterion_id,
+              criterionContent: ac.criterion_content,
               position: ac.position
-            })) || []
-          })) || [],
+            }))
+          })),
           scope: f.scope ? {
-            scopeId: f.scope.scopeId || f.scope.id || f.scope.scope_id,
-            scopeStatus: f.scope.scopeStatus || f.scope.scope_status || f.scope.status,
+            scopeId: f.scope.scope_id,
+            scopeStatus: f.scope.scope_status,
             reason: f.scope.reason,
-            kanoCategory: f.scope.kanoCategory || f.scope.kano_category,
-            kanoCategoryName: f.scope.kanoCategoryName || f.scope.kano_category_name
+            kanoCategory: f.scope.kano_category,
+            kanoCategoryName: f.scope.kano_category_name
           } : null
-        })) || [],
-        businessObjects: snap.business_objects?.map((bo: any) => ({
-          businessObjectId: bo.businessObjectId || bo.id || bo.business_object_id,
-          businessObjectName: bo.businessObjectName || bo.name || bo.business_object_name,
-          businessObjectDescription: bo.businessObjectDescription || bo.description || bo.business_object_description,
-          businessObjectAttributes: (bo.business_object_attributes || bo.businessObjectAttributes)?.map((attr: any) => ({
-            businessObjectAttributeId: attr.businessObjectAttributeId || attr.id || attr.business_object_attribute_id,
-            businessObjectAttributeName: attr.businessObjectAttributeName || attr.name || attr.business_object_attribute_name,
-            businessObjectAttributeDescription: attr.businessObjectAttributeDescription || attr.description || attr.business_object_attribute_description,
-            businessObjectAttributeType: attr.businessObjectAttributeType || attr.data_type || attr.business_object_attribute_type,
-            businessObjectAttributeExample: attr.businessObjectAttributeExample || attr.example || attr.business_object_attribute_example
-          })) || []
-        })) || [],
-        flows: snap.flows?.map((fl: any) => ({
-          flowId: fl.flowId || fl.id || fl.flow_id,
-          flowName: fl.flowName || fl.name || fl.flow_name,
-          flowDescription: fl.flowDescription || fl.description || fl.flow_description,
-          featureIds: fl.featureIds || fl.feature_ids || [],
-          flowSteps: (fl.flow_steps || fl.flowSteps)?.map((step: any) => ({
-            stepId: step.stepId || step.id || step.step_id,
-            stepName: step.stepName || step.name || step.step_name,
-            stepDescription: step.stepDescription || step.description || step.step_description,
-            stepType: step.stepType || step.step_type || step.stepType,
-            position: step.position,
-            actorIds: step.actorIds || step.actor_ids || [],
-            inputBusinessObjectIds: step.inputBusinessObjectIds || step.input_business_object_ids || [],
-            outputBusinessObjectIds: step.outputBusinessObjectIds || step.output_business_object_ids || [],
-            nextStepIds: step.nextStepIds || step.next_step_ids || []
-          })) || []
-        })) || [],
-        findings: [],
-        perceptionSlot: null
+        })),
+        flows: snap.flows.map((fl: any) => ({
+          featureIds: fl.feature_ids,
+          flowSteps: fl.flow_steps.map((step: any) => ({
+            stepName: step.step_name,
+            actorIds: step.actor_ids,
+          }))
+        })),
+        findings: []
       };
     }
     return ir;
@@ -243,10 +243,15 @@ export function Preview() {
       return;
     }
 
+    setPrototype(null);
+    setPrototypeState('idle');
+    setPrototypeError(null);
+    setHasRequestedShadowPreview(false);
+    setSmoothProgress(0);
     if (isPreviewReady) {
       useWorkspaceStore.setState({ activeShadowDraft: null });
       setIsDraftInitializing(true);
-      workspaceApi.getLatestPrototypePreview(projectId)
+      workspaceApi.getLatestPrototypePreview(projectId, branchRef)
         .then((res) => {
           if (!cancelled) {
             if (res && !('detail' in res) && (res as any).prototypeId && (res as any).message !== 'prototype_preview_not_found') {
@@ -256,6 +261,7 @@ export function Preview() {
                 setPrototypeError(null);
               } else if (res.status === 'failed') {
                 setPrototypeState('error');
+                setPrototypeError(res.errorMessage || t('preview.full.prototypeFailure'));
               } else {
                 setPrototypeState('ready');
                 setPrototypeError(null);
@@ -307,7 +313,7 @@ export function Preview() {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = () => {
-      workspaceApi.getLatestPrototypePreview(ir.projectId)
+      workspaceApi.getLatestPrototypePreview(ir.projectId, branchRef)
         .then((res) => {
           if (cancelled || !res || 'detail' in res) return;
           setPrototype(res);
@@ -333,7 +339,7 @@ export function Preview() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [prototype?.prototypeId, prototype?.status, ir?.projectId]);
+  }, [prototype?.prototypeId, prototype?.status, ir?.projectId, branchRef]);
 
 
   // Unified Polling Driver for activeShadowDraft when status is generating
@@ -370,12 +376,12 @@ export function Preview() {
     const isGenerating = activeShadowDraftRef.current?.status === 'generating';
     const isLoading = prototypeState === 'loading';
     if (!isGenerating && !isLoading) {
-      if (activeShadowDraftRef.current?.status === 'failed' && hasRequestedShadowPreview) {
+      if (generationFailed && hasRequestedShadowPreview) {
         setProgressSubtitle(t('preview.full.progressFailed'));
         setIsModalOpen(true); // Keep modal open to show traceback!
         return;
       }
-      if (smoothProgress > 0 && smoothProgress < 100) {
+      if ((prototypeState === 'ready' || activeShadowDraftRef.current?.status === 'ready') && smoothProgress > 0 && smoothProgress < 100) {
         setSmoothProgress(100);
         setProgressSubtitle(t('preview.full.progressSucceeded'));
         const closeTimer = setTimeout(() => {
@@ -499,7 +505,7 @@ export function Preview() {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, hasRequestedShadowPreview, t]);
+  }, [activeShadowDraft?.status, activeShadowDraft?.unreadyGates, activeShadowDraft?.unready_gates, prototypeState, generationFailed, hasRequestedShadowPreview, t]);
 
   // Set prototype state and values based on activeShadowDraft in unconverged shadow mode
   useEffect(() => {
@@ -563,7 +569,7 @@ export function Preview() {
 
     const poll = () => {
       if (cancelled) return;
-      workspaceApi.getLatestPrototypePreview(ir.projectId)
+      workspaceApi.getLatestPrototypePreview(ir.projectId, branchRef)
         .then((res) => {
           if (cancelled) return;
           if (res && !('detail' in res) && res.status === 'ready') {
@@ -604,24 +610,24 @@ export function Preview() {
     return () => {
       cancelled = true;
     };
-  }, [isPostCommitCompiling, ir?.projectId]);
+  }, [isPostCommitCompiling, ir?.projectId, branchRef]);
 
 
 
-  const actors = useMemo(() => spaceToUse?.actorsCompatible || [], [spaceToUse]);
+  const actors = useMemo(() => spaceToUse?.actors || [], [spaceToUse]);
   const issues = useMemo(() => spaceToUse?.findings || [], [spaceToUse]);
   const activeRole = actors[activeRoleIndex];
 
   const pages = useMemo(() => {
     if (!spaceToUse || !activeRole) return [];
-    return buildRolePages(spaceToUse as any, activeRole.id);
+    return buildRolePages(spaceToUse as any, String(activeRole.actorId));
   }, [activeRole, spaceToUse]);
 
   const unresolvedIssues = issues.filter((finding: any) => (finding.status || 'open') === 'open');
 
   const rolePrototypePages = useMemo(() => {
     if (!prototype?.pages?.length || !activeRole) return [];
-    return prototype.pages.filter((page) => String(page.roleId) === String(activeRole.id));
+    return prototype.pages.filter((page) => String(page.roleId) === String(activeRole.actorId));
   }, [activeRole, prototype]);
 
   const activePrototypePage = useMemo(() => {
@@ -647,24 +653,6 @@ export function Preview() {
     const hasPages = Boolean(prototype.pages && prototype.pages.length > 0);
     return hasHtml || hasPages;
   }, [prototype]);
-
-  const flows = useMemo(() => spaceToUse?.flows || [], [spaceToUse]);
-
-  const activeFlow = useMemo(() => {
-    return flows.find((f: any) => f.flowId === selectedFlowId) || flows[0] || null;
-  }, [flows, selectedFlowId]);
-
-  const activeFlowSteps = useMemo(() => {
-    if (!activeFlow) return [];
-    return activeFlow.flowSteps || [];
-  }, [activeFlow]);
-
-  // Initialize selected flow ID
-  useEffect(() => {
-    if (flows.length > 0 && selectedFlowId === null) {
-      setSelectedFlowId(flows[0].flowId);
-    }
-  }, [flows, selectedFlowId]);
 
   useEffect(() => {
     if (rolePrototypePages.length === 0) {
@@ -751,8 +739,10 @@ export function Preview() {
       setIsModalOpen(true);
       setPrototypeState('loading');
       setPrototypeError(null);
+      const requestedBranch = branchRef;
       try {
-        const result = await workspaceApi.generatePrototypePreview(spaceToUse.projectId, true);
+        const result = await workspaceApi.generatePrototypePreview(spaceToUse.projectId, true, branchRef);
+        if (branchRefCurrent.current !== requestedBranch) return;
         setPrototype(result);
         if (result.status === 'failed') {
           setPrototypeState('error');
@@ -763,6 +753,7 @@ export function Preview() {
           setPrototypeState('ready');
         }
       } catch (error) {
+        if (branchRefCurrent.current !== requestedBranch) return;
         setPrototypeState('error');
         setPrototypeError(error instanceof Error ? error.message : t('preview.full.prototypeFailure'));
       }
@@ -914,19 +905,10 @@ export function Preview() {
       )}
 
       <div className="flex-1 p-6 pb-24 overflow-y-auto w-full">
-        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto space-y-8 animate-in fade-in flex flex-col">
-          {/* Header Banner */}
-          <GlassSurface className="p-6 flex flex-col lg:flex-row justify-between lg:items-center gap-6 relative z-30">
-            <div className="space-y-1">
-              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <LayoutDashboard className="w-5 h-5 text-indigo-600 shrink-0" />
-            {t('preview.full.deliveryTitle')}
-              </h2>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-2xl font-medium">
-            {t('preview.full.deliveryDescription')}
-              </p>
-            </div>
-            <div className="relative flex items-center">
+        <div className="w-full max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[1920px] mx-auto space-y-8 animate-in fade-in flex flex-col min-h-full">
+          {/* Export Toolbar (collapsed delivery banner: only the dropdown matters) */}
+          <div className="flex justify-end relative z-30">
+            <div className="relative flex items-center" ref={exportMenuRef}>
               <button
                 type="button"
                 onClick={() => setIsExportMenuOpen((prev) => !prev)}
@@ -939,10 +921,6 @@ export function Preview() {
               </button>
               {isExportMenuOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsExportMenuOpen(false)}
-                  />
                   <div className="absolute right-0 top-[calc(100%+10px)] z-50 min-w-[280px] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xl p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
                   <button
                     type="button"
@@ -1014,7 +992,7 @@ export function Preview() {
                 </>
               )}
             </div>
-          </GlassSurface>
+          </div>
 
           {/* Shadow Sandbox Banner */}
           {!isPreviewReady && activeShadowDraft?.source === 'shadow_project' && activeShadowDraft.status === 'ready' && (
@@ -1093,7 +1071,7 @@ export function Preview() {
           {/* Integrated Interactive Prototype Section */}
           {!hasCompiledPrototype ? (
             /* Full-width Onboarding & Prototype Generation Hero Card */
-            <GlassSurface variant="elevated" className="p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-8">
+            <GlassSurface variant="elevated" className="flex-1 min-h-[420px] p-8 sm:p-12 text-center flex flex-col items-center justify-center space-y-8">
               <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-teal-500/10 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-inner">
                 <MonitorPlay className="w-10 h-10 text-indigo-600" />
               </div>
@@ -1183,7 +1161,7 @@ export function Preview() {
                   </button>
 
                   {/* Secondary Preview Actions */}
-                  <div className="relative">
+                  <div className="relative" ref={previewMenuRef}>
                     <button
                       type="button"
                       onClick={() => setIsPreviewMenuOpen((open) => !open)}
@@ -1195,12 +1173,6 @@ export function Preview() {
                     </button>
                     {isPreviewMenuOpen && (
                       <>
-                        <button
-                          type="button"
-                          className="fixed inset-0 z-40 cursor-default"
-                          aria-label={t('common.close')}
-                          onClick={() => setIsPreviewMenuOpen(false)}
-                        />
                         <div className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
                           <button
                             type="button"
@@ -1257,7 +1229,7 @@ export function Preview() {
                         <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shrink-0" />
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shrink-0" />
                         <span className="ml-3 text-xs text-slate-400 font-mono select-none truncate">
-                          /projects/{spaceToUse?.projectId || 'current'}/roles/{activeRole?.title || 'role'}/{activePrototypePage?.featureName || 'prototype'}
+                          /projects/{spaceToUse?.projectId || 'current'}/roles/{activeRole?.actorName || 'role'}/{activePrototypePage?.featureName || 'prototype'}
                         </span>
                       </div>
                       <span className="text-[10px] bg-slate-200 border border-slate-300 text-slate-500 px-2 py-0.5 rounded font-mono font-bold select-none shrink-0 ml-2">
@@ -1305,7 +1277,7 @@ export function Preview() {
                       ) : (
                         <ScaledPrototypeFrame
                           frameKey={activePrototypePage?.pageId || prototype.shadowDraftId || prototype.prototypeId}
-                          title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} prototype`}
+                          title={`${activeRole?.actorName || spaceToUse?.projectName || 'Project'} prototype`}
                           srcDoc={prototypeSrcDoc}
                           viewport="desktop"
                           showScale
@@ -1341,7 +1313,7 @@ export function Preview() {
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
                       {actors.map((actor: any, idx: number) => (
                         <button
-                          key={actor.id}
+                          key={actor.actorId}
                           type="button"
                           onClick={() => {
                             setActiveRoleIndex(idx);
@@ -1353,7 +1325,7 @@ export function Preview() {
                               : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.title}</span>
+                          <span className="flex items-center gap-1"><User className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {actor.actorName}</span>
                         </button>
                       ))}
                     </div>
@@ -1434,6 +1406,12 @@ export function Preview() {
             </GlassSurface>
           )}
 
+          {prototypeState === 'error' && (
+            <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
+              {prototypeError || t('preview.full.prototypeFailure')}
+            </div>
+          )}
+
           {/* Active Issues Alert */}
           {unresolvedIssues.length > 0 && (
             <section className="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm">
@@ -1443,123 +1421,6 @@ export function Preview() {
               <p className="text-xs text-amber-800 leading-relaxed font-medium">
                 {t('preview.full.unresolvedIssuesDescription')}
               </p>
-            </section>
-          )}
-
-          {/* End-to-End Business Flow Chronological Timelines */}
-          {flows.length > 0 && (
-            <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative w-full">
-              <div className="mb-6 border-b border-slate-100 pb-4">
-                <h3 className="text-base font-extrabold text-slate-900">{t('preview.stageGuidanceTitle')}</h3>
-              </div>
-              
-              {/* Flow Switcher Tabs */}
-              <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-100 pb-4">
-                {flows.map((flow: any) => (
-                  <button
-                    key={flow.flowId}
-                    type="button"
-                    onClick={() => setSelectedFlowId(flow.flowId)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                      selectedFlowId === flow.flowId 
-                        ? 'bg-slate-900 text-white shadow-indigo-100' 
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
-                    }`}
-                  >
-          {flow.flowName}
-                  </button>
-                ))}
-              </div>
-
-              {/* Switchable flow chronological view */}
-              <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl flex flex-col min-h-[360px] p-6 shadow-inner">
-                <div className="p-4 bg-white border border-slate-200 rounded-t-2xl flex items-center justify-between shrink-0 mb-6 shadow-sm">
-                  <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                  {t('preview.full.reviewingFlow', { name: activeFlow?.flowName })}
-                  </h4>
-                </div>
-                
-                <div className="flex-1 w-full max-w-3xl mx-auto">
-                  {activeFlowSteps.length === 0 ? (
-                    <div className="text-center py-20 text-xs text-slate-400 italic">
-                  {t('preview.stageGuidanceEmpty')}
-                    </div>
-                  ) : (
-                    <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 py-2">
-                      {activeFlowSteps.map((step: any, idx: number) => {
-                        const stepDetail = buildStepDetail(spaceToUse as any, step.stepId);
-                        const performerId = (step.actorIds || [])[0];
-                        const performer = (spaceToUse?.actors || []).find((a: any) => a.actorId === performerId);
-                        const actorName = performer ? performer.actorName : t('preview.flowRoleSystem');
-
-                        const nextSteps = (step.nextStepIds || [])
-                          .map((nid: string) => activeFlowSteps.find((s: any) => s.stepId === nid)?.stepName)
-                          .filter(Boolean) as string[];
-
-                        const stepSlots: any[] = [];
-                        if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.perceptionJobId === step.stepId) {
-                          stepSlots.push({
-                            id: spaceToUse.perceptionSlot.id,
-                            title: spaceToUse.perceptionSlot.perceptionKind,
-                            choiceCount: 0,
-                            status: 'empty'
-                          });
-                        }
-
-                        const isActive = selectedObject?.id === step.stepId.toString() || (highlightTarget !== null && highlightTarget.toString() === step.stepId.toString());
-
-                        return (
-                          <div key={step.stepId} className="relative">
-                            {/* Timeline dot */}
-                            <div className={`absolute -left-[44px] top-4 w-7 h-7 rounded-full border-4 flex items-center justify-center text-[10px] font-black transition-all ${
-                              isActive
-                                ? 'bg-indigo-600 border-indigo-200 text-white shadow-md shadow-indigo-600/20'
-                                : 'bg-white border-indigo-100 text-slate-400'
-                            }`}>
-                              {idx + 1}
-                            </div>
-
-                            <FlowStepCard
-                              name={step.stepName}
-                      type={step.stepType === 'actorAction' ? t('flowStepType.actorAction') : step.stepType === 'systemAction' ? t('flowStepType.systemAction') : t('flowStepType.judgment')}
-                              actor={actorName}
-                              status={step.status || 'confirmed'}
-                              inputs={stepDetail.inputs}
-                              outputs={stepDetail.outputs}
-                              rules={stepDetail.rules}
-                              stateChanges={stepDetail.stateChanges}
-                              relatedPages={stepDetail.relatedPages}
-                              relatedIssueCount={stepDetail.relatedIssueIds.length}
-                              relatedChoiceCount={stepDetail.relatedChoiceIds.length}
-                              nextSteps={nextSteps.length > 0 ? nextSteps : undefined}
-                              exceptionSteps={undefined}
-                              slots={stepSlots}
-                              active={isActive}
-                              onClick={() => {
-                                setSelectedObject({
-                                  ...step,
-                                  id: step.stepId.toString(),
-                                  title: step.stepName,
-                                  description: step.stepDescription,
-                                  status: step.status || 'confirmed',
-                                  kind: 'flow_step'
-                                });
-                                setHighlightTarget(step.stepId.toString());
-                              }}
-                              onSlotClick={(slotId) => {
-                                if (spaceToUse?.perceptionSlot && spaceToUse.perceptionSlot.id === slotId) {
-                                  setSelectedObject(spaceToUse.perceptionSlot);
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
             </section>
           )}
 
@@ -1573,7 +1434,7 @@ export function Preview() {
             
             {/* Header Glowing Sparkle */}
             <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mb-5 shadow-inner">
-              {activeShadowDraft?.status === 'failed' ? (
+              {generationFailed ? (
                 <XCircle className="w-8 h-8 text-rose-500 animate-bounce" />
               ) : smoothProgress === 100 ? (
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 scale-110 transition-transform duration-500" />
@@ -1584,7 +1445,7 @@ export function Preview() {
 
             {/* Title */}
             <h3 className="text-sm font-black text-slate-800 tracking-wide text-center leading-none mb-2">
-              {activeShadowDraft?.status === 'failed' ? (
+              {generationFailed ? (
                 <span className="text-rose-600 font-extrabold flex items-center gap-1.5 justify-center"><AlertCircle className="w-5 h-5" /> {t('preview.full.overlayFailed')}</span>
               ) : smoothProgress === 100 ? (
           <span className="text-emerald-600 font-extrabold">{t('preview.full.overlaySucceeded')}</span>
@@ -1597,7 +1458,7 @@ export function Preview() {
 
             {/* Subtitle */}
             <p className={`text-xs text-center max-w-sm px-4 leading-relaxed font-semibold transition-all duration-300 min-h-[36px] ${
-              activeShadowDraft?.status === 'failed' ? 'text-rose-500' : 'text-slate-500'
+              generationFailed ? 'text-rose-500' : 'text-slate-500'
             }`}>
               {progressSubtitle}
             </p>
@@ -1606,7 +1467,7 @@ export function Preview() {
             <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-8 mt-4 border border-slate-200/50">
               <div 
                 className={`h-full transition-all duration-300 ease-out ${
-                  activeShadowDraft?.status === 'failed' 
+                  generationFailed
                     ? 'bg-rose-500' 
                     : smoothProgress === 100 
                       ? 'bg-emerald-500' 
@@ -1632,7 +1493,7 @@ export function Preview() {
                     { label: t('preview.full.stepInteractiveAssembly'), checkKey: 'all', threshold: 100 },
                   ]
               ).map((step, idx, arr) => {
-                const isFailed = activeShadowDraft?.status === 'failed';
+                const isFailed = generationFailed;
                 const isStepFinished = isShadowOverlay
                   ? (step.checkKey === 'all'
                       ? smoothProgress === 100
@@ -1669,7 +1530,7 @@ export function Preview() {
             </div>
 
             {/* Error message collapsible container (collapsible terminal box) */}
-            {activeShadowDraft?.status === 'failed' && (
+            {generationFailed && (
               <div className="w-full flex flex-col mb-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md">
                 <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
@@ -1677,7 +1538,7 @@ export function Preview() {
                   </span>
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(activeShadowDraft.errorMessage || '');
+                      navigator.clipboard.writeText(generationError);
                       showToast(t('preview.copyLogsSuccess'));
                     }}
                     className="text-[9px] bg-slate-800 border border-slate-700 text-slate-300 font-bold px-2 py-0.5 rounded hover:bg-slate-700 hover:text-white transition-colors"
@@ -1686,15 +1547,21 @@ export function Preview() {
                   </button>
                 </div>
                 <div className="p-4 max-h-[160px] overflow-y-auto font-mono text-[10px] text-rose-400/90 leading-relaxed scrollbar-thin select-text text-left">
-                  {activeShadowDraft.errorMessage || t('preview.full.unknownPerceptionError')}
+                  {generationError}
                 </div>
               </div>
             )}
 
             {/* Action Button (Dismiss on fail) */}
-            {activeShadowDraft?.status === 'failed' && (
+            {generationFailed && (
               <button
                 onClick={() => {
+                  setHasRequestedShadowPreview(false);
+                  if (!activeShadowDraft?.draftId) {
+                    setIsModalOpen(false);
+                    setSmoothProgress(0);
+                    return;
+                  }
                   discardShadowDraft(activeShadowDraft.draftId)
                     .then(() => {
                       setIsModalOpen(false);
@@ -1817,7 +1684,7 @@ export function Preview() {
             ) : (
               <ScaledPrototypeFrame
                 frameKey={`fullscreen-${activePrototypePage?.pageId || prototype?.shadowDraftId || prototype?.prototypeId}`}
-                title={`${activeRole?.title || spaceToUse?.projectName || 'Project'} full prototype`}
+                title={`${activeRole?.actorName || spaceToUse?.projectName || 'Project'} full prototype`}
                 srcDoc={prototypeSrcDoc}
                 viewport={deviceViewport}
                 showScale

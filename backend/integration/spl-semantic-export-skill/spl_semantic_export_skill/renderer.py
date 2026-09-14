@@ -51,7 +51,11 @@ class SplSemanticRenderer:
         )
         lines.append("[DEFINE_CONSTRAINTS:]")
         for constraint in ir.constraints:
-            lines.append(f"DeliveryScope: \"{escape_string(constraint)}\"")
+            if constraint.startswith("BusinessRule_"):
+                rule_ref, statement = constraint.split(": ", 1)
+                lines.append(f"{rule_ref}: \"{escape_string(statement)}\"")
+            else:
+                lines.append(f"DeliveryScope: \"{escape_string(constraint)}\"")
         lines.append("[END_CONSTRAINTS]")
         lines.append("")
         self._append_types(lines, ir)

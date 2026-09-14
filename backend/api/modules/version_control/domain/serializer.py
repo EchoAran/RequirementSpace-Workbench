@@ -7,18 +7,16 @@ import hashlib
 import json
 from typing import Any
 
-CURRENT_SCHEMA_VERSION = "1.0"
+CURRENT_SCHEMA_VERSION = "2.0"
 
 
 def serialize_requirement_space(
     workspace_data: dict[str, Any],
-    schema_version: str = CURRENT_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     """
     将原生需求空间字典规范化整理为无噪声、固定排序的格式化字典。
 
     :param workspace_data: 包含 actors, features, feature_relations, scenarios, business_objects, flows, scopes 等元数据的输入字典
-    :param schema_version: 规范版本号
     :return: 经过清洗和确定性排序的完整规范模型字典
     """
     # 提取项目元数据并默认规范化
@@ -139,9 +137,39 @@ def serialize_requirement_space(
                 "actor_logical_uuids": sorted(list(set(str(u) for u in step.get("actor_logical_uuids", [])))),
                 "input_business_object_logical_uuids": sorted(list(set(str(u) for u in step.get("input_business_object_logical_uuids", [])))),
                 "output_business_object_logical_uuids": sorted(list(set(str(u) for u in step.get("output_business_object_logical_uuids", [])))),
-                "next_step_logical_uuids": sorted(list(set(str(u) for u in step.get("next_step_logical_uuids", [])))),
             })
         steps_list.sort(key=lambda x: (x["position"], x["logical_uuid"]))
+
+        transitions_raw: list[dict[str, Any]] = item.get("transitions", [])
+        trans_list = []
+        for trans in transitions_raw:
+            trans_list.append({
+                "logical_uuid": str(trans["logical_uuid"]),
+                "source_step_logical_uuid": str(trans["source_step_logical_uuid"]),
+                "target_step_logical_uuid": str(trans["target_step_logical_uuid"]),
+                "label": str(trans.get("label", "") or ""),
+                "condition_text": str(trans.get("condition_text", "") or ""),
+                "is_default": bool(trans.get("is_default", False)),
+                "position": int(trans.get("position", 0)),
+                "semantic_tags": sorted({
+                    str(tag).strip()
+                    for tag in trans.get("semantic_tags", [])
+                    if str(tag).strip()
+                }),
+                "origin": str(trans.get("origin", "manual") or "manual"),
+                "confirmation_status": str(
+                    trans.get("confirmation_status", "ai_assumption")
+                    or "ai_assumption"
+                ),
+            })
+        trans_list.sort(
+            key=lambda x: (
+                x["source_step_logical_uuid"],
+                x["position"],
+                x["target_step_logical_uuid"],
+                x["logical_uuid"],
+            )
+        )
 
         flows.append({
             "logical_uuid": str(item["logical_uuid"]),
@@ -150,6 +178,7 @@ def serialize_requirement_space(
             "confirmation_status": str(item.get("confirmation_status", "ai_assumption") or "ai_assumption"),
             "feature_logical_uuids": f_feat_uuids,
             "steps": steps_list,
+            "transitions": trans_list,
         })
     flows.sort(key=lambda x: x["logical_uuid"])
 
@@ -170,8 +199,44 @@ def serialize_requirement_space(
         })
     scopes.sort(key=lambda x: x["logical_uuid"])
 
+    # Domain Rules 规范化与排序
+    domain_rules_raw: list[dict[str, Any]] = workspace_data.get("domain_rules", [])
+    domain_rules = []
+    for item in domain_rules_raw:
+        domain_rules.append({
+            "logical_uuid": str(item["logical_uuid"]),
+            "parent_rule_logical_uuid": str(item["parent_rule_logical_uuid"]) if item.get("parent_rule_logical_uuid") else None,
+            "title": str(item.get("title", "") or ""),
+            "statement": str(item.get("statement", "") or ""),
+            "origin": str(item.get("origin", "manual") or "manual"),
+            "confirmation_status": str(item.get("confirmation_status", "needs_confirmation") or "needs_confirmation"),
+        })
+    domain_rules.sort(key=lambda x: x["logical_uuid"])
+
+    # Rule Links 规范化与排序
+    rule_links_raw: list[dict[str, Any]] = workspace_data.get("rule_links", [])
+    rule_links = []
+    for item in rule_links_raw:
+        rule_links.append({
+            "logical_uuid": str(item["logical_uuid"]),
+            "rule_logical_uuid": str(item["rule_logical_uuid"]),
+            "target_kind": str(item["target_kind"]),
+            "target_logical_uuid": str(item["target_logical_uuid"]),
+            "link_purpose": str(item["link_purpose"]),
+            "context_text": str(item.get("context_text", "") or ""),
+        })
+    rule_links.sort(
+        key=lambda x: (
+            x["rule_logical_uuid"],
+            x["link_purpose"],
+            x["target_kind"],
+            x["target_logical_uuid"],
+            x["logical_uuid"],
+        )
+    )
+
     return {
-        "schema_version": schema_version,
+        "schema_version": CURRENT_SCHEMA_VERSION,
         "project_metadata": normalized_meta,
         "actors": actors,
         "features": features,
@@ -180,6 +245,8 @@ def serialize_requirement_space(
         "business_objects": business_objects,
         "flows": flows,
         "scopes": scopes,
+        "domain_rules": domain_rules,
+        "rule_links": rule_links,
     }
 
 

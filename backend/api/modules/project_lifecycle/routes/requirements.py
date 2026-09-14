@@ -90,7 +90,7 @@ async def update_user_requirements(
             user_requirements=request.user_requirements,
             actor=actor,
             session=session,
-            workspace_id=ws_obj.id if ws_obj else None,
+            workspace_id=ws_obj.id,
         )
     except ValueError as error:
         if str(error) == "project_not_found":
@@ -141,7 +141,7 @@ async def refine_user_requirements(
             user_feedback=request.user_feedback,
             actor=ai_actor,
             session=session,
-            workspace_id=ws_obj.id if ws_obj else None,
+            workspace_id=ws_obj.id,
         )
     except ValueError as error:
         if str(error) == "project_not_found":

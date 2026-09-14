@@ -10,6 +10,10 @@ import {
   KnowledgeWorkspace,
   KnowledgeDocument,
   Finding,
+  DomainRule,
+  RuleLink,
+  RuleOrigin,
+  RuleLinkPurpose,
 } from '@/core/schema';
 import {
   BranchSummary,
@@ -38,8 +42,8 @@ export const workspaceApi = {
   list: async (): Promise<WorkspaceListItem[]> => {
     return http.get<WorkspaceListItem[]>('/projects');
   },
-  getById: async (id: string | number): Promise<RequirementSpace> => {
-    return http.get<RequirementSpace>(`/projects/${id}`);
+  getById: async (id: string | number, branch?: string): Promise<RequirementSpace> => {
+    return http.get<RequirementSpace>(`/projects/${id}`, { branch });
   },
   delete: async (id: string | number): Promise<void> => {
     await http.delete<{ project_id: string; message: string }>(`/projects/${id}`);
@@ -69,15 +73,14 @@ export const workspaceApi = {
     backendFindings: Finding[];
     findingsByView: {
       issues: Finding[];
-      next_action: Finding[];
+      nextAction: Finding[];
       gate: Finding[];
       health: Finding[];
     };
     choiceGroups: any[];
     stageProgress?: any;
   }> => {
-    const params = branch && branch !== 'main' ? `?branch=${encodeURIComponent(branch)}` : '';
-    return http.get<any>(`/projects/${projectId}/hydrate${params}`);
+    return http.get<any>(`/projects/${projectId}/hydrate`, { branch: branch ?? undefined });
   },
   /** 更新任意节点的确认状态（`ai_assumption` / `needs_confirmation` / `confirmed`）。 */
   updateNodeConfirmationStatus: async (
@@ -184,10 +187,20 @@ export const workspaceApi = {
   deleteFlow: async (projectId: string, flowId: number) => {
     return http.delete<any>(`/projects/${projectId}/flows/${flowId}`);
   },
-  createFlowStep: async (projectId: string, flowId: number, payload: { name: string; description: string; step_type: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; next_step_ids?: number[] }) => {
+  getFlowPaths: async (projectId: string, flowId: number, branch?: string) => {
+    return http.get<any>(`/projects/${projectId}/flows/${flowId}/paths`, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  getFlowObjectUsage: async (projectId: string, flowId: number, branch?: string) => {
+    return http.get<any>(`/projects/${projectId}/flows/${flowId}/object-usage`, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  createFlowStep: async (projectId: string, flowId: number, payload: { name: string; description: string; step_type: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[] }) => {
     return http.post<any>(`/projects/${projectId}/flows/${flowId}/steps`, payload);
   },
-  updateFlowStep: async (projectId: string, flowId: number, stepId: number, payload: { name?: string; description?: string; step_type?: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; next_step_ids?: number[]; last_seen_updated_at?: string }) => {
+  updateFlowStep: async (projectId: string, flowId: number, stepId: number, payload: { name?: string; description?: string; step_type?: string; actor_ids?: number[]; input_business_object_ids?: number[]; output_business_object_ids?: number[]; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/flows/${flowId}/steps/${stepId}`, payload);
   },
   deleteFlowStep: async (projectId: string, flowId: number, stepId: number) => {
@@ -195,6 +208,51 @@ export const workspaceApi = {
   },
   reorderFlowSteps: async (projectId: string, flowId: number, stepIds: number[]) => {
     return http.put<any>(`/projects/${projectId}/flows/${flowId}/steps/reorder`, { step_ids: stepIds });
+  },
+  createFlowTransition: async (
+    projectId: string,
+    flowId: number,
+    payload: {
+      source_step_id: number;
+      target_step_id: number;
+      condition_text?: string;
+      label?: string;
+      is_default?: boolean;
+      position?: number;
+      semantic_tags?: string[];
+      rule_ids?: number[];
+      origin?: string;
+      confirmation_status?: string;
+      last_seen_updated_at?: string;
+    }
+  ) => {
+    return http.post<any>(`/projects/${projectId}/flows/${flowId}/transitions`, payload);
+  },
+  listFlowTransitions: async (projectId: string, flowId: number) => {
+    return http.get<any>(`/projects/${projectId}/flows/${flowId}/transitions`);
+  },
+  getFlowTransition: async (projectId: string, flowId: number, transitionId: number) => {
+    return http.get<any>(`/projects/${projectId}/flows/${flowId}/transitions/${transitionId}`);
+  },
+  updateFlowTransition: async (
+    projectId: string,
+    flowId: number,
+    transitionId: number,
+    payload: {
+      label?: string;
+      condition_text?: string;
+      is_default?: boolean;
+      position?: number;
+      semantic_tags?: string[];
+      rule_ids?: number[];
+      confirmation_status?: string;
+      last_seen_updated_at?: string;
+    }
+  ) => {
+    return http.put<any>(`/projects/${projectId}/flows/${flowId}/transitions/${transitionId}`, payload);
+  },
+  deleteFlowTransition: async (projectId: string, flowId: number, transitionId: number) => {
+    return http.delete<any>(`/projects/${projectId}/flows/${flowId}/transitions/${transitionId}`);
   },
   updateScope: async (projectId: string, featureId: number, payload: { status: string; reason: string; positive_summary?: string | null; negative_summary?: string | null; last_seen_updated_at?: string }) => {
     return http.put<any>(`/projects/${projectId}/features/${featureId}/scope`, payload);
@@ -312,18 +370,18 @@ export const workspaceApi = {
       next_status: nextStatus,
     });
   },
-  generatePrototypePreview: async (projectId: string, forceRegenerate = true): Promise<any> => {
+  generatePrototypePreview: async (projectId: string, forceRegenerate = true, branch?: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/prototype-preview`, {
       force_regenerate: forceRegenerate,
-    });
+    }, { params: { branch } });
   },
-  getLatestPrototypePreview: async (projectId: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/prototype-preview/latest`);
+  getLatestPrototypePreview: async (projectId: string, branch?: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/prototype-preview/latest`, { branch });
   },
   listAuditLogs: async (projectId: string): Promise<any[]> => {
     return http.get<any[]>(`/projects/${projectId}/audit-logs`);
   },
-  listFindings: async (projectId: string, params: { stage?: string; view?: string; action?: string }): Promise<any> => {
+  listFindings: async (projectId: string, params: { stage?: string; view?: string; action?: string; branch?: string }): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/findings`, params);
   },
   updateFindingStatus: async (projectId: string, findingId: string, status: string): Promise<any> => {
@@ -333,7 +391,7 @@ export const workspaceApi = {
     });
   },
   resolveIssue: async (projectId: string, payload: { issue_id?: string; issue_code: string; stage?: string; target: any | null; metadata?: any }): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/issues/resolve`, payload);
+    return http.post<any>(`/projects/${projectId}/issue_repairs/resolve`, payload);
   },
   getNextSuggestion: async (projectId: string, stage: string, branch?: string): Promise<any> => {
     return http.get<any>(`/projects/${projectId}/next-suggestion`, { stage, branch });
@@ -370,19 +428,28 @@ export const workspaceApi = {
     target?: any;
     candidate_count?: number;
     user_feedback?: string | null;
-  }): Promise<any> => {
-    return http.post<any>('/generation_choice_groups', payload);
+  }, branch?: string): Promise<any> => {
+    return http.post<any>('/generation_choice_groups', payload, { params: { branch } });
   },
 
-  discardChoiceGroup: async (projectId: string, groupId: number): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/discard`);
+  discardChoiceGroup: async (projectId: string, groupId: number, branch?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/choice_groups/${groupId}/discard`, undefined, { params: { branch } });
   },
 
-  listChoiceGroups: async (projectId: string, status?: string): Promise<any[]> => {
-    return http.get<any[]>(`/projects/${projectId}/choice_groups`, { status });
+  listChoiceGroups: async (projectId: string, status?: string, branch?: string): Promise<any[]> => {
+    return http.get<any[]>(`/projects/${projectId}/choice_groups`, { status, branch });
   },
-  acceptChoice: async (projectId: string, choiceId: number, force = false): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`, { force });
+  acceptChoice: async (
+    projectId: string,
+    choiceId: number,
+    force = false,
+    expectedWorkspaceVersion?: string | number | null
+  ): Promise<any> => {
+    const payload: { force: boolean; expected_workspace_version?: string | number | null } = { force };
+    if (expectedWorkspaceVersion !== undefined) {
+      payload.expected_workspace_version = expectedWorkspaceVersion;
+    }
+    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`, payload);
   },
   rejectChoice: async (projectId: string, choiceId: number): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`);
@@ -401,25 +468,37 @@ export const workspaceApi = {
   resetKano: async (projectId: string): Promise<any> => {
     return http.post<any>(`/projects/${projectId}/scope/reset_kano`);
   },
-  getActiveShadowDraft: async (projectId: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/active`);
-  },
-  prepareShadowDraft: async (projectId: string): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts`);
-  },
-  getShadowDraft: async (projectId: string, draftId: string): Promise<any> => {
-    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`);
-  },
-  discardShadowDraft: async (projectId: string, draftId: string): Promise<any> => {
-    return http.delete<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`);
-  },
-  commitShadowDraft: async (projectId: string, draftId: string): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}/commit`);
-  },
-  regenerateShadowDraft: async (projectId: string, draftId: string, feedback?: string): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}/regenerate`, {
-      user_feedback: feedback,
+  getActiveShadowDraft: async (projectId: string, branch?: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/active`, {
+      params: branch ? { branch } : undefined,
     });
+  },
+  prepareShadowDraft: async (projectId: string, branch?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts`, undefined, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  getShadowDraft: async (projectId: string, draftId: string, branch?: string): Promise<any> => {
+    return http.get<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  discardShadowDraft: async (projectId: string, draftId: string, branch?: string): Promise<any> => {
+    return http.delete<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}`, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  commitShadowDraft: async (projectId: string, draftId: string, branch?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/preview-shadow-drafts/${draftId}/commit`, undefined, {
+      params: branch ? { branch } : undefined,
+    });
+  },
+  regenerateShadowDraft: async (projectId: string, draftId: string, feedback?: string, branch?: string): Promise<any> => {
+    return http.post<any>(
+      `/projects/${projectId}/preview-shadow-drafts/${draftId}/regenerate`,
+      { user_feedback: feedback },
+      { params: branch ? { branch } : undefined },
+    );
   },
   createAIAddSession: async (payload: {
     project_id: string;
@@ -825,4 +904,95 @@ export const workspaceApi = {
   performMerge: async (projectId: string, mrRef: string, payload: MergeRequestPayload): Promise<MergeResponse> => {
     return http.post<MergeResponse>(`/projects/${projectId}/merge-requests/${mrRef}/merge`, payload);
   },
+};
+
+export const domainRuleApi = {
+  list: async (
+    projectId: string,
+    params?: { branch?: string | null; confirmation_status?: string; origin?: string }
+  ): Promise<{ rules: DomainRule[]; total: number }> => {
+    const query = new URLSearchParams();
+    if (params?.branch) query.append('branch', params.branch);
+    if (params?.confirmation_status) query.append('confirmation_status', params.confirmation_status);
+    if (params?.origin) query.append('origin', params.origin);
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return http.get<{ rules: DomainRule[]; total: number }>(`/projects/${projectId}/rules${queryString}`);
+  },
+
+  get: async (projectId: string, ruleId: number, branch?: string | null): Promise<DomainRule> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return http.get<DomainRule>(`/projects/${projectId}/rules/${ruleId}${query}`);
+  },
+
+  create: async (
+    projectId: string,
+    payload: {
+      title: string;
+      statement: string;
+      origin?: RuleOrigin;
+      confirmationStatus?: string;
+      parentRuleId?: number | null;
+    },
+    branch?: string | null
+  ): Promise<DomainRule> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return http.post<DomainRule>(`/projects/${projectId}/rules${query}`, payload);
+  },
+
+  update: async (
+    projectId: string,
+    ruleId: number,
+    payload: {
+      title?: string;
+      statement?: string;
+      origin?: RuleOrigin;
+      confirmationStatus?: string;
+      parentRuleId?: number | null;
+      lastSeenUpdatedAt?: string;
+    },
+    branch?: string | null
+  ): Promise<DomainRule> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return http.put<DomainRule>(`/projects/${projectId}/rules/${ruleId}${query}`, payload);
+  },
+
+  delete: async (projectId: string, ruleId: number, branch?: string | null): Promise<void> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    await http.delete(`/projects/${projectId}/rules/${ruleId}${query}`);
+  },
+
+  replaceTargetRules: async (
+    projectId: string,
+    payload: { targetKind: 'flow' | 'flow_step' | 'flow_transition'; targetLogicalUuid: string; ruleIds: number[] },
+    branch?: string | null
+  ): Promise<void> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    await http.put(`/projects/${projectId}/rules/associations${query}`, payload);
+  },
+
+  createLink: async (
+    projectId: string,
+    ruleId: number,
+    payload: {
+      targetKind: string;
+      targetLogicalUuid: string;
+      linkPurpose?: RuleLinkPurpose;
+      contextText?: string;
+    },
+    branch?: string | null
+  ): Promise<RuleLink> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return http.post<RuleLink>(`/projects/${projectId}/rules/${ruleId}/links${query}`, payload);
+  },
+
+  deleteLink: async (
+    projectId: string,
+    ruleId: number,
+    linkId: number,
+    branch?: string | null
+  ): Promise<void> => {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    await http.delete(`/projects/${projectId}/rules/${ruleId}/links/${linkId}${query}`);
+  },
+
 };

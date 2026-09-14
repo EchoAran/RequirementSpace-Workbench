@@ -40,7 +40,7 @@ class ScopeReasonSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import FeatureModel, ProjectModel
 

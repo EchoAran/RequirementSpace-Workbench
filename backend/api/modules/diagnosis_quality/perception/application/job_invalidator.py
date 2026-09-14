@@ -3,13 +3,6 @@ from sqlalchemy import select
 from backend.schemas import PerceptionJobStatus
 
 
-async def _exec_stmt(session, stmt):
-    res = session.execute(stmt)
-    if hasattr(res, "__await__"):
-        return await res
-    return res
-
-
 class PerceptionJobInvalidator:
     @staticmethod
     async def _mark_stale_jobs(
@@ -20,7 +13,7 @@ class PerceptionJobInvalidator:
         target_id: str,
         context_hash: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         from backend.database.model import PerceptionJobModel
 
@@ -31,6 +24,7 @@ class PerceptionJobInvalidator:
             PerceptionJobModel.target_type == target_type,
             PerceptionJobModel.target_id == target_id,
             PerceptionJobModel.context_hash != context_hash,
+            PerceptionJobModel.workspace_id == workspace_id,
             PerceptionJobModel.status.in_(
                 [
                     PerceptionJobStatus.DONE_EMPTY.value,
@@ -39,12 +33,8 @@ class PerceptionJobInvalidator:
                 ]
             ),
         )
-        if workspace_id is not None:
-            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-        else:
-            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
 
-        result = await _exec_stmt(session, stmt)
+        result = await session.execute(stmt)
 
         for job in result.scalars().all():
             job.status = PerceptionJobStatus.STALE.value
@@ -54,9 +44,9 @@ class PerceptionJobInvalidator:
         project_id: int,
         stages: set[str],
         session,
+        workspace_id: int,
         perception_kinds: set[str] | None = None,
         clear_active_slot: bool = True,
-        workspace_id: int | None = None,
     ) -> None:
         from backend.database.model import PerceptionJobModel
 
@@ -72,18 +62,15 @@ class PerceptionJobInvalidator:
         stale_stmt = select(PerceptionJobModel).where(
             PerceptionJobModel.project_id == project_id,
             PerceptionJobModel.stage.in_(stages),
+            PerceptionJobModel.workspace_id == workspace_id,
             PerceptionJobModel.status != PerceptionJobStatus.STALE.value,
         )
-        if workspace_id is not None:
-            stale_stmt = stale_stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-        else:
-            stale_stmt = stale_stmt.where(PerceptionJobModel.workspace_id.is_(None))
         if normalized_kinds is not None:
             stale_stmt = stale_stmt.where(
                 PerceptionJobModel.perception_kind.in_(normalized_kinds)
             )
 
-        result = await _exec_stmt(session, stale_stmt)
+        result = await session.execute(stale_stmt)
 
         for job in result.scalars().all():
             job.status = PerceptionJobStatus.STALE.value
@@ -103,7 +90,7 @@ class PerceptionJobInvalidator:
         stages: set[str],
         perception_kinds: set[str] | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         from backend.database.model import (
             ChoiceGroupModel,
@@ -113,13 +100,10 @@ class PerceptionJobInvalidator:
 
         slot_stmt = select(PerceptionSlotModel).where(
             PerceptionSlotModel.project_id == project_id,
+            PerceptionSlotModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id == workspace_id)
-        else:
-            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id.is_(None))
 
-        slot_result = await _exec_stmt(session, slot_stmt)
+        slot_result = await session.execute(slot_stmt)
         slots = slot_result.scalars().all()
         if not slots:
             return
@@ -129,13 +113,10 @@ class PerceptionJobInvalidator:
                 PerceptionJobModel.id == slot.id,
                 PerceptionJobModel.project_id == project_id,
                 PerceptionJobModel.stage.in_(stages),
+                PerceptionJobModel.workspace_id == workspace_id,
             )
-            if workspace_id is not None:
-                job_stmt = job_stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-            else:
-                job_stmt = job_stmt.where(PerceptionJobModel.workspace_id.is_(None))
 
-            job_result = await _exec_stmt(session, job_stmt)
+            job_result = await session.execute(job_stmt)
             slot_job = job_result.scalar_one_or_none()
             if slot_job is None:
                 continue
@@ -146,13 +127,10 @@ class PerceptionJobInvalidator:
             ):
                 continue
 
-            group_result = await _exec_stmt(
-                session,
-                select(ChoiceGroupModel).where(
+            group_result = await session.execute(select(ChoiceGroupModel).where(
                     ChoiceGroupModel.project_id == project_id,
                     ChoiceGroupModel.slot_id == slot.id,
-                ),
-            )
+                ),)
             for group in group_result.scalars().all():
                 if group.status == "open":
                     group.status = "resolved"

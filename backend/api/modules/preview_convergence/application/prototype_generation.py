@@ -54,16 +54,27 @@ class PrototypeGenerationService:
         self._page_generator = page_generator
         self._background_tasks: dict[int, asyncio.Task] = {}
 
+    @staticmethod
+    async def _resolve_branch_ref(project_id: int, session, branch_ref: str | None) -> str:
+        from backend.api.modules.version_control.public import resolve_branch_context
+        branch, _, _ = await session.run_sync(
+            lambda db: resolve_branch_context(db, project_id, branch_ref)
+        )
+        return branch.public_id
+
     async def start_generation(
         self,
         project_id: int,
         force_regenerate: bool = False,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse:
         async with self.session_factory() as session:
+            branch_ref = await self._resolve_branch_ref(project_id, session, branch_ref)
             latest = await self.get_latest_preview(
                 project_id=project_id,
                 session=session,
                 raise_if_missing=False,
+                branch_ref=branch_ref,
             )
             if latest is not None and (
                 latest.status == "generating" or not force_regenerate
@@ -80,7 +91,7 @@ class PrototypeGenerationService:
                 javascript="",
                 css="",
                 pages=[],
-                input_snapshot={},
+                input_snapshot={"_branch_ref": branch_ref},
             )
             session.add(preview)
             await session.commit()
@@ -118,7 +129,11 @@ class PrototypeGenerationService:
     async def _complete_generation(self, preview_id: int, project_id: int) -> None:
         try:
             async with self.session_factory() as session:
-                context = await self._load_generation_context(project_id, session)
+                preview = await session.get(PrototypePreviewModel, preview_id)
+                if preview is None:
+                    return
+                branch_ref = preview.input_snapshot["_branch_ref"]
+                context = await self._load_generation_context(project_id, session, branch_ref=branch_ref)
 
             pages = await self._generate_pages(context.targets)
             first_page = pages[0]
@@ -155,6 +170,7 @@ class PrototypeGenerationService:
         self,
         project_id: int,
         force_regenerate: bool = False,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse:
         if not force_regenerate:
             async with self.session_factory() as session:
@@ -162,12 +178,13 @@ class PrototypeGenerationService:
                     project_id=project_id,
                     session=session,
                     raise_if_missing=False,
+                    branch_ref=branch_ref,
                 )
                 if latest is not None:
                     return latest
 
         async with self.session_factory() as session:
-            context = await self._load_generation_context(project_id, session)
+            context = await self._load_generation_context(project_id, session, branch_ref=branch_ref)
 
         pages = await self._generate_pages(context.targets)
 
@@ -198,10 +215,13 @@ class PrototypeGenerationService:
         self,
         project_id: int,
         session,
+        branch_ref: str | None = None,
     ) -> PrototypeGenerationContext:
+        branch_ref = await self._resolve_branch_ref(project_id, session, branch_ref)
         detail = await self._project_service.get_project_detail(
             project_id=project_id,
             session=session,
+            branch_ref=branch_ref,
         )
         gherkin_specs = await self._load_gherkin_specs(
             project_id=project_id,
@@ -221,6 +241,7 @@ class PrototypeGenerationService:
             mode="json",
             by_alias=True,
         )
+        input_snapshot["_branch_ref"] = branch_ref
         gherkin_snapshot = {"specs": gherkin_specs} if gherkin_specs else None
 
         return PrototypeGenerationContext(
@@ -272,6 +293,7 @@ class PrototypeGenerationService:
         project_id: int,
         session,
         raise_if_missing: bool = True,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse | None:
         project_exists = await session.scalar(
             select(ProjectModel.id).where(ProjectModel.id == project_id)
@@ -279,12 +301,15 @@ class PrototypeGenerationService:
         if project_exists is None:
             raise ValueError("project_not_found")
         from sqlalchemy.orm import selectinload
+        statement = select(PrototypePreviewModel).options(
+            selectinload(PrototypePreviewModel.project)
+        ).where(PrototypePreviewModel.project_id == project_id)
+        branch_ref = await self._resolve_branch_ref(project_id, session, branch_ref)
+        statement = statement.where(
+            PrototypePreviewModel.input_snapshot["_branch_ref"].as_string() == branch_ref
+        )
         result = await session.execute(
-            select(PrototypePreviewModel)
-            .options(selectinload(PrototypePreviewModel.project))
-            .where(PrototypePreviewModel.project_id == project_id)
-            .order_by(PrototypePreviewModel.created_at.desc())
-            .limit(1)
+            statement.order_by(PrototypePreviewModel.created_at.desc()).limit(1)
         )
         preview = result.scalar_one_or_none()
         if preview is None:
@@ -652,7 +677,6 @@ class PrototypeGenerationService:
                         actorIds=step.actor_ids,
                         inputBusinessObjectIds=step.input_business_object_ids,
                         outputBusinessObjectIds=step.output_business_object_ids,
-                        nextStepIds=step.next_step_ids,
                     )
                     for step in flow.flow_steps
                 ],

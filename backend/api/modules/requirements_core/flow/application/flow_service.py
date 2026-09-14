@@ -19,18 +19,16 @@ from .steps import (
     apply_flow_step_relationship_updates,
     apply_flow_step_scalar_updates,
     apply_reordered_positions,
-    bridge_step_neighbors,
     build_flow_step_update_diff,
     capture_flow_step_state,
+    cleanup_step_transition_rule_links,
     ensure_flow_exists,
-    get_next_step_position,
+    get_next_position_index,
     load_flow_for_reorder,
     load_flow_step,
     load_flow_step_for_update,
     load_flow_step_to_delete,
-    load_step_neighbors,
     normalize_flow_step_positions,
-    replace_with_linear_topology,
     validate_reordered_steps,
     write_flow_step_links,
 )
@@ -43,16 +41,10 @@ from backend.api.modules.requirements_core.flow.schemas import (
     FlowStepResponse,
     FlowStepsReorderRequest,
     FlowStepUpdateRequest,
+    FlowTransitionResponse,
     FlowUpdateRequest,
 )
 from backend.core.notifier import get_notifier
-
-
-async def _exec_stmt(session, stmt):
-    res = session.execute(stmt)
-    if hasattr(res, "__await__"):
-        return await res
-    return res
 
 
 class FlowService:
@@ -62,7 +54,8 @@ class FlowService:
         req: FlowCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> FlowResponse:
         flow = FlowModel(
             project_id=project_id,
@@ -72,9 +65,7 @@ class FlowService:
             confirmation_status=confirmation_status,
         )
         session.add(flow)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         if req.feature_ids:
             # 验证 feature 是否属于该项目和工作区
@@ -82,9 +73,8 @@ class FlowService:
                 FeatureModel.project_id == project_id,
                 FeatureModel.id.in_(req.feature_ids),
             )
-            if workspace_id is not None:
-                stmt_feat = stmt_feat.where(FeatureModel.workspace_id == workspace_id)
-            features_result = await _exec_stmt(session, stmt_feat)
+            stmt_feat = stmt_feat.where(FeatureModel.workspace_id == workspace_id)
+            features_result = await session.execute(stmt_feat)
             valid_feature_ids = features_result.scalars().all()
             if len(valid_feature_ids) != len(req.feature_ids):
                 raise ValueError("Cross-workspace entity reference rejected: invalid_feature_ids_or_workspace_mismatch")
@@ -93,14 +83,9 @@ class FlowService:
                     {"flow_id": flow.id, "feature_id": feat_id}
                     for feat_id in valid_feature_ids
                 ]
-                await _exec_stmt(
-                    session,
-                    insert(flow_feature_table).values(flow_feature_rows) if hasattr(insert(flow_feature_table), "values") else insert(flow_feature_table),
-                )
+                await session.execute(insert(flow_feature_table).values(flow_feature_rows),)
 
-        flush_res2 = session.flush()
-        if hasattr(flush_res2, "__await__"):
-            await flush_res2
+        await session.flush()
 
         # 审计日志: 新增流程
         await audit_service.record(
@@ -136,15 +121,14 @@ class FlowService:
         flow_id: int,
         req: FlowUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> FlowResponse:
         stmt = select(FlowModel).where(
             FlowModel.project_id == project_id,
             FlowModel.id == flow_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
-        exec_res = await _exec_stmt(session, stmt)
+        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
         if exec_res.scalar_one_or_none() is None:
             raise ValueError("flow_not_found_in_workspace")
 
@@ -161,9 +145,7 @@ class FlowService:
             request=req,
         )
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 更新流程
         diff = build_flow_update_diff(before, flow)
@@ -196,15 +178,14 @@ class FlowService:
         project_id: int,
         flow_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         stmt = select(FlowModel).where(
             FlowModel.project_id == project_id,
             FlowModel.id == flow_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
-        result = await _exec_stmt(session, stmt)
+        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+        result = await session.execute(stmt)
         flow = result.scalar_one_or_none()
 
         if flow is None:
@@ -213,6 +194,15 @@ class FlowService:
         flow_name = flow.name
         await session.delete(flow)
         await session.flush()
+
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=project_id,
+            workspace_id=workspace_id,
+        )
 
         # 审计日志: 删除流程
         await audit_service.record(
@@ -244,7 +234,7 @@ class FlowService:
         flow_id: int,
         req: FlowStepCreateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> FlowStepResponse:
         await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
 
@@ -252,7 +242,7 @@ class FlowService:
         if req.step_type == "actorAction" and not req.actor_ids:
             raise ValueError("actor_ids_cannot_be_empty_for_actor_action")
 
-        position = await get_next_step_position(session, flow_id)
+        position = await get_next_position_index(session, flow_id)
 
         step = FlowStepModel(
             workspace_id=workspace_id,
@@ -295,7 +285,6 @@ class FlowService:
             output_business_object_ids=(
                 req.output_business_object_ids
             ),
-            next_step_ids=req.next_step_ids,
             workspace_id=workspace_id,
         )
 
@@ -320,7 +309,7 @@ class FlowService:
         step_id: int,
         req: FlowStepUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> FlowStepResponse:
         await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
         step = await load_flow_step_for_update(session, flow_id, step_id, workspace_id=workspace_id)
@@ -375,26 +364,25 @@ class FlowService:
         flow_id: int,
         step_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
         step = await load_flow_step_to_delete(session, flow_id, step_id, workspace_id=workspace_id)
 
-        # 查找被删除步骤的前驱和后继以进行拓扑修复
-        predecessors, successors = await load_step_neighbors(
-            session,
-            step_id,
-        )
+        # Clean up rule links associated with transitions of the deleted step
+        await cleanup_step_transition_rule_links(session, step_id)
 
         step_name = step.name
         await session.delete(step)
         await session.flush()
 
-        # 重新建立前驱和后继之间的直接关联来修复流程链
-        await bridge_step_neighbors(
-            session,
-            predecessors,
-            successors,
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=project_id,
+            workspace_id=workspace_id,
         )
 
         # 审计日志: 删除流程步骤
@@ -430,13 +418,13 @@ class FlowService:
         flow_id: int,
         req: FlowStepsReorderRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> FlowResponse:
-        # 1. Verify flow belongs to project
+        # Flow ownership defines the mutation boundary.
         await ensure_flow_exists(session, project_id, flow_id, workspace_id=workspace_id)
         flow = await load_flow_for_reorder(session, project_id, flow_id)
 
-        # 2. Strict validation of step_ids
+        # Every reordered step must belong to the selected flow.
         step_ids = req.step_ids
         db_steps = await validate_reordered_steps(
             session,
@@ -444,14 +432,10 @@ class FlowService:
             step_ids,
         )
 
-        # 3. Safe index negation to bypass SQLite UniqueConstraint
+        # Apply reordered positions without altering transitions/topology
         await apply_reordered_positions(session, step_ids, db_steps)
 
-        # 4. Sync linear topology connection (next_step_ids)
-        # Clear existing next_step associations for all steps in this flow
-        await replace_with_linear_topology(session, step_ids)
-
-        # 5. Audit Log and Mark Perception Jobs Stale
+        # Topology changes invalidate dependent perception results.
         await audit_service.record(
             session=session,
             project_id=project_id,
@@ -493,16 +477,37 @@ class FlowService:
             actor_ids=[actor.id for actor in step.actors],
             input_business_object_ids=[bo.id for bo in step.input_business_objects],
             output_business_object_ids=[bo.id for bo in step.output_business_objects],
-            next_step_ids=[ns.id for ns in step.next_steps],
             confirmation_status=step.confirmation_status,
         )
 
     def _serialize_flow(self, flow: FlowModel) -> FlowResponse:
+        transitions = [
+            FlowTransitionResponse(
+                id=t.id,
+                logical_uuid=t.logical_uuid,
+                project_id=t.project_id,
+                workspace_id=t.workspace_id,
+                flow_id=t.flow_id,
+                source_step_id=t.source_step_id,
+                target_step_id=t.target_step_id,
+                label=t.label,
+                condition_text=t.condition_text,
+                is_default=t.is_default,
+                position=t.position,
+                semantic_tags=t.semantic_tags or [],
+                origin=t.origin,
+                confirmation_status=t.confirmation_status,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+            )
+            for t in flow.transitions
+        ]
         return FlowResponse(
             flow_id=flow.id,
             name=flow.name,
             description=flow.description,
             feature_ids=[f.id for f in flow.features],
             steps=[self._serialize_flow_step(st) for st in flow.steps],
+            transitions=transitions,
             confirmation_status=flow.confirmation_status,
         )

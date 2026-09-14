@@ -6,6 +6,7 @@ from backend.api.modules.project_lifecycle.public import ProjectDetailResponse
 from backend.core.locale import DEFAULT_LOCALE, SupportedLocale
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
+from backend.integration.skill_backed_services.spl_export_payload import build_spl_export_payload
 
 logger = logging.getLogger(__name__)
 
@@ -33,27 +34,11 @@ class SplSyntaxExportService:
         if not self._available:
             raise ValueError("spl_export_skill_unavailable")
 
-        # Convert Pydantic ProjectDetailResponse to raw dictionaries
-        detail_dict = detail.model_dump()
-        payload = {
-            "project": {
-                "project_id": detail_dict.get("project_id", ""),
-                "project_name": detail_dict.get("project_name", ""),
-                "project_description": detail_dict.get("project_description", ""),
-                "user_requirements": detail_dict.get("user_requirements", ""),
-            },
-            "actors": detail_dict.get("actors", []),
-            "features": detail_dict.get("features", []),
-            "business_objects": detail_dict.get("business_objects", []),
-            "flows": detail_dict.get("flows", []),
-            "unresolved_gates": detail_dict.get("unresolved_gates", []),
-            "export_options": {
-                "mode": "syntax",
-                "language": content_locale,
-                "include_trace_links": True,
-                "include_warnings": True,
-            }
-        }
+        payload = build_spl_export_payload(
+            detail,
+            mode="syntax",
+            content_locale=content_locale,
+        )
 
         try:
             # Execute skill (runs synchronously in the executor if needed,

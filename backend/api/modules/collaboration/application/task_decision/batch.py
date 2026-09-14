@@ -20,7 +20,7 @@ async def _collect_batch_targets(session, task, snapshot_service):
                 node_kind,
                 node_id,
             )
-        except Exception:
+        except (LookupError, ValueError):
             mismatches.append(
                 {
                     "node_kind": node_kind,

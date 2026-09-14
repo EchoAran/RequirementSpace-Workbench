@@ -129,7 +129,7 @@ class IssueRepairDraftService:
         project_id: int,
         draft_id: str,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
     ) -> dict:
@@ -169,7 +169,7 @@ class IssueRepairDraftService:
         await session.flush()
 
         await self._invalidate_perception_jobs(draft, project_id, session, workspace_id=workspace_id)
-        issue_diff = await self._detect_issue_diff(draft, project_id, session)
+        issue_diff = await self._detect_issue_diff(draft, project_id, session, workspace_id=workspace_id)
         self._record_confirmation_audit(
             draft,
             draft_id,
@@ -274,7 +274,7 @@ class IssueRepairDraftService:
         draft: IssueRepairDraftModel,
         project_id: int,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         stages = {draft.stage}
         kinds = set()
@@ -301,6 +301,7 @@ class IssueRepairDraftService:
         draft: IssueRepairDraftModel,
         project_id: int,
         session: AsyncSession,
+        workspace_id: int,
     ) -> dict:
         resolved_ids = []
         remaining_ids = []
@@ -324,11 +325,19 @@ class IssueRepairDraftService:
             before = set()
             remaining_ids = []
             if _det:
-                before_issues = await _det.detect(project_id=project_id, session=session)
+                before_issues = await _det.detect(
+                    project_id=project_id,
+                    session=session,
+                    workspace_id=workspace_id,
+                )
                 before = {i.issueId for i in before_issues}
             # apply_patch already happened above
             if _det:
-                after_issues = await _det.detect(project_id=project_id, session=session)
+                after_issues = await _det.detect(
+                    project_id=project_id,
+                    session=session,
+                    workspace_id=workspace_id,
+                )
                 after = {i.issueId for i in after_issues}
                 resolved_ids = list(before - after)
                 new_ids = list(after - before)
@@ -410,7 +419,7 @@ class IssueRepairDraftService:
         project_id: int,
         draft_id: str,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
     ) -> dict:
@@ -461,23 +470,3 @@ class IssueRepairDraftService:
         if not draft:
             raise ValueError("draft_not_found")
         return draft
-
-    @staticmethod
-    async def _verify_issue_resolved(
-        project_id: int,
-        issue_code: str,
-        issue_id: str,
-        stage: str,
-        session: AsyncSession,
-    ) -> tuple[list[str], list[str]]:
-        """Delegates to the public verifier shared with P3 ChoiceService."""
-        from backend.core.issue_resolution.resolution_verifier import (
-            verify_issue_resolved,
-        )
-        return await verify_issue_resolved(
-            project_id=project_id,
-            issue_code=issue_code,
-            issue_id=issue_id,
-            stage=stage,
-            session=session,
-        )

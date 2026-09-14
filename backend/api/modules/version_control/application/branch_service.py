@@ -22,30 +22,10 @@ from backend.api.modules.version_control.schemas import (
 )
 from backend.database.model import (
     BranchWorkspaceModel,
-    ProjectMemberModel,
     ProjectModel,
     RequirementBranchModel,
     RequirementCommitModel,
 )
-
-
-def _can_legacy_write(db: Session, project_id: int, user_id: int | None) -> bool:
-    """判断未迁移项目（无 main 分支）的过渡期写权限：owner/admin/editor 可写，reviewer/viewer 只读。
-
-    该判断对齐版本控制引入前 require_project_role("editor") 的语义，避免绕过角色限制。
-    """
-    if user_id is None:
-        return False
-    project = db.get(ProjectModel, project_id)
-    if project is not None and project.owner_user_id == user_id:
-        return True
-    member = db.scalars(
-        select(ProjectMemberModel).where(
-            ProjectMemberModel.project_id == project_id,
-            ProjectMemberModel.user_id == user_id,
-        )
-    ).first()
-    return member is not None and member.role in ("owner", "admin", "editor")
 
 
 def resolve_branch_context(
@@ -63,14 +43,14 @@ def resolve_branch_context(
 
     if branch_ref is not None and str(branch_ref).strip() != "":
         ref_str = str(branch_ref).strip()
-        # 1. 尝试按 public_id 或 name 匹配
+    # Public identifiers and names are accepted branch references.
         stmt = select(RequirementBranchModel).options(joinedload(RequirementBranchModel.head_commit)).where(
             RequirementBranchModel.project_id == project_id,
             (RequirementBranchModel.public_id == ref_str) | (RequirementBranchModel.name == ref_str)
         )
         branch = db.scalars(stmt).first()
 
-        # 2. 如果是数字，尝试按主键 id 匹配
+    # Numeric references may identify the physical primary key.
         if not branch and ref_str.isdigit():
             stmt = select(RequirementBranchModel).options(joinedload(RequirementBranchModel.head_commit)).where(
                 RequirementBranchModel.project_id == project_id,
@@ -89,15 +69,7 @@ def resolve_branch_context(
         branch = db.scalars(stmt).first()
 
     if not branch:
-        # 尚未迁移版本控制（无 main 分支）的项目仍处于过渡期：owner/admin/editor 保持既有
-        # 直接编辑能力（让无 branch 上下文的历史 CRUD 继续工作），reviewer/viewer 只读；
-        # 一旦基线迁移生成 main，写入统一受 main 保护。
-        return None, None, {
-            "can_write": _can_legacy_write(db, project_id, user_id),
-            "can_delete": False,
-            "can_rename": False,
-            "is_protected": False,
-        }
+        raise ValueError(f"Branch 'main' not found in project {project_id}")
 
     workspace = db.scalars(
         select(BranchWorkspaceModel).where(
@@ -295,7 +267,7 @@ def create_branch(
     user_id: int | None = None,
 ) -> BranchDetailResponse:
     """从指定 Commit 或源分支 Head 创建新分支，并恢复全新的 BranchWorkspace 实体数据。"""
-    # 0. 验证权限：创建分支至少需要 editor 角色
+    # Branch creation requires editor access.
     if user_id is not None:
         project = db.get(ProjectModel, project_id)
         is_editor_or_above = False
@@ -314,7 +286,7 @@ def create_branch(
         if not is_editor_or_above:
             raise PermissionError("insufficient_project_role: Branch creation requires at least 'editor' role.")
 
-    # 1. 检查重名
+    # Branch names are unique within a project.
     stmt = select(RequirementBranchModel).where(
         RequirementBranchModel.project_id == project_id,
         RequirementBranchModel.name == req.name,
@@ -322,7 +294,7 @@ def create_branch(
     if db.scalars(stmt).first():
         raise ValueError(f"Branch name '{req.name}' already exists in project {project_id}")
 
-    # 2. 寻找源 Commit 与源 Workspace
+    # The source commit and workspace define the branch baseline.
     source_commit: RequirementCommitModel | None = None
     source_workspace: BranchWorkspaceModel | None = None
 
@@ -363,7 +335,7 @@ def create_branch(
             )
             source_workspace = db.scalars(ws_stmt).first()
 
-    # 3. 创建 RequirementBranchModel 实体
+    # The branch record is created before its workspace copy.
     head_commit_id = source_commit.id if source_commit else None
     new_branch = RequirementBranchModel(
         project_id=project_id,
@@ -379,7 +351,7 @@ def create_branch(
     db.add(new_branch)
     db.flush()
 
-    # 4. 创建对应的 BranchWorkspaceModel 实体
+    # Each branch owns one isolated workspace.
     new_workspace = BranchWorkspaceModel(
         project_id=project_id,
         branch_id=new_branch.id,
@@ -390,7 +362,7 @@ def create_branch(
     db.add(new_workspace)
     db.flush()
 
-    # 5. 还原或深拷贝工作区结构
+    # Workspace content is restored from the selected source state.
     if source_commit and source_commit.state_json:
         import json
         state_dict = json.loads(source_commit.state_json)

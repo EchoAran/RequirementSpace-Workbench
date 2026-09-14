@@ -317,11 +317,6 @@ class PerceptionDraftNormalizer:
                 business_object_ref_map,
             )
         )
-        step["next_steps"] = cls.normalize_next_steps(
-            step.get("next_steps", []),
-            step_aliases,
-            step_numbers,
-        )
 
     @classmethod
     def _normalize_filled_flow(
@@ -344,12 +339,18 @@ class PerceptionDraftNormalizer:
                 aliases,
                 step_numbers,
             )
+        transitions = cls.normalize_transitions(
+            flow.get("transitions", []),
+            aliases,
+            step_numbers,
+        )
         return {
             **flow,
             "feature_ids": cls.dedupe_int_values(
                 flow.get("feature_ids", [])
             ),
             "flow_steps": steps,
+            "transitions": transitions,
         }
 
     @classmethod
@@ -486,28 +487,38 @@ class PerceptionDraftNormalizer:
         return result
 
     @classmethod
-    def normalize_next_steps(
+    def normalize_transitions(
         cls,
         values: object,
         step_aliases: dict[object, str],
         step_number_set: set[str],
-    ) -> list[str]:
+    ) -> list[dict]:
         result = []
-        seen = set()
-
-        for value in cls.coerce_list(values):
-            step_number = (
-                step_aliases.get(value)
-                or step_aliases.get(str(value))
-                or cls.normalize_step_number(value, 0)
-            )
-
-            if step_number not in step_number_set or step_number in seen:
+        for item in cls.coerce_list(values):
+            if not isinstance(item, dict):
                 continue
-
-            seen.add(step_number)
-            result.append(step_number)
-
+            src = (
+                step_aliases.get(item.get("source_step_number"))
+                or step_aliases.get(str(item.get("source_step_number")))
+                or cls.normalize_step_number(item.get("source_step_number"), 0)
+            )
+            tgt = (
+                step_aliases.get(item.get("target_step_number"))
+                or step_aliases.get(str(item.get("target_step_number")))
+                or cls.normalize_step_number(item.get("target_step_number"), 0)
+            )
+            if src in step_number_set and tgt in step_number_set and src != tgt:
+                result.append({
+                    "source_step_number": src,
+                    "target_step_number": tgt,
+                    "label": item.get("label", ""),
+                    "condition_text": item.get("condition_text", ""),
+                    "is_default": bool(item.get("is_default", False)),
+                    "position": int(item.get("position", 0)),
+                    "semantic_tags": cls.coerce_list(
+                        item.get("semantic_tags", [])
+                    ),
+                })
         return result
 
     @staticmethod
@@ -707,9 +718,6 @@ class PerceptionDraftNormalizer:
         ):
             if business_object_id not in business_object_ids:
                 raise ValueError("invalid_business_object_reference")
-        for next_step_number in step.get("next_steps", []):
-            if next_step_number not in step_numbers:
-                raise ValueError("invalid_next_step_reference")
 
     @classmethod
     def validate_filled_flows(

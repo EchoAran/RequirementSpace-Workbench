@@ -7,7 +7,7 @@ class ScopeFindingPolicy:
     def __init__(self):
         self.detector = ScopeIssueDetector()
 
-    async def get_findings(self, project_id: int, session, workspace_id: int | None = None) -> list[Finding]:
+    async def get_findings(self, project_id: int, session, workspace_id: int) -> list[Finding]:
         issues = await self.detector.detect(project_id, session, workspace_id=workspace_id)
         findings: list[Finding] = []
 

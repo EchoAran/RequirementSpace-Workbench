@@ -1,11 +1,18 @@
-import itertools
+"""Step reordering application helpers.
 
-from sqlalchemy import insert, select
+This module handles step loading, validation, and safe position re-indexing
+during flow step reorder operations, keeping topology and transitions intact.
+"""
 
-from backend.database.model import FlowModel, FlowStepModel, flow_step_next_table
+from __future__ import annotations
+
+from sqlalchemy import select
+
+from backend.database.model import FlowModel, FlowStepModel
 
 
-async def load_flow_for_reorder(session, project_id: int, flow_id: int):
+async def load_flow_for_reorder(session, project_id: int, flow_id: int) -> FlowModel:
+    """Load flow model verifying ownership and project boundary."""
     result = await session.execute(
         select(FlowModel).where(
             FlowModel.project_id == project_id,
@@ -23,6 +30,7 @@ async def validate_reordered_steps(
     flow_id: int,
     step_ids: list[int],
 ) -> dict[int, FlowStepModel]:
+    """Validate that reordered step IDs match existing steps in the flow."""
     if not step_ids:
         raise ValueError("step_ids_cannot_be_empty")
     if len(step_ids) != len(set(step_ids)):
@@ -31,10 +39,7 @@ async def validate_reordered_steps(
     result = await session.execute(
         select(FlowStepModel).where(FlowStepModel.flow_id == flow_id)
     )
-    steps_by_id = {
-        step.id: step
-        for step in result.scalars().all()
-    }
+    steps_by_id = {step.id: step for step in result.scalars().all()}
     if set(step_ids) != set(steps_by_id):
         raise ValueError("invalid_step_ids_match")
     return steps_by_id
@@ -45,33 +50,11 @@ async def apply_reordered_positions(
     step_ids: list[int],
     steps_by_id: dict[int, FlowStepModel],
 ) -> None:
+    """Apply updated 1-based position ordering using temporary negative indexing."""
     for index, step_id in enumerate(step_ids):
         steps_by_id[step_id].position = -(index + 1)
     await session.flush()
 
     for index, step_id in enumerate(step_ids):
         steps_by_id[step_id].position = index + 1
-    await session.flush()
-
-
-async def replace_with_linear_topology(
-    session,
-    step_ids: list[int],
-) -> None:
-    await session.execute(
-        flow_step_next_table.delete().where(
-            flow_step_next_table.c.source_step_id.in_(step_ids)
-        )
-    )
-    await session.flush()
-
-    edges = [
-        {
-            "source_step_id": source_id,
-            "target_step_id": target_id,
-        }
-        for source_id, target_id in itertools.pairwise(step_ids)
-    ]
-    if edges:
-        await session.execute(insert(flow_step_next_table), edges)
     await session.flush()

@@ -100,7 +100,7 @@ async def create_actor_slot_filling_draft(
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
     branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_actor_draft(
@@ -108,8 +108,8 @@ async def create_actor_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -129,7 +129,7 @@ async def create_feature_slot_filling_draft(
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
     branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_feature_draft(
@@ -137,8 +137,8 @@ async def create_feature_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -158,7 +158,7 @@ async def create_scenario_slot_filling_draft(
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
     branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_scenario_draft(
@@ -166,8 +166,8 @@ async def create_scenario_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -187,7 +187,7 @@ async def create_acceptance_criteria_slot_filling_draft(
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
     branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await (
@@ -197,8 +197,8 @@ async def create_acceptance_criteria_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -218,7 +218,7 @@ async def create_flow_slot_filling_draft(
 ):
     owned_project = await require_owned_project(request.project_id, user, session)
     branch_obj, ws_obj = await _resolve_write_branch(session, owned_project.id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await perception_slot_filling_service.create_flow_draft(
@@ -226,8 +226,8 @@ async def create_flow_slot_filling_draft(
                 owner_user_id=user.id,
                 perception_job_id=request.perception_job_id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -248,7 +248,7 @@ async def regenerate_slot_filling_draft(
     commit_guard: None = Depends(reject_commit_write),
 ):
     branch_obj, ws_obj = await _resolve_write_branch(session, draft.project_id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     user_feedback = request.user_feedback if request else None
     try:
         return await perception_slot_filling_service.regenerate_draft(
@@ -256,8 +256,8 @@ async def regenerate_slot_filling_draft(
             owner_user_id=draft.owner_user_id,
             session=session,
             user_feedback=user_feedback,
-            branch_name=branch_obj.name if branch_obj else None,
-            head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+            branch_name=branch_obj.name,
+            head_commit_id=branch_obj.head_commit_id,
             workspace_id=ws_id,
         )
     except ValueError as error:
@@ -276,14 +276,14 @@ async def confirm_slot_filling_draft(
     commit_guard: None = Depends(reject_commit_write),
 ):
     branch_obj, ws_obj = await _resolve_write_branch(session, draft.project_id, branch, user.id)
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await perception_slot_filling_service.confirm_draft(
             draft_id=draft.draft_id,
             owner_user_id=draft.owner_user_id,
             session=session,
-            branch_name=branch_obj.name if branch_obj else None,
-            head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+            branch_name=branch_obj.name,
+            head_commit_id=branch_obj.head_commit_id,
             workspace_id=ws_id,
         )
     except ValueError as error:

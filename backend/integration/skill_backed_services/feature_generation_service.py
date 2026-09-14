@@ -22,7 +22,7 @@ class SkillBackedFeatureGenerationService(FeatureGenerationService):
         project_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         user_requirements, actor_nodes = await self._load_project_context(
             project_id=project_id,

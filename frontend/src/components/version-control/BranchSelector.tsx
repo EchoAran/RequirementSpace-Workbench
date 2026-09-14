@@ -105,7 +105,7 @@ export function BranchSelector() {
       >
         <GitBranch className="h-4 w-4 text-indigo-600" />
         <span className="max-w-[9rem] truncate font-medium">
-          {branchLoading ? t('shell.loading') : currentBranch?.name || 'main'}
+          {branchLoading ? t('shell.loading') : currentBranch?.name ?? t('versionControl.branchSelector.label')}
         </span>
         {protectedBranch && (
           <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">

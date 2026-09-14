@@ -122,7 +122,7 @@ def _build_stage(
 async def _load_gate_findings(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> dict[str, list]:
     finding_service = FindingService()
     return {
@@ -157,7 +157,7 @@ async def get_stage_progress(
     project_id: int,
     public_project_id: str,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> dict:
     data = await load_stage_progress_data(project_id, session, workspace_id)
     findings_by_stage = await _load_gate_findings(project_id, session, workspace_id)

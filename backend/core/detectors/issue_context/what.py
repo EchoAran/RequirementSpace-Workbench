@@ -31,7 +31,7 @@ async def load_issue_project(project_id: int, session) -> ProjectModel:
 async def load_issue_actors(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> list[ActorIssueItem]:
     stmt = select(ActorModel).where(
         ActorModel.project_id == project_id,
@@ -84,7 +84,7 @@ async def _load_feature_maps(
 async def load_issue_features(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> tuple[list[FeatureIssueItem], list[int]]:
     stmt = select(FeatureModel).where(
         FeatureModel.project_id == project_id,
@@ -141,7 +141,7 @@ async def _load_acceptance_criteria(
 async def load_issue_scenarios(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> list[ScenarioIssueItem]:
     stmt = select(ScenarioModel).where(
         ScenarioModel.project_id == project_id,

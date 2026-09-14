@@ -14,6 +14,7 @@ async def _persist_approved_conflict_payload(
     payload = task.payload
     target_type = payload.get("target_type")
     stale_result = payload.get("stale_ai_result")
+    workspace_id = payload["workspace_id"]
     from backend.api.modules.ai_interaction.public import (
         AIAddDraftHandler,
         AIAddSessionService,
@@ -33,7 +34,7 @@ async def _persist_approved_conflict_payload(
             ),
             "target_type": target_type,
         }
-        await handler._confirm_edit_draft(draft, session)
+        await handler._confirm_edit_draft(draft, session, workspace_id=workspace_id)
         return
     await handler._pre_confirm_validation(
         target_type,
@@ -46,6 +47,7 @@ async def _persist_approved_conflict_payload(
         stale_result,
         project_id,
         session,
+        workspace_id=workspace_id,
     )
 
 

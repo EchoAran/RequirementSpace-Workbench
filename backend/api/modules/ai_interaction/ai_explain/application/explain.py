@@ -11,6 +11,7 @@ No sessions, no drafts, no persistence.
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from backend.api.modules.ai_interaction.ai_explain.application.context import (
@@ -26,6 +27,19 @@ from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
 from .context_locale import localize_ai_explain_context
 
 logger = get_logger(__name__)
+
+# Internal DB identifiers that must never be shown to end users,
+# e.g. "(ID:3)", "（ID：12）", "(rule:5)", "（feature:8）".
+_INTERNAL_ID_PATTERN = re.compile(
+    r"[（(]\s*(?:ID|id)\s*[:：]\s*\d+\s*[）)]\s?"
+    r"|[（(]\s*(?:actor|feature|flow|business_object|business_object_attribute|rule"
+    r"|flow_step|scenario|acceptance_criterion|perception_slot|scope)\s*[:：]\s*\d+\s*[）)]\s?"
+)
+
+
+def _strip_internal_ids(text: str) -> str:
+    """Remove internal identifiers from a user-facing answer (safety net)."""
+    return _INTERNAL_ID_PATTERN.sub("", text or "")
 
 
 class AIExplainService:
@@ -88,7 +102,7 @@ class AIExplainService:
         )
 
         return {
-            "answer": answer or "抱歉，我暂时无法回答这个问题。",
+            "answer": _strip_internal_ids(answer) or "抱歉，我暂时无法回答这个问题。",
             "context_summary": {
                 "scope_label": scope_label,
                 "objects_loaded": objects_loaded,
@@ -186,13 +200,14 @@ class AIExplainService:
     @staticmethod
     async def _get_node_label(target_type: str, target_id: int, db_session) -> str:
         """Get a human-readable label for a node scope."""
-        from backend.database.model import ActorModel, BusinessObjectModel, FeatureModel, FlowModel
+        from backend.database.model import ActorModel, BusinessObjectModel, DomainRuleModel, FeatureModel, FlowModel
 
         model_map = {
             "actor": ActorModel,
             "feature": FeatureModel,
             "flow": FlowModel,
             "business_object": BusinessObjectModel,
+            "rule": DomainRuleModel,
         }
         model_cls = model_map.get(target_type)
         if model_cls is None:
@@ -204,7 +219,8 @@ class AIExplainService:
                 "ai_explain_deleted_node",
                 label=f"{target_type}:{target_id}",
             )
-        return f"{obj.name} ({target_type}:{target_id})"
+        name = obj.title if target_type == "rule" else obj.name
+        return f"{name} ({target_type}:{target_id})"
 
     @staticmethod
     def _get_llm_handler():

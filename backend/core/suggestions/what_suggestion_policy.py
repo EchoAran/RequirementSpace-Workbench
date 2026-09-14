@@ -12,8 +12,8 @@ class WhatSuggestionPolicy(StageSuggestionPolicy):
         self,
         project_id: int,
         session,
+        workspace_id: int,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,

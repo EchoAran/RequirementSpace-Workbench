@@ -80,6 +80,7 @@ const getObjectScopePrefix = (kind: string | undefined, t: any): string => {
     business_object: t('aiBar.kindLabels.business_object'), business_object_attribute: t('aiBar.kindLabels.business_object_attribute'),
     actor: t('aiBar.kindLabels.actor'), scenario: t('aiBar.kindLabels.scenario'), acceptance_criterion: t('aiBar.kindLabels.acceptance_criterion'),
     scope: t('aiBar.kindLabels.scope'), perception_slot: t('aiBar.kindLabels.perception_slot'),
+    rule: t('aiBar.kindLabels.rule'),
   };
   return m[kind || ''] || t('aiBar.kindLabels.selected');
 };
@@ -90,6 +91,7 @@ const kindToEditType = (kind?: string): string | null => {
   if (kind === 'feature') return 'feature';
   if (kind === 'flow') return 'flow';
   if (kind === 'business_object') return 'business_object';
+  if (kind === 'rule') return 'rule';
   return null;
 };
 
@@ -98,6 +100,7 @@ const kindToExplainType: Record<string, string> = {
   actor: 'actor', feature: 'feature', flow: 'flow',
   business_object: 'business_object', flow_step: 'flow',
   scenario: 'feature', acceptance_criterion: 'feature',
+  rule: 'rule',
 };
 
 export function ScopedAIBar() {
@@ -224,7 +227,7 @@ export function ScopedAIBar() {
     if (newMode === mode) return;
     // If edit mode has an active draft in progress, discard it
     if (mode === 'edit' && editDraft && editStep !== 'done' && editStep !== 'idle') {
-      const discardId = editDraft?.draftId ?? editDraft?.draft_id;
+      const discardId = editDraft?.draftId;
       if (discardId) {
         try { await workspaceApi.discardAIAddObjectDraft(discardId); } catch { /* ignore */ }
       }
@@ -265,7 +268,7 @@ export function ScopedAIBar() {
     setMessages(prev => [...prev, { role: 'user', content: q }]);
     setQuestion('');
     try {
-      const projectId = ir?.projectId ?? (ir as any)?.project_id ?? 0;
+      const projectId = ir?.projectId ?? '';
       const res = await workspaceApi.explainAI(projectId, toExplainScope(scope), q);
       setMessages(prev => [...prev, { role: 'assistant', content: res.answer || t('aiBar.emptyAnswer') }]);
     } catch (err: any) {
@@ -286,10 +289,10 @@ export function ScopedAIBar() {
     if (!canEdit || !isNodeScope || !editTargetType) return;
     setEditStep('creating_session'); setEditError(null);
     try {
-      const projectId = ir?.projectId ?? (ir as any)?.project_id ?? 0;
+      const projectId = ir?.projectId ?? '';
       const targetId = parseInt(scope.nodeId, 10);
       const session = await workspaceApi.createAIEditSession(projectId, targetId, editTargetType);
-      const sid = session.sessionId ?? session.session_id;
+      const sid = session.sessionId;
       setEditSessionId(sid);
       setEditStep('chat');
     } catch (err: any) {
@@ -306,9 +309,9 @@ export function ScopedAIBar() {
     setEditMessages(prev => [...prev, { role: 'user', content: text }]);
     try {
       const res = await workspaceApi.sendAIAddSessionMessage(editSessionId, text);
-      const reply = res.assistantMessage ?? res.assistant_message ?? '';
+      const reply = res.assistantMessage ?? '';
       setEditMessages(prev => [...prev, { role: 'assistant', content: reply }]);
-      if (res.isReadyToGenerate ?? res.is_ready_to_generate) setEditStep('ready');
+      if (res.isReadyToGenerate) setEditStep('ready');
     } catch (err: any) {
       setEditMessages(prev => [...prev, { role: 'assistant', content: err?.detail || t('aiBar.chatFailed') }]);
     } finally { setEditIsSending(false); }
@@ -335,7 +338,7 @@ export function ScopedAIBar() {
     if (!editDraft) return;
     setEditIsConfirming(true); setEditError(null);
     try {
-      await workspaceApi.confirmAIAddObjectDraft(editDraft.draftId ?? editDraft.draft_id);
+      await workspaceApi.confirmAIAddObjectDraft(editDraft.draftId);
       setEditStep('done');
       // Refresh workspace
       useWorkspaceStore.getState().refreshWorkspace();
@@ -349,7 +352,7 @@ export function ScopedAIBar() {
 
   const handleDiscardEdit = useCallback(async () => {
     if (!editDraft) return;
-    try { await workspaceApi.discardAIAddObjectDraft(editDraft.draftId ?? editDraft.draft_id); } catch { /* ignore */ }
+    try { await workspaceApi.discardAIAddObjectDraft(editDraft.draftId); } catch { /* ignore */ }
     setEditDraft(null); setEditStep('idle'); setEditSessionId(null); setEditMessages([]); setEditError(null);
   }, [editDraft]);
 
@@ -579,7 +582,7 @@ export function ScopedAIBar() {
                   <div className="space-y-2">
                     {Object.entries(editDraft.preview || {}).map(([field, change]: [string, any]) => (
                       <div key={field} className="bg-white border border-amber-100 rounded-xl p-3">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">{field}</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">{t(`aiBar.previewFields.${field}`, { defaultValue: field })}</div>
                         <div className="text-xs text-rose-600 line-through mb-0.5">{String(change.old || '')}</div>
               <div className="text-xs text-emerald-700 font-bold">{String(change.new || '')}</div>
                       </div>

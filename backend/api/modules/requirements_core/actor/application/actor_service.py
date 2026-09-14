@@ -9,15 +9,10 @@ audit_service = AuditService()
 
 
 class ActorService:
-    async def list_actors(self, project_id: int, session, workspace_id: int | None = None) -> list[ActorResponse]:
+    async def list_actors(self, project_id: int, session, workspace_id: int) -> list[ActorResponse]:
         stmt = select(ActorModel).where(ActorModel.project_id == project_id)
-        if workspace_id is not None:
-            stmt = stmt.where(ActorModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        if hasattr(exec_res, "__await__"):
-            result = await exec_res
-        else:
-            result = exec_res
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+        result = await session.execute(stmt)
         actors = result.scalars().all()
         return [
             ActorResponse(
@@ -28,7 +23,7 @@ class ActorService:
             for actor in actors
         ]
 
-    async def get_actors(self, project_id: int, session, workspace_id: int | None = None) -> list[ActorResponse]:
+    async def get_actors(self, project_id: int, session, workspace_id: int) -> list[ActorResponse]:
         """Backward-compatible shim for list_actors."""
         return await self.list_actors(project_id, session, workspace_id)
 
@@ -38,7 +33,8 @@ class ActorService:
         req: ActorCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> ActorResponse:
         actor = ActorModel(
             project_id=project_id,
@@ -48,9 +44,7 @@ class ActorService:
             confirmation_status=confirmation_status,
         )
         session.add(actor)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 新增角色
         diff = {"name": actor.name, "description": actor.description, "confirmation_status": confirmation_status}
@@ -85,19 +79,14 @@ class ActorService:
         actor_id: int,
         req: ActorUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> ActorResponse:
         stmt = select(ActorModel).where(
             ActorModel.project_id == project_id,
             ActorModel.id == actor_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(ActorModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        if hasattr(exec_res, "__await__"):
-            result = await exec_res
-        else:
-            result = exec_res
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+        result = await session.execute(stmt)
         actor = result.scalar_one_or_none()
 
         if actor is None:
@@ -114,9 +103,7 @@ class ActorService:
         if req.description is not None:
             actor.description = req.description
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 更新角色
         diff = {}
@@ -158,19 +145,14 @@ class ActorService:
         project_id: int,
         actor_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         stmt = select(ActorModel).where(
             ActorModel.project_id == project_id,
             ActorModel.id == actor_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(ActorModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        if hasattr(exec_res, "__await__"):
-            result = await exec_res
-        else:
-            result = exec_res
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+        result = await session.execute(stmt)
         actor = result.scalar_one_or_none()
 
         if actor is None:

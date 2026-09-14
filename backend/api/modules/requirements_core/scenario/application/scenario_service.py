@@ -29,17 +29,17 @@ class ScenarioService:
         req: ScenarioCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> ScenarioResponse:
         # Verify feature exists in the project and workspace
         stmt_f = select(FeatureModel).where(
             FeatureModel.project_id == project_id,
             FeatureModel.id == req.feature_id,
         )
-        if workspace_id is not None:
-            stmt_f = stmt_f.where(FeatureModel.workspace_id == workspace_id)
-        feature_res = session.execute(stmt_f)
-        feat_obj = (await feature_res if hasattr(feature_res, "__await__") else feature_res).scalar_one_or_none()
+        stmt_f = stmt_f.where(FeatureModel.workspace_id == workspace_id)
+        feature_res = await session.execute(stmt_f)
+        feat_obj = feature_res.scalar_one_or_none()
         if feat_obj is None:
             raise ValueError("Cross-workspace entity reference rejected: feature_not_found_in_workspace")
 
@@ -48,10 +48,9 @@ class ScenarioService:
             ActorModel.project_id == project_id,
             ActorModel.id == req.actor_id,
         )
-        if workspace_id is not None:
-            stmt_a = stmt_a.where(ActorModel.workspace_id == workspace_id)
-        actor_res = session.execute(stmt_a)
-        actor_obj = (await actor_res if hasattr(actor_res, "__await__") else actor_res).scalar_one_or_none()
+        stmt_a = stmt_a.where(ActorModel.workspace_id == workspace_id)
+        actor_res = await session.execute(stmt_a)
+        actor_obj = actor_res.scalar_one_or_none()
         if actor_obj is None:
             raise ValueError("Cross-workspace entity reference rejected: actor_not_found_in_workspace")
 
@@ -65,9 +64,7 @@ class ScenarioService:
             confirmation_status=confirmation_status,
         )
         session.add(scenario)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 新增场景
         await audit_service.record(
@@ -86,6 +83,7 @@ class ScenarioService:
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("scenario", scenario.logical_uuid)],
         )
 
         return ScenarioResponse(
@@ -104,7 +102,7 @@ class ScenarioService:
         scenario_id: int,
         req: ScenarioUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> ScenarioResponse:
         stmt = (
             select(ScenarioModel)
@@ -114,10 +112,9 @@ class ScenarioService:
             )
             .options(selectinload(ScenarioModel.acceptance_criteria))
         )
-        if workspace_id is not None:
-            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        scenario = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+        stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
+        scenario = exec_res.scalar_one_or_none()
 
         if scenario is None:
             raise ValueError("scenario_not_found_in_workspace")
@@ -133,9 +130,7 @@ class ScenarioService:
         if req.content is not None:
             scenario.content = req.content
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 更新场景
         diff = {}
@@ -160,6 +155,7 @@ class ScenarioService:
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("scenario", scenario.logical_uuid)],
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -188,23 +184,32 @@ class ScenarioService:
         project_id: int,
         scenario_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         stmt = select(ScenarioModel).where(
             ScenarioModel.project_id == project_id,
             ScenarioModel.id == scenario_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        scenario = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+        stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
+        scenario = exec_res.scalar_one_or_none()
 
         if scenario is None:
             raise ValueError("scenario_not_found_in_workspace")
 
         scenario_name = scenario.name
+        logical_uuid = scenario.logical_uuid
         await session.delete(scenario)
         await session.flush()
+
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=project_id,
+            workspace_id=workspace_id,
+        )
 
         # 审计日志: 删除场景
         await audit_service.record(
@@ -223,6 +228,7 @@ class ScenarioService:
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("scenario", logical_uuid)],
         )
 
         return {
@@ -237,15 +243,15 @@ class ScenarioService:
         req: AcceptanceCriterionCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> AcceptanceCriterionResponse:
         # Verify scenario exists and belongs to project and workspace
         sc_stmt = select(ScenarioModel).where(
             ScenarioModel.project_id == project_id,
             ScenarioModel.id == scenario_id,
         )
-        if workspace_id is not None:
-            sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
+        sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
         scenario_res = await session.execute(sc_stmt)
         if scenario_res.scalar_one_or_none() is None:
             raise ValueError("scenario_not_found")
@@ -288,6 +294,7 @@ class ScenarioService:
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("acceptance_criterion", ac.logical_uuid)],
         )
 
         return AcceptanceCriterionResponse(
@@ -304,15 +311,14 @@ class ScenarioService:
         ac_id: int,
         req: AcceptanceCriterionUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> AcceptanceCriterionResponse:
         # Verify scenario belongs to project and workspace
         sc_stmt = select(ScenarioModel).where(
             ScenarioModel.project_id == project_id,
             ScenarioModel.id == scenario_id,
         )
-        if workspace_id is not None:
-            sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
+        sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
         scenario_res = await session.execute(sc_stmt)
         if scenario_res.scalar_one_or_none() is None:
             raise ValueError("scenario_not_found")
@@ -321,8 +327,7 @@ class ScenarioService:
             ScenarioAcceptanceCriterionModel.scenario_id == scenario_id,
             ScenarioAcceptanceCriterionModel.id == ac_id,
         )
-        if workspace_id is not None:
-            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
+        ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
         ac_res = await session.execute(ac_stmt)
         ac = ac_res.scalar_one_or_none()
 
@@ -358,6 +363,7 @@ class ScenarioService:
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("acceptance_criterion", ac.logical_uuid)],
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -376,15 +382,14 @@ class ScenarioService:
         scenario_id: int,
         ac_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         # Verify scenario belongs to project and workspace
         sc_stmt = select(ScenarioModel).where(
             ScenarioModel.project_id == project_id,
             ScenarioModel.id == scenario_id,
         )
-        if workspace_id is not None:
-            sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
+        sc_stmt = sc_stmt.where(ScenarioModel.workspace_id == workspace_id)
         scenario_res = await session.execute(sc_stmt)
         if scenario_res.scalar_one_or_none() is None:
             raise ValueError("scenario_not_found")
@@ -393,16 +398,25 @@ class ScenarioService:
             ScenarioAcceptanceCriterionModel.scenario_id == scenario_id,
             ScenarioAcceptanceCriterionModel.id == ac_id,
         )
-        if workspace_id is not None:
-            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
+        ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
         ac_res = await session.execute(ac_stmt)
         ac = ac_res.scalar_one_or_none()
 
         if ac is None:
             raise ValueError("acceptance_criterion_not_found")
 
+        logical_uuid = ac.logical_uuid
         await session.delete(ac)
         await session.flush()
+
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=project_id,
+            workspace_id=workspace_id,
+        )
 
         # 审计日志: 删除验收标准
         await audit_service.record(
@@ -433,20 +447,10 @@ class ScenarioService:
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("acceptance_criterion", logical_uuid)],
         )
 
         return {
             "acceptance_criterion_id": ac_id,
             "message": "acceptance_criterion_deleted",
         }
-
-    # Backward-compatible shims for Acceptance Criterion operations
-    async def create_ac(self, project_id: int, scenario_id: int, req, session, confirmation_status=None) -> AcceptanceCriterionResponse:
-        status = confirmation_status or ConfirmationStatus.NEEDS_CONFIRMATION.value
-        return await self.create_acceptance_criterion(project_id, scenario_id, req, session, status)
-
-    async def update_ac(self, project_id: int, scenario_id: int, ac_id: int, req, session) -> AcceptanceCriterionResponse:
-        return await self.update_acceptance_criterion(project_id, scenario_id, ac_id, req, session)
-
-    async def delete_ac(self, project_id: int, scenario_id: int, ac_id: int, session) -> dict:
-        return await self.delete_acceptance_criterion(project_id, scenario_id, ac_id, session)

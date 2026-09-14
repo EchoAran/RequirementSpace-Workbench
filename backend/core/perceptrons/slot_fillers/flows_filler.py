@@ -65,7 +65,12 @@ class FlowsFiller(BaseFiller[FlowsFillerInput]):
                 "flowSteps.stepId",
                 "flowSteps.stepName",
                 "flowSteps.stepDescription",
-                "flowSteps.nextStepIds",
+                "transitions.transitionId",
+                "transitions.sourceStepId",
+                "transitions.targetStepId",
+                "transitions.label",
+                "transitions.conditionText",
+                "transitions.isDefault",
             ),
         ).dump(input_data.flows)
         flows = json.dumps(

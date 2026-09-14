@@ -22,8 +22,8 @@ function asArray(value: any): any[] {
 
 function getChoiceStrategyLabel(choice: any, fallback: string): string {
   return getChoiceGenerationStrategyLabel(
-    choice?.strategyId ?? choice?.strategy_id,
-    choice?.strategyLabel ?? choice?.strategy_label,
+    choice?.strategyId,
+    choice?.strategyLabel,
     fallback,
     i18n,
   );
@@ -31,7 +31,7 @@ function getChoiceStrategyLabel(choice: any, fallback: string): string {
 
 function getFailedChoiceTitle(choice: any, generationType: string | undefined, t: any): string {
   return getChoicePresentation(
-    { ...choice, draftType: choice?.draftType ?? choice?.draft_type ?? generationType },
+    { ...choice, draftType: choice?.draftType ?? generationType },
     t,
     i18n,
   ).title;
@@ -53,6 +53,11 @@ function confirmRegeneration(draftType: string, choice?: any): boolean {
       case 'flow':
         hasExistingContent = (ir.flows?.length ?? 0) > 0 || (ir.businessObjects?.length ?? 0) > 0;
         break;
+      case 'rule':
+      case 'rule_discovery':
+      case 'domain_rule':
+        hasExistingContent = (ir.domainRules?.length ?? 0) > 0;
+        break;
       case 'actor':
         hasExistingContent = (ir.actors?.length ?? 0) > 0;
         break;
@@ -66,7 +71,7 @@ function confirmRegeneration(draftType: string, choice?: any): boolean {
         );
         const features = ir.features || [];
         hasExistingContent = features.some(f => {
-          if (targetFeatureIds.size > 0 && !targetFeatureIds.has(f.featureId) && !targetFeatureIds.has(f.id)) {
+          if (targetFeatureIds.size > 0 && !targetFeatureIds.has(f.featureId)) {
             return false;
           }
           return (f.scenarios?.length ?? 0) > 0;
@@ -78,7 +83,7 @@ function confirmRegeneration(draftType: string, choice?: any): boolean {
         const targetScenarioIds = new Set(asArray(payload.scenario_ids));
         const allScenarios = (ir.features || []).flatMap(f => f.scenarios || []);
         hasExistingContent = allScenarios.some(s => {
-          if (targetScenarioIds.size > 0 && !targetScenarioIds.has(s.scenarioId) && !targetScenarioIds.has(s.id)) {
+          if (targetScenarioIds.size > 0 && !targetScenarioIds.has(s.scenarioId)) {
             return false;
           }
           return (s.acceptanceCriteria?.length ?? 0) > 0;
@@ -86,8 +91,7 @@ function confirmRegeneration(draftType: string, choice?: any): boolean {
         break;
       }
       case 'scope': {
-        hasExistingContent = (ir.scopeItemsCompatible?.length ?? 0) > 0 ||
-          (ir.features || []).some(f => Boolean(f.scope)) ||
+        hasExistingContent = (ir.features || []).some(f => Boolean(f.scope)) ||
           ir.kanoStatus === 'generated';
         break;
       }
@@ -101,12 +105,19 @@ function confirmRegeneration(draftType: string, choice?: any): boolean {
     }
   }
 
+  if (draftType === 'flow') {
+    return window.confirm(i18n.t('choiceGroupPreview.confirmReplaceFlowSet'));
+  }
+
   const targets: Record<string, string> = {
     actor: i18n.t('choiceGroupPreview.targets.actor'),
     feature: i18n.t('choiceGroupPreview.targets.feature'),
     scenario: i18n.t('choiceGroupPreview.targets.scenario'),
     acceptance_criteria: i18n.t('choiceGroupPreview.targets.acceptance_criteria'),
     flow: i18n.t('choiceGroupPreview.targets.flow'),
+    rule: i18n.t('choiceGroupPreview.targets.rule'),
+    rule_discovery: i18n.t('choiceGroupPreview.targets.rule'),
+    domain_rule: i18n.t('choiceGroupPreview.targets.rule'),
     scope: i18n.t('choiceGroupPreview.targets.scope'),
   };
   const target = targets[draftType];
@@ -121,17 +132,18 @@ function CandidateComparisonView({
 }: {
   choices: any[];
   draftType: string;
-  onAccept: (choiceId: string) => void | Promise<void>;
+  onAccept: (choiceId: string, expectedWorkspaceVersion?: string | number | null) => void | Promise<void>;
   isWorking: boolean;
 }) {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   const handleAcceptClick = async (choiceId: string) => {
-    const targetChoice = choices.find(c => (c.choiceId || c.id) === choiceId);
-    if (!confirmRegeneration(draftType, targetChoice)) return;
+    const targetChoice = choices.find(c => c.id === choiceId);
+    if (!targetChoice || !confirmRegeneration(draftType, targetChoice)) return;
     setSubmittingId(choiceId);
     try {
-      await onAccept(choiceId);
+      const version = targetChoice?.payload?.expected_workspace_version ?? targetChoice?.preview?.expected_workspace_version;
+      await onAccept(choiceId, version);
     } finally {
       setSubmittingId(null);
     }
@@ -139,6 +151,7 @@ function CandidateComparisonView({
   const hasActors = choices.some(c => asArray(c.payload?.actors || c.preview?.actors).length > 0);
   const hasFeatures = choices.some(c => asArray(c.payload?.features || c.preview?.features).length > 0);
   const hasFlows = choices.some(c => asArray(c.preview?.flows || c.payload?.flows).length > 0);
+  const hasRules = choices.some(c => asArray(c.payload?.rules || c.preview?.rules).length > 0);
   const hasScenarios = choices.some(c => asArray(c.payload?.scenarios || c.preview?.scenarios).length > 0);
   const hasCriteria = choices.some(c => asArray(c.payload?.acceptance_criteria || c.preview?.criteria).length > 0);
   const hasScopes = choices.some(c => asArray(c.payload?.scopes || c.preview?.scopes).length > 0);
@@ -154,6 +167,10 @@ function CandidateComparisonView({
 
   function getFlowsArray(choice: any): any[] {
     return asArray(choice?.preview?.flows || choice?.payload?.flows);
+  }
+
+  function getRulesArray(choice: any): any[] {
+    return asArray(choice?.payload?.rules || choice?.preview?.rules);
   }
 
   function getScenariosArray(choice: any): any[] {
@@ -172,6 +189,7 @@ function CandidateComparisonView({
     const actors = getActorsArray(choice).length;
     const features = getFeaturesArray(choice).length;
     const flows = getFlowsArray(choice).length;
+    const rules = getRulesArray(choice).length;
     const scenarios = getScenariosArray(choice).length;
     const criteria = getCriteriaArray(choice).length;
     const scopes = getScopesArray(choice).length;
@@ -190,11 +208,27 @@ function CandidateComparisonView({
         i18n.t('choiceGroupPreview.stats.businessObjects', { count: businessObjects })
       ];
     }
+    if (draftType === 'rule' || draftType === 'rule_discovery' || draftType === 'domain_rule') {
+      return [i18n.t('choiceGroupPreview.stats.rules', { count: rules })];
+    }
     if (draftType === 'scenario') {
       return [i18n.t('choiceGroupPreview.stats.scenarios', { count: scenarios })];
     }
     if (draftType === 'acceptance_criteria') {
       return [i18n.t('choiceGroupPreview.stats.criteria', { count: criteria })];
+    }
+    if (draftType === 'flow_refinement') {
+      if (choice?.preview?.done_empty || choice?.payload?.done_empty) {
+        return [i18n.t('choicePreview.doneEmptyResult', { defaultValue: '无需细化（完备）' })];
+      }
+      const steps = asArray(choice?.preview?.steps_added || choice?.payload?.steps_added).length;
+      const trans = asArray(choice?.preview?.transitions_added || choice?.payload?.transitions_added).length;
+      const rulesCount = asArray(choice?.preview?.rules_added || choice?.payload?.rules_added).length;
+      return [
+        `+${steps} 步骤`,
+        `+${trans} 转移`,
+        `+${rulesCount} 规则`,
+      ];
     }
     if (draftType === 'scope') {
       return [i18n.t('choiceGroupPreview.stats.scopes', { count: scopes })];
@@ -203,10 +237,44 @@ function CandidateComparisonView({
       i18n.t('choiceGroupPreview.stats.actors', { count: actors }),
       i18n.t('choiceGroupPreview.stats.features', { count: features }),
       ...(flows > 0 ? [i18n.t('choiceGroupPreview.stats.flows', { count: flows })] : []),
+      ...(rules > 0 ? [i18n.t('choiceGroupPreview.stats.rules', { count: rules })] : []),
       ...(businessObjects > 0 ? [i18n.t('choiceGroupPreview.stats.businessObjects', { count: businessObjects })] : []),
       ...(scenarios > 0 ? [i18n.t('choiceGroupPreview.stats.scenarios', { count: scenarios })] : []),
       ...(criteria > 0 ? [i18n.t('choiceGroupPreview.stats.criteria', { count: criteria })] : []),
     ];
+  }
+
+  function getDiffRules(currentChoice: any, allChoices: any[]) {
+    const currentRules = getRulesArray(currentChoice);
+    const otherChoices = allChoices.filter(c => c.id !== currentChoice.id);
+
+    return currentRules.map(rule => {
+      const title = (rule.title || '').trim();
+      const statement = (rule.statement || '').trim();
+
+      let isUnique = true;
+      let hasStatementDiff = false;
+
+      for (const other of otherChoices) {
+        const otherRules = getRulesArray(other);
+        const matched = otherRules.find(or => (or.title || '').trim() === title);
+        if (matched) {
+          isUnique = false;
+          const otherStmt = (matched.statement || '').trim();
+          if (otherStmt !== statement) {
+            hasStatementDiff = true;
+          }
+        }
+      }
+
+      if (isUnique || hasStatementDiff) {
+        return {
+          ...rule,
+          _diffType: isUnique ? 'unique' : 'modified'
+        };
+      }
+      return null;
+    }).filter(Boolean);
   }
 
   // Diffing algorithms
@@ -574,6 +642,43 @@ function CandidateComparisonView({
             </tr>
           )}
 
+          {/* Row: Rule Differences */}
+          {hasRules && (
+            <tr className="hover:bg-slate-50/40 transition-colors">
+              <td className="px-4 py-3 font-extrabold text-slate-500 border-r border-slate-200 align-top bg-slate-50/50">{i18n.t('choiceGroupPreview.rulesDiffTitle')}</td>
+              {choices.map((c, i) => {
+                const diffRules: any[] = getDiffRules(c, choices);
+                return (
+                  <td key={c.id || i} className="px-5 py-3 border-r border-slate-200 last:border-r-0 align-top space-y-2 max-h-[300px] overflow-y-auto">
+                    {diffRules.length > 0 ? (
+                      diffRules.map((rule: any, rIdx: number) => (
+                        <div key={rIdx} className="p-2.5 rounded-xl border border-violet-100 bg-violet-50/10 space-y-1 hover:border-violet-250 transition-colors shadow-sm text-left">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {rule._diffType === 'unique' ? (
+                              <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.rulesDiffUnique')}</span>
+                            ) : (
+                              <span className="text-[8px] bg-sky-50 border border-sky-100 text-sky-700 font-extrabold px-1 py-0.2 rounded-md leading-none select-none">{i18n.t('choiceGroupPreview.rulesDiffModified')}</span>
+                            )}
+                            <span className="text-[11px] font-extrabold text-slate-800 leading-none">{rule.title}</span>
+                          </div>
+                          {rule.statement && (
+                            <p className="text-[10px] text-slate-500 leading-relaxed font-medium line-clamp-3">
+                              {rule.statement}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 select-none py-2">
+                        {i18n.t('choiceGroupPreview.rulesDiffIdentical')}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+
           {/* Row 4: Flow Differences */}
           {hasFlows && (
             <tr className="hover:bg-slate-50/40 transition-colors">
@@ -749,7 +854,7 @@ interface ChoiceGroupPreviewModalProps {
     candidateStatuses: Record<number, 'pending' | 'generating' | 'complete' | 'failed'>;
   } | null;
   initialChoiceId?: string | number | null;
-  onAccept: (choiceId: string) => void | Promise<void>;
+  onAccept: (choiceId: string, expectedWorkspaceVersion?: string | number | null) => void | Promise<void>;
   onDiscard: () => void | Promise<void>;
   onDefer: () => void;
   onRegenerate?: (choiceId?: string) => void | Promise<void>;
@@ -764,6 +869,9 @@ const subtasksRecord: Record<string, string[]> = {
   scenario: ["events", "mocking", "branches", "usability", "goldenPath"],
   acceptance_criteria: ["boundary", "bdd", "coverage", "strictness", "gherkin"],
   ac: ["boundary", "bdd", "coverage", "strictness", "gherkin"],
+  rule: ["context", "constraints", "sources", "dedup", "formatting"],
+  rule_discovery: ["context", "constraints", "sources", "dedup", "formatting"],
+  domain_rule: ["context", "constraints", "sources", "dedup", "formatting"],
   scope: ["mvp", "kano", "cost", "mvpDiff", "kanoMatrix"]
 };
 
@@ -830,8 +938,6 @@ export function ChoiceGroupPreviewModal({
   }, [group, initialChoiceId]);
 
   /* ── Progress overlay during generation (show even without group) ── */
-  const lastActionMessageToken = useWorkspaceStore(s => s.lastActionMessageToken);
-  const messageInterpolation = useWorkspaceStore(s => s.lastActionMessageTokenInterpolation);
   const generatingChoiceGroupType = useWorkspaceStore(s => s.generatingChoiceGroupType);
 
   if (isGeneratingChoices) {
@@ -867,32 +973,14 @@ export function ChoiceGroupPreviewModal({
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericFeature');
     } else if (type === 'flow') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericFlow');
+    } else if (type === 'rule' || type === 'rule_discovery' || type === 'domain_rule') {
+      loadingTitle = t('choiceGroupPreview.loadingSteps.genericRule');
     } else if (type === 'scope') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
     } else if (type === 'acceptance_criteria' || type === 'ac') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
     } else if (type === 'project' || type === 'project_creation') {
       loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
-    } else {
-      // If group is null and type is null, infer from lastActionMessageToken
-      const msg = String(lastActionMessageToken || '').toLowerCase();
-      if (msg.includes('actor')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericActor');
-      } else if (msg.includes('scenario')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericScenario');
-      } else if (msg.includes('feature')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericFeature');
-      } else if (msg.includes('flow')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericFlow');
-      } else if (msg.includes('scope') || msg.includes('kano')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericScope');
-      } else if (msg.includes('acceptance') || msg.includes('.ac')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericAc');
-      } else if (msg.includes('onboarding') || msg.includes('generatingplans') || msg.includes('initialdraft') || msg.includes('projectdraft')) {
-        loadingTitle = t('choiceGroupPreview.loadingSteps.genericDraft');
-      } else if (lastActionMessageToken && lastActionMessageToken !== 'store.project.generatingCandidates') {
-        loadingTitle = resolveLocalizedMessage(t, lastActionMessageToken, messageInterpolation);
-      }
     }
 
     // Determine subtask list to show based on type
@@ -1053,9 +1141,10 @@ export function ChoiceGroupPreviewModal({
   const showCompareOption = totalSuccessful > 1;
   const compareActive = isCompareMode && showCompareOption;
   const handleAcceptClick = (choiceId: string) => {
-    const targetChoice = successfulChoices.find((c: any) => (c.choiceId || c.id) === choiceId) || activeChoice;
-    if (confirmRegeneration(draftType, targetChoice)) {
-      void onAccept(choiceId);
+    const targetChoice = successfulChoices.find((c: any) => c.id === choiceId);
+    if (targetChoice && confirmRegeneration(draftType, targetChoice)) {
+      const version = targetChoice?.payload?.expected_workspace_version ?? targetChoice?.preview?.expected_workspace_version;
+      void onAccept(choiceId, version);
     }
   };
 
@@ -1072,6 +1161,7 @@ export function ChoiceGroupPreviewModal({
                draftType === 'scenario' ? t('choiceGroupPreview.draftTypes.scenario') :
                draftType === 'feature' ? t('choiceGroupPreview.draftTypes.feature') :
                draftType === 'flow' ? t('choiceGroupPreview.draftTypes.flow') :
+               draftType === 'rule' || draftType === 'rule_discovery' || draftType === 'domain_rule' ? t('choiceGroupPreview.draftTypes.rule') :
                draftType === 'scope' ? t('choiceGroupPreview.draftTypes.scope') :
                draftType === 'acceptance_criteria' ? t('choiceGroupPreview.draftTypes.acceptance_criteria') :
                t('choiceGroupPreview.draftTypes.generic')}

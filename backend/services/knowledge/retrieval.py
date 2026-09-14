@@ -93,9 +93,9 @@ class KnowledgeRetrievalService:
 
         if project_id is not None:
             stmt = stmt.where(KnowledgeChunkModel.project_id == project_id)
-        elif workspace_id is not None:
+        if workspace_id is not None:
             stmt = stmt.where(KnowledgeChunkModel.workspace_id == workspace_id)
-        else:
+        if project_id is None and workspace_id is None:
             return []
 
         result = await session.execute(stmt)

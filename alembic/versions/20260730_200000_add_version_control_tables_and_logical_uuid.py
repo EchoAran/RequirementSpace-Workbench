@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
 
 
 # revision identifiers, used by Alembic.
@@ -43,7 +42,7 @@ def upgrade() -> None:
     # Print Backup Warning
     print("\n" + "="*80)
     print("WARNING: Please ensure you have backed up your database before proceeding with this migration!")
-    print("This migration introduces version control tables and logical UUID backfills.")
+    print("This migration introduces the version-control schema.")
     print("="*80)
 
     # Compute and print Dry-run stats
@@ -55,20 +54,13 @@ def upgrade() -> None:
         projects_count = bind.execute(sa.text("SELECT COUNT(*) FROM projects")).scalar() or 0
         
     print(f"DRY-RUN STATISTICS:")
-    print(f"- Total projects to initialize main branch: {projects_count}")
-    print(f"- Total legacy entities to backfill logical UUIDs and workspace IDs:")
-    
-    for tbl in TARGET_TABLES:
-        if tbl in existing_tables:
-            columns = [c['name'] for c in inspector.get_columns(tbl)]
-            if 'logical_uuid' not in columns:
-                row_count = bind.execute(sa.text(f"SELECT COUNT(*) FROM {tbl}")).scalar() or 0
-            else:
-                row_count = bind.execute(sa.text(f"SELECT COUNT(*) FROM {tbl} WHERE logical_uuid IS NULL")).scalar() or 0
-            print(f"  * {tbl}: {row_count} rows")
+    print(f"- Existing projects: {projects_count}")
             
     print("="*80 + "\n")
     sys.stdout.flush()
+
+    if projects_count:
+        raise RuntimeError("clean_schema_requires_empty_database")
 
     if bind.dialect.name == "sqlite":
         bind.execute(sa.text("PRAGMA foreign_keys=OFF"))
@@ -82,7 +74,7 @@ def upgrade() -> None:
         sa.Column('message', sa.Text(), nullable=False),
         sa.Column('state_json', sa.Text(), nullable=False),
         sa.Column('state_hash', sa.String(length=64), nullable=False),
-        sa.Column('schema_version', sa.String(length=32), nullable=False, server_default='1.0'),
+        sa.Column('schema_version', sa.String(length=32), nullable=False, server_default='2.0'),
         sa.Column('author_user_id', sa.Integer(), nullable=True),
         sa.Column('summary_json', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -194,36 +186,10 @@ def upgrade() -> None:
                         ['workspace_id', 'logical_uuid']
                     )
 
-    # 6. Execute baseline migration and orphan UUID backfill within Alembic's transaction
-    db_session = Session(bind=bind)
-    try:
-        from backend.api.modules.version_control.application.baseline_migration import (
-            migrate_all_projects_to_version_control,
-        )
-        migrate_all_projects_to_version_control(db_session)
-
-        # 7. Backfill any orphan entity rows with generated UUIDs if logical_uuid is still NULL
-        import uuid
-        for table_name in TARGET_TABLES:
-            if table_name in existing_tables:
-                rows = db_session.execute(sa.text(f"SELECT id FROM {table_name} WHERE logical_uuid IS NULL")).fetchall()
-                for row in rows:
-                    db_session.execute(
-                        sa.text(f"UPDATE {table_name} SET logical_uuid = :uuid WHERE id = :id"),
-                        {"uuid": str(uuid.uuid4()), "id": row[0]}
-                    )
-        db_session.commit()
-
-        # 8. Tighten logical_uuid to nullable=False across all versioned entity tables
-        for table_name in TARGET_TABLES:
-            if table_name in existing_tables:
-                with op.batch_alter_table(table_name) as batch_op:
-                    batch_op.alter_column('logical_uuid', existing_type=sa.String(length=36), nullable=False)
-    except Exception:
-        db_session.rollback()
-        raise
-    finally:
-        db_session.close()
+    for table_name in TARGET_TABLES:
+        if table_name in existing_tables:
+            with op.batch_alter_table(table_name) as batch_op:
+                batch_op.alter_column('logical_uuid', existing_type=sa.String(length=36), nullable=False)
 
     if bind.dialect.name == "sqlite":
         bind.execute(sa.text("PRAGMA foreign_keys=ON"))

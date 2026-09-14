@@ -11,6 +11,7 @@ def _updated_at(node: dict, fallback):
 
 def _remap_actor(actor: dict, fallback) -> dict:
     return {
+        "logical_uuid": actor.get("logical_uuid"),
         "actor_id": (
             actor.get("actor_id")
             if "actor_id" in actor
@@ -33,6 +34,7 @@ def _remap_actor(actor: dict, fallback) -> dict:
 
 def _remap_acceptance_criterion(criterion: dict, fallback) -> dict:
     return {
+        "logical_uuid": criterion.get("logical_uuid"),
         "criterion_id": (
             criterion.get("criterion_id")
             if "criterion_id" in criterion
@@ -50,6 +52,7 @@ def _remap_acceptance_criterion(criterion: dict, fallback) -> dict:
 
 def _remap_scenario(scenario: dict, fallback) -> dict:
     return {
+        "logical_uuid": scenario.get("logical_uuid"),
         "scenario_id": (
             scenario.get("scenario_id")
             if "scenario_id" in scenario
@@ -80,6 +83,7 @@ def _remap_scope(scope: dict | None, fallback) -> dict | None:
     if not scope:
         return None
     return {
+        "logical_uuid": scope.get("logical_uuid"),
         "scope_id": (
             scope.get("scope_id")
             if "scope_id" in scope
@@ -110,6 +114,7 @@ def _remap_scope(scope: dict | None, fallback) -> dict | None:
 
 def _remap_feature(feature: dict, fallback) -> dict:
     return {
+        "logical_uuid": feature.get("logical_uuid"),
         "feature_id": (
             feature.get("feature_id")
             if "feature_id" in feature
@@ -168,6 +173,7 @@ def _remap_attribute(attribute: dict, fallback) -> dict:
         else attribute.get("example")
     )
     return {
+        "logical_uuid": attribute.get("logical_uuid"),
         "business_object_attribute_id": attribute_id or 0,
         "business_object_attribute_name": name or "",
         "business_object_attribute_description": description or "",
@@ -195,6 +201,7 @@ def _remap_business_object(item: dict, fallback) -> dict:
         else item.get("description")
     )
     return {
+        "logical_uuid": item.get("logical_uuid"),
         "business_object_id": object_id or 0,
         "business_object_name": name or "",
         "business_object_description": description or "",
@@ -209,6 +216,7 @@ def _remap_business_object(item: dict, fallback) -> dict:
 
 def _remap_flow_step(step: dict, fallback) -> dict:
     return {
+        "logical_uuid": step.get("logical_uuid"),
         "step_id": (
             step.get("step_id")
             if "step_id" in step
@@ -235,14 +243,37 @@ def _remap_flow_step(step: dict, fallback) -> dict:
             "output_business_object_ids",
             [],
         ),
-        "next_step_ids": step.get("next_step_ids", []),
         "updated_at": _updated_at(step, fallback),
         "kind": "flow_step",
     }
 
 
+def _remap_flow_transition(transition: dict, fallback) -> dict:
+    return {
+        "transition_id": (
+            transition.get("transition_id")
+            if "transition_id" in transition
+            else transition.get("id")
+        ),
+        "flow_id": transition.get("flow_id"),
+        "source_step_id": transition.get("source_step_id"),
+        "target_step_id": transition.get("target_step_id"),
+        "condition_text": transition.get("condition_text", ""),
+        "label": transition.get("label", ""),
+        "is_default": bool(transition.get("is_default", False)),
+        "position": transition.get("position", 0),
+        "logical_uuid": transition.get("logical_uuid"),
+        "semantic_tags": transition.get("semantic_tags", []),
+        "origin": transition.get("origin", "manual"),
+        "confirmation_status": transition.get("confirmation_status"),
+        "updated_at": _updated_at(transition, fallback),
+        "kind": "flow_transition",
+    }
+
+
 def _remap_flow(flow: dict, fallback) -> dict:
     return {
+        "logical_uuid": flow.get("logical_uuid"),
         "flow_id": (
             flow.get("flow_id")
             if "flow_id" in flow
@@ -263,9 +294,64 @@ def _remap_flow(flow: dict, fallback) -> dict:
             _remap_flow_step(step, fallback)
             for step in flow.get("flow_steps", [])
         ],
+        "transitions": [
+            _remap_flow_transition(transition, fallback)
+            for transition in flow.get("transitions", [])
+        ],
         "updated_at": _updated_at(flow, fallback),
         "kind": "flow",
     }
+
+
+def _remap_domain_rules(rules: list[dict], fallback) -> list[dict]:
+    rule_id_by_uuid = {
+        rule.get("logical_uuid"): rule.get("id")
+        for rule in rules
+        if rule.get("logical_uuid")
+    }
+    child_ids_by_parent: dict[int, list[int]] = {}
+    remapped_rules = []
+    for rule in rules:
+        rule_id = rule.get("id")
+        parent_id = rule_id_by_uuid.get(rule.get("parent_rule_logical_uuid"))
+        if parent_id is not None and rule_id is not None:
+            child_ids_by_parent.setdefault(parent_id, []).append(rule_id)
+        remapped_rules.append({
+            "logical_uuid": rule.get("logical_uuid"),
+            "rule_id": rule_id,
+            "id": rule_id,
+            "parent_rule_id": parent_id,
+            "title": rule.get("title", ""),
+            "statement": rule.get("statement", ""),
+            "origin": rule.get("origin", "manual"),
+            "confirmation_status": rule.get(
+                "confirmation_status", "needs_confirmation"
+            ),
+            "links": [
+                {
+                    "id": link.get("id"),
+                    "logical_uuid": link.get("logical_uuid"),
+                    "rule_id": rule_id,
+                    "target_kind": link.get("target_kind"),
+                    "target_logical_uuid": link.get(
+                        "target_logical_uuid"
+                    ),
+                    "link_purpose": link.get("link_purpose"),
+                    "context_text": link.get("context_text", ""),
+                    "created_at": _updated_at(link, fallback),
+                    "updated_at": _updated_at(link, fallback),
+                }
+                for link in rule.get("links", [])
+            ],
+            "child_rule_ids": [],
+            "created_at": _updated_at(rule, fallback),
+            "updated_at": _updated_at(rule, fallback),
+        })
+    for rule in remapped_rules:
+        rule["child_rule_ids"] = sorted(
+            child_ids_by_parent.get(rule["id"], [])
+        )
+    return remapped_rules
 
 
 def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
@@ -299,4 +385,8 @@ def remap_snapshot_to_pydantic(snapshot: dict) -> dict:
         _remap_flow(flow, fallback)
         for flow in remapped.get("flows", [])
     ]
+    remapped["domain_rules"] = _remap_domain_rules(
+        remapped.get("domain_rules", []),
+        fallback,
+    )
     return remapped

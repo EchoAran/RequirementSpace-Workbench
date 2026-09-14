@@ -77,3 +77,35 @@ def get_acceptance_criteria_generation_service():
 def set_acceptance_criteria_generation_service(service) -> None:
     global _acceptance_criteria_generation_service
     _acceptance_criteria_generation_service = service
+
+
+_rule_generation_service = None
+
+
+def get_rule_generation_service():
+    if _rule_generation_service is None:
+        raise RuntimeError(
+            "RuleGenerationService has not been registered! Please call set_rule_generation_service() at startup."
+        )
+    return _rule_generation_service
+
+
+def set_rule_generation_service(service) -> None:
+    global _rule_generation_service
+    _rule_generation_service = service
+
+
+_flow_refinement_service = None
+
+
+def get_flow_refinement_service():
+    if _flow_refinement_service is None:
+        raise RuntimeError(
+            "FlowRefinementService has not been registered! Please call set_flow_refinement_service() at startup."
+        )
+    return _flow_refinement_service
+
+
+def set_flow_refinement_service(service) -> None:
+    global _flow_refinement_service
+    _flow_refinement_service = service

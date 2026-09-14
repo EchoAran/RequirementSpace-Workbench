@@ -1,7 +1,8 @@
+
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import React from 'react';
-import { ChevronDown, ChevronRight, User, Cpu, GitBranch } from 'lucide-react';
+import { ChevronDown, ChevronRight, User, Cpu, GitBranch, AlertTriangle } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 
 function asArray(value: any): any[] {
@@ -49,11 +50,11 @@ function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: num
 
   return (
     <div className="space-y-1">
-      <div 
+      <div
         className={`flex items-start gap-1.5 p-2 rounded-xl border transition-all ${
-          depth === 0 
-            ? 'bg-slate-50/70 border-slate-200/80 shadow-sm' 
-            : 'bg-white border-slate-100 hover:border-indigo-200 shadow-inner bg-slate-50/10'
+          depth === 0
+            ? 'bg-white border-slate-200/90 shadow-sm'
+            : 'bg-slate-50/60 border-slate-100 hover:border-indigo-200'
         }`}
       >
         {hasChildren ? (
@@ -63,7 +64,7 @@ function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: num
               e.stopPropagation();
               setIsExpanded(!isExpanded);
             }}
-            className="mt-0.5 p-0.5 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0 flex items-center justify-center focus:outline-none"
+            className="mt-0.5 p-0.5 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0 flex items-center justify-center focus:outline-none cursor-pointer"
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -74,15 +75,15 @@ function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: num
         ) : (
           <span className="w-4 h-4 shrink-0 block" />
         )}
-        
+
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {node.feature_number && (
-              <span className="rounded bg-slate-100 border border-slate-200/50 px-1 py-0.2 text-[8px] font-bold text-slate-500 font-mono tracking-tighter leading-none select-none">
+              <span className="rounded bg-slate-100 border border-slate-200/60 px-1 py-0.5 text-[9px] font-bold text-slate-500 font-mono tracking-tight leading-none select-none">
                 {node.feature_number}
               </span>
             )}
-            <span className="text-[11px] font-extrabold text-slate-800 leading-normal truncate">
+            <span className={`text-[11px] font-extrabold leading-normal truncate ${depth === 0 ? 'text-slate-900' : 'text-slate-800'}`}>
               {node.feature_name || node.name || node.featureName || node.title}
             </span>
           </div>
@@ -94,14 +95,14 @@ function ExpandableFeatureTreeNode({ node, depth = 0 }: { node: any; depth?: num
           {asArray(node.actor_names || node.actorNames).length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5 select-none">
               {asArray(node.actor_names || node.actorNames).map((an: string, j: number) => (
-                <span key={j} className="inline-flex rounded-full border border-indigo-150 bg-indigo-50/50 px-1.5 py-0.2 text-[8px] font-bold text-indigo-755 leading-none">{an}</span>
+                <span key={j} className="inline-flex rounded-full border border-indigo-200/70 bg-indigo-50/60 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 leading-none">{an}</span>
               ))}
             </div>
           )}
         </div>
       </div>
       {hasChildren && isExpanded && (
-        <div className="pl-3.5 border-l border-slate-200 ml-3.5 space-y-1.5 mt-1 animate-in fade-in duration-200">
+        <div className="pl-4 ml-2 border-l-2 border-dashed border-slate-200 space-y-1.5 mt-1 animate-in fade-in duration-200">
           {node.children.map((child: any) => (
             <ExpandableFeatureTreeNode key={child.feature_number || child.feature_name} node={child} depth={depth + 1} />
           ))}
@@ -179,7 +180,13 @@ export function ChoicePreviewRenderer({
     case 'feature':
       return <FeaturePreview preview={preview} payload={payload} />;
     case 'flow':
-      return <FlowPreview preview={preview} />;
+      return <FlowPreview preview={preview} payload={payload} />;
+    case 'flow_refinement':
+      return <FlowRefinementPreview preview={preview} payload={payload} />;
+    case 'rule':
+    case 'rule_discovery':
+    case 'domain_rule':
+      return <RulePreview preview={preview} payload={payload} />;
     case 'scope':
       return <ScopePreview preview={preview} />;
     default:
@@ -253,7 +260,7 @@ function ActorPreview({
   );
 }
 
-/* ── Scenario Preview ──────────────────────────────────────── */
+/* ── Scenario Preview ──────────────────────────────── */
 
 function ScenarioPreview({
   preview, payload,
@@ -337,19 +344,30 @@ function FeaturePreview({
       </div>
 
       <ExpandableFeatureTree features={features} />
-      
     </div>
   );
 }
 
 /* ── Flow Preview ──────────────────────────────────────────── */
 
-function FlowPreview({ preview }: { preview?: any }) {
+function FlowPreview({ preview, payload }: { preview?: any; payload?: any }) {
   const { t } = useTranslation();
-  const flows = preview?.flows || [];
-  const boCount = preview?.business_object_count || 0;
+  const flows = preview?.flows || payload?.flows || [];
+  const boCount = preview?.business_object_count || (payload?.business_objects || []).length || 0;
+  const existingFlowsToReplace = preview?.existing_flows_to_replace || 0;
+  const payloadFlows = payload?.flows || [];
+
   return (
     <div className="space-y-5">
+      {existingFlowsToReplace > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+          <p className="font-medium leading-relaxed">
+            {t('choicePreview.replaceFlowSetWarning', { count: existingFlowsToReplace })}
+          </p>
+        </div>
+      )}
+
       <div className="flex justify-between items-center bg-slate-50 border border-slate-150 rounded-xl p-3">
         <span className="text-xs text-slate-600 font-semibold">{t('choicePreview.flowsCount', { count: flows.length })}</span>
         <span className="rounded bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
@@ -358,96 +376,439 @@ function FlowPreview({ preview }: { preview?: any }) {
       </div>
       
       <div className="space-y-5">
-        {flows.map((f: any, i: number) => (
-          <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-            <div>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <h5 className="text-sm font-extrabold text-slate-900">{f.flow_name}</h5>
-                {f.feature_names && f.feature_names.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {f.feature_names.map((fn: string, j: number) => (
-                      <Chip key={j} className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[9px] font-bold tracking-tight py-0">{fn}</Chip>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-1 tracking-wider">{f.step_count || 0} Steps</p>
-            </div>
+        {flows.map((f: any, i: number) => {
+          const payloadFlow = payloadFlows.find((pf: any) => pf.flow_name === f.flow_name) || payloadFlows[i] || {};
+          const transitions = asArray(payloadFlow.transitions || f.transitions);
+          const flowSteps = asArray(f.flow_steps || f.flowSteps || payloadFlow.flow_steps || payloadFlow.flowSteps);
+          const stepNames = asArray(f.step_names || payloadFlow.step_names);
+          const stepCount = f.step_count ?? (flowSteps.length > 0 ? flowSteps.length : stepNames.length);
+          const transitionCount = f.transition_count ?? transitions.length;
+          const ruleCount = f.rule_count ?? new Set([
+            ...asArray(payloadFlow.rule_refs || f.rule_refs),
+            ...flowSteps.flatMap((step: any) => asArray(step.rule_refs)),
+            ...transitions.flatMap((tr: any) => asArray(tr.rule_refs)),
+          ]).size;
 
-            {/* Visual step timeline trail */}
-            {((f.flow_steps || f.flowSteps) && asArray(f.flow_steps || f.flowSteps).length > 0) ? (
-              <div className="mt-4 pl-2 space-y-4 border-l-2 border-dashed border-slate-200/80 ml-2">
-                {asArray(f.flow_steps || f.flowSteps).map((step: any, stepIndex: number) => {
-                  const number = step.step_number || step.stepNumber || `S-${String(stepIndex + 1).padStart(3, '0')}`;
-                  const type = step.step_type || step.stepType || 'actorAction';
-                  const name = step.step_name || step.stepName || '';
-                  const desc = step.step_description || step.stepDescription || '';
-                  const actors = asArray(step.actor_names || step.actorNames);
-                  const inputs = asArray(step.input_business_object_names || step.inputBusinessObjectNames);
-                  const outputs = asArray(step.output_business_object_names || step.outputBusinessObjectNames);
-                  
-                  return (
-                    <div key={stepIndex} className="relative pl-6">
-                      {/* Timeline dot */}
-                      <span className="absolute -left-[9px] top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white border-2 border-indigo-500 shadow-sm text-[8px] font-bold text-indigo-600 font-mono">
-                        {stepIndex + 1}
-                      </span>
-                      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 shadow-inner">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-extrabold text-slate-500 font-mono leading-none">
-                            {number}
-                          </span>
-                          <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 leading-none">
-            {type === 'actorAction' ? <><User className="h-3 w-3" /> {t('choicePreview.stepInteract')}</> : type === 'systemAction' ? <><Cpu className="h-3 w-3" /> {t('choicePreview.stepAuto')}</> : <><GitBranch className="h-3 w-3" /> {t('choicePreview.stepBranch')}</>}
-                          </span>
-                          <h6 className="text-xs font-bold text-slate-800 leading-none">{name}</h6>
-                        </div>
-                        {desc && (
-                          <p className="mt-2 text-xs text-slate-500 leading-relaxed font-medium">{desc}</p>
-                        )}
-                        <div className="mt-2.5 grid gap-2.5 text-[10px] leading-none sm:grid-cols-2">
-                          {actors.length > 0 && (
-                            <div>
-                              <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepExecRole')}</div>
-                              <div className="flex flex-wrap gap-1">
-                                {actors.map((act) => (
-                                  <span key={act} className="rounded bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 font-bold">{act}</span>
-                                ))}
-                              </div>
-                            </div>
+          return (
+            <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h5 className="text-sm font-extrabold text-slate-900">{f.flow_name}</h5>
+                  {f.feature_names && f.feature_names.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {f.feature_names.map((fn: string, j: number) => (
+                        <Chip key={j} className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[9px] font-bold tracking-tight py-0">{fn}</Chip>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+                    {stepCount} Steps
+                  </span>
+                  {transitionCount > 0 && (
+                    <span className="text-[10px] text-indigo-600 font-extrabold tracking-wider">
+                      · {t('choicePreview.transitionsCount', { count: transitionCount })}
+                    </span>
+                  )}
+                  {ruleCount > 0 && (
+                    <span className="text-[10px] text-violet-600 font-extrabold tracking-wider">
+                      · {t('choicePreview.rulesCount', { count: ruleCount })}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Visual step timeline trail */}
+              {flowSteps.length > 0 ? (
+                <div className="mt-4 pl-2 space-y-4 border-l-2 border-dashed border-slate-200/80 ml-2">
+                  {flowSteps.map((step: any, stepIndex: number) => {
+                    const number = step.step_number || step.stepNumber || `S-${String(stepIndex + 1).padStart(3, '0')}`;
+                    const type = step.step_type || step.stepType || 'actorAction';
+                    const name = step.step_name || step.stepName || '';
+                    const desc = step.step_description || step.stepDescription || '';
+                    const actors = asArray(step.actor_names || step.actorNames);
+                    const inputs = asArray(step.input_business_object_names || step.inputBusinessObjectNames);
+                    const outputs = asArray(step.output_business_object_names || step.outputBusinessObjectNames);
+
+                    return (
+                      <div key={stepIndex} className="relative pl-6">
+                        {/* Timeline dot */}
+                        <span className="absolute -left-[9px] top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white border-2 border-indigo-500 shadow-sm text-[8px] font-bold text-indigo-600 font-mono">
+                          {stepIndex + 1}
+                        </span>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 shadow-inner">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-extrabold text-slate-500 font-mono leading-none">
+                              {number}
+                            </span>
+                            <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 leading-none">
+                              {type === 'actorAction' ? <><User className="h-3 w-3 inline" /> {t('choicePreview.stepInteract')}</> : type === 'systemAction' ? <><Cpu className="h-3 w-3 inline" /> {t('choicePreview.stepAuto')}</> : <><GitBranch className="h-3 w-3 inline" /> {t('choicePreview.stepBranch')}</>}
+                            </span>
+                            <h6 className="text-xs font-bold text-slate-800 leading-none">{name}</h6>
+                          </div>
+                          {desc && (
+                            <p className="mt-2 text-xs text-slate-500 leading-relaxed font-medium">{desc}</p>
                           )}
-                          {(inputs.length > 0 || outputs.length > 0) && (
-                            <div>
-                              <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepIoData')}</div>
-                              <div className="flex flex-wrap gap-1">
-                                {inputs.map((inp) => (
-                                  <span key={inp} className="rounded bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 font-bold">In: {inp}</span>
-                                ))}
-                                {outputs.map((out) => (
-                                  <span key={out} className="rounded bg-emerald-50 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 font-bold">Out: {out}</span>
-                                ))}
+                          <div className="mt-2.5 grid gap-2.5 text-[10px] leading-none sm:grid-cols-2">
+                            {actors.length > 0 && (
+                              <div>
+                                <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepExecRole')}</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {actors.map((act) => (
+                                    <span key={act} className="rounded bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 font-bold">{act}</span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                            {(inputs.length > 0 || outputs.length > 0) && (
+                              <div>
+                                <div className="mb-1 font-bold text-slate-400">{t('choicePreview.stepIoData')}</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {inputs.map((inp) => (
+                                    <span key={inp} className="rounded bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 font-bold">In: {inp}</span>
+                                  ))}
+                                  {outputs.map((out) => (
+                                    <span key={out} className="rounded bg-emerald-50 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 font-bold">Out: {out}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              ) : stepNames.length > 0 ? (
+                <div className="mt-3 pl-2 space-y-3 border-l-2 border-dashed border-slate-250 ml-2">
+                  {stepNames.map((sn: string, j: number) => (
+                    <div key={j} className="relative pl-6">
+                      <span className="absolute -left-[5px] top-1.5 h-2 w-2 rounded-full bg-indigo-500 shadow-sm" />
+                      <p className="text-xs text-slate-700 font-semibold">{sn}</p>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (f.step_names || []).length > 0 ? (
-              <div className="mt-3 pl-2 space-y-3 border-l-2 border-dashed border-slate-250 ml-2">
-                {(f.step_names as string[]).map((sn: string, j: number) => (
-                  <div key={j} className="relative pl-6">
-                    <span className="absolute -left-[5px] top-1.5 h-2 w-2 rounded-full bg-indigo-500 shadow-sm" />
-                    <p className="text-xs text-slate-700 font-semibold">{sn}</p>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Explicit transition and rule links preview */}
+              {transitions.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <div className="text-[10px] font-bold text-slate-400 mb-2">{t('choicePreview.transitionsCount', { count: transitions.length })}</div>
+                  <div className="space-y-1.5">
+                    {transitions.map((tr: any, trIdx: number) => {
+                      const sourceRef = tr.source_step_number || tr.source_step_ref || '';
+                      const targetRef = tr.target_step_number || tr.target_step_ref || '';
+                      return (
+                        <div key={tr.transition_temp_id || trIdx} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 border border-slate-150 px-2.5 py-1.5 text-xs text-slate-700">
+                          <span className="font-mono text-[9px] font-bold text-slate-500">{sourceRef}</span>
+                          <span className="text-slate-300">→</span>
+                          <span className="font-mono text-[9px] font-bold text-slate-500">{targetRef}</span>
+                          {tr.label && <span className="font-medium text-slate-800">[{tr.label}]</span>}
+                          {tr.condition_text && <span className="text-slate-500 italic">({tr.condition_text})</span>}
+                          {tr.is_default && <span className="rounded bg-slate-200 px-1 py-0.2 text-[8px] font-bold text-slate-600">Default</span>}
+                          {asArray(tr.rule_refs).length > 0 && (
+                            <span className="ml-auto rounded-full bg-violet-50 border border-violet-100 px-2 py-0.2 text-[8px] font-bold text-violet-750">
+                              {asArray(tr.rule_refs).length} Rules
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+/* ── Rule Preview ─────────────────────────────────────────── */
+
+function RulePreview({ preview, payload }: { preview?: any; payload?: any }) {
+  const { t } = useTranslation();
+  const rules = preview?.rules || payload?.rules || [];
+  const ruleCount = preview?.rule_count ?? rules.length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between bg-slate-50 border border-slate-150 rounded-xl p-3">
+        <span className="text-xs text-slate-700 font-bold">{t('choicePreview.rulesCount', { count: ruleCount })}</span>
+      </div>
+
+      <div className="space-y-3">
+        {rules.map((rule: any, i: number) => {
+          const title = rule.title || '';
+          const statement = rule.statement || '';
+          const status = rule.confirmation_status || 'ai_assumption';
+          const parentRef = rule.parent_rule_ref;
+          const sourceLinks = asArray(rule.source_links);
+
+          const statusBadge = (
+            status === 'confirmed' ? (
+              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {t('nodeStatus.confirmed')}
+              </span>
+            ) : status === 'needs_confirmation' ? (
+              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                {t('nodeStatus.needs_confirmation')}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {t('nodeStatus.ai_assumption')}
+              </span>
+            )
+          );
+
+          return (
+            <div key={rule.temp_id || rule.id || i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-2.5 hover:border-indigo-200 transition-colors">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-1.5 py-0.5 rounded-md leading-none select-none">
+                    #{i + 1}
+                  </span>
+                  <h5 className="text-sm font-extrabold text-slate-900">{title}</h5>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {parentRef && (
+                    <span className="text-[9px] bg-slate-100 border border-slate-200 text-slate-600 font-semibold px-2 py-0.5 rounded-md leading-none">
+                      Parent: {parentRef}
+                    </span>
+                  )}
+                  {statusBadge}
+                </div>
+              </div>
+
+              {statement && (
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                  <div className="text-[10px] font-bold text-slate-400 mb-1">{t('choicePreview.ruleStatement')}</div>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">{statement}</p>
+                </div>
+              )}
+
+              {sourceLinks.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 mb-1.5">{t('choicePreview.ruleSource')}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sourceLinks.map((link: any, linkIdx: number) => {
+                      const kind = link.target_kind || 'source';
+                      const text = link.context_text || link.target_logical_uuid || '';
+                      return (
+                        <span key={linkIdx} className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-200 px-2 py-0.5 text-[9px] font-medium text-slate-600" title={text}>
+                          <span className="font-bold text-slate-800 uppercase">{kind}</span>
+                          {text && <span className="max-w-[200px] truncate text-slate-500">: {text}</span>}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Flow Refinement Preview ───────────────────────────────── */
+
+function FlowRefinementPreview({ preview, payload }: { preview?: any; payload?: any }) {
+  const { t } = useTranslation();
+  const data = preview || payload || {};
+  const flowName = data.target_flow_name || data.flow_name || (payload?.target?.flow_id ? `Flow #${payload.target.flow_id}` : '');
+  const summary = data.summary || payload?.summary || '';
+  const stepsAdded = asArray(data.steps_added || payload?.steps_added);
+  const transitionsAdded = asArray(data.transitions_added || payload?.transitions_added);
+  const transitionsUpdated = asArray(data.transitions_updated || payload?.transitions_updated);
+  const rulesAdded = asArray(data.rules_added || payload?.rules_added);
+  const ruleLinks = asArray(data.rule_links_added || payload?.rule_links_added).filter(link =>
+    (link.link_purpose || 'applies_to') === 'applies_to' && ['flow', 'flow_step', 'flow_transition'].includes(link.target_kind));
+  const isDoneEmpty = Boolean(data.done_empty || payload?.done_empty);
+
+  if (isDoneEmpty) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-2 text-left" data-testid="flow-refinement-done-empty">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-black text-white uppercase tracking-wide">
+            {t('choicePreview.doneEmptyBadge', { defaultValue: '已完备' })}
+          </span>
+          <h5 className="text-xs font-black text-slate-900">{flowName}</h5>
+        </div>
+        <p className="text-xs text-emerald-800 font-medium leading-relaxed">
+          {summary || payload?.rationale || t('choicePreview.doneEmptyDesc', { defaultValue: '当前流程路径与业务规则已达完备状态，无需增补新分支（合法空结果）。' })}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 text-left">
+      {/* Target Flow Card */}
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white font-mono uppercase tracking-wide">
+              {t('choicePreview.refinementFlowTarget')}
+            </span>
+            <h5 className="text-xs font-black text-slate-900">{flowName}</h5>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] font-bold">
+            {stepsAdded.length > 0 && (
+              <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5">
+                +{stepsAdded.length} Steps
+              </span>
+            )}
+            {transitionsAdded.length > 0 && (
+              <span className="rounded-full bg-sky-100 text-sky-800 px-2 py-0.5">
+                +{transitionsAdded.length} Trans
+              </span>
+            )}
+            {rulesAdded.length > 0 && (
+              <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">
+                +{rulesAdded.length} Rules
+              </span>
+            )}
+          </div>
+        </div>
+        {summary && (
+          <p className="text-[11px] text-slate-600 font-medium leading-relaxed">{summary}</p>
+        )}
+      </div>
+
+      {/* Added Steps */}
+      {stepsAdded.length > 0 && (
+        <div className="space-y-2">
+          <h6 className="text-[11px] font-extrabold text-slate-700 tracking-wide uppercase">
+            {t('choicePreview.refinementAddedSteps', { count: stepsAdded.length })}
+          </h6>
+          <div className="space-y-2.5">
+            {stepsAdded.map((step: any, idx: number) => {
+              const num = step.step_number || `S-${idx + 1}`;
+              const type = step.step_type || 'actorAction';
+              const actors = asArray(step.actor_names);
+              const inputs = asArray(step.input_business_object_names);
+              const outputs = asArray(step.output_business_object_names);
+              return (
+                <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-700 font-mono">
+                      {num}
+                    </span>
+                    <span className="rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                      {type === 'actorAction' ? <><User className="h-2.5 w-2.5 inline" /> {t('choicePreview.stepInteract')}</> : type === 'systemAction' ? <><Cpu className="h-2.5 w-2.5 inline" /> {t('choicePreview.stepAuto')}</> : <><GitBranch className="h-2.5 w-2.5 inline" /> {t('choicePreview.stepBranch')}</>}
+                    </span>
+                    <span className="text-xs font-bold text-slate-800">{step.name}</span>
+                    {step.anchor_after_step_number && (
+                      <span className="ml-auto rounded-md bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
+                        {t('choicePreview.refinementAnchorAfter', { step: step.anchor_after_step_number })}
+                      </span>
+                    )}
+                  </div>
+                  {step.description && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">{step.description}</p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 text-[9px]">
+                    {actors.map((act: string) => (
+                      <span key={act} className="rounded bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 font-bold">{act}</span>
+                    ))}
+                    {inputs.map((inp: string) => (
+                      <span key={inp} className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.5 font-medium">In: {inp}</span>
+                    ))}
+                    {outputs.map((out: string) => (
+                      <span key={out} className="rounded bg-emerald-50 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 font-bold">Out: {out}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Added / Updated Transitions */}
+      {(transitionsAdded.length > 0 || transitionsUpdated.length > 0) && (
+        <div className="space-y-2">
+          <h6 className="text-[11px] font-extrabold text-slate-700 tracking-wide uppercase">
+            {t('choicePreview.refinementAddedTransitions', { count: transitionsAdded.length + transitionsUpdated.length })}
+          </h6>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 space-y-1.5 divide-y divide-slate-150">
+            {transitionsAdded.map((tr: any, idx: number) => (
+              <div key={`add-${idx}`} className="pt-1.5 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono text-[10px] font-bold text-slate-700">{tr.source_step_ref}</span>
+                  <span className="text-slate-400">→</span>
+                  <span className="font-mono text-[10px] font-bold text-slate-700">{tr.target_step_ref}</span>
+                  {(tr.label || tr.condition_text) && (
+                    <span className="text-[10px] text-slate-500 font-medium truncate">
+                      ({tr.label || tr.condition_text})
+                    </span>
+                  )}
+                </div>
+                <span className="rounded bg-sky-50 border border-sky-200 px-1.5 py-0.2 text-[9px] font-bold text-sky-700 shrink-0">
+                  +{t('choicePreview.refinementAddBadge')}
+                </span>
+              </div>
+            ))}
+            {transitionsUpdated.map((tr: any, idx: number) => (
+              <div key={`upd-${idx}`} className="pt-1.5 first:pt-0 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono text-[10px] text-slate-500">#{tr.transition_id}</span>
+                  <span className="text-slate-400">→</span>
+                  <span className="font-mono text-[10px] font-bold text-indigo-700">{tr.target_step_ref}</span>
+                  {(tr.label || tr.condition_text) && (
+                    <span className="text-[10px] text-slate-500 font-medium truncate">
+                      ({tr.label || tr.condition_text})
+                    </span>
+                  )}
+                </div>
+                <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold text-amber-700 shrink-0">
+                  {t('choicePreview.refinementUpdateBadge')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Added Rules */}
+      {rulesAdded.length > 0 && (
+        <div className="space-y-2">
+          <h6 className="text-[11px] font-extrabold text-slate-700 tracking-wide uppercase">
+            {t('choicePreview.refinementAddedRules', { count: rulesAdded.length })}
+          </h6>
+          <div className="space-y-2">
+            {rulesAdded.map((rule: any, idx: number) => (
+              <div key={idx} className="rounded-xl border border-amber-200/70 bg-amber-50/30 p-2.5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-amber-100 border border-amber-200 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-800 font-mono">
+                    {rule.rule_number || `R-${idx + 1}`}
+                  </span>
+                  <span className="text-xs font-bold text-slate-800">{rule.title}</span>
+                  {rule.category && (
+                    <span className="rounded bg-white border border-amber-200 px-1.5 py-0.2 text-[8px] font-bold text-amber-700">
+                      {rule.category}
+                    </span>
+                  )}
+                </div>
+                {rule.statement && (
+                  <p className="text-[11px] text-slate-600 leading-relaxed font-medium">{rule.statement}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {ruleLinks.length > 0 && <section className="space-y-2 border-t border-slate-200 pt-3" data-testid="refinement-rule-associations">
+        <h6 className="text-xs font-bold text-slate-800">{t('how.ruleAssociations.added')}</h6>
+        {ruleLinks.map((link: any, index: number) => <div key={index} className="text-xs text-slate-700">
+          <p className="font-semibold">{t(`how.ruleAssociations.${link.target_kind}`)} · {link.target_kind === 'flow' ? flowName : link.target_ref}</p>
+          <p>{rulesAdded.find(rule => rule.temp_id === link.rule_ref)?.title || link.rule_ref}</p>
+        </div>)}
+      </section>}
     </div>
   );
 }

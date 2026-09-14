@@ -1,0 +1,1 @@
+"""Domain rule module package."""

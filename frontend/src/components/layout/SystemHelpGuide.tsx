@@ -33,6 +33,8 @@ interface SectionConfig {
 
 const SECTION_CONFIGS: SectionConfig[] = [
   { id: 'lifecycle', category: 'workflow', icon: Layers, pagePaths: ['/overview'] },
+  { id: 'guidance', category: 'workflow', icon: Search, pagePaths: [] },
+  { id: 'ai_assistant', category: 'workflow', icon: Sparkles, pagePaths: [] },
   { id: 'what', category: 'workflow', icon: Users, pagePaths: ['/what'] },
   { id: 'flow', category: 'workflow', icon: Workflow, pagePaths: ['/flow'] },
   { id: 'scope', category: 'workflow', icon: Target, pagePaths: ['/scope'] },

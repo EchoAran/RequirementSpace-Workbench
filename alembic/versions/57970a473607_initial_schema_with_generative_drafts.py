@@ -308,12 +308,44 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['flow_step_id'], ['flow_steps.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('flow_step_id', 'business_object_id')
     )
-    op.create_table('flow_step_next',
+    op.create_table('flow_transitions',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('logical_uuid', sa.String(length=36), nullable=False),
+    sa.Column('workspace_id', sa.Integer(), nullable=True),
+    sa.Column('project_id', sa.Integer(), nullable=False),
+    sa.Column('flow_id', sa.Integer(), nullable=False),
     sa.Column('source_step_id', sa.Integer(), nullable=False),
     sa.Column('target_step_id', sa.Integer(), nullable=False),
+    sa.Column('label', sa.String(length=255), nullable=False, server_default=''),
+    sa.Column('condition_text', sa.Text(), nullable=False, server_default=''),
+    sa.Column('is_default', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+    sa.Column('position', sa.Integer(), nullable=False, server_default='0'),
+    sa.Column('semantic_tags', sa.JSON(), nullable=False),
+    sa.Column('origin', sa.String(length=32), nullable=False, server_default='manual'),
+    sa.Column('confirmation_status', sa.String(length=20), nullable=False, server_default='confirmed'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.ForeignKeyConstraint(['workspace_id'], ['branch_workspaces.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['flow_id'], ['flows.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['source_step_id'], ['flow_steps.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['target_step_id'], ['flow_steps.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('source_step_id', 'target_step_id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('source_step_id', 'target_step_id', name='uq_flow_transition_source_target'),
+    sa.UniqueConstraint('source_step_id', 'position', name='uq_flow_transition_source_position'),
+    sa.UniqueConstraint('workspace_id', 'logical_uuid', name='uq_flow_transitions_workspace_logical_uuid'),
+    )
+    op.create_index(op.f('ix_flow_transitions_flow_id'), 'flow_transitions', ['flow_id'], unique=False)
+    op.create_index(op.f('ix_flow_transitions_logical_uuid'), 'flow_transitions', ['logical_uuid'], unique=False)
+    op.create_index(op.f('ix_flow_transitions_source_step_id'), 'flow_transitions', ['source_step_id'], unique=False)
+    op.create_index(op.f('ix_flow_transitions_target_step_id'), 'flow_transitions', ['target_step_id'], unique=False)
+    op.create_index(
+        'uq_flow_transition_source_default',
+        'flow_transitions',
+        ['source_step_id'],
+        unique=True,
+        sqlite_where=sa.text('is_default = 1'),
+        postgresql_where=sa.text('is_default IS TRUE'),
     )
     op.create_table('flow_step_output_business_object',
     sa.Column('flow_step_id', sa.Integer(), nullable=False),
@@ -369,7 +401,12 @@ def downgrade() -> None:
     op.drop_index('ix_scenarios_actor_id', table_name='scenarios')
     op.drop_table('scenarios')
     op.drop_table('flow_step_output_business_object')
-    op.drop_table('flow_step_next')
+    op.drop_index('uq_flow_transition_source_default', table_name='flow_transitions')
+    op.drop_index(op.f('ix_flow_transitions_target_step_id'), table_name='flow_transitions')
+    op.drop_index(op.f('ix_flow_transitions_source_step_id'), table_name='flow_transitions')
+    op.drop_index(op.f('ix_flow_transitions_logical_uuid'), table_name='flow_transitions')
+    op.drop_index(op.f('ix_flow_transitions_flow_id'), table_name='flow_transitions')
+    op.drop_table('flow_transitions')
     op.drop_table('flow_step_input_business_object')
     op.drop_table('flow_step_actor')
     op.drop_index(op.f('ix_choices_choice_group_id'), table_name='choices')

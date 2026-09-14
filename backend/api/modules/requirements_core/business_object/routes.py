@@ -44,14 +44,14 @@ async def create_business_object(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.create_business_object(
             project_id=owned_project.id,
             req=request,
@@ -90,14 +90,14 @@ async def update_business_object(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.update_business_object(
             project_id=owned_project.id,
             bo_id=bo_id,
@@ -140,14 +140,14 @@ async def delete_business_object(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.delete_business_object(
             project_id=owned_project.id,
             bo_id=bo_id,
@@ -186,14 +186,14 @@ async def create_business_object_attribute(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.create_business_object_attribute(
             project_id=owned_project.id,
             bo_id=bo_id,
@@ -234,14 +234,14 @@ async def update_business_object_attribute(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.update_business_object_attribute(
             project_id=owned_project.id,
             bo_id=bo_id,
@@ -283,14 +283,14 @@ async def delete_business_object_attribute(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await bo_service.delete_business_object_attribute(
             project_id=owned_project.id,
             bo_id=bo_id,

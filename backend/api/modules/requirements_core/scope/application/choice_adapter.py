@@ -59,23 +59,17 @@ class ScopeGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         )
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
-        workspace_id = kwargs.get("workspace_id")
+        workspace_id = kwargs["workspace_id"]
         result = await self._service._persist_scope_generation_draft(
             draft=payload, session=session, workspace_id=workspace_id,
         )
         # Update Kano Status to generated (completed)
         from backend.database.model import BranchWorkspaceModel, ProjectModel
         project_id = payload["project_id"]
-        if workspace_id is not None:
-            ws = await session.get(BranchWorkspaceModel, workspace_id)
-            if ws:
-                ws.kano_status = "generated"
-                ws.unlocked_stages = "what,how,scope"
-        else:
-            project = await session.get(ProjectModel, project_id)
-            if project:
-                project.kano_status = "generated"
-                project.unlocked_stages = "what,how,scope"
+        ws = await session.get(BranchWorkspaceModel, workspace_id)
+        if ws:
+            ws.kano_status = "generated"
+            ws.unlocked_stages = "what,how,scope"
 
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(

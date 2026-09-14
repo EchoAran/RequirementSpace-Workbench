@@ -59,9 +59,19 @@ class SplSyntaxRenderer:
 
         # 4. CONSTRAINTS (Delivery Scopes and Unresolved Gates)
         features = payload.get("features", [])
+        domain_rules = payload.get("domain_rules", [])
+        rule_links = payload.get("rule_links", [])
         unresolved_gates = payload.get("unresolved_gates", [])
         self._append_constraints(
-            lines, warnings, features, unresolved_gates, project_id, is_english
+            lines,
+            warnings,
+            trace_links,
+            features,
+            domain_rules,
+            rule_links,
+            unresolved_gates,
+            project_id,
+            is_english,
         )
 
         # 5. TYPES (Business Objects)
@@ -92,7 +102,14 @@ class SplSyntaxRenderer:
                 "message": "Project has no flows defined.",
                 "source": {"kind": "project", "id": project_id}
             })
-        self._append_flow_workers(lines, trace_links, flows, features)
+        self._append_flow_workers(
+            lines,
+            trace_links,
+            flows,
+            features,
+            domain_rules,
+            rule_links,
+        )
 
         lines.append("[END_AGENT]")
         spl_text = "\n".join(lines) + "\n"
@@ -138,7 +155,15 @@ class SplSyntaxRenderer:
 
     @staticmethod
     def _append_constraints(
-        lines, warnings, features, unresolved_gates, project_id, is_english
+        lines,
+        warnings,
+        trace_links,
+        features,
+        domain_rules,
+        rule_links,
+        unresolved_gates,
+        project_id,
+        is_english,
     ) -> None:
         lines.append("[DEFINE_CONSTRAINTS:]")
         for feature in features:
@@ -167,6 +192,41 @@ class SplSyntaxRenderer:
                 f"DeliveryScope: \"Feature_{feature_id} {escape_string(feature_name)} "
                 f"is {status_text}.{reason_text}\""
             )
+        links_by_rule: dict[int, list[dict[str, Any]]] = {}
+        for link in rule_links:
+            links_by_rule.setdefault(link.get("rule_id"), []).append(link)
+        for rule in domain_rules:
+            rule_id = rule.get("rule_id") or rule.get("id")
+            if rule_id is None or not rule.get("statement"):
+                raise ValueError("spl_export_invalid_domain_rule")
+            lines.append(
+                f"BusinessRule_{rule_id}: \"{escape_string(rule['statement'])}\""
+            )
+            trace_links.append({
+                "spl_ref": f"BusinessRule_{rule_id}",
+                "source_kind": "domain_rule",
+                "source_id": str(rule_id),
+            })
+            for link in sorted(
+                links_by_rule.get(rule_id, []),
+                key=lambda value: (
+                    value.get("link_purpose", ""),
+                    value.get("target_kind", ""),
+                    value.get("target_logical_uuid", ""),
+                ),
+            ):
+                purpose = link.get("link_purpose")
+                target_kind = link.get("target_kind")
+                target_uuid = link.get("target_logical_uuid")
+                if purpose not in {"source", "applies_to"} or not target_kind or not target_uuid:
+                    raise ValueError("spl_export_invalid_rule_link")
+                trace_links.append({
+                    "spl_ref": (
+                        f"BusinessRule_{rule_id}->{target_kind}:{target_uuid}"
+                    ),
+                    "source_kind": "rule_link",
+                    "source_id": str(link.get("logical_uuid") or link.get("id")),
+                })
         for gate in unresolved_gates:
             code = gate.get("code") or gate.get("finding_id", "gate")
             detail = "" if is_english else f": {escape_string(gate.get('description', ''))}"
@@ -286,6 +346,8 @@ class SplSyntaxRenderer:
         trace_links,
         flows,
         features,
+        domain_rules,
+        rule_links,
     ) -> None:
         command_number = 1
         scenarios_by_feature = {
@@ -308,6 +370,13 @@ class SplSyntaxRenderer:
                 steps,
                 command_number,
             )
+            cls._append_flow_transitions(
+                lines,
+                trace_links,
+                flow,
+                domain_rules,
+                rule_links,
+            )
             cls._append_flow_scenarios(
                 lines,
                 flow.get("feature_ids", []),
@@ -319,6 +388,87 @@ class SplSyntaxRenderer:
                 "source_kind": "flow",
                 "source_id": str(flow_id),
             })
+
+    @classmethod
+    def _append_flow_transitions(
+        cls,
+        lines,
+        trace_links,
+        flow,
+        domain_rules,
+        rule_links,
+    ) -> None:
+        transitions = sorted(
+            flow.get("transitions", []),
+            key=lambda value: (
+                value.get("source_step_id"),
+                value.get("position", 0),
+                value.get("target_step_id"),
+            ),
+        )
+        if len(flow.get("flow_steps", [])) > 1 and not transitions:
+            raise ValueError("spl_export_flow_transitions_missing")
+        lines.append("  [TRANSITIONS]")
+        outgoing_counts: dict[int, int] = {}
+        for transition in transitions:
+            source_id = transition.get("source_step_id")
+            outgoing_counts[source_id] = outgoing_counts.get(source_id, 0) + 1
+
+        rule_ids_by_uuid = {
+            rule.get("logical_uuid"): rule.get("rule_id") or rule.get("id")
+            for rule in domain_rules
+        }
+        rules_by_transition: dict[str, list[int]] = {}
+        for link in rule_links:
+            if link.get("link_purpose") != "applies_to" or link.get("target_kind") != "flow_transition":
+                continue
+            rule_id = link.get("rule_id")
+            if rule_id is None:
+                rule_id = rule_ids_by_uuid.get(link.get("rule_logical_uuid"))
+            if rule_id is None:
+                raise ValueError("spl_export_unresolved_transition_rule")
+            rules_by_transition.setdefault(link.get("target_logical_uuid"), []).append(rule_id)
+
+        lines.append("  [TRANSITIONS]")
+        if not transitions:
+            lines.append("    # None")
+        for transition in transitions:
+            transition_id = transition.get("transition_id")
+            source_id = transition.get("source_step_id")
+            target_id = transition.get("target_step_id")
+            logical_uuid = transition.get("logical_uuid")
+            label = transition.get("label", "")
+            condition = transition.get("condition_text", "")
+            is_default = bool(transition.get("is_default"))
+            if outgoing_counts.get(source_id, 0) > 1 and not (label or condition or is_default):
+                raise ValueError(
+                    f"spl_export_transition_semantics_missing:{transition_id}"
+                )
+            rule_refs = sorted(set(rules_by_transition.get(logical_uuid, [])))
+            semantics = []
+            if label:
+                semantics.append(f"label={escape_string(label)}")
+            if condition:
+                semantics.append(f"condition={escape_string(condition)}")
+            if is_default:
+                semantics.append("default=true")
+            if rule_refs:
+                semantics.append(
+                    "rules=" + ",".join(f"BusinessRule_{value}" for value in rule_refs)
+                )
+            semantics_text = "; ".join(semantics) or "sequential"
+            lines.append(
+                f"    # FlowTransition_{transition_id}: Step_{source_id} -> "
+                f"Step_{target_id}; {semantics_text}"
+            )
+            trace_links.append({
+                "spl_ref": f"FlowTransition_{transition_id}",
+                "source_kind": "flow_transition",
+                "source_id": str(
+                    transition.get("logical_uuid") or transition_id
+                ),
+            })
+        lines.append("  [END_TRANSITIONS]")
 
     @staticmethod
     def _collect_business_object_refs(steps) -> tuple[set[str], set[str]]:

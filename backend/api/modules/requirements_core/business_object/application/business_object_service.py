@@ -30,13 +30,6 @@ from .business_object_attribute_writer import (
 )
 
 
-async def _exec_stmt(session, stmt):
-    res = session.execute(stmt)
-    if hasattr(res, "__await__"):
-        return await res
-    return res
-
-
 class BusinessObjectService:
     async def create_business_object(
         self,
@@ -44,7 +37,8 @@ class BusinessObjectService:
         req: BusinessObjectCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> BusinessObjectResponse:
         bo = BusinessObjectModel(
             project_id=project_id,
@@ -54,9 +48,7 @@ class BusinessObjectService:
             confirmation_status=confirmation_status,
         )
         session.add(bo)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 新增业务对象
         await audit_service.record(
@@ -91,7 +83,7 @@ class BusinessObjectService:
         bo_id: int,
         req: BusinessObjectUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> BusinessObjectResponse:
         stmt = (
             select(BusinessObjectModel)
@@ -101,9 +93,8 @@ class BusinessObjectService:
             )
             .options(selectinload(BusinessObjectModel.attributes))
         )
-        if workspace_id is not None:
-            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
-        exec_res = await _exec_stmt(session, stmt)
+        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
         bo = exec_res.scalar_one_or_none()
 
         if bo is None:
@@ -120,9 +111,7 @@ class BusinessObjectService:
         if req.description is not None:
             bo.description = req.description
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 更新业务对象
         diff = {}
@@ -176,15 +165,14 @@ class BusinessObjectService:
         project_id: int,
         bo_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         stmt = select(BusinessObjectModel).where(
             BusinessObjectModel.project_id == project_id,
             BusinessObjectModel.id == bo_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
-        exec_res = await _exec_stmt(session, stmt)
+        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
         bo = exec_res.scalar_one_or_none()
 
         if bo is None:
@@ -240,15 +228,14 @@ class BusinessObjectService:
         bo_id: int,
         req: BusinessObjectAttributeCreateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> BusinessObjectAttributeResponse:
         # Verify BO belongs to project and workspace
         bo_stmt = select(BusinessObjectModel).where(
             BusinessObjectModel.project_id == project_id,
             BusinessObjectModel.id == bo_id,
         )
-        if workspace_id is not None:
-            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
         bo_res = await session.execute(bo_stmt)
         if bo_res.scalar_one_or_none() is None:
             raise ValueError("business_object_not_found")
@@ -301,7 +288,7 @@ class BusinessObjectService:
         attr_id: int,
         req: BusinessObjectAttributeUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> BusinessObjectAttributeResponse:
         attr = await load_attribute_for_update(
             session,
@@ -352,15 +339,14 @@ class BusinessObjectService:
         bo_id: int,
         attr_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         # Verify BO belongs to project and workspace
         bo_stmt = select(BusinessObjectModel).where(
             BusinessObjectModel.project_id == project_id,
             BusinessObjectModel.id == bo_id,
         )
-        if workspace_id is not None:
-            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
         bo_res = await session.execute(bo_stmt)
         if bo_res.scalar_one_or_none() is None:
             raise ValueError("business_object_not_found")
@@ -369,8 +355,7 @@ class BusinessObjectService:
             BusinessObjectAttributeModel.business_object_id == bo_id,
             BusinessObjectAttributeModel.id == attr_id,
         )
-        if workspace_id is not None:
-            attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
+        attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
         attr_res = await session.execute(attr_stmt)
         attr = attr_res.scalar_one_or_none()
 
@@ -404,22 +389,5 @@ class BusinessObjectService:
             "message": "attribute_deleted",
         }
 
-    # Backward-compatible shims for BO operations
-    async def create_bo(self, project_id: int, req, session, confirmation_status=None) -> BusinessObjectResponse:
-        status = confirmation_status or ConfirmationStatus.NEEDS_CONFIRMATION.value
-        return await self.create_business_object(project_id, req, session, status)
-
-    async def update_bo(self, project_id: int, bo_id: int, req, session) -> BusinessObjectResponse:
-        return await self.update_business_object(project_id, bo_id, req, session)
-
-    async def delete_bo(self, project_id: int, bo_id: int, session) -> dict:
-        return await self.delete_business_object(project_id, bo_id, session)
-
-    async def create_bo_attribute(self, project_id: int, bo_id: int, req, session) -> BusinessObjectAttributeResponse:
-        return await self.create_business_object_attribute(project_id, bo_id, req, session)
-
-    async def update_bo_attribute(self, project_id: int, bo_id: int, attr_id: int, req, session) -> BusinessObjectAttributeResponse:
-        return await self.update_business_object_attribute(project_id, bo_id, attr_id, req, session)
-
-    async def delete_bo_attribute(self, project_id: int, bo_id: int, attr_id: int, session) -> dict:
-        return await self.delete_business_object_attribute(project_id, bo_id, attr_id, session)
+    async def update_bo(self, project_id: int, bo_id: int, req, session, workspace_id: int) -> BusinessObjectResponse:
+        return await self.update_business_object(project_id, bo_id, req, session, workspace_id=workspace_id)

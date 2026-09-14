@@ -47,20 +47,20 @@ async def confirm_repair_draft(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await draft_service.confirm_draft(
             project_id=project.id,
             draft_id=draft_id,
             session=session,
             workspace_id=ws_id,
-            branch_name=branch_obj.name if branch_obj else None,
+            branch_name=branch_obj.name,
             head_commit_id=branch_obj.head_commit.public_id if branch_obj.head_commit else "head",
         )
     except ValueError as e:
@@ -96,7 +96,7 @@ async def discard_repair_draft(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
@@ -141,20 +141,20 @@ async def regenerate_repair_draft(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await draft_service.regenerate_draft(
             project_id=project.id,
             draft_id=draft_id,
             session=session,
             workspace_id=ws_id,
-            branch_name=branch_obj.name if branch_obj else None,
+            branch_name=branch_obj.name,
             head_commit_id=branch_obj.head_commit.public_id if branch_obj.head_commit else "head",
         )
     except ValueError as e:

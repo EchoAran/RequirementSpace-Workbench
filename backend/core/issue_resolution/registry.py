@@ -27,7 +27,6 @@ class IssueSolverRegistry:
                 generation_draft_solver
             ),
             "DUPLICATE_SCENARIO_NAME": open_panel_solver,
-            "LEAF_FEATURE_WITHOUT_FLOW": open_panel_solver,
             "FLOW_WITHOUT_FEATURE": open_panel_solver,
             "FLOW_WITHOUT_STEPS": open_panel_solver,
             "ACTOR_ACTION_STEP_WITHOUT_ACTOR": open_panel_solver,

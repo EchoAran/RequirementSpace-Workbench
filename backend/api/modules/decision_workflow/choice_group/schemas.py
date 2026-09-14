@@ -109,3 +109,7 @@ class GenerationAcceptRequest(CamelModel):
         default=False,
         description="跳过 stale 校验强制采纳",
     )
+    expected_workspace_version: str | int | None = Field(
+        default=None,
+        description="期望的工作区版本/哈希，用于乐观锁校验",
+    )

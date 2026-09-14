@@ -13,7 +13,7 @@ Flow:
 
 # Rules
 - Return one JSON object only, without Markdown or commentary.
-- Preserve flow names, descriptions, feature IDs, step numbers, step names, step descriptions, and `next_steps` exactly.
+- Preserve flow names, descriptions, feature IDs, step numbers, step names, and step descriptions exactly.
 - `actor_ids` must reference input actors. `step_type` is exactly `actorAction`, `systemAction`, or `judgment`.
 - Reuse existing business-object IDs where possible. If a required object is missing, add only that object and use a stable temporary ID such as `B-001` in both the object and step references.
 - Attribute examples must always be JSON strings.
@@ -42,8 +42,7 @@ Flow:
       "actor_ids": [1],
       "step_type": "actorAction",
       "input_business_object_ids": [],
-      "output_business_object_ids": ["B-001"],
-      "next_steps": []
+      "output_business_object_ids": ["B-001"]
     }]
   }]
 }

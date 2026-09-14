@@ -31,6 +31,7 @@ from backend.schemas import (
     FlowNode,
     FlowStepNode,
     FlowStepType,
+    FlowTransitionNode,
     PerceptionJobStatus,
     PerceptionKindType,
     PerceptionSlot,
@@ -46,7 +47,7 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -87,7 +88,7 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -134,7 +135,7 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -185,7 +186,7 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -209,11 +210,8 @@ class PerceptionPreviewBuilder:
         scenario_stmt = select(ScenarioModel).where(
             ScenarioModel.id == scenario_id,
             ScenarioModel.project_id == project_id,
+            ScenarioModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            scenario_stmt = scenario_stmt.where(ScenarioModel.workspace_id == workspace_id)
-        else:
-            scenario_stmt = scenario_stmt.where(ScenarioModel.workspace_id.is_(None))
 
         scenario_result = await session.execute(scenario_stmt)
         scenario_model = scenario_result.scalar_one_or_none()
@@ -223,12 +221,9 @@ class PerceptionPreviewBuilder:
 
         from backend.database.model import ScenarioAcceptanceCriterionModel
         ac_stmt = select(ScenarioAcceptanceCriterionModel).where(
-            ScenarioAcceptanceCriterionModel.scenario_id == scenario_id
+            ScenarioAcceptanceCriterionModel.scenario_id == scenario_id,
+            ScenarioAcceptanceCriterionModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id == workspace_id)
-        else:
-            ac_stmt = ac_stmt.where(ScenarioAcceptanceCriterionModel.workspace_id.is_(None))
 
         ac_result = await session.execute(ac_stmt)
         existing_ac = ac_result.scalars().all()
@@ -278,7 +273,7 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         context, business_object_nodes = await PerceptionPreviewBuilder._load_flow_filling_context(
             project_id=project_id,
@@ -328,18 +323,15 @@ class PerceptionPreviewBuilder:
         perception_job_id: int,
         expected_kinds: set[str],
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[object, PerceptionSlot]:
         from backend.database.model import PerceptionJobModel
 
         stmt = select(PerceptionJobModel).where(
             PerceptionJobModel.id == perception_job_id,
             PerceptionJobModel.project_id == project_id,
+            PerceptionJobModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-        else:
-            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
 
         result = await session.execute(stmt)
         job = result.scalar_one_or_none()
@@ -378,7 +370,7 @@ class PerceptionPreviewBuilder:
     async def _load_flow_filling_context(
         project_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[IssueProjectContext, list[BusinessObjectNode]]:
         from backend.database.model import (
             BusinessObjectAttributeModel,
@@ -391,12 +383,9 @@ class PerceptionPreviewBuilder:
             workspace_id=workspace_id,
         )
         bo_stmt = select(BusinessObjectModel).where(
-            BusinessObjectModel.project_id == project_id
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
-        else:
-            bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id.is_(None))
 
         business_object_result = await session.execute(bo_stmt)
         business_object_models = business_object_result.scalars().all()
@@ -411,12 +400,9 @@ class PerceptionPreviewBuilder:
             attr_stmt = select(BusinessObjectAttributeModel).where(
                 BusinessObjectAttributeModel.business_object_id.in_(
                     business_object_ids
-                )
+                ),
+                BusinessObjectAttributeModel.workspace_id == workspace_id,
             )
-            if workspace_id is not None:
-                attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id == workspace_id)
-            else:
-                attr_stmt = attr_stmt.where(BusinessObjectAttributeModel.workspace_id.is_(None))
 
             attribute_result = await session.execute(attr_stmt)
 
@@ -484,25 +470,32 @@ class PerceptionPreviewBuilder:
                 featureIds=[feature.feature_id for feature in flow.features],
                 flowSteps=[
                     FlowStepNode(
-                        flowStepId=step.flow_step_id,
+                        flowStepId=step.step_id,
                         position=step.position,
                         stepName=step.name,
                         stepDescription=step.description,
-                        stepType=FlowStepType[step.step_type],
-                        actorIds=[actor.actor_id for actor in step.actors],
-                        inputBusinessObjectIds=[
-                            bo.business_object_id
-                            for bo in step.input_business_objects
-                        ],
-                        outputBusinessObjectIds=[
-                            bo.business_object_id
-                            for bo in step.output_business_objects
-                        ],
-                        nextSteps=[
-                            next_step.target_step_id for next_step in step.next_steps
-                        ],
+                        stepType=(
+                            FlowStepType[step.step_type]
+                            if step.step_type in FlowStepType.__members__
+                            else FlowStepType.SYSTEM_ACTION
+                        ),
+                        actorIds=step.actor_ids,
+                        inputBusinessObjectIds=step.input_business_object_ids,
+                        outputBusinessObjectIds=step.output_business_object_ids,
                     )
                     for step in flow.steps
+                ],
+                transitions=[
+                    FlowTransitionNode(
+                        transitionId=t.transition_id,
+                        sourceStepId=t.source_step_id,
+                        targetStepId=t.target_step_id,
+                        label=t.label or "",
+                        conditionText=t.condition_text or "",
+                        isDefault=t.is_default,
+                        position=t.position,
+                    )
+                    for t in flow.transitions
                 ],
             )
             for flow in context.flows
@@ -625,11 +618,6 @@ class PerceptionPreviewBuilder:
                     [],
                 )
             ],
-            "next_step_names": [
-                step_names[step_number]
-                for step_number in step.get("next_steps", [])
-            ],
-            "next_steps": step.get("next_steps", []),
         }
 
     @staticmethod
@@ -660,6 +648,24 @@ class PerceptionPreviewBuilder:
                     step_names,
                 )
                 for step in steps
+            ],
+            "transitions": [
+                {
+                    "source_step_name": step_names.get(
+                        t.get("source_step_number"),
+                        t.get("source_step_number"),
+                    ),
+                    "target_step_name": step_names.get(
+                        t.get("target_step_number"),
+                        t.get("target_step_number"),
+                    ),
+                    "label": t.get("label", ""),
+                    "condition_text": t.get("condition_text", ""),
+                    "is_default": t.get("is_default", False),
+                    "position": t.get("position", 0),
+                    "semantic_tags": t.get("semantic_tags", []),
+                }
+                for t in flow.get("transitions", [])
             ],
         }
 

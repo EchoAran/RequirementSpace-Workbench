@@ -19,7 +19,20 @@ export function LeftNav() {
   const activePage = useWorkspaceStore(s => s.activePage);
   const [collapsed, setCollapsed] = useState(false);
   const [hasCompiledPrototype, setHasCompiledPrototype] = useState(false);
+  const [prototypeStatus, setPrototypeStatus] = useState('idle');
+
+  useEffect(() => {
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.projectId !== ir?.projectId || detail?.branchRef !== branchRef) return;
+      setPrototypeStatus(detail.status);
+      setHasCompiledPrototype(detail.compiled);
+    };
+    window.addEventListener('prototype-preview-updated', update);
+    return () => window.removeEventListener('prototype-preview-updated', update);
+  }, [ir?.projectId, branchRef]);
   const stageProgress = useWorkspaceStore(s => s.stageProgress);
+  const findingsByView = useWorkspaceStore(s => s.findingsByView);
   const readinessScore = buildReadiness(ir, stageProgress).overallScore;
   const locationPage = extractWorkspacePage(location.pathname);
   const resolvedActivePage = locationPage || activePage;
@@ -32,7 +45,9 @@ export function LeftNav() {
       return;
     }
 
-    workspaceApi.getLatestPrototypePreview(projectId)
+    setHasCompiledPrototype(false);
+    setPrototypeStatus('idle');
+    workspaceApi.getLatestPrototypePreview(projectId, branchRef)
       .then((res) => {
         if (!cancelled) {
           const isCompiled = Boolean(
@@ -40,10 +55,11 @@ export function LeftNav() {
             !('detail' in res) &&
             res.prototypeId &&
             res.message !== 'prototype_preview_not_found' &&
-            res.status !== 'failed' &&
-            res.status !== 'generating'
+            res.status === 'ready' &&
+            (res.pages?.length ? res.pages.every((page: any) => page.status === 'ready' && page.html?.trim()) : res.html?.trim())
           );
           setHasCompiledPrototype(isCompiled);
+          setPrototypeStatus(res?.status || 'idle');
         }
       })
       .catch(() => {
@@ -59,8 +75,9 @@ export function LeftNav() {
     event: React.MouseEvent<HTMLAnchorElement>,
     page: string,
     disabled: boolean,
+    canEnter: boolean,
   ) => {
-    if (!disabled) return;
+    if (!disabled && !canEnter) return;
     event.preventDefault();
     if (!stageProgress?.stages) return;
 
@@ -79,7 +96,7 @@ export function LeftNav() {
     );
     if (!previousStage) return;
 
-    if (previousStage.statusCode === 'ready_to_advance') {
+    if (canEnter && previousStage.statusCode === 'ready_to_advance') {
       useWorkspaceStore.getState().requestStageTransition(
         transitionByStage[previousStageKey],
         { navigate },
@@ -98,10 +115,24 @@ export function LeftNav() {
 
   const getCounts = (path: string) => {
     if (path === '/overview') {
+      const hasBlockingSlot = Boolean(
+        stageProgress?.stages?.some((stage: any) => stage.statusCode === 'blocked'),
+      );
+      const hasPendingSuggestion = Boolean(
+        ir?.perceptionSlot
+        || (findingsByView.next_action || []).some(
+          (finding) => finding.metadata?.source_type === 'perception_slot',
+        ),
+      );
+      const issueCount = ir?.issueCount || 0;
       return {
-        issueCount: ir?.issueCount || 0,
-        hasBlockingSlot: ir?.statusCode === 'needs_attention',
-        statusCode: ir?.statusCode || 'not_started',
+        issueCount,
+        hasBlockingSlot,
+        hasPendingSuggestion,
+        canEnter: false,
+        statusCode: hasPendingSuggestion && issueCount === 0 && !hasBlockingSlot
+          ? 'needs_suggestion'
+          : ir?.statusCode || 'not_started',
         statusLabel: ir?.status || t('home.projectStatus.not_started'),
         disabled: false,
         disabledReason: '',
@@ -119,9 +150,20 @@ export function LeftNav() {
       if (stageKey) {
         const item = stageProgress.stages.find((s: any) => s.stage === stageKey);
         if (item) {
-          const disabled = !item.unlocked;
-          const issueCount = disabled ? 0 : (item.blockingFindings ? item.blockingFindings.length : 0);
+          const previousStageKey = stageKey === 'how' ? 'what' : stageKey === 'scope' ? 'how' : null;
+          const previousStage = previousStageKey
+            ? stageProgress.stages.find((s: any) => s.stage === previousStageKey)
+            : null;
+          const canEnter = !item.unlocked && previousStage?.statusCode === 'ready_to_advance';
+          const disabled = !item.unlocked && !canEnter;
+          const stageIssueCount = (findingsByView.issues || []).filter(
+            (finding) => finding.stage === stageKey,
+          ).length;
+          const issueCount = disabled ? 0 : Math.max(stageIssueCount, item.blockingFindings?.length || 0);
           const hasBlockingSlot = disabled ? false : item.statusCode === 'blocked';
+          const hasPendingSuggestion = !disabled && (findingsByView.next_action || []).some(
+            (finding) => finding.stage === stageKey && finding.metadata?.source_type === 'perception_slot',
+          );
 
           let disabledReason = '';
           if (disabled) {
@@ -145,8 +187,10 @@ export function LeftNav() {
           return {
             issueCount,
             hasBlockingSlot,
-            statusCode: item.statusCode,
-            statusLabel: getStageStatusLabel(item, t),
+            hasPendingSuggestion,
+            canEnter,
+            statusCode: canEnter ? 'ready_to_enter' : item.statusCode,
+            statusLabel: canEnter ? t('nav.status.ready_to_enter') : getStageStatusLabel(item, t),
             disabled,
             disabledReason
           };
@@ -180,6 +224,8 @@ export function LeftNav() {
           return {
             issueCount: 0,
             hasBlockingSlot: false,
+            hasPendingSuggestion: false,
+            canEnter: false,
             statusCode: 'shadow_available',
             statusLabel: t('nav.status.shadow_available'),
             disabled: false,
@@ -190,8 +236,10 @@ export function LeftNav() {
         return {
           issueCount: 0,
           hasBlockingSlot: false,
-          statusCode: hasCompiledPrototype ? 'ready' : 'in_progress',
-          statusLabel: hasCompiledPrototype ? t('nav.status.ready') : t('nav.status.in_progress'),
+          hasPendingSuggestion: false,
+          canEnter: false,
+          statusCode: prototypeStatus === 'failed' ? 'blocked' : hasCompiledPrototype ? 'ready' : 'in_progress',
+          statusLabel: prototypeStatus === 'failed' ? t('preview.full.prototypeFailure') : hasCompiledPrototype ? t('nav.status.ready') : t('nav.status.in_progress'),
           disabled: false,
           disabledReason: ''
         };
@@ -200,6 +248,8 @@ export function LeftNav() {
         return {
           issueCount: 0,
           hasBlockingSlot: false,
+          hasPendingSuggestion: false,
+          canEnter: false,
           statusCode: 'overview_ready',
           statusLabel: t('nav.status.playable'),
           disabled: false,
@@ -209,6 +259,8 @@ export function LeftNav() {
       return {
         issueCount: 0,
         hasBlockingSlot: false,
+        hasPendingSuggestion: false,
+        canEnter: false,
         statusCode: 'locked',
         statusLabel: t('shell.loading'),
         disabled: true,
@@ -219,6 +271,8 @@ export function LeftNav() {
     return {
       issueCount: 0,
       hasBlockingSlot: false,
+      hasPendingSuggestion: false,
+      canEnter: false,
       statusCode: 'locked',
       statusLabel: t('shell.loading'),
       disabled: true,
@@ -278,10 +332,14 @@ export function LeftNav() {
         {NavItems.map((item) => {
           const isActive = resolvedActivePage === item.page;
           const Icon = item.icon;
-          const { issueCount, hasBlockingSlot, statusCode, statusLabel, disabled, disabledReason } = getCounts(item.page);
+          const { issueCount, hasBlockingSlot, hasPendingSuggestion, canEnter, statusCode, statusLabel, disabled, disabledReason } = getCounts(item.page);
           const to = buildProjectRouteWithBranch(ir?.projectId, item.page, branchRef);
-          const statusKey = item.page === '/overview'
-            ? `home.projectStatus.${statusCode}`
+          const statusKey = item.page === '/preview' && prototypeStatus === 'failed'
+            ? 'preview.full.prototypeFailure'
+            : item.page === '/overview'
+            ? statusCode === 'needs_suggestion'
+              ? 'nav.status.needs_suggestion'
+              : `home.projectStatus.${statusCode}`
             : `nav.status.${statusCode}`;
 
           const InnerContent = collapsed ? (
@@ -289,6 +347,7 @@ export function LeftNav() {
                 <Icon className="h-5 w-5 shrink-0" />
                 {hasBlockingSlot && <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse border border-white"></div>}
                 {!hasBlockingSlot && issueCount > 0 && <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></div>}
+                {!hasBlockingSlot && issueCount === 0 && hasPendingSuggestion && <div className="absolute -top-1 -right-1 w-2 h-2 bg-indigo-500 rounded-full border border-white"></div>}
              </div>
           ) : (
             <div className="flex flex-col gap-1.5 w-full overflow-hidden">
@@ -302,8 +361,9 @@ export function LeftNav() {
                   {hasBlockingSlot && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shrink-0"></div>}
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap shadow-sm border",
-                    statusCode === 'ready' || statusCode === 'real_ready' || statusCode === 'converged' || statusCode === 'ready_to_advance' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                    statusCode === 'ready' || statusCode === 'real_ready' || statusCode === 'converged' || statusCode === 'ready_to_advance' || statusCode === 'ready_to_enter' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
                     statusCode === 'shadow_available' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                    statusCode === 'needs_suggestion' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
                     statusCode === 'needs_attention' || statusCode === 'has_issues' ? "bg-rose-50 text-rose-700 border-rose-100" :
                     statusCode === 'in_progress' || statusCode === 'scope_pending' ? "bg-amber-50 text-amber-700 border-amber-100" :
                     statusCode === 'not_started' ? "bg-slate-50 text-slate-500 border-slate-200" :
@@ -317,18 +377,23 @@ export function LeftNav() {
 
               <div className="pl-6 min-h-[14px] flex items-center">
                 {disabled ? (
-                  <span className="text-[10px] text-slate-400 font-medium leading-tight">
+                  <span
+                    className="text-[10px] text-slate-400 font-medium leading-tight whitespace-nowrap truncate"
+                    title={disabledReason}
+                  >
                     {disabledReason}
                   </span>
-                ) : (issueCount > 0 || hasBlockingSlot) ? (
+                ) : (issueCount > 0 || hasBlockingSlot || hasPendingSuggestion) ? (
                   <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap truncate">
                     {item.page === '/preview' ? (
                       t(statusKey) === statusKey ? statusLabel : t(statusKey)
                     ) : (
                       <>
                         {issueCount > 0 && t('nav.pendingIssues', { count: issueCount })}
-                        {issueCount > 0 && hasBlockingSlot && ' / '}
-                        {hasBlockingSlot && t('nav.blockingSuggestions')}
+                        {issueCount > 0 && (hasBlockingSlot || hasPendingSuggestion) && ' / '}
+                        {hasBlockingSlot && t('nav.blockingIssues')}
+                        {hasBlockingSlot && hasPendingSuggestion && ' / '}
+                        {hasPendingSuggestion && t('nav.pendingSuggestions')}
                       </>
                     )}
                   </span>
@@ -340,12 +405,14 @@ export function LeftNav() {
           return (
             <Link
               key={item.page}
-              to={disabled ? '#' : to}
-              onClick={(event) => handleNavClick(event, item.page, disabled)}
+              to={disabled || canEnter ? '#' : to}
+              onClick={(event) => handleNavClick(event, item.page, disabled, canEnter)}
               className={cn(
                 "flex items-center rounded-xl transition-all duration-200 relative block",
                 collapsed ? "p-3 justify-center" : "p-3",
-                disabled
+                canEnter
+                  ? "bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100/80 cursor-pointer"
+                  : disabled
                   ? "opacity-50 grayscale bg-slate-50/20 hover:bg-slate-100/40 cursor-not-allowed"
                   : isActive
                   ? "bg-indigo-50/90 text-indigo-700 font-bold shadow-2xs before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-1 before:bg-indigo-600 before:rounded-r-full"

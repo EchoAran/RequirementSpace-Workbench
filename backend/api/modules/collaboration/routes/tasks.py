@@ -68,8 +68,10 @@ async def _map_task(session, task: CollaborationTaskModel) -> TaskResponse:
                         snap_res = await snapshot_service.get_snapshot_and_hash(session, task.target_type, node_id)
                         if snap_res["hash"] != task.content_hash:
                             content_changed = True
-        except Exception:
-            pass
+                elif task.status == "open":
+                    content_changed = True
+        except (TypeError, ValueError):
+            content_changed = task.status == "open"
     elif task.task_type == "confirm_nodes" and task.targets:
         try:
             if task.status == "open":
@@ -94,8 +96,8 @@ async def _map_task(session, task: CollaborationTaskModel) -> TaskResponse:
                 node_name = ", ".join(node_names)
                 if len(task.targets) > 3:
                     node_name += f" +{len(task.targets) - 3}"
-        except Exception:
-            pass
+        except (TypeError, ValueError):
+            content_changed = task.status == "open"
 
     return TaskResponse(
         id=task.id,

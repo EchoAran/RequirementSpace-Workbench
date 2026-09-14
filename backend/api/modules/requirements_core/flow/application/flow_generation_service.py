@@ -41,7 +41,8 @@ class FlowGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
         draft_payload, response_payload = await self._generate_preview(
@@ -82,6 +83,7 @@ class FlowGenerationService:
             project_id=draft["project_id"],
             user_feedback=user_feedback,
             session=session,
+                                                    workspace_id=draft["workspace_id"],
         )
 
         draft_payload["draft_id"] = draft_id
@@ -110,7 +112,8 @@ class FlowGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -167,7 +170,7 @@ class FlowGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         (
             raw,
@@ -175,6 +178,7 @@ class FlowGenerationService:
             feature_nodes,
             leaf_feature_count,
             use_three_step_generation,
+            context_hash,
         ) = await self.generate_raw(
             project_id=project_id,
             user_feedback=user_feedback,
@@ -193,6 +197,7 @@ class FlowGenerationService:
             "leaf_feature_count": leaf_feature_count,
             "business_objects": raw["business_objects"],
             "flows": raw["flows"],
+            "context_hash": context_hash,
         }
 
         response_payload = self._build_response_payload(
@@ -210,59 +215,69 @@ class FlowGenerationService:
         user_feedback: str | None,
         session,
         validate_result: bool = True,
-        workspace_id: int | None = None,
-    ) -> tuple[dict, list[ActorNode], list[FeatureNode], int, bool]:
-        (
-            user_requirements,
-            actor_nodes,
-            feature_nodes,
-            leaf_feature_count,
-        ) = await self._load_project_context(
+        *,
+        workspace_id: int,
+    ) -> tuple[dict, list[ActorNode], list[FeatureNode], int, bool, str]:
+        ctx = await self._load_project_context(
             project_id=project_id,
             session=session,
             workspace_id=workspace_id,
         )
         use_three_step_generation = (
-            leaf_feature_count >= self._three_step_leaf_feature_threshold
+            ctx.leaf_feature_count >= self._three_step_leaf_feature_threshold
         )
 
         raw = await self._flows_generator.generate(
             FlowsGeneratorInput(
-                user_requirements=user_requirements,
-                actors=actor_nodes,
-                features=feature_nodes,
+                user_requirements=ctx.user_requirements,
+                actors=ctx.actors,
+                features=ctx.features,
+                rules=ctx.rules,
+                scenarios=ctx.scenarios,
+                acceptance_criteria=ctx.acceptance_criteria,
+                context_hash=ctx.context_hash,
                 user_feedback=user_feedback,
             ),
             use_combined_prompt=not use_three_step_generation,
         )
         if validate_result:
+            valid_rule_uuids = {
+                r["logical_uuid"] for r in ctx.rules if r.get("logical_uuid")
+            }
             self._validate_generated_flows(
                 raw=raw,
-                actor_nodes=actor_nodes,
-                feature_nodes=feature_nodes,
+                actor_nodes=ctx.actors,
+                feature_nodes=ctx.features,
+                valid_rule_uuids=valid_rule_uuids,
             )
 
         return (
             raw,
-            actor_nodes,
-            feature_nodes,
-            leaf_feature_count,
+            ctx.actors,
+            ctx.features,
+            ctx.leaf_feature_count,
             use_three_step_generation,
+            ctx.context_hash,
         )
 
     @staticmethod
     async def _load_project_context(
         project_id: int,
         session,
-        workspace_id: int | None = None,
-    ) -> tuple[str, list[ActorNode], list[FeatureNode], int]:
-        return await load_flow_generation_context(project_id, session, workspace_id=workspace_id)
+        workspace_id: int,
+    ):
+        return await load_flow_generation_context(
+            project_id,
+            session,
+            workspace_id=workspace_id,
+        )
 
     def _validate_generated_flows(
         self,
         raw: dict,
         actor_nodes: list[ActorNode],
         feature_nodes: list[FeatureNode],
+        valid_rule_uuids: set[str] | None = None,
     ) -> None:
         validate_generated_flows(
             raw,
@@ -273,6 +288,7 @@ class FlowGenerationService:
             ),
             step_number_pattern=self._step_number_pattern,
             valid_step_types=self._valid_step_types,
+            valid_rule_uuids=valid_rule_uuids,
         )
 
     @staticmethod
@@ -293,7 +309,7 @@ class FlowGenerationService:
     async def _persist_flow_generation_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         return await persist_flow_generation_draft(
             draft, session, workspace_id=workspace_id

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { GitPullRequest, Check, X, MessageSquare, RotateCcw, Plus, GitMerge } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { GitPullRequest, Check, X, MessageSquare, RotateCcw, Plus, GitMerge, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { workspaceApi } from '@/lib/api';
@@ -9,6 +9,7 @@ import {
   DiffEntry,
 } from '@/core/versionControl';
 import { SemanticDiffView } from './SemanticDiffView';
+import { formatFieldLabel } from './DiffEntityDetail';
 import { extractVcError, extractActionError } from '@/core/versionControlErrors';
 import { CreateMergeRequestDialog } from './CreateMergeRequestDialog';
 import { ConflictResolutionView } from './ConflictResolutionView';
@@ -47,12 +48,23 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
   const [selectedEntry, setSelectedEntry] = useState<DiffEntry | null>(null);
   const [newComment, setNewComment] = useState('');
   const [newCommentRequired, setNewCommentRequired] = useState(false);
+  const [commentComposerOpen, setCommentComposerOpen] = useState(false);
   const [requestedMrRef, setRequestedMrRef] = useState<string | null>(null);
   const [loadingMoreMrs, setLoadingMoreMrs] = useState(false);
 
   const currentListReqId = useRef(0);
 
   const [activeDetailTab, setActiveDetailTab] = useState<'diff' | 'overview'>('diff');
+
+  // 评审与讨论统一时间线：评审记录与评论按时间先后合并
+  const activityItems = useMemo(() => {
+    if (!selectedMr) return [];
+    const items = [
+      ...selectedMr.reviews.map((r) => ({ kind: 'review' as const, ts: r.created_at || '', review: r, comment: null })),
+      ...selectedMr.comments.map((c) => ({ kind: 'comment' as const, ts: c.created_at || '', review: null, comment: c })),
+    ];
+    return items.sort((a, b) => a.ts.localeCompare(b.ts));
+  }, [selectedMr]);
 
   const PAGE_SIZE = 50;
 
@@ -115,6 +127,11 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
     setSelectedMr(null);
     setLoadingDetail(true);
     setDetailError(null);
+    // 切换 MR 时重置评论状态，避免把评论发到另一份 MR 的变更对象上
+    setSelectedEntry(null);
+    setNewComment('');
+    setNewCommentRequired(false);
+    setCommentComposerOpen(false);
     workspaceApi.getMergeRequestDetail(projectId, targetRef)
       .then((d) => {
         if (currentDetailReqId.current === reqId) {
@@ -131,6 +148,20 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
           setLoadingDetail(false);
         }
       });
+  };
+
+  const handleEntrySelect = (entry: DiffEntry) => {
+    const sameEntry = selectedEntry
+      && selectedEntry.entity_uuid === entry.entity_uuid
+      && selectedEntry.path === entry.path
+      && selectedEntry.change_type === entry.change_type;
+    if (!sameEntry) {
+      // 切换评论目标时清空草稿并收起，避免把评论发到错误对象上
+      setNewComment('');
+      setNewCommentRequired(false);
+      setCommentComposerOpen(false);
+    }
+    setSelectedEntry(entry);
   };
 
   const addComment = async () => {
@@ -362,7 +393,7 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
                       <span>→</span>
                       <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{selectedMr.target_branch_name}</span>
                       {selectedMr.source_head_short && <span className="font-mono text-slate-400">@{selectedMr.source_head_short}</span>}
-                      {selectedMr.author_email && <span className="text-slate-400">· 由 {selectedMr.author_email} 创建</span>}
+                      {selectedMr.author_email && <span className="text-slate-400">· {t('versionControl.mergeRequest.createdBy', { author: selectedMr.author_email })}</span>}
                     </div>
                   </div>
 
@@ -446,36 +477,60 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
               {activeDetailTab === 'diff' ? (
                 <div className="flex-1 min-h-0 flex flex-col p-4 overflow-hidden bg-slate-50/30">
                   {selectedMr.merge_base_public_id && selectedMr.source_head_public_id ? (
-                    <div className="flex-1 min-h-0 flex flex-col">
+                    <div className="relative flex-1 min-h-0 flex flex-col">
                       <div className="min-h-0 flex-1">
                         <SemanticDiffView
                           projectId={projectId}
                           baseRef={`commit:${selectedMr.merge_base_public_id}`}
                           targetRef={`commit:${selectedMr.source_head_public_id}`}
-                          onEntitySelect={setSelectedEntry}
+                          onEntitySelect={handleEntrySelect}
                         />
                       </div>
-                      {/* Diff 行内评论表单 */}
-                      {selectedEntry && (
-                        <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 text-xs shadow-sm shrink-0">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <p className="font-bold text-indigo-900">
-                              {t('versionControl.mergeRequest.commentOn', { target: `${selectedEntry.entity_type} · ${selectedEntry.entity_name || selectedEntry.entity_uuid}` })}
-                              {selectedEntry.field && <span className="text-indigo-600 font-normal"> · {selectedEntry.field}</span>}
+                      {/* 行内评论收起态：右下角固定入口胶囊，不挤占 diff 布局 */}
+                      {selectedEntry && !commentComposerOpen && (
+                        <button
+                          type="button"
+                          onClick={() => setCommentComposerOpen(true)}
+                          className="absolute bottom-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-full border border-indigo-200 bg-white/95 py-1.5 pl-3 pr-1.5 text-[11px] font-bold text-indigo-900 shadow-lg shadow-indigo-900/10 backdrop-blur-sm transition-all hover:border-indigo-300 hover:shadow-xl cursor-pointer"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                          <span className="max-w-[14rem] truncate">
+                            {`${selectedEntry.entity_type} · ${selectedEntry.entity_name || selectedEntry.entity_uuid}`}
+                          </span>
+                          <span className="flex items-center gap-0.5 rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-600">
+                            {t('versionControl.mergeRequest.writeComment')}
+                            <ChevronUp className="h-3 w-3" />
+                          </span>
+                        </button>
+                      )}
+                      {/* 行内评论展开态：锚定右下角的浮动卡片，覆盖式呈现避免遮挡详情布局 */}
+                      {selectedEntry && commentComposerOpen && (
+                        <div className="absolute bottom-3 right-3 z-10 w-[22rem] max-w-[calc(100%-1.5rem)] rounded-2xl border border-indigo-200 bg-white/95 p-3 text-xs shadow-xl shadow-indigo-900/10 backdrop-blur-sm">
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <p className="flex min-w-0 items-center gap-1.5 font-bold text-indigo-900">
+                              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                              <span className="truncate">
+                                {t('versionControl.mergeRequest.commentOn', { target: `${selectedEntry.entity_type} · ${selectedEntry.entity_name || selectedEntry.entity_uuid}` })}
+                              </span>
+                              {selectedEntry.field && <span className="shrink-0 font-normal text-indigo-500"> · {selectedEntry.field}</span>}
                             </p>
                             <button
                               type="button"
-                              onClick={() => setSelectedEntry(null)}
-                              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                              onClick={() => setCommentComposerOpen(false)}
+                              title={t('versionControl.mergeRequest.collapseComposer')}
+                              aria-label={t('versionControl.mergeRequest.collapseComposer')}
+                              className="shrink-0 rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <ChevronDown className="h-3.5 w-3.5" />
                             </button>
                           </div>
                           <textarea
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}
-                            rows={2}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-indigo-500"
+                            onKeyDown={(e) => { if (e.key === 'Escape') setCommentComposerOpen(false); }}
+                            rows={3}
+                            autoFocus
+                            className="w-full resize-none rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-indigo-500"
                             placeholder={t('versionControl.mergeRequest.commentPlaceholder')}
                           />
                           <div className="mt-2 flex items-center justify-between">
@@ -502,11 +557,11 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
                 </div>
               ) : (
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  {/* MR Description */}
+                  {/* 合并描述：纯排版区块，不做卡片容器 */}
                   {selectedMr.description && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                      <p className="text-xs font-bold text-slate-700 mb-1">合并描述</p>
-                      <p className="text-xs text-slate-600 whitespace-pre-wrap">{selectedMr.description}</p>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 uppercase tracking-widest">{t('versionControl.mergeRequest.descriptionTitle')}</p>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600 whitespace-pre-wrap">{selectedMr.description}</p>
                     </div>
                   )}
 
@@ -552,144 +607,131 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
                     </div>
                   )}
 
-                  {/* 阻塞原因（仅在 MR 处于开启状态且存在实质性合并阻塞时才以轻量卡片展示） */}
-                  {selectedMr.status !== 'merged' &&
-                    selectedMr.status !== 'closed' &&
-                    selectedMr.blocking_reasons &&
-                    selectedMr.blocking_reasons.filter((r) => r !== 'mr_already_closed').length > 0 && (
-                      <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 p-3.5 text-xs text-amber-900">
-                        <p className="font-bold flex items-center gap-1.5 text-amber-800">
-                          <span>⚠️</span> {t('versionControl.mergeRequest.whyCantMerge')}
-                        </p>
-                        <ul className="mt-1.5 list-inside list-disc space-y-1 text-amber-800">
-                          {selectedMr.blocking_reasons
-                            .filter((r) => r !== 'mr_already_closed')
-                            .map((r, i) => (
-                              <li key={i}>{t(`versionControl.mergeRequest.blocking.${r}`)}</li>
-                            ))}
-                        </ul>
-                      </div>
-                  )}
+                  {/* 评审与讨论：提交评审面板 + 评审记录 + 评论的统一时间线 */}
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+                      <p className="text-xs font-bold text-slate-800">{t('versionControl.mergeRequest.activityTitle')}</p>
+                      <span className="text-[11px] font-medium text-slate-400">{activityItems.length}</span>
+                    </div>
 
-                  {/* 审批状态列表 */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                    <p className="mb-3 text-xs font-bold text-slate-800">{t('versionControl.mergeRequest.reviewsHeader')}</p>
-                    {selectedMr.reviews.length === 0 ? (
-                      <p className="text-xs text-slate-400">暂无评审记录</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedMr.reviews.map((r) => (
-                          <div key={r.id} className={cn('flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-white p-3 text-xs', r.status === 'stale' && 'opacity-60')}>
-                            {r.decision === 'approved' ? (
-                              <Check className="mt-0.5 h-4 w-4 text-emerald-600 shrink-0" />
-                            ) : (
-                              <X className="mt-0.5 h-4 w-4 text-rose-600 shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-800">{r.reviewer_email || r.reviewer_user_id}</span>
-                                <span className={cn('font-semibold', r.decision === 'approved' ? 'text-emerald-700' : 'text-amber-700')}>
-                                  {r.decision === 'approved' ? t('versionControl.mergeRequest.approve') : t('versionControl.mergeRequest.requestChanges')}
-                                </span>
-                                {r.status === 'stale' && (
-                                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                                    {r.stale_reason ? t('versionControl.mergeRequest.staleReason', { reason: r.stale_reason }) : t('versionControl.mergeRequest.stale')}
-                                  </span>
-                                )}
-                              </div>
-                              {r.comment && <p className="mt-1 text-slate-600">{r.comment}</p>}
-                            </div>
+                    {/* 提交评审（仅开放状态且有权限时） */}
+                    {selectedMr.can_approve && selectedMr.status !== 'merged' && selectedMr.status !== 'closed' && (
+                      <div className="space-y-2.5 border-b border-slate-100 bg-indigo-50/40 px-4 py-3.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-indigo-900">{t('versionControl.mergeRequest.submitReview')}</p>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setReviewDecision('approved')}
+                              className={cn('rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer', reviewDecision === 'approved' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50')}
+                            >
+                              ✓ {t('versionControl.mergeRequest.approve')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setReviewDecision('changes_requested')}
+                              className={cn('rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer', reviewDecision === 'changes_requested' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50')}
+                            >
+                              ✕ {t('versionControl.mergeRequest.requestChanges')}
+                            </button>
                           </div>
-                        ))}
+                        </div>
+                        <textarea
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          rows={2}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-indigo-500"
+                          placeholder={t('versionControl.mergeRequest.reviewOptionalComment')}
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={submitReview}
+                            className="rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 shadow-2xs cursor-pointer"
+                          >
+                            {t('versionControl.mergeRequest.submitReview')}
+                          </button>
+                        </div>
                       </div>
                     )}
-                  </div>
 
-                  {/* 审批面板 */}
-                  {selectedMr.can_approve && selectedMr.status !== 'merged' && selectedMr.status !== 'closed' && (
-                    <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
-                      <p className="text-xs font-bold text-indigo-900">{t('versionControl.mergeRequest.submitReview')}</p>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setReviewDecision('approved')}
-                          className={cn('rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer', reviewDecision === 'approved' ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50')}
-                        >
-                          ✓ {t('versionControl.mergeRequest.approve')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setReviewDecision('changes_requested')}
-                          className={cn('rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer', reviewDecision === 'changes_requested' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50')}
-                        >
-                          ✕ {t('versionControl.mergeRequest.requestChanges')}
-                        </button>
-                      </div>
-                      <textarea
-                        value={reviewComment}
-                        onChange={(e) => setReviewComment(e.target.value)}
-                        rows={2}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-indigo-500"
-                        placeholder={t('versionControl.mergeRequest.reviewOptionalComment')}
-                      />
-                      <button
-                        type="button"
-                        onClick={submitReview}
-                        className="rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 shadow-2xs cursor-pointer"
-                      >
-                        {t('versionControl.mergeRequest.submitReview')}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* 讨论评论列表 */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                    <p className="mb-3 text-xs font-bold text-slate-800">{t('versionControl.mergeRequest.commentsHeader', { count: selectedMr.comments?.length || 0 })}</p>
-                    {(!selectedMr.comments || selectedMr.comments.length === 0) ? (
-                      <p className="text-xs text-slate-400">暂无评论记录。可在「变更对比」标签中选中具体变更项发表行内评论。</p>
+                    {activityItems.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-xs text-slate-400">{t('versionControl.mergeRequest.activityEmpty')}</p>
                     ) : (
-                      <div className="space-y-3">
-                        {selectedMr.comments.map((c) => (
-                          <div key={c.id} className="flex items-start gap-2.5 rounded-xl border border-slate-200/80 bg-white p-3.5 text-xs shadow-2xs">
-                            <MessageSquare className="mt-0.5 h-4 w-4 text-slate-400 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-800">{c.author_email || c.author_user_id || '-'}</span>
-                                {c.required && <span className="rounded bg-rose-100 px-1.5 py-0.2 text-[10px] font-bold text-rose-700">{t('versionControl.mergeRequest.required')}</span>}
-                                <span className={cn('rounded px-1.5 py-0.2 text-[10px] font-semibold', c.status === 'active' ? 'bg-slate-100 text-slate-600' : c.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>{t(`versionControl.mergeRequest.status.${c.status}`)}</span>
+                      <ul className="divide-y divide-slate-50">
+                        {activityItems.map((item) => {
+                          if (item.kind === 'review' && item.review) {
+                            const r = item.review;
+                            return (
+                              <li key={`review-${r.id}`} className={cn('flex items-start gap-3 px-4 py-3.5', r.status === 'stale' && 'opacity-60')}>
+                                <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border', r.decision === 'approved' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50')}>
+                                  {r.decision === 'approved' ? (
+                                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                  ) : (
+                                    <X className="h-3.5 w-3.5 text-amber-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-800">{r.reviewer_email || r.reviewer_user_id}</span>
+                                    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', r.decision === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
+                                      {r.decision === 'approved' ? t('versionControl.mergeRequest.approve') : t('versionControl.mergeRequest.requestChanges')}
+                                    </span>
+                                    {r.status === 'stale' && (
+                                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                        {r.stale_reason ? t('versionControl.mergeRequest.staleReason', { reason: r.stale_reason }) : t('versionControl.mergeRequest.stale')}
+                                      </span>
+                                    )}
+                                    {item.ts && <span className="ml-auto text-[10px] text-slate-400">{new Date(item.ts).toLocaleString()}</span>}
+                                  </div>
+                                  {r.comment && <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{r.comment}</p>}
+                                </div>
+                              </li>
+                            );
+                          }
+                          const c = item.comment!;
+                          return (
+                            <li key={`comment-${c.id}`} className="flex items-start gap-3 px-4 py-3.5">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
+                                <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
                               </div>
-                              {(c.entity_uuid || c.field_path || c.relation_key) && (
-                                <p className="mt-1 text-[11px] text-slate-400">
-                                  {c.entity_uuid && <span className="font-mono">{c.entity_uuid.slice(0, 8)}</span>}
-                                  {c.field_path && <span> · {c.field_path}</span>}
-                                  {c.relation_key && <span> · {c.relation_key}</span>}
-                                  {c.effective_source_head_id != null && <span className="ml-1">@#{c.effective_source_head_id}</span>}
-                                  {c.expired_by_source_head_id != null && <span className="ml-1 text-amber-600">➔#{c.expired_by_source_head_id}</span>}
-                                </p>
-                              )}
-                              <p className="mt-1.5 text-slate-700 whitespace-pre-wrap">{c.comment}</p>
-                              <div className="mt-2">
-                                {c.status === 'active' && (
-                                  <button
-                                    onClick={() => { workspaceApi.resolveMrComment(projectId, selectedMr.public_id, c.id).then(() => selectMr(selectedMr)).catch(() => setActionError(t('versionControl.mergeRequest.errors.resolveFailed'))); }}
-                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-800 cursor-pointer"
-                                  >
-                                    <Check className="h-3.5 w-3.5" /> {t('versionControl.mergeRequest.resolve')}
-                                  </button>
-                                )}
-                                {c.status === 'resolved' && (
-                                  <button
-                                    onClick={() => { workspaceApi.reopenMrComment(projectId, selectedMr.public_id, c.id).then(() => selectMr(selectedMr)).catch(() => setActionError(t('versionControl.mergeRequest.errors.reopenFailed'))); }}
-                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-800 cursor-pointer"
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" /> {t('versionControl.mergeRequest.reopen')}
-                                  </button>
-                                )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-800">{c.author_email || c.author_user_id || '-'}</span>
+                                  {c.required && <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">{t('versionControl.mergeRequest.required')}</span>}
+                                  <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', c.status === 'active' ? 'bg-slate-100 text-slate-600' : c.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>{t(`versionControl.mergeRequest.commentStatus.${c.status}`)}</span>
+                                  {(c.entity_uuid || c.field_path) && (
+                                    <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">
+                                      {t('versionControl.mergeRequest.inlineComment')}
+                                      {c.field_path ? ` · ${formatFieldLabel(c.field_path, t)}` : ''}
+                                    </span>
+                                  )}
+                                  {item.ts && <span className="ml-auto text-[10px] text-slate-400">{new Date(item.ts).toLocaleString()}</span>}
+                                </div>
+                                <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">{c.comment}</p>
+                                <div className="mt-2">
+                                  {c.status === 'active' && (
+                                    <button
+                                      onClick={() => { workspaceApi.resolveMrComment(projectId, selectedMr.public_id, c.id).then(() => selectMr(selectedMr)).catch(() => setActionError(t('versionControl.mergeRequest.errors.resolveFailed'))); }}
+                                      className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-800"
+                                    >
+                                      <Check className="h-3.5 w-3.5" /> {t('versionControl.mergeRequest.resolve')}
+                                    </button>
+                                  )}
+                                  {c.status === 'resolved' && (
+                                    <button
+                                      onClick={() => { workspaceApi.reopenMrComment(projectId, selectedMr.public_id, c.id).then(() => selectMr(selectedMr)).catch(() => setActionError(t('versionControl.mergeRequest.errors.reopenFailed'))); }}
+                                      className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-800"
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" /> {t('versionControl.mergeRequest.reopen')}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
                   </div>
                 </div>

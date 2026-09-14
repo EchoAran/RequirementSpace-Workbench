@@ -294,11 +294,10 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         project_id = payload["project_id"]
-        workspace_id = kwargs.get("workspace_id")
+        workspace_id = kwargs["workspace_id"]
         feature_ids = payload.get("feature_ids") or ([payload["feature_id"]] if payload.get("feature_id") else [])
         statement = select(ScenarioModel).where(ScenarioModel.project_id == project_id)
-        if workspace_id is not None:
-            statement = statement.where(ScenarioModel.workspace_id == workspace_id)
+        statement = statement.where(ScenarioModel.workspace_id == workspace_id)
         if feature_ids:
             statement = statement.where(ScenarioModel.feature_id.in_(feature_ids))
         if payload.get("actor_id"):
@@ -307,12 +306,27 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         for scenario in existing.scalars().all():
             await session.delete(scenario)
         await session.flush()
+
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=payload["project_id"],
+            workspace_id=workspace_id,
+        )
+
         """Persist scenario payload to ScenarioModel (append mode), including generated AC."""
         result = await self._service._persist_scenario_generation_draft(
             draft=payload,
             session=session,
             workspace_id=workspace_id,
         )
+
+        changed_targets = [
+            ("scenario", uid)
+            for uid in result.get("scenario_logical_uuids", [])
+        ]
 
         # Invalidate perception jobs
         from backend.api.modules.requirements_core.public import get_notifier
@@ -322,7 +336,9 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
+        result.pop("scenario_logical_uuids", None)
 
         return result
 

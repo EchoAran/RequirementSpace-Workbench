@@ -36,24 +36,24 @@ class FeatureGenerationDraftCreateRequest(BaseModel):
     project_id: str
 
 
-class GeneratedFeaturePreview(BaseModel):
+class GeneratedFeaturePreview(CamelModel):
     feature_name: str
     feature_description: str
     actor_names: list[str] = []
 
 
-class FeatureGenerationDraftResponse(BaseModel):
+class FeatureGenerationDraftResponse(CamelModel):
     draft_id: str
     project_id: str
     features: list[GeneratedFeaturePreview]
 
 
-class FeatureGenerationConfirmResponse(BaseModel):
+class FeatureGenerationConfirmResponse(CamelModel):
     project_id: str
     feature_count: int
     message: str = "features_created"
 
 
-class FeatureGenerationDraftDiscardResponse(BaseModel):
+class FeatureGenerationDraftDiscardResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"

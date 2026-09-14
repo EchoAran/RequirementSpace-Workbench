@@ -74,6 +74,12 @@ export function findIrNodeByUuid(ir: RequirementSpace | null, entityType: string
         if (found) return found;
       }
       return null;
+    case 'flow_transition':
+      for (const f of ir.flows || []) {
+        const found = (f?.transitions || []).find((tr) => tr?.logicalUuid === uuid);
+        if (found) return found;
+      }
+      return null;
     case 'scope':
       for (const f of ir.features || []) {
         if (f?.scope?.logicalUuid === uuid) return f.scope;

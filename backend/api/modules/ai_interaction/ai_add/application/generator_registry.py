@@ -82,10 +82,14 @@ def create_default_edit_generator_registry() -> EditGeneratorRegistry:
     from backend.core.generators.single_object.edit_flow_generator import (
         EditFlowGenerator,
     )
+    from backend.core.generators.single_object.edit_rule_generator import (
+        EditRuleGenerator,
+    )
 
     registry = EditGeneratorRegistry()
     registry.register("edit_actor", EditActorGenerator)
-    registry.register("edit_feature_leaf", EditFeatureGenerator)
+    registry.register("edit_feature", EditFeatureGenerator)
     registry.register("edit_flow", EditFlowGenerator)
     registry.register("edit_business_object", EditBusinessObjectGenerator)
+    registry.register("edit_rule", EditRuleGenerator)
     return registry

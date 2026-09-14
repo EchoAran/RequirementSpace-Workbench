@@ -19,6 +19,18 @@
     "networkMessage": "网络连接失败，请检查服务是否正常启动。"
   },
   "findingText": {
+    "GENERATE_RULES": {
+      "title": "生成领域规则",
+      "description": "进入 How 阶段后，请先从 What 阶段模型中发现并审阅领域规则。"
+    },
+    "REVIEW_RULES": {
+      "title": "审阅领域规则",
+      "description": "已有领域规则尚未完成审阅，请确认后再生成流程。"
+    },
+    "REVIEW_STALE_RULES": {
+      "title": "重新审阅领域规则",
+      "description": "What 阶段的需求来源发生了变化，请重新审阅受影响的领域规则。"
+    },
     "ACTOR_WITHOUT_FEATURE": {
       "title": "角色未关联功能",
       "description": "该角色尚未关联任何功能。"
@@ -42,10 +54,6 @@
     "DUPLICATE_SCENARIO_NAME": {
       "title": "场景名称重复",
       "description": "同一功能与参与者下存在重复场景名称。"
-    },
-    "LEAF_FEATURE_WITHOUT_FLOW": {
-      "title": "叶子功能缺少流程覆盖",
-      "description": "该叶子功能尚未被流程覆盖。"
     },
     "FLOW_WITHOUT_FEATURE": {
       "title": "流程未关联功能",
@@ -142,6 +150,82 @@
     "PERCEPTION_FAILED": {
       "title": "AI 分析失败",
       "description": "阶段分析失败，请重新诊断。"
+    },
+    "UNLINKED_AI_DOMAIN_RULE": {
+      "title": "AI 业务规则缺少来源依据",
+      "description": "该 AI 生成的业务规则缺少与需求、场景或流程步骤的有效关联。"
+    },
+    "CONFIRMED_FLOW_REFERENCES_UNCONFIRMED_RULE": {
+      "title": "已确认流程引用未确认规则",
+      "description": "已确认流程引用了待确认或 AI 推测状态的业务规则。"
+    },
+    "FLOW_TRANSITION_WITHOUT_EXPLANATION": {
+      "title": "流程分支流转缺少说明",
+      "description": "已确认流程的分支流转缺少条件说明或关联业务规则。"
+    },
+    "DOMAIN_RULE_REQUIRED": {
+      "title": "流程缺少业务规则基础",
+      "description": "业务流程必须依赖至少一条业务规则。"
+    },
+    "RULE_WITHOUT_SOURCE": {
+      "title": "规则缺少需求来源",
+      "description": "该规则为非手工创建，但尚未关联任何需求来源。"
+    },
+    "RULE_NOT_APPLIED": {
+      "title": "规则未应用至流程",
+      "description": "该规则尚未关联到任何流程、步骤或分支跳转。"
+    },
+    "FLOW_USES_UNCONFIRMED_RULE": {
+      "title": "已确认流程依赖未确认规则",
+      "description": "流程已确认，但引用的业务规则仍处于未确认状态。"
+    },
+    "FLOW_ENTRY_AMBIGUOUS": {
+      "title": "流程存在多个入口",
+      "description": "流程存在多个无前驱的入口步骤，入口存在歧义。"
+    },
+    "FLOW_WITHOUT_ENTRY": {
+      "title": "流程缺少明确入口",
+      "description": "流程所有步骤均有前驱（可能存在闭环），缺少明确起始步骤。"
+    },
+    "BRANCH_WITHOUT_EXPLANATION": {
+      "title": "已确认分支缺少说明",
+      "description": "流程已确认，但步骤的分支跳转缺少区分条件或说明文本。"
+    },
+    "BRANCH_WITHOUT_DEFAULT": {
+      "title": "多出口缺少默认路径",
+      "description": "步骤包含多个出口分支，未标记默认流向。"
+    },
+    "TRANSITION_RULE_STALE": {
+      "title": "跳转分支引用了已失效规则",
+      "description": "流程分支跳转引用的业务规则不存在或已被废弃。"
+    },
+    "FLOW_PATH_TRUNCATED": {
+      "title": "流程路径展开超出安全限制",
+      "description": "流程路径组合数超过安全上限，已自动截断以避免性能退化。"
+    },
+    "AMBIGUOUS_FLOW_PATH": {
+      "title": "流程路径分支存在歧义",
+      "description": "流程中存在无法明确判定的分支或条件冲突路径。"
+    },
+    "NO_ENTRY_FLOW_PATH": {
+      "title": "流程路径缺少起点入口",
+      "description": "该流程没有任何可达的起始步骤，无法形成完整路径。"
+    },
+    "TRUNCATED_FLOW_PATH": {
+      "title": "流程路径超出最大遍历深度",
+      "description": "该流程路径步数过多或存在复杂环路，路径分析已被截断。"
+    },
+    "ENTER_HOW_GATE_BLOCKED": {
+      "title": "How 阶段准入未达成",
+      "description": "What 阶段仍有未完成的成功标准或未解决的阻塞问题。"
+    },
+    "ENTER_SCOPE_GATE_BLOCKED": {
+      "title": "Scope 阶段准入未达成",
+      "description": "How 阶段仍有未审核业务规则、未解释分支或阻塞问题。"
+    },
+    "RULE_SLOT": {
+      "title": "业务规则建议",
+      "description": "AI 建议补充或优化业务规则。"
     }
   },
   "stageProgress": {
@@ -247,9 +331,12 @@
     "loading": "正在载入项目工作区",
     "loadingProgress": "正在根据地址恢复项目上下文，请稍候...",
     "loadingBackup": "正在准备项目数据...",
-    "retry": "重试"
+    "retry": "重试",
+    "close": "关闭"
   },
   "nav": {
+    "blockingIssues": "存在阻塞问题",
+    "pendingSuggestions": "有待完善建议",
     "overview": "概览",
     "what": "要做什么",
     "flow": "怎么运作",
@@ -264,6 +351,8 @@
     "pendingIssues": "{{count}} 待处理",
     "blockingSuggestions": "有阻塞建议",
     "status": {
+      "ready_to_enter": "可进入",
+      "needs_suggestion": "待完善",
       "playable": "可预演",
       "ready": "已就绪",
       "real_ready": "已就绪",
@@ -754,9 +843,11 @@
         "scenario": "场景",
         "feature": "功能树",
         "flow": "流程",
+        "rule": "业务规则",
         "scope": "范围分析",
         "acceptanceCriteria": "验收标准",
-        "projectCreation": "项目草稿"
+        "projectCreation": "项目草稿",
+        "flowRefinement": "流程细化"
       }
     },
     "continueProcessing": "继续处理",
@@ -772,6 +863,7 @@
       "unknown": "待处理项"
     },
     "headlines": {
+      "hasSuggestions": "当前存在待完善建议",
       "converged": "当前模型已基本收敛",
       "notStarted": "当前模型尚未开始构建",
       "readyToAdvance": "前置阶段建模就绪，可推进",
@@ -800,8 +892,11 @@
       "currentSource": "当前来源：{{source}}"
     },
     "sections": {
+      "pendingSuggestions": "待完善建议 {{count}}",
+      "suggestionBadge": "待完善建议",
+      "enterPreview": "进入预览阶段",
+      "readyToAdvanceDescription": "当前阶段已满足推进条件，可以进入下一阶段。",
       "configTitle": "项目配置",
-      "configSubtitle": "管理当前项目的 AI 策略、参考资料 and 团队模型连接。",
       "configBtn": "打开配置",
       "issuesTitle": "待处理问题",
       "highRisk": "高风险 {{count}}",
@@ -835,7 +930,7 @@
   "nodeStatus": {
     "confirmed": "已确认",
     "needs_confirmation": "待确认",
-    "ai_assumption": "AI 假设",
+    "ai_assumption": "AI推测",
     "excluded": "已排除"
   },
   "scopeStatus": {
@@ -891,7 +986,10 @@
     "impactAnalysisError": "影响分析失败",
     "kanoRecommendTitle": "AI 推荐 Kano 范围",
     "kanoRecommendDesc": "AI 结合系统优先级与业务价值进行了范围推荐。",
-    "addFeaturePlaceholder": "例如: '人脸识别登录功能' (选填)"
+    "addFeaturePlaceholder": "例如: '人脸识别登录功能' (选填)",
+    "allModules": "全部模块",
+    "moduleFilterLabel": "模块筛选",
+    "searchPlaceholder": "搜索功能或范围决策..."
   },
   "what": {
     "confirmAddActor": "确认添加角色",
@@ -910,7 +1008,7 @@
     "status": {
       "confirmed": "已确认",
       "needs_confirmation": "待确认",
-      "ai_assumption": "AI推论"
+      "ai_assumption": "AI推测"
     },
     "ai": {
       "actorTitle": "AI 推荐的参与者定义已生成",
@@ -1037,6 +1135,199 @@
     }
   },
   "how": {
+    "domainRules": {
+      "sectionTitle": "业务规则与约束",
+      "stateNotStartedTitle": "尚无业务规则",
+      "stateNotStartedDesc": "流程生成依赖业务规则，请先通过 AI 发现或手动添加至少一条规则。",
+      "aiDiscover": "AI 发现规则",
+      "aiRediscover": "AI 重新发现规则",
+      "aiDiscoverTooltip": "根据需求、场景与验收标准智能发现业务规则与领域约束",
+      "ruleRequiredForFlow": "请先添加业务规则",
+      "ruleRequiredTooltip": "业务流程必须基于规则生成，请先在上方添加或生成至少一条业务规则。",
+      "addRule": "添加规则",
+      "addFirstRule": "添加第一条规则",
+      "createModalTitle": "添加业务规则",
+      "editModalTitle": "编辑业务规则",
+      "titleLabel": "规则名称",
+      "titlePlaceholder": "例如：订单超时取消规则",
+      "statementLabel": "规则描述与约束",
+      "statementPlaceholder": "例如：未支付订单超过 15 分钟后自动取消并释放库存",
+      "parentRuleLabel": "父规则（可选）",
+      "noParentRule": "无（顶级规则）",
+      "refinedFrom": "细化自",
+      "linkedObjects": "关联对象",
+      "cardView": "卡片视图",
+      "compactView": "紧凑视图",
+      "deleteConfirm": "确定要删除该业务规则吗？",
+      "createFailed": "创建规则失败",
+      "updateFailed": "更新规则失败",
+      "conflictError": "检测到版本冲突，需求内容已被其他操作更新，请刷新后重试。"
+    },
+    "pathProjection": {
+      "title": "路径投影",
+      "focus": "路径聚焦",
+      "allPaths": "全部路径",
+      "mainPath": "主路径",
+      "branchPath": "分支路径",
+      "stepsCount": "{{count}} 步",
+      "statusCycle": "存在环路",
+      "statusAmbiguous": "分支歧义",
+      "statusTruncated": "截断路径"
+    },
+    "transitionLabel": {
+      "unspecified": "未说明流转条件",
+      "default": "默认"
+    },
+    "involvedBusinessObjects": "涉及业务对象",
+    "noInvolvedObjects": "当前流程各步骤暂未关联输入或输出业务对象",
+    "objectUsageLoading": "正在加载业务对象投影...",
+    "objectUsageError": "获取业务对象投影失败",
+    "retryLoad": "重试",
+    "createBusinessObjectBtn": "新建业务对象",
+    "multiFlowSharedNotice": "该对象也被其他 {{count}} 个流程使用 ({{flows}})",
+    "multiFlowSharedNoticeTitle": "多流程共享对象",
+    "boDetailTitle": "业务对象详情与属性",
+    "saveBoBasics": "保存基本信息",
+    "addAttrBtn": "添加属性",
+    "canvas": {
+      "positionLabel": "同源流转优先级 (Position)",
+      "positionHelp": "同一源步骤发出的多条分支间的判断优先级（数字越小越先判断）",
+      "relatedFindings": "关联体检发现 (Findings)",
+      "noRelatedFindings": "无关联体检发现",
+      "relatedChoices": "关联候选变更 (Choices)",
+      "noRelatedChoices": "无关联候选变更",
+      "accessibleViewTitle": "流程步骤与流转可访问列表",
+      "accessibleSteps": "步骤列表",
+      "accessibleTransitions": "分支流转列表",
+      "selectStep": "选择并编辑步骤 {{name}}",
+      "selectTransition": "选择并编辑连线 {{from}} 至 {{to}}",
+      "saveTransition": "保存分支设置",
+      "saving": "保存中...",
+      "defaultBranch": "默认分支",
+      "normalBranch": "普通分支",
+      "fromStep": "起始步骤",
+      "toStep": "目标下一步",
+      "transitionLabelField": "分支标签 (Label)",
+      "transitionConditionField": "流转条件 (Condition Text)",
+      "setDefaultBranch": "设为默认分支",
+      "defaultBranchHelp": "无匹配条件时默认执行的路径",
+      "semanticTagsField": "语义标签 (逗号分隔)",
+      "statusField": "确认状态",
+      "linkedRulesField": "关联业务规则 (Linked Rules)",
+      "selectedCount": "{{count}} 已选",
+      "noAvailableRules": "暂无可用业务规则",
+      "stepInspector": "步骤详情与规则",
+      "linkInspector": "分支连线详情",
+      "toggleAccessibleList": "切换可访问列表模式",
+      "blocking": "阻断",
+      "warning": "告警",
+      "noOutbound": "终点步骤，无流出分支",
+      "clearDefault": "取消默认分支",
+      "disconnectTransition": "断开连接",
+      "disconnectLink": "断开此分支连线",
+      "pathLoading": "正在加载路径...",
+      "pathError": "路径加载失败",
+      "retry": "重试",
+      "noPaths": "无路径",
+      "statusConfirmed": "已确认 (Confirmed)",
+      "statusNeedsConfirmation": "待确认 (Needs Confirmation)",
+      "statusAiAssumption": "AI推测 (AI Assumption)",
+      "transitionLabelPlaceholder": "例如: 审核通过 / 金额超限",
+      "transitionConditionPlaceholder": "例如: amount >= 10000",
+      "positionPlaceholder": "例如: 0, 1, 2...",
+      "stepNumbered": "步骤 #{{id}}",
+      "itemsCount": "{{count}} 项",
+      "weightNumbered": " (权重: {{position}})",
+      "choiceNumbered": "选项 #{{id}}",
+      "noOutboundTransitions": "暂无流出分支，可通过画布端口拖拽连线",
+      "businessRule": "业务规则",
+      "deleteTransition": "删除流转",
+      "refinementStepsDelta": " (+{{count}}步骤)",
+      "refinementTransitionsDelta": " (+{{count}}转移)",
+      "refinementRulesDelta": " (+{{count}}规则)",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "restoreWindow": "还原窗口大小",
+      "maximizeWindow": "最大化窗口",
+      "selectTransitionLabel": "流转: {{text}}",
+      "defaultBranchShort": "默认",
+      "stepTypeJudgment": "判断分支",
+      "stepTypeSystem": "系统操作",
+      "stepTypeActor": "参与者动作",
+      "mainPath": "主路径",
+      "subPath": "分支路径",
+      "deleteStepConfirm": "确定要删除步骤 \"{{name}}\" 吗？",
+      "deleteStep": "删除步骤",
+      "deleteThisStep": "删除此步骤",
+      "inputBoPrefix": "入: ",
+      "outputBoPrefix": "出: ",
+      "inputObjects": "输入对象",
+      "outputObjects": "输出对象",
+      "aiAssumptionRule": "AI推测规则",
+      "detailedRule": "细化规则",
+      "canvasTipsTitle": "💡 画布交互提示：",
+      "tipDragLink": "拖拽连线",
+      "tipDragLinkDesc": "按住步骤卡片右侧的箭头圆点拖动到其他步骤。",
+      "tipDisconnect": "断开连线",
+      "tipDisconnectDesc": "点击连线即可高亮选中并一键断开。",
+      "tipFreeLayout": "自由布局",
+      "tipFreeLayoutDesc": "按住步骤卡片随意拖拽位置。",
+      "tipZoomPan": "缩放平移",
+      "tipZoomPanDesc": "滚轮缩放画布，按住空白处拖拽平移。",
+      "resizeWidth": "拖动调整窗口宽度",
+      "resizeHeight": "拖动调整窗口高度",
+      "resizeDimensions": "拖动调整窗口尺寸",
+      "addStepName": "步骤名称 *",
+      "addStepNamePlaceholder": "例如：输入手机号并获取验证码",
+      "addStepDesc": "步骤描述",
+      "addStepDescPlaceholder": "补充说明步骤的前置条件或操作细节",
+      "addStepType": "步骤类型",
+      "actorActionOption": "参与者动作 (actorAction)",
+      "systemActionOption": "系统操作 (systemAction)",
+      "judgmentOption": "判断分支 (judgment)",
+      "actorRoleRequired": "执行参与者角色",
+      "noActorTip": "当前暂未定义角色，请先在 What 阶段定义参与者角色，或在此将步骤类型切换为“系统操作”。",
+      "connectFromStep": "从哪个步骤连接至此新步骤？",
+      "noAutoConnect": "(不自动从已有步骤连线)",
+      "cancel": "取消",
+      "confirmAdd": "确定添加"
+    },
+    "noAttributesYet": "暂未定义字段属性",
+    "attributeName": "字段名称",
+    "attributeNamePlaceholder": "如 order_id",
+    "attributeType": "类型",
+    "attributeDescription": "描述说明",
+    "attributeDescriptionPlaceholder": "说明字段业务含义",
+    "attributeExample": "示例值",
+    "attributeExamplePlaceholder": "示例",
+    "deleteAttribute": "删除字段",
+    "deleteBusinessObjectBtn": "删除对象",
+    "deleteBusinessObjectConfirm": "确定删除业务实体“{{name}}”吗？这会清除其所有属性及流程步骤关联。",
+    "summary": {
+      "steps": "步骤",
+      "transitions": "分支流转",
+      "rules": "关联规则",
+      "objects": "涉及对象",
+      "blockingIssues": "阻断问题",
+      "warnings": "质量告警"
+    },
+    "ruleAssociations": {
+      "added": "新增规则关联",
+      "flow": "流程级规则",
+      "flow_step": "本步骤直接关联规则",
+      "flow_transitionHint": "关联到当前分支的规则用于约束流转条件。修改后点击保存分支属性。",
+      "flow_transition": "分支连线规则",
+      "openRule": "打开规则详情；修改正文会影响所有引用位置",
+      "noAvailable": "暂无可用规则，请先在业务规则区域创建规则。",
+      "saveFailed": "规则关联保存失败"
+    },
+    "linkedRulesLabel": "关联业务规则",
+    "noLinkedRules": "当前步骤暂未关联业务规则",
+    "addStep": "添加步骤",
+    "noDescription": "暂无描述",
+    "stepBOsEmpty": "暂无关联业务对象",
+    "stepInputBOsLabel": "输入对象",
+    "stepOutputBOsLabel": "输出对象",
     "branchNode": "分支结点",
     "stepType": {
       "actorAction": "用户动作",
@@ -1044,12 +1335,17 @@
       "judgment": "条件分支"
     },
     "title": "系统业务流程",
-    "onboardingTitle": "业务流程建模与设计",
-    "onboardingDesc": "在该阶段（How），您可以通过定义业务流程（Flow）和数据对象（Business Object）来建立系统动态流转和数据模型。",
-    "onboardingTips": "在左侧 What 阶段，我们识别了功能点；现在，在此设计具体的流转与对象属性。",
-    "onboardingAlert": "当前项目尚未有任何业务流程。建议使用 AI 智能生成，或在上方手动创建。",
+    "onboardingTitle": "规则驱动的业务流程建模",
+    "onboardingDesc": "How 阶段先确认业务规则，再据此编排流程、步骤、分支与流转；业务对象作为步骤的输入/输出属性在流程内维护。",
+    "onboardingTips": "What 阶段识别参与者与功能，How 阶段先发现和审阅业务规则，再用规则约束具体流程。",
+    "onboardingAlert": "当前项目尚无业务流程。请先检查业务规则，再使用 AI 生成或手动创建流程。",
     "generateBtn": "AI 智能生成流程",
     "regenerateBtn": "AI 重新生成流程",
+    "refineFlowPath": "深入分析路径",
+    "refineStepPath": "深入分析步骤路径",
+    "refineFlowTitle": "针对当前流程深入细化分支与规则",
+    "refineStepPathTitle": "针对当前选中步骤深入细化前后路径与规则",
+    "refinementOverlayBadge": "细化候选待处理",
     "aiTitle": "AI 推荐业务流已生成",
     "aiDesc": "AI 自动根据系统模型与功能分解，推演了最佳的业务流推荐方案。",
     "aiFeedbackPlaceholder": "补充流程意见 (可选)",
@@ -1135,21 +1431,21 @@
     "dependenciesAction": "请先在 What 页面中至少定义一个参与者与系统功能节点，然后才能在此处定义流程步骤和业务实体关系。",
     "goToWhat": "前往 What 阶段进行参与者与能力建模",
     "focusMode": "全屏专注",
-    "focusCanvasBtn": "专注编辑画布",
     "focusModeTooltip": "放大为独立全屏画布，自由编辑步骤与连接点",
     "openFocusCanvas": "全屏专注画布",
-    "stepsCount": "步骤",
-    "linksCount": "分支连线",
     "autoLayout": "自动排版",
     "autoLayoutTitle": "自动分层整理所有步骤位置",
     "fitViewTitle": "适应画布视口并居中",
     "canvasTips": "💡 提示：按住步骤右侧点拖拽可快速连线；点击连线可断开；拖动节点自由布局",
+    "canvasTipsAriaExpand": "展开画布操作提示",
+    "canvasTipsAriaCollapse": "收起画布操作提示",
     "inputPort": "输入连接点",
     "outputPort": "拖拽以建立下一步连线",
     "stepInspector": "步骤属性",
+    "inspectorCollapse": "收起属性面板",
+    "inspectorExpand": "展开属性面板",
     "assignedActorsLabel": "关联参与者",
     "businessObjectsLabel": "输入 / 输出业务对象",
-    "nextStepsLabel": "下一步分支连线 (Next Steps)",
     "linkInspector": "分支连线详情",
     "disconnectLink": "断开此分支连线",
     "flowOverview": "流程概要",
@@ -1157,10 +1453,10 @@
     "generatedDraftTitle": "AI 推荐的业务流程与实体草稿已生成",
     "generatedDraftDescription": "AI 自动设计了契合系统模型的泳道步骤与关联业务数据对象。",
     "generatedDraftFeedbackPlaceholder": "补充流程调整意见 (可选)",
-    "deleteBusinessObjectConfirm": "确定删除业务实体“{{name}}”吗？这会清除其所有属性及流程步骤关联。",
     "actorRequired": "用户参与者交互步骤必须勾选至少一个参与者！",
     "parentCategory": "父级分类，不可选",
-    "boRelatedStepsLabel": "关联操作步骤"
+    "boRelatedStepsLabel": "关联操作步骤",
+    "transitionsLabel": "流转分支 (Transitions)"
   },
   "preview": {
     "title": "系统原型与导出",
@@ -1208,13 +1504,8 @@
     "acEmptyText": "暂无验收明细",
     "flowStepsLabel": "执行系统流",
     "flowStepsEmpty": "暂无关联流程",
-    "flowRoleFormat": "角色: {{name}}",
-    "flowRoleSystem": "系统自动",
     "unresolvedIssuesTitle": "未解决的系统缺陷 ({{count}} 项)",
     "unresolvedIssuesDesc": "当前项目尚存在阻碍交付的代码缺陷或不一致问题，请返回前面各阶段修正。",
-    "stageGuidanceTitle": "业务时序图",
-    "stageGuidanceFlowFormat": "业务时序: {{name}}",
-    "stageGuidanceEmpty": "当前业务流程无步骤定义。",
     "stageWhatTitle": "要做什么 (What)",
     "stageHowTitle": "怎么工作 (How)",
     "stageScopeTitle": "交付范围 (Scope)",
@@ -1269,6 +1560,7 @@
       "prototypeFailure": "界面原型推演失败",
       "shadowRegenerating": "影子草稿已发起重新推演，请耐心等待。",
       "regenerateFailed": "重新推演失败：{{error}}",
+      "discard": "舍弃影子草稿",
       "discardConfirm": "您确定要舍弃当前的影子草稿吗？此操作不会对您现有的项目数据造成任何修改。",
       "shadowDiscarded": "影子草稿已舍弃。",
       "discardFailed": "舍弃影子草稿失败：{{error}}",
@@ -1297,7 +1589,6 @@
       "kanoEvaluated": "Kano 范围已评估",
       "feedbackPlaceholder": "输入调整意见，例如：增加管理员审核...",
       "regenerate": "重新推演",
-      "discard": "舍弃影子草稿",
       "commit": "采纳并合入正式项目",
       "quickPrototype": "高保真交互原型",
       "openPrototype": "独立窗口打开原型",
@@ -1339,7 +1630,6 @@
       "actorInitiated": "角色发起",
       "unresolvedIssues": "发现未闭环的系统设计 Issue ({{count}} 项)",
       "unresolvedIssuesDescription": "工作区目前包含未决的业务冲突或流程空白，建议在最终导出产品规格说明前返回相关阶段修复这些问题。",
-      "reviewingFlow": "正在审阅业务流时序：{{name}}",
       "overlayFailed": "智能推演异常断裂",
       "overlaySucceeded": "影子原型推演成功",
       "overlayShadowGenerating": "AI 正在补齐规约并生成影子预览",
@@ -1362,6 +1652,9 @@
     "shadowDiagTitle": "异常诊断中"
   },
   "suggestion": {
+    "ruleDraft": "领域规则草稿",
+    "reviewRules": "审阅领域规则",
+    "openingRules": "正在打开领域规则区域...",
     "blockedDesc": "请先处理阻塞项，再进入下一阶段。",
     "blockedMessage": "当前阶段存在阻塞。",
     "blockedTitle": "阶段流转受阻",
@@ -1489,6 +1782,8 @@
     "business_object": "业务实体",
     "flow": "业务流",
     "step": "流程步骤",
+    "flow_transition": "流程流转",
+    "domain_rule": "业务规则",
     "scope": "交付范围",
     "project": "项目设置",
     "node": "节点",
@@ -1504,7 +1799,7 @@
     "resetBtn": "重置修改",
     "nodeStatus": {
       "needs_confirmation": "待确认",
-      "ai_assumption": "AI 推论",
+      "ai_assumption": "AI推测",
       "confirmed": "已确认",
       "conflict": "冲突",
       "deferred": "已推迟",
@@ -1592,8 +1887,8 @@
     "missing_ac": "检测到场景缺少成功标准"
   },
   "rightPanel": {
-    "editTitle": "建模资产编辑面板",
-    "editDesc": "右侧面板统一审阅 and 编辑参与者、功能树、业务流程步骤、数据对象等项目模型资产。",
+    "editTitle": "建模资产与业务规则编辑面板",
+    "editDesc": "右侧面板统一审阅和编辑参与者、功能树、业务流程步骤、数据对象、业务规则等项目模型资产。",
     "projectSubtitle": "系统空间",
     "projectName": "系统空间名称",
     "projectDesc": "系统空间说明",
@@ -1694,7 +1989,7 @@
     "noStack": "无堆栈追踪",
     "reportErrorTip": "请将该报错截图或复制发给开发人员进行排查。",
     "confirmStatusOptions": "确认状态选项",
-    "aiAssumptionLabel": "AI 假设",
+    "aiAssumptionLabel": "AI推测",
     "scopeOptionsNotDecided": "未交付决策",
     "scopeOptionsCurrent": "本期包含",
     "scopeOptionsPostponed": "暂缓处理",
@@ -1745,7 +2040,7 @@
     "actorRelations": "关联角色",
     "actorRelationEmpty": "当前项目暂无系统角色。请先在左侧定义角色。",
     "scopeDecisionSubtitle": "决策",
-    "scopeKanoDesc": "当前功能尚未生成独立的范围记录。首次选择交付范围后，会自动创建该 scope 记录，并默认标记为 AI 假设。",
+    "scopeKanoDesc": "当前功能尚未生成独立的范围记录。首次选择交付范围后，会自动创建该 scope 记录，并默认标记为 AI推测。",
     "boBaseAttrs": "数据实体基本属性",
     "boDescLabel": "说明",
     "boAttrDefinition": "及属性定义",
@@ -1780,12 +2075,14 @@
     "acReadOnlyWarning": "无法定位该验收标准所属的父级功能及场景，属性只读。",
     "acNoBindingWarning": "无法定位该验收标准所属的父级功能及场景，属性只读。",
     "confirmStatusTitle": "确认状态",
+    "ruleSubtitle": "业务规则",
+    "ruleBaseAttrs": "规则属性",
     "assigneeLabel2": "指派人",
     "statusAndScope": "状态与交付范围",
     "coreBoSubtitle": "核心业务对象",
     "fieldExample": "字段示例值",
     "boAttrSubtitle2": "业务属性",
-    "editPanelSubtitle": "建模资产面板",
+    "editPanelSubtitle": "建模资产与业务规则面板",
     "unknownObject": "未知对象",
     "objectAttrDetail": "对象属性详情",
     "assignerLabel": "指派人"
@@ -1807,7 +2104,17 @@
       "acceptance_criterion": "验收标准",
       "scope": "交付范围",
       "perception_slot": "感知插槽",
+      "rule": "业务规则",
       "selected": "选中项"
+    },
+    "previewFields": {
+      "name": "名称",
+      "description": "描述",
+      "title": "标题",
+      "statement": "约束内容",
+      "actor_ids": "关联参与角色",
+      "feature_ids": "关联功能",
+      "feature_kind": "功能类型"
     },
     "currentStage": "当前阶段: {{stage}}",
     "entireWorkspace": "整个系统空间",
@@ -1962,26 +2269,6 @@
     "pageBadge": "页面",
     "emptyTip": "该角色未分配任何页面或界面组件"
   },
-  "flowStepCard": {
-    "inputLabel": "输入",
-    "outputLabel": "输出",
-    "triggerRuleLabel": "触发规则",
-    "statusLabel": "状态",
-    "slotTitle": "槽位：{{title}}",
-    "slotStatus": {
-      "filled": "已填补",
-      "deferred": "已暂缓",
-      "pending": "待决策"
-    },
-    "choiceCount": "{{count}} 个 Choice",
-    "expandSlot": "点击展开 Slot",
-    "generating": "生成中...",
-    "relatedIssues": "{{count}} 个关联 Issue",
-    "relatedChoices": "{{count}} 个关联 Choice",
-    "nextStepLabel": "下一步",
-    "exceptionBranchLabel": "异常分支",
-    "pageType": "页面"
-  },
   "issueCard": {
     "severity": {
       "high": "高风险",
@@ -2020,10 +2307,12 @@
       "feature": "现有完整功能树，以及关联场景、验收标准和范围分析",
       "scenario": "目标功能下现有场景及验收标准",
       "acceptance_criteria": "目标场景的现有验收标准",
-      "flow": "现有流程、流程步骤、业务对象及属性",
+      "flow": "当前工作区的现有流程、步骤与连线（已确认的业务对象将被保留）",
+      "rule": "现有业务规则与领域约束（新规则将合并添加）",
       "scope": "现有范围与 Kano 分析结果"
     },
     "confirmAdopt": "采纳该方案将重新生成{{target}}，原有内容会被替换。确定继续吗？",
+    "confirmReplaceFlowSet": "采纳该方案将替换当前工作区的所有现有流程，但已确认的业务对象将被完整保留。确定继续吗？",
     "compDimension": "比较维度",
     "planLabel": "方案 {{index}}",
     "adoptingBtn": "正在采纳...",
@@ -2036,6 +2325,7 @@
       "criteria": "验收标准 {{count}}",
       "scopes": "范围决策 {{count}}",
       "businessObjects": "对象 {{count}}",
+      "rules": "规则 {{count}}",
       "title": "对象统计"
     },
     "actorsDiffTitle": "参与者设置差异",
@@ -2050,6 +2340,10 @@
     "flowsDiffUnique": "方案独有流程",
     "flowsDiffModified": "步骤/数量差异",
     "flowsDiffIdentical": "业务流程节点与其它方案完全一致",
+    "rulesDiffTitle": "业务规则差异",
+    "rulesDiffUnique": "方案独有规则",
+    "rulesDiffModified": "规则内容差异",
+    "rulesDiffIdentical": "业务规则与其它方案完全一致",
     "scenariosDiffTitle": "业务场景差异",
     "scenariosDiffUnique": "方案独有场景",
     "scenariosDiffModified": "场景内容差异",
@@ -2067,6 +2361,10 @@
       "exclude": "不纳入"
     },
     "loadingSteps": {
+      "genericRule": "正在发现业务规则与领域约束...",
+      "constraints": "正在从需求、场景与验收标准中提炼约束与规则...",
+      "sources": "正在建立规则与上游需求证据的追溯关联...",
+      "dedup": "正在进行规则语义去重与结构指纹校验...",
       "vision": "正在检索项目愿景与核心诉求...",
       "benchmarking": "正在分析行业标杆与最佳商业模式实践...",
       "outline": "正在推演初始项目概要与核心价值定位...",
@@ -2135,6 +2433,8 @@
       "scenario": "选择场景方案",
       "feature": "选择功能树方案",
       "flow": "选择流程与对象方案",
+      "rule": "选择业务规则方案",
+      "domain_rule": "选择业务规则方案",
       "scope": "选择范围分析方案",
       "acceptance_criteria": "选择验收标准方案",
       "generic": "选择项目草稿方案"
@@ -2202,6 +2502,11 @@
     "acCount": "（{{count}} 个节点）",
     "acBadge": "验收标准",
     "flowsCount": "包含 {{count}} 个业务流程",
+    "rulesCount": "包含 {{count}} 条业务规则",
+    "ruleStatement": "规则约束",
+    "ruleSource": "规则来源",
+    "transitionsCount": "{{count}} 个步骤连线",
+    "replaceFlowSetWarning": "注意：采纳此方案将替换当前工作区的 {{count}} 个现有流程，但已确认的业务对象将被完整保留。",
     "businessObjectsCount": "{{count}} 个业务对象数据",
     "stepInteract": "交互",
     "stepAuto": "自动",
@@ -2218,7 +2523,18 @@
       "postponed": "暂缓",
       "exclude": "不纳入"
     },
-    "noPreview": "暂无预览信息"
+    "noPreview": "暂无预览信息",
+    "refinementFlowTarget": "目标流程",
+    "refinementAddedSteps": "新增步骤 ({{count}})",
+    "refinementAddedTransitions": "新增连线 ({{count}})",
+    "refinementUpdatedTransitions": "重定向连线 ({{count}})",
+    "refinementAddedRules": "细化规则 ({{count}})",
+    "refinementAnchorAfter": "前置步骤：#{{step}}",
+    "refinementAddBadge": "新增",
+    "refinementUpdateBadge": "重定向",
+    "doneEmptyBadge": "已完备",
+    "doneEmptyDesc": "当前流程路径与业务规则已达完备状态，无需增补新分支（合法空结果）。",
+    "doneEmptyResult": "无需细化（完备）"
   },
   "draftPreview": {
     "acBadge": "验收标准",
@@ -2249,7 +2565,6 @@
     "flowStepRole": "角色",
     "flowStepInput": "输入对象",
     "flowStepOutput": "输出对象",
-    "flowStepNext": "下一步",
     "businessObjectsTitle": "业务对象",
     "businessObjectsCount": "{{count}} 个",
     "businessObjectExisting": "已存在",
@@ -2277,7 +2592,8 @@
     "discardDraftBtn": "舍弃草稿",
     "generatingDraftTitle": "正在生成{{title}}，请稍候...",
     "generatingDraftDesc": "AI 正在为您智能规划与精炼，以构建最佳结构化系统方案",
-    "closeDiscardTooltip": "关闭并舍弃草稿"
+    "closeDiscardTooltip": "关闭并舍弃草稿",
+    "flowStepTransitions": "流转分支"
   },
   "gherkinVisualizer": {
     "noGiven": "无前置条件",
@@ -2375,19 +2691,19 @@
     }
   },
   "stageGuidance": {
-    "severity": {
-      "high": "高风险",
-      "medium": "需处理",
-      "low": "提示"
-    },
-    "noIssues": "当前阶段暂未发现待处理问题，模型结构健康。可以继续完善建模，或重新发起诊断。",
+    "loading": "正在加载当前阶段状态与建议...",
+    "stageTransition": "阶段推进",
+    "readyToAdvanceTitle": "当前阶段已完成",
+    "readyToAdvanceDescription": "已满足阶段推进条件，可以进入下一阶段；非阻塞建议仍可继续补充。",
+    "incompleteTitle": "当前阶段尚未完成",
+    "incompleteDescription": "请先完成当前阶段的必要建模内容。",
+    "noIssues": "当前阶段暂未发现待处理问题，模型结构健康。可以继续完善建模。",
+    "diagnoseBtn": "诊断需求空间",
     "reDiagnoseBtn": "重新诊断",
     "nextActionSuggestion": "下一步建议",
-    "issuesCount": "仍有 {{count}} 个待处理问题",
-    "locateBtn": "定位",
+    "issuesLabel": "待处理问题",
     "ignoreTooltip": "忽略",
-    "healthTitle": "空间健康：{{count}} 条可优化建议",
-    "healthBadge": "健康建议"
+    "healthLabel": "空间健康"
   },
   "taskDecision": {
     "fieldLabels": {
@@ -2482,20 +2798,20 @@
     "formErrorEmpty": "请选择至少一个待确认的目标节点。",
     "formErrorFail": "发起确认失败",
     "unnamedFeature": "未命名功能",
-    "aiAssumptions": "AI 假设节点",
+    "aiAssumptions": "AI推测节点",
     "undecided": "未交付决策",
     "assignedToOthers": "指派给他人",
     "myCreated": "我创建的",
     "rejected": "被驳回",
-    "assumptionsTab": "待确认假设 ({{count}})",
+    "assumptionsTab": "待确认推测 ({{count}})",
     "tasksTab": "确认任务列表 ({{count}})",
     "assignConfirmBtn": "发起确认指派 ({{count}})",
-    "filterSearchPlaceholder": "搜索假设节点或背景...",
+    "filterSearchPlaceholder": "搜索推测节点或背景...",
     "filterCategoryAll": "全部类别",
     "deselectAll": "取消全选",
     "selectAll": "全选",
-    "noAssumptions": "没有符合筛选条件的 AI 假设节点",
-    "aiAssumptionBadge": "AI 假设",
+    "noAssumptions": "没有符合筛选条件的 AI 推测节点",
+    "aiAssumptionBadge": "AI推测",
     "taskFilters": {
       "all": "全部任务",
       "assigned_to_me": "指派给我的",
@@ -2625,9 +2941,21 @@
     }
   },
   "common": {
-    "unknownError": "未知错误",
+    "create": "创建",
+    "save": "保存",
+    "saving": "保存中...",
+    "cancel": "取消",
+    "optional": "可选",
+    "confirm": "确认",
+    "delete": "删除",
+    "edit": "编辑",
+    "close": "关闭",
+    "collapse": "折叠",
+    "expand": "展开",
+    "dangerZone": "危险操作",
     "currentProject": "当前项目",
-    "cancel": "取消"
+    "unknownError": "未知错误",
+    "readOnly": "只读模式"
   },
   "store": {
     "actions": {
@@ -2835,7 +3163,7 @@
       "nextActionText": "下一步建议",
       "missingActionText": "缺少可执行 action",
       "reDiagnose": "重新诊断：{{desc}}",
-      "viewSuggestion": "查看处理建议"
+      "viewSuggestion": "生成处理建议"
     },
     "errors": {
       "timeout": "AI 服务响应超时，请稍后重试；如果持续出现，请检查模型服务连接状态。",
@@ -2867,7 +3195,14 @@
       "discardDraftFailed": "丢弃草稿失败",
       "analysisError": "分析发生错误",
       "draftExpired": "草稿已失效，请重新配置并生成。",
-      "generatingPlansFailed": "方案生成失败，请重试"
+      "generatingPlansFailed": "方案生成失败，请重试",
+      "loadRulesFailed": "加载领域规则失败",
+      "createRuleFailed": "创建业务规则失败",
+      "updateRuleFailed": "更新业务规则失败",
+      "deleteRuleFailed": "删除业务规则失败",
+      "updateDiscoveryFailed": "更新规则发现状态失败",
+      "updateDiscoveryStatusFailed": "更新规则发现状态失败",
+      "parallelConflict": "当前实体已被其他用户修改，请刷新后重试"
     },
     "scenario": {
       "updateSuccess": "成功场景已更新。",
@@ -2875,7 +3210,7 @@
       "createSuccess": "已为功能添加新场景：{{name}}",
       "generatingDraft": "正在生成场景草稿，请稍候...",
       "draftGenerated": "场景草稿生成成功，已在上方提供完整场景列表。",
-      "combinedDraftGenerated": "场景草稿生成成功，针对选定的 {{count}} 个功能模块共生成了场景，已在上方提供预览。",
+      "combinedDraftGenerated": "场景草稿生成成功，已针对选定功能生成场景并在上方提供预览。",
       "createFailed": "添加场景失败",
       "updateFailed": "更新场景失败",
       "deleteFailed": "删除场景失败"
@@ -2941,6 +3276,7 @@
       "compareWithWorkspace": "与当前工作区比较",
       "changeSummary": "{{added}} 新增 / {{removed}} 删除 / {{modified}} 修改",
       "mergeRequests": "合并请求",
+      "backToRepo": "返回版本库",
       "loadMore": "加载更多",
       "viewFullModel": "查看完整模型",
       "revertCommit": "回滚到此提交",
@@ -2997,6 +3333,7 @@
       "entityRemoved": "对象删除",
       "entityUpdated": "对象修改",
       "orderedMoved": "顺序调整",
+      "positionOrdinal": "第 #{{pos}} 位",
       "filterAll": "全部",
       "filterAdded": "新增",
       "filterRemoved": "删除",
@@ -3034,6 +3371,7 @@
         "scope_status": "范围状态",
         "kano_category": "Kano 属性",
         "kano_category_name": "Kano 属性",
+        "kano_status": "Kano 状态",
         "positive_summary": "纳入理由",
         "negative_summary": "排除影响",
         "reason": "决策依据",
@@ -3054,8 +3392,70 @@
         "output_business_objects": "输出业务对象",
         "user_requirements": "用户诉求",
         "confirmation_status": "确认状态",
-        "unlocked_stages": "已解锁阶段"
+        "unlocked_stages": "已解锁阶段",
+        "label": "流转标签",
+        "condition_text": "条件说明",
+        "is_default": "默认流转",
+        "semantic_tags": "语义标签",
+        "origin": "来源",
+        "statement": "规则陈述",
+        "target_kind": "目标类型",
+        "link_purpose": "关联用途",
+        "context_text": "上下文说明",
+        "duties": "职责范围",
+        "parent_name": "上级功能",
+        "feature_name": "所属功能",
+        "actor_name": "执行角色",
+        "scenario_name": "所属场景",
+        "actor_logical_uuids": "执行角色",
+        "actor_logical_uuid": "执行角色",
+        "feature_logical_uuid": "所属功能",
+        "feature_logical_uuids": "所属功能",
+        "input_business_object_logical_uuids": "输入对象",
+        "output_business_object_logical_uuids": "输出对象",
+        "source_step_logical_uuid": "前置步骤",
+        "target_step_logical_uuid": "后继步骤",
+        "parent_rule_logical_uuid": "上级规则",
+        "rule_logical_uuid": "关联规则",
+        "target_logical_uuid": "关联目标",
+        "parent_feature_logical_uuid": "父功能",
+        "child_feature_logical_uuid": "子功能"
       },
+      "confirmationStatus": {
+        "confirmed": "已确认",
+        "needs_confirmation": "待确认",
+        "ai_assumption": "AI推测"
+      },
+      "kanoStatus": {
+        "missing": "未生成",
+        "generating": "生成中",
+        "generated": "已生成",
+        "failed": "生成失败",
+        "skipped": "已跳过"
+      },
+      "stageName": {
+        "what": "是什么",
+        "how": "怎么做",
+        "scope": "范围"
+      },
+      "stepTypeValue": {
+        "actorAction": "用户动作",
+        "systemAction": "系统动作",
+        "judgment": "条件分支"
+      },
+      "booleanTrue": "是",
+      "booleanFalse": "否",
+      "projectNode": "项目设定",
+      "pathProjectionNote": "该流程的执行路径（步骤序列与分支流转的组合）发生了变化。",
+      "pathProjectionChanged": "执行路径变化",
+      "pathMainCount": "主路径 {{before}} 条 → {{after}} 条",
+      "pathBranchCount": "分支路径 {{before}} 条 → {{after}} 条",
+      "otherProperties": "其他属性",
+      "changedFieldCount": "{{count}} 项属性修改",
+      "latestEntityState": "最新对象完整形态",
+      "addedEntityDetail": "新增对象详情",
+      "removedEntityDetail": "被删除对象详情快照",
+      "commonStep": "常规步骤",
       "entityType": {
         "actor": "参与者",
         "feature": "功能",
@@ -3066,16 +3466,26 @@
         "business_object_attribute": "业务对象属性",
         "flow": "流程",
         "flow_step": "流程步骤",
+        "flow_transition": "流程流转",
+        "domain_rule": "业务规则",
+        "rule_link": "规则关联",
+        "path_projection": "执行路径投影",
         "scope": "范围",
         "project_metadata": "项目元数据"
-      }
+      },
+      "transitions": "流转分支 (Transitions)"
     },
     "errors": {
       "source_branch_empty": "源分支尚无任何提交记录，请先在当前分支提交变更后再创建合并请求",
       "source_target_same": "源分支与目标分支不能相同",
       "duplicate_open_mr": "已存在同源同目标的开放合并请求，请勿重复创建",
       "source_branch_not_found": "未找到源分支",
-      "target_branch_not_found": "未找到目标分支"
+      "target_branch_not_found": "未找到目标分支",
+      "branchCreationForbidden": "当前没有创建分支的权限",
+      "objectNotFoundInCurrentWorkspace": "在当前工作区未找到指定对象",
+      "permission_denied": "权限不足，无法执行该操作",
+      "source_branch_required": "源分支不能为空",
+      "target_branch_required": "目标分支不能为空"
     },
     "discardConfirmTitle": "丢弃未保存的编辑？",
     "discardConfirmMessage": "切换分支将丢弃正在进行的未保存编辑。确定继续吗？",
@@ -3094,6 +3504,7 @@
         "closed": "已关闭"
       },
       "paginationCount": "显示 {{shown}} / 总计 {{total}} 个",
+      "overviewTab": "概览",
       "loadMore": "加载更多 (剩余 {{remaining}} 个)",
       "newMr": "新建 MR",
       "openMrs": "进行中的 MR",
@@ -3104,6 +3515,8 @@
       "commentPlaceholder": "添加评审评论…",
       "blocksMerge": "阻塞合并",
       "postComment": "发表评论",
+      "writeComment": "写评论",
+      "collapseComposer": "收起评论框",
       "commentsHeader": "评论（{{count}}）",
       "required": "必须解决",
       "resolve": "解决",
@@ -3111,7 +3524,11 @@
       "reviewsHeader": "评审",
       "stale": "已过期",
       "staleReason": "已过期（{{reason}}）",
-      "whyCantMerge": "为什么不能合并？",
+      "descriptionTitle": "合并描述",
+      "createdBy": "由 {{author}} 创建",
+      "activityTitle": "评审与讨论",
+      "activityEmpty": "暂无评审与讨论记录。可在「变更对比」中选中具体变更项发表行内评论。",
+      "inlineComment": "行内评论",
       "submitReview": "提交评审",
       "approve": "批准",
       "requestChanges": "请求变更",
@@ -3125,6 +3542,11 @@
         "mergeable": "可合并",
         "merged": "已合并",
         "closed": "已关闭"
+      },
+      "commentStatus": {
+        "active": "待解决",
+        "resolved": "已解决",
+        "expired": "已过期"
       },
       "blocking": {
         "missing_approval": "等待管理员/所有者批准",
@@ -3263,7 +3685,7 @@
           {
             "step": 1,
             "title": "阶段一：What 参与者与功能定义",
-            "desc": "梳理系统参与者角色，拆解根功能与子功能层级树，标注 KANO 价值属性并确认 AI 提取的假设。"
+            "desc": "梳理系统参与者角色，拆解根功能与子功能层级树，标注 KANO 价值属性并确认 AI 提取的推测。"
           },
           {
             "step": 2,
@@ -3292,6 +3714,177 @@
           }
         ]
       },
+      "guidance": {
+        "title": "查看提示、处理问题与推进阶段",
+        "category": "workflow",
+        "badge": "操作指引",
+        "summary": "不确定下一步做什么时，先看空间总览中的“待处理问题”和“下一步建议”，再进入对应阶段处理。阶段页顶部会提示还缺什么、有哪些内容可以完善，以及何时可以进入下一阶段。",
+        "highlights": [
+          {
+            "title": "在总览中找到需要处理的内容",
+            "desc": "“待处理问题”区域显示具体问题，也可能出现“待完善建议”卡片。问题卡片有“高风险”“需处理”或“提示”标记，可点击查看详情；完善建议用于进一步补充模型，有建议不一定意味着当前阶段不能推进。"
+          },
+          {
+            "title": "用“下一步建议”开始操作",
+            "desc": "总览中的“下一步建议”会提示当前推荐操作；满足推进条件时，这里会显示“进入 How 阶段”“进入 Scope 阶段”或“进入预览阶段”。阶段页顶部也会给出建议按钮，例如生成内容、审阅领域规则或完善流程步骤。"
+          },
+          {
+            "title": "在阶段页展开问题与质量提示",
+            "desc": "阶段页顶部的“待处理问题”和“空间健康”可以展开阅读。具有关联对象的条目可点击查看详情或高亮相关对象；问题旁的操作按钮用于开始处理。“空间健康”中的提示可按需完善。"
+          },
+          {
+            "title": "根据阶段提示判断能否继续",
+            "desc": "左侧导航会显示阶段状态、待处理数量，以及“存在阻塞问题”或“有待完善建议”等提示。阶段尚未完成时，按页面给出的缺失原因补充内容；满足要求且没有阻塞项时，阶段页显示“当前阶段已完成”和进入下一阶段的按钮。"
+          },
+          {
+            "title": "遇到“模型就绪度检查未通过”时",
+            "desc": "尝试进入阶段或生成预览时，可能弹出“模型就绪度检查未通过”。弹窗说明本次操作前需要补齐或确认的内容，并为各项提供处理按钮或手动修补提示。按提示处理后，再发起原来的操作。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "从总览选择问题或建议",
+            "desc": "阅读“待处理问题”中的卡片，或点击“下一步建议”。点击问题卡片可进入对应页面并查看问题详情；点击建议会按其内容打开处理入口或执行推荐操作。"
+          },
+          {
+            "step": 2,
+            "title": "按提供的入口补充模型",
+            "desc": "在阶段页展开“待处理问题”，根据具体原因使用旁边的操作按钮。若不能自动处理，返回相关参与者、功能、场景、规则或流程的编辑位置手动补充。"
+          },
+          {
+            "step": 3,
+            "title": "审阅并应用 AI 方案",
+            "desc": "操作后若出现候选方案或草稿，先核对内容，再采纳合适的候选或确认草稿；不合适的候选可拒绝。只生成方案不会自动解决问题，提示有冲突时应先处理冲突。"
+          },
+          {
+            "step": 4,
+            "title": "按需进一步诊断",
+            "desc": "What 或 How 页显示“诊断需求空间”按钮时，可运行 AI 诊断获取进一步完善建议；已有相关建议时按钮显示“重新诊断”。阅读返回的建议后再决定如何补充，不需要把所有完善建议都处理完才能推进。"
+          },
+          {
+            "step": 5,
+            "title": "确认提示后进入下一阶段",
+            "desc": "出现阶段推进入口后，点击进入下一阶段。若弹出就绪度检查，先按列出的原因处理，再重新尝试；操作失败时阅读错误提示，并使用当前页面提供的重试或手动处理入口。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "“待完善建议”和“待处理问题”为什么放在同一区域？",
+            "a": "这里集中展示需要关注的内容：问题说明具体缺失或错误，完善建议提出可继续补充的方向。请阅读每张卡片的标记、说明和操作入口，不必把完善建议都当成阻塞问题。"
+          },
+          {
+            "q": "没有待处理问题，为什么还不能进入下一阶段？",
+            "a": "必要内容可能尚未补齐、前置阶段尚未完成，或分析仍在进行。查看阶段页顶部的说明和左侧导航的锁定原因，按要求补充后再试。"
+          },
+          {
+            "q": "已经出现进入下一阶段的按钮，为什么还有建议？",
+            "a": "必要条件满足后，仍可能有非阻塞的完善建议。可以先推进，也可以继续完善当前阶段。阶段页中的“下一步建议”与“阶段推进”可以同时出现。"
+          },
+          {
+            "q": "点击处理并生成了草稿，为什么问题还在？",
+            "a": "草稿和候选需要审阅并应用到模型。请采纳候选或确认草稿，有冲突时先处理冲突，然后查看更新的状态或重新发起原操作。"
+          },
+          {
+            "q": "“忽略”会修改模型吗？",
+            "a": "不会。忽略会让该问题或质量提示不再显示，但不会补齐内容或修改模型关系。若它不适用于当前需求，可以忽略；必要建模内容仍需完成。"
+          },
+          {
+            "q": "检查弹窗里的“暂不处理”和“继续进入”是什么意思？",
+            "a": "“暂不处理”取消本次操作，便于先返回编辑。“继续进入”尝试跳过当前弹窗列出的阻塞项继续操作，不会自动修复内容。首次推进仍不能跳过必填内容、锁定阶段或进行中的分析；跳过阻塞项的阶段推进会留下操作记录。"
+          }
+        ]
+      },
+      "ai_assistant": {
+        "title": "AI 助手：问答、修改与对话添加",
+        "category": "workflow",
+        "badge": "AI 辅助建模",
+        "summary": "进入项目工作区后，点击右下角的紫色星光按钮打开“AI 助手”。需要理解现有需求时使用“问答”；需要调整已有对象时使用“修改”。添加新对象则从对应页面的 AI 对话添加入口开始。涉及模型变更的操作先生成草稿，审阅确认后才应用。",
+        "highlights": [
+          {
+            "title": "打开、收起与移动助手",
+            "desc": "点击右下角浮动按钮展开助手，点击标题栏的减号收起。可拖动浮动按钮或窗口标题栏调整位置，避免遮挡正在查看的模型。"
+          },
+          {
+            "title": "选择问答范围",
+            "desc": "“问答”中的“范围”可以选择当前阶段或“整个系统空间”；在页面选中对象后，也可针对该对象提问。切换页面或选中对象时，范围会重新选择，请在发送前检查当前显示的范围。"
+          },
+          {
+            "title": "围绕现有需求提问",
+            "desc": "输入问题并点击发送，或按 Enter 发送；Shift+Enter 换行。例如询问某个功能的职责、某条流程的含义，或当前阶段有哪些内容需要关注。问答参考项目模型进行解释，回答本身不会修改模型。"
+          },
+          {
+            "title": "通过对话修改已有对象",
+            "desc": "先在页面选中参与者、功能、业务流程或业务对象等支持编辑的对象，再切换“修改”，核对“对象”名称并点击“开始编辑”。描述想改什么，按助手追问补充；可以生成草稿时，选择“生成编辑草稿”或“继续对话”。"
+          },
+          {
+            "title": "查看修改前后的差异",
+            "desc": "“修改预览”展示原内容和建议内容，并可能附带修改理由。确认符合需求后点击“确认修改”，保存后工作区刷新；不合适则点击“丢弃”，重新开始编辑。"
+          },
+          {
+            "title": "从页面入口对话添加新对象",
+            "desc": "What 页提供 AI 对话添加参与者、功能模块和子功能点的入口；How 页提供 AI 对话创建流程和业务对象的入口。打开后描述对象细节，回答追问，点击“生成草稿”，查看预览后点击“确认并创建”；也可继续对话或丢弃草稿。"
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "打开助手并选好范围",
+            "desc": "在需要查看的阶段打开右下角助手，选择“问答”。如果只想了解一个对象，先在页面选中它，再检查“范围”中显示的对象名称。"
+          },
+          {
+            "step": 2,
+            "title": "先提问了解现有模型",
+            "desc": "描述你想了解的内容，例如“这个功能由哪些角色使用？”或“这条流程主要完成什么业务？”。阅读回答后决定是否需要修改。"
+          },
+          {
+            "step": 3,
+            "title": "选中对象并开始修改",
+            "desc": "选中要调整的对象，切换“修改”，确认对象名称后点击“开始编辑”。如果按钮不可用，按提示选择支持编辑的对象。"
+          },
+          {
+            "step": 4,
+            "title": "描述修改要求并补充细节",
+            "desc": "明确说明需要变更的内容与期望结果，例如“将这个角色的职责补充为审核退款申请”。按追问补充信息；出现生成入口后，可生成编辑草稿或继续对话。"
+          },
+          {
+            "step": 5,
+            "title": "审阅差异后确认或丢弃",
+            "desc": "逐项核对修改预览中的原内容和建议内容，再点击“确认修改”。不采纳时点击“丢弃”；生成失败可重新生成，确认失败时可查看错误并在预览中重试确认。"
+          },
+          {
+            "step": 6,
+            "title": "需要新增时使用页面上的添加入口",
+            "desc": "从对应页面的 AI 对话添加入口开始新对象对话。生成草稿后检查名称、说明及预览中的关联信息，再点击“确认并创建”，保存后查看新对象。"
+          }
+        ],
+        "faqs": [
+          {
+            "q": "在“问答”中要求 AI 修改内容，会直接保存吗？",
+            "a": "不会。“问答”用于解释现有项目内容。要修改模型，请选中对象并使用“修改”，生成编辑草稿后审阅并确认。"
+          },
+          {
+            "q": "为什么“开始编辑”按钮不可用？",
+            "a": "修改需要选中支持编辑的具体对象。选择整个空间、当前阶段或不支持修改的对象时，无法开始编辑；以窗口中的对象名称、提示和按钮状态为准。"
+          },
+          {
+            "q": "能在浮动助手里直接添加新对象吗？",
+            "a": "浮动助手提供问答和已有对象修改。新增参与者、功能、流程或业务对象时，请使用 What 或 How 页面上的 AI 对话添加入口。"
+          },
+          {
+            "q": "生成编辑草稿后还能继续原来的对话吗？",
+            "a": "生成前可以点击“继续对话”补充细节；进入修改预览后，当前入口是“确认修改”或“丢弃”。丢弃后需要重新开始编辑。"
+          },
+          {
+            "q": "收起助手、清除问答或切换模式会怎样？",
+            "a": "收起只折叠窗口；“问答”中的“清除”清空显示的问答记录，不修改模型。从“修改”切换回“问答”会重置编辑过程，并丢弃尚未确认的编辑草稿，因此请先决定是否保存。"
+          },
+          {
+            "q": "AI 回答或草稿不符合需求怎么办？",
+            "a": "问答可重新提出更具体的问题，并检查范围是否正确；生成前可继续对话澄清修改或新增要求；不合适的草稿可丢弃。出现请求、生成或确认失败提示时，按当前入口重试，不要把失败提示当成已保存。"
+          }
+        ]
+      },
       "what": {
         "title": "What 阶段：参与者与功能需求",
         "category": "workflow",
@@ -3311,15 +3904,15 @@
             "desc": "对功能进行 KANO 价值定级（必备型 Must-be、期望型 One-dimensional、魅力型 Attractive），指导后续优先级排期。"
           },
           {
-            "title": "AI 假设提取与确认",
-            "desc": "AI 分析原始需求时自动提取的推断将标记为「待确认假设」，可在决策中心批量核准或修订。"
+            "title": "AI 推测提取与确认",
+            "desc": "AI 分析原始需求时自动提取的推断将标记为「待确认推测」，可在决策中心批量核准或修订。"
           }
         ],
         "steps": [
           {
             "step": 1,
             "title": "添加/确认核心参与者",
-            "desc": "在参与者管理区添加系统角色，或点击 AI 假设卡片确认推断角色。"
+            "desc": "在参与者管理区添加系统角色，或点击 AI 推测卡片确认推断角色。"
           },
           {
             "step": 2,
@@ -3340,56 +3933,69 @@
         ]
       },
       "flow": {
-        "title": "Flow 阶段：业务流程编排",
+        "title": "How 阶段：规则驱动的流程建模",
         "category": "workflow",
-        "badge": "动态行为流转",
-        "summary": "Flow 阶段将静态功能细化为动态的业务执行流，通过泳道流程图直观展示跨角色的协作时序与数据流转。",
+        "badge": "规则与流程",
+        "summary": "How 阶段先识别并审阅业务规则，再用规则约束业务流程、步骤、分支与流转；业务对象作为步骤的输入/输出及字段属性在具体流程中维护。",
         "highlights": [
           {
-            "title": "步骤指派与时序连线",
-            "desc": "每个步骤明确操作主体（指派参与者）、所属功能以及前后跳转流转条件。"
+            "title": "业务规则独立视图",
+            "desc": "可通过 AI 发现、重新发现或手动添加规则，并在卡片或紧凑视图中查看规则层级、确认状态与关联对象。"
           },
           {
-            "title": "业务对象与属性流转",
-            "desc": "定义流程步骤所消费的输入对象（Input BO）和产出的输出对象（Output BO），保障数据流闭环。"
+            "title": "规则驱动流程生成",
+            "desc": "流程生成以业务规则为前置条件；流程步骤和分支可继续关联具体规则，保留从需求依据到执行路径的追踪关系。"
           },
           {
-            "title": "泳道图交互渲染",
-            "desc": "自动按参与者分栏绘制泳道图，支持节点拖拽排版、分支连线与全屏画布聚焦。"
+            "title": "分支与路径建模",
+            "desc": "在流程画布中编排参与者动作、系统操作和判断分支，维护流转条件、默认分支，并用路径投影聚焦主路径或分支路径。"
           },
           {
-            "title": "严谨状态机模型",
-            "desc": "流程定义对应底层的有限状态机规范，直接作为原型组件间事件流与页面跳转的代码生成依据。"
+            "title": "流程内的业务对象属性",
+            "desc": "每条流程通过“涉及业务对象”区域汇总相关对象，并通过步骤的输入/输出关系和字段属性表达数据如何参与流程。"
           }
         ],
         "steps": [
           {
             "step": 1,
-            "title": "创建业务流程主干",
-            "desc": "点击新建流程，关联主要业务场景并设定流程目标。"
+            "title": "发现并审阅业务规则",
+            "desc": "先使用 AI 发现规则或手动添加规则，检查规则描述、确认状态及其需求来源关联。"
           },
           {
             "step": 2,
-            "title": "编排步骤与参与者",
-            "desc": "添加步骤节点，指派负责执行该步骤的参与者角色与对应功能点。"
+            "title": "生成或创建业务流程",
+            "desc": "在至少存在一条业务规则后，通过 AI 生成流程，或手动创建并关联相应功能。"
           },
           {
             "step": 3,
-            "title": "关联输入输出业务对象",
-            "desc": "为步骤挂载需要读写的业务数据对象，构建端到端数据流。"
+            "title": "编排步骤、分支与规则",
+            "desc": "添加不同类型的步骤，指派参与者，通过画布连接步骤，并为分支补充条件、默认路径和关联规则。"
+          },
+          {
+            "step": 4,
+            "title": "维护流程内的对象属性",
+            "desc": "在展开的流程中查看“涉及业务对象”，维护对象及字段属性，并在步骤上指定输入与输出关系。"
           }
         ],
         "faqs": [
           {
-            "q": "流程步骤之间的先后关系如何连线？",
-            "a": "在步骤详情中指定「下一步骤（Next Steps）」，系统将自动在泳道图与流程图中绘制带有方向的有向连线。"
+            "q": "为什么生成流程前需要业务规则？",
+            "a": "业务规则为流程步骤和分支提供约束依据。请先在规则视图中生成或添加至少一条业务规则，再开始生成流程。"
+          },
+          {
+            "q": "如何维护流程涉及的业务对象？",
+            "a": "展开具体流程，在“涉及业务对象”区域新建或选择对象；点击对象可维护名称、说明和字段属性，输入/输出关系则在对应流程步骤中设置。"
+          },
+          {
+            "q": "如何建立和细化流程分支？",
+            "a": "在流程画布中从步骤端口拖拽到目标步骤创建连线；选中连线后可设置条件、判断顺序、默认分支和关联业务规则。"
           }
         ]
       },
       "scope": {
         "title": "Scope 阶段：范围与验收标准",
         "category": "workflow",
-        "badge": "验收与准入准出",
+        "badge": "验收与推进",
         "summary": "Scope 阶段通过严谨的 Gherkin 场景规范和范围判定，确立产品验收标准，是触发原型编译与工程交付的最终道门。",
         "highlights": [
           {
@@ -3405,8 +4011,8 @@
             "desc": "将业务验收标准与具体功能、业务对象和流程步骤精确绑定，消除歧义。"
           },
           {
-            "title": "Gate Check 准出检验",
-            "desc": "完成范围验收定义后，触发全生命周期 Gate Check 检验，通过后原型编译沙箱正式就绪。"
+            "title": "进入预览前检查",
+            "desc": "准备进入预览时，系统会检查前置内容。若提示“模型就绪度检查未通过”，按弹窗补齐或确认相关内容，再重新尝试。"
           }
         ],
         "steps": [
@@ -3422,8 +4028,8 @@
           },
           {
             "step": 3,
-            "title": "执行准出检验并触发编译",
-            "desc": "点击 Gate Check 准出检验，确认规约无遗漏后完成前置三阶段全部收官。"
+            "title": "确认阶段状态并进入预览",
+            "desc": "完成范围决策后查看阶段状态，出现“进入预览阶段”入口时点击进入；若检查未通过，按列出的原因处理后再试。"
           }
         ],
         "faqs": [
@@ -3612,7 +4218,7 @@
           },
           {
             "title": "待办决策中心（Tasks）",
-            "desc": "AI 提取的规约假设、冲突裁决与流程确认将作为待办任务精准分派给指定成员处理。"
+            "desc": "AI 提取的规约推测、冲突裁决与流程确认将作为待办任务精准分派给指定成员处理。"
           },
           {
             "title": "全局实时通知中心",

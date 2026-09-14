@@ -95,7 +95,7 @@ class CommitSummaryResponse(BaseModel):
     short_id: str
     message: str
     state_hash: str
-    schema_version: str = "1.0"
+    schema_version: str = "2.0"
     summary: dict[str, Any] | None = None
     author_user_id: int | None = None
     author_email: str | None = None

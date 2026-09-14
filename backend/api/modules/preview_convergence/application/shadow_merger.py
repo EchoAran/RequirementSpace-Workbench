@@ -32,6 +32,7 @@ class PreviewShadowMerger:
     async def generate_shadow_patch(
         service,
         project_id: int,
+        workspace_id: int,
         base_snapshot: dict,
         session: AsyncSession = None,
         feedback: str = "",
@@ -40,6 +41,7 @@ class PreviewShadowMerger:
         return await PreviewShadowPatchGenerator.generate_shadow_patch(
             service=service,
             project_id=project_id,
+            workspace_id=workspace_id,
             base_snapshot=base_snapshot,
             session=session,
             feedback=feedback,

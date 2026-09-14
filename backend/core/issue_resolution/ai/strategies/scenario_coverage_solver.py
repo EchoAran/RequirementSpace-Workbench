@@ -59,7 +59,7 @@ class ScenarioCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         target_id = target.get("target_id") or target.get("targetId") or "" if target else ""
         feature_id, actor_id = None, None

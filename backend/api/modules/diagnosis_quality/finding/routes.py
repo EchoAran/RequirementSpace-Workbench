@@ -60,7 +60,7 @@ async def list_project_findings(
         raise map_branch_error(error)
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
 
         findings = await finding_service.list_findings(
             project_id=owned_project.id,
@@ -136,14 +136,14 @@ async def update_project_finding_status(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         res = await finding_service.set_finding_status(
             project_id=owned_project.id,
             finding_id=request.finding_id,

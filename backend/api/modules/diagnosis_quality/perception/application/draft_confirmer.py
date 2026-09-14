@@ -7,22 +7,15 @@ from backend.api.modules.diagnosis_quality.perception.application.invalidation i
 from .flow_draft_persistence import persist_flow_draft
 
 
-async def _exec(value):
-    """兼容同步与异步 Session：execute/flush 的返回若可 await 则 await。"""
-    if hasattr(value, "__await__"):
-        return await value
-    return value
-
-
 class PerceptionDraftConfirmer:
     async def confirm_draft(
         self,
         draft_id: str,
         owner_user_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -117,7 +110,7 @@ class PerceptionDraftConfirmer:
     async def _persist_actor_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import ActorModel
 
@@ -132,7 +125,7 @@ class PerceptionDraftConfirmer:
                 )
             )
 
-        await _exec(session.flush())
+        await session.flush()
 
         return {
             "project_id": draft["project_id"],
@@ -145,7 +138,7 @@ class PerceptionDraftConfirmer:
     async def _persist_feature_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import (
             FeatureModel,
@@ -165,7 +158,7 @@ class PerceptionDraftConfirmer:
             session.add(model)
             temporary_id_to_model[item["temporary_feature_id"]] = model
 
-        await _exec(session.flush())
+        await session.flush()
 
         parent_position_map: dict[int, int] = {}
 
@@ -180,12 +173,12 @@ class PerceptionDraftConfirmer:
                 parent_feature_id = parent_model.id
 
             if parent_feature_id not in parent_position_map:
-                existing_position_result = await _exec(session.execute(
+                existing_position_result = await session.execute(
                     select(FeatureRelationModel.position).where(
                         FeatureRelationModel.parent_feature_id
                         == parent_feature_id
                     )
-                ))
+                )
                 existing_positions = existing_position_result.scalars().all()
                 parent_position_map[parent_feature_id] = (
                     max(existing_positions)
@@ -204,7 +197,7 @@ class PerceptionDraftConfirmer:
                 )
             )
 
-        await _exec(session.flush())
+        await session.flush()
 
         return {
             "project_id": draft["project_id"],
@@ -217,7 +210,7 @@ class PerceptionDraftConfirmer:
     async def _persist_scenario_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import ScenarioModel
 
@@ -234,7 +227,7 @@ class PerceptionDraftConfirmer:
                 )
             )
 
-        await _exec(session.flush())
+        await session.flush()
 
         return {
             "project_id": draft["project_id"],
@@ -248,7 +241,7 @@ class PerceptionDraftConfirmer:
     async def _persist_acceptance_criteria_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import ScenarioAcceptanceCriterionModel
 
@@ -256,7 +249,7 @@ class PerceptionDraftConfirmer:
             item["scenario_id"]
             for item in draft["scenario_acceptance_criteria"]
         ]
-        existing_position_result = await _exec(session.execute(
+        existing_position_result = await session.execute(
             select(
                 ScenarioAcceptanceCriterionModel.scenario_id,
                 ScenarioAcceptanceCriterionModel.position,
@@ -265,7 +258,7 @@ class PerceptionDraftConfirmer:
                     scenario_ids
                 )
             )
-        ))
+        )
         max_position_map: dict[int, int] = {}
 
         for scenario_id, position in existing_position_result.all():
@@ -295,7 +288,7 @@ class PerceptionDraftConfirmer:
 
             max_position_map[scenario_id] = next_position
 
-        await _exec(session.flush())
+        await session.flush()
 
         return {
             "project_id": draft["project_id"],
@@ -309,6 +302,6 @@ class PerceptionDraftConfirmer:
     async def _persist_flow_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         return await persist_flow_draft(draft, session, workspace_id=workspace_id)

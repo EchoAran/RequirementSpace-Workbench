@@ -36,6 +36,8 @@ CONFLICT_TYPES = frozenset({
     "opposite_relation_ops",
     "same_position_order",
     "object_identity_parent",
+    "competing_default_transition",
+    "rule_parent_cycle",
 })
 CHOICES = ("target", "source")
 
@@ -119,6 +121,8 @@ def _build_name_index(
         for flow in state.get("flows", []):
             for step in flow.get("steps", []):
                 _index_entity(index, step, "flow_step")
+            for transition in flow.get("transitions", []):
+                _index_entity(index, transition, "flow_transition")
     index["project"] = {"entity_type": "project_metadata", "name": ""}
     return index
 
@@ -615,6 +619,8 @@ def _merge_collection(
     resolutions: dict[str, dict[str, Any]] | None,
     conflicts: list[dict[str, Any]],
     name_index: dict[str, dict[str, str]],
+    parent_uuid: str | None = None,
+    parent_type: str | None = None,
 ) -> list[dict[str, Any]]:
     """合并顶层集合（参与者、功能、场景、业务对象、流程、范围）。"""
     base_map = {e["logical_uuid"]: e for e in base_list}
@@ -647,6 +653,7 @@ def _merge_collection(
             conflict = _make_conflict(
                 "delete_vs_modify", entity_type, entity_uuid,
                 _display_name(s), key, b, None, s,
+                parent_uuid, parent_type,
             )
             resolved, chosen = _resolve_value(conflict, resolutions)
             if resolved:
@@ -662,6 +669,7 @@ def _merge_collection(
             conflict = _make_conflict(
                 "delete_vs_modify", entity_type, entity_uuid,
                 _display_name(t), key, b, t, None,
+                parent_uuid, parent_type,
             )
             resolved, chosen = _resolve_value(conflict, resolutions)
             if resolved:
@@ -671,12 +679,21 @@ def _merge_collection(
                 conflicts.append(conflict)
             continue
 
-        kept.append(
-            _merge_entity(
-                entity_type, b or {}, t or {}, s or {},
-                resolutions, conflicts, name_index,
-            )
+        merged_entity = _merge_entity(
+            entity_type, b or {}, t or {}, s or {},
+            resolutions, conflicts, name_index, parent_uuid, parent_type,
         )
+        if entity_type == "business_object":
+            merged_entity["attributes"] = _merge_collection(
+                "attributes",
+                (b or {}).get("attributes", []),
+                t.get("attributes", []),
+                s.get("attributes", []),
+                "business_object_attribute",
+                resolutions, conflicts, name_index,
+                entity_uuid, entity_type,
+            )
+        kept.append(merged_entity)
 
     return kept
 
@@ -714,6 +731,134 @@ def _merge_ordered_parent_children(
                 parent_uuid, parent_type,
                 resolutions, conflicts, name_index,
             )
+
+
+def _default_transition_by_source(flow: dict[str, Any]) -> dict[str, str]:
+    return {
+        transition["source_step_logical_uuid"]: transition["logical_uuid"]
+        for transition in flow.get("transitions", [])
+        if transition.get("is_default")
+    }
+
+
+def _resolve_competing_default_transitions(
+    merged_raw: dict[str, Any],
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+) -> None:
+    """Detect branch-wide default choices that entity-local merging cannot see."""
+    merged_flows = {flow["logical_uuid"]: flow for flow in merged_raw.get("flows", [])}
+    base_flows = {flow["logical_uuid"]: flow for flow in base_state.get("flows", [])}
+    target_flows = {flow["logical_uuid"]: flow for flow in target_state.get("flows", [])}
+    source_flows = {flow["logical_uuid"]: flow for flow in source_state.get("flows", [])}
+
+    for flow_uuid in sorted(set(base_flows) & set(target_flows) & set(source_flows)):
+        merged_flow = merged_flows.get(flow_uuid)
+        if merged_flow is None:
+            continue
+        base_defaults = _default_transition_by_source(base_flows[flow_uuid])
+        target_defaults = _default_transition_by_source(target_flows[flow_uuid])
+        source_defaults = _default_transition_by_source(source_flows[flow_uuid])
+        for step_uuid in sorted(set(target_defaults) | set(source_defaults)):
+            base_choice = base_defaults.get(step_uuid)
+            target_choice = target_defaults.get(step_uuid)
+            source_choice = source_defaults.get(step_uuid)
+            if (
+                target_choice in (source_choice, base_choice)
+                or source_choice == base_choice
+            ):
+                continue
+            conflict = _make_conflict(
+                "competing_default_transition",
+                "flow_step",
+                step_uuid,
+                "",
+                "default_transition",
+                base_choice,
+                target_choice,
+                source_choice,
+                flow_uuid,
+                "flow",
+            )
+            resolved, chosen = _resolve_value(conflict, resolutions)
+            if not resolved:
+                conflicts.append(conflict)
+                chosen = target_choice
+            for transition in merged_flow.get("transitions", []):
+                if transition.get("source_step_logical_uuid") == step_uuid:
+                    transition["is_default"] = transition.get("logical_uuid") == chosen
+
+
+def _find_rule_parent_cycles(parent_by_rule: dict[str, str | None]) -> list[list[str]]:
+    cycles: list[list[str]] = []
+    completed: set[str] = set()
+    for start in sorted(parent_by_rule):
+        if start in completed:
+            continue
+        path: list[str] = []
+        positions: dict[str, int] = {}
+        current: str | None = start
+        while current is not None and current in parent_by_rule and current not in completed:
+            if current in positions:
+                cycles.append(path[positions[current]:])
+                break
+            positions[current] = len(path)
+            path.append(current)
+            current = parent_by_rule[current]
+        completed.update(path)
+    return cycles
+
+
+def _resolve_rule_parent_cycles(
+    merged_raw: dict[str, Any],
+    base_state: dict[str, Any],
+    target_state: dict[str, Any],
+    source_state: dict[str, Any],
+    resolutions: dict[str, dict[str, Any]] | None,
+    conflicts: list[dict[str, Any]],
+) -> None:
+    """Expose parent cycles created by combining otherwise independent rule edits."""
+    merged_rules = {
+        rule["logical_uuid"]: rule for rule in merged_raw.get("domain_rules", [])
+    }
+    parent_maps = []
+    for state in (base_state, target_state, source_state):
+        parent_maps.append({
+            rule["logical_uuid"]: rule.get("parent_rule_logical_uuid")
+            for rule in state.get("domain_rules", [])
+        })
+    merged_parents = {
+        rule_uuid: rule.get("parent_rule_logical_uuid")
+        for rule_uuid, rule in merged_rules.items()
+    }
+    for cycle in _find_rule_parent_cycles(merged_parents):
+        cycle_key = sorted(cycle)[0]
+        values = [
+            {rule_uuid: parent_map.get(rule_uuid) for rule_uuid in sorted(cycle)}
+            for parent_map in parent_maps
+        ]
+        conflict = _make_conflict(
+            "rule_parent_cycle",
+            "domain_rule",
+            cycle_key,
+            merged_rules[cycle_key].get("title", ""),
+            "parent_rule_logical_uuid",
+            values[0],
+            values[1],
+            values[2],
+            cycle_members=sorted(cycle),
+        )
+        resolved, chosen = _resolve_value(conflict, resolutions)
+        if not resolved:
+            conflicts.append(conflict)
+            chosen = values[1]
+        if isinstance(chosen, dict):
+            for rule_uuid, parent_uuid in chosen.items():
+                if rule_uuid in merged_rules:
+                    merged_rules[rule_uuid]["parent_rule_logical_uuid"] = parent_uuid
 
 
 def _parent_collection_key(parent_type: str) -> str:
@@ -815,6 +960,22 @@ def compute_three_way_merge(
     _merge_ordered_parent_children(
         merged_raw, base_state, target_state, source_state,
         resolutions, conflicts, name_index,
+    )
+    _resolve_competing_default_transitions(
+        merged_raw,
+        base_state,
+        target_state,
+        source_state,
+        resolutions,
+        conflicts,
+    )
+    _resolve_rule_parent_cycles(
+        merged_raw,
+        base_state,
+        target_state,
+        source_state,
+        resolutions,
+        conflicts,
     )
 
     merged_state = _canonicalize(merged_raw)

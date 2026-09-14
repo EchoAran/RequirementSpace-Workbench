@@ -53,7 +53,7 @@ class NextSuggestionService:
         public_project_id: str,
         include_perception: bool,
         transition_code: str | None,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ):
         if not include_perception and suggestion.code == transition_code:
             active_slot = (
@@ -140,7 +140,7 @@ class NextSuggestionService:
         background_tasks: BackgroundTasks | None,
         public_project_id: str,
         include_perception: bool,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict | None:
         suggestion = await policy.get_next(
             project_id=project_id,
@@ -166,7 +166,7 @@ class NextSuggestionService:
         )
         if (
             suggestion.code == transition_code
-            and await self._is_stage_advanced(project_id, stage, session, workspace_id=workspace_id)
+            and await self._is_stage_advanced(stage, session, workspace_id=workspace_id)
         ):
             return None
         result = suggestion.to_dict()
@@ -178,15 +178,15 @@ class NextSuggestionService:
         project_id: int,
         stage: str,
         session,
+        workspace_id: int,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
         include_perception: bool = False,
-        workspace_id: int | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
         pub_id = public_project_id or str(project_id)
 
-        if not await self._is_stage_visible(project_id, stage, session, workspace_id=workspace_id):
+        if not await self._is_stage_visible(stage, session, workspace_id=workspace_id):
             return {
                 "project_id": pub_id,
                 "stage": stage,
@@ -228,15 +228,15 @@ class NextSuggestionService:
         project_id: int,
         stage: str,
         session,
+        workspace_id: int,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         stage = self._normalize_stage(stage)
         await self._ensure_project_exists(project_id, session)
         pub_id = public_project_id or str(project_id)
 
-        if not await self._is_stage_visible(project_id, stage, session, workspace_id=workspace_id):
+        if not await self._is_stage_visible(stage, session, workspace_id=workspace_id):
             return {
                 "project_id": pub_id,
                 "stage": stage,
@@ -292,37 +292,24 @@ class NextSuggestionService:
         if project_result.scalar_one_or_none() is None:
             raise ValueError("project_not_found")
 
-    @classmethod
+    @staticmethod
     async def _is_stage_visible(
-        cls,
-        project_id: int,
         stage: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> bool:
-        from backend.database.model import BranchWorkspaceModel, ProjectModel
+        from backend.database.model import BranchWorkspaceModel
 
-        unlocked_text = None
-        if workspace_id is not None:
-            ws_res = await session.execute(
-                select(BranchWorkspaceModel.unlocked_stages).where(
-                    BranchWorkspaceModel.id == workspace_id,
-                )
+        ws_res = await session.execute(
+            select(BranchWorkspaceModel.unlocked_stages).where(
+                BranchWorkspaceModel.id == workspace_id,
             )
-            unlocked_text = ws_res.scalar_one_or_none()
-
+        )
+        unlocked_text = ws_res.scalar_one_or_none()
         if unlocked_text is None:
-            project_result = await session.execute(
-                select(ProjectModel.unlocked_stages).where(
-                    ProjectModel.id == project_id,
-                )
-            )
-            unlocked_text = project_result.scalar_one_or_none()
+            raise ValueError("workspace_not_found")
 
-        if unlocked_text is None:
-            raise ValueError("project_not_found")
-
-        return cls._is_stage_unlocked_for_detection(
+        return NextSuggestionService._is_stage_unlocked_for_detection(
             stage=stage,
             unlocked_stages=unlocked_text,
         )
@@ -348,10 +335,9 @@ class NextSuggestionService:
 
     @staticmethod
     async def _is_stage_advanced(
-        project_id: int,
         stage: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> bool:
         next_stage_map = {
             "what": "how",
@@ -362,25 +348,16 @@ class NextSuggestionService:
         if not next_stage:
             return False
 
-        from backend.database.model import BranchWorkspaceModel, ProjectModel
+        from backend.database.model import BranchWorkspaceModel
 
-        unlocked_text = None
-        if workspace_id is not None:
-            ws_res = await session.execute(
-                select(BranchWorkspaceModel.unlocked_stages).where(
-                    BranchWorkspaceModel.id == workspace_id,
-                )
+        ws_res = await session.execute(
+            select(BranchWorkspaceModel.unlocked_stages).where(
+                BranchWorkspaceModel.id == workspace_id,
             )
-            unlocked_text = ws_res.scalar_one_or_none()
-
+        )
+        unlocked_text = ws_res.scalar_one_or_none()
         if unlocked_text is None:
-            result = await session.execute(
-                select(ProjectModel.unlocked_stages).where(ProjectModel.id == project_id)
-            )
-            unlocked_text = result.scalar_one_or_none()
-
-        if unlocked_text is None:
-            raise ValueError("project_not_found")
+            raise ValueError("workspace_not_found")
         unlocked = {
             item.strip() for item in unlocked_text.split(",") if item.strip()
         }

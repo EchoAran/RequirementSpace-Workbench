@@ -61,8 +61,18 @@ class PerceptionSlotFilledFlowStepPreview(CamelModel):
     actor_names: list[str] = []
     input_business_object_names: list[str] = []
     output_business_object_names: list[str] = []
-    next_steps: list[str] = []
-    next_step_names: list[str] = []
+
+
+class PerceptionSlotFilledFlowTransitionPreview(CamelModel):
+    source_step_number: str | None = None
+    target_step_number: str | None = None
+    source_step_name: str = ''
+    target_step_name: str = ''
+    label: str = ''
+    condition_text: str = ''
+    is_default: bool = False
+    position: int = 0
+    semantic_tags: list[str] = []
 
 
 class PerceptionSlotFilledFlowPreview(CamelModel):
@@ -71,6 +81,7 @@ class PerceptionSlotFilledFlowPreview(CamelModel):
     feature_ids: list[int] = []
     feature_names: list[str] = []
     flow_steps: list[PerceptionSlotFilledFlowStepPreview] = []
+    transitions: list[PerceptionSlotFilledFlowTransitionPreview] = []
 
 
 class PerceptionSlotFillingDraftResponse(CamelModel):

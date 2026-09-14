@@ -87,16 +87,3 @@ def bytes_to_base64(data: BytesLike, *, urlsafe: bool = False) -> str:
 
 def base64_to_bytes(data: str, *, urlsafe: bool = False) -> bytes:
     return BinaryConversionService.base64_to_bytes(data, urlsafe=urlsafe)
-
-
-if __name__ == "__main__":
-
-    raw = b"hello"
-
-    encoded = bytes_to_base64(raw)
-    print(encoded)
-
-    decoded = base64_to_bytes(encoded)
-    print(decoded)
-
-    assert decoded == raw

@@ -12,10 +12,10 @@ export function getFindingText(
       : finding.code;
   const titleKey = `findingText.${code}.title`;
   const descriptionKey = `findingText.${code}.description`;
-  const title = t(titleKey);
-  const description = t(descriptionKey);
+  const fallbackTitle = t(titleKey);
+  const fallbackDescription = t(descriptionKey);
   return {
-    title: title === titleKey ? finding.title : title,
-    description: description === descriptionKey ? finding.description : description,
+    title: finding.title || (fallbackTitle === titleKey ? '' : fallbackTitle),
+    description: finding.description || (fallbackDescription === descriptionKey ? '' : fallbackDescription),
   };
 }

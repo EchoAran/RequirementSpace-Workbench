@@ -20,34 +20,22 @@ async def load_generation_project(session, project_id: int):
     return project
 
 
-async def load_generation_actors(session, project_id: int, workspace_id: int | None = None) -> list:
-    async def _exec(stmt):
-        res = session.execute(stmt)
-        if hasattr(res, "__await__"):
-            return await res
-        return res
+async def load_generation_actors(session, project_id: int, workspace_id: int) -> list:
 
     stmt = select(ActorModel).where(ActorModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
-    result = await _exec(stmt)
+    stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     actors = result.scalars().all()
     if not actors:
         raise ValueError("empty_actors")
     return actors
 
 
-async def load_generation_features(session, project_id: int, workspace_id: int | None = None) -> list:
-    async def _exec(stmt):
-        res = session.execute(stmt)
-        if hasattr(res, "__await__"):
-            return await res
-        return res
+async def load_generation_features(session, project_id: int, workspace_id: int) -> list:
 
     stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
-    result = await _exec(stmt)
+    stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+    result = await session.execute(stmt)
     features = result.scalars().all()
     if not features:
         raise ValueError("empty_features")
@@ -133,24 +121,108 @@ def count_leaf_features(features: list[FeatureNode]) -> int:
     return count
 
 
+import hashlib
+import json
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class FlowGenerationContext:
+    user_requirements: str
+    actors: list[ActorNode]
+    features: list[FeatureNode]
+    leaf_feature_count: int
+    scenarios: list[dict[str, Any]] = field(default_factory=list)
+    acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
+    rules: list[dict[str, Any]] = field(default_factory=list)
+    context_hash: str = ""
+
+
+def compute_flow_context_hash(
+    user_requirements: str,
+    actors: list[ActorNode],
+    features: list[FeatureNode],
+    scenarios: list[dict[str, Any]],
+    acceptance_criteria: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+) -> str:
+    """Compute deterministic SHA-256 hash representing upstream input and rule state."""
+    data = {
+        "reqs": (user_requirements or "").strip(),
+        "actors": sorted(
+            [{"id": a.actorId, "name": a.actorName} for a in actors],
+            key=lambda x: x["id"],
+        ),
+        "features": sorted(
+            [{"id": f.featureId, "name": f.featureName} for f in features],
+            key=lambda x: x["id"],
+        ),
+        "scenarios": sorted(
+            [
+                {
+                    "uuid": s.get("logical_uuid"),
+                    "name": s.get("name"),
+                    "content": s.get("content"),
+                }
+                for s in scenarios
+            ],
+            key=lambda x: str(x["uuid"]),
+        ),
+        "ac": sorted(
+            [
+                {
+                    "uuid": ac.get("logical_uuid"),
+                    "content": ac.get("content"),
+                }
+                for ac in acceptance_criteria
+            ],
+            key=lambda x: str(x["uuid"]),
+        ),
+        "rules": sorted(
+            [
+                {
+                    "uuid": r.get("logical_uuid"),
+                    "statement": r.get("statement"),
+                    "status": r.get("confirmation_status"),
+                    "parent_uuid": r.get("parent_rule_uuid"),
+                    "links": sorted(
+                        [
+                            f"{lnk.get('target_kind')}:{lnk.get('target_logical_uuid')}"
+                            for lnk in r.get("links", [])
+                        ]
+                    ),
+                }
+                for r in rules
+            ],
+            key=lambda x: str(x["uuid"]),
+        ),
+    }
+    raw_json = json.dumps(data, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()
+
+
 async def load_flow_generation_context(
     project_id: int,
     session,
-    workspace_id: int | None = None,
-) -> tuple[str, list[ActorNode], list[FeatureNode], int]:
-    project = await load_generation_project(session, project_id)
-    user_reqs = project.user_requirements
-    if workspace_id is not None:
-        from backend.database.model import BranchWorkspaceModel
-        async def _exec(stmt):
-            res = session.execute(stmt)
-            if hasattr(res, "__await__"):
-                return await res
-            return res
-        ws_res = await _exec(select(BranchWorkspaceModel.user_requirements).where(BranchWorkspaceModel.id == workspace_id))
-        ws_user_reqs = ws_res.scalar_one_or_none()
-        if ws_user_reqs is not None:
-            user_reqs = ws_user_reqs
+    workspace_id: int,
+) -> FlowGenerationContext:
+    from sqlalchemy.orm import selectinload
+
+    from backend.database.model import (
+        BranchWorkspaceModel,
+        DomainRuleModel,
+        ScenarioAcceptanceCriterionModel,
+        ScenarioModel,
+    )
+
+
+    # Load requirements and specs
+    await load_generation_project(session, project_id)
+    workspace = await session.get(BranchWorkspaceModel, workspace_id)
+    if workspace is None or workspace.project_id != project_id:
+        raise ValueError("workspace_not_found")
+    user_reqs = workspace.user_requirements
 
     actors = await load_generation_actors(session, project_id, workspace_id=workspace_id)
     features = await load_generation_features(session, project_id, workspace_id=workspace_id)
@@ -165,9 +237,96 @@ async def load_flow_generation_context(
     )
     actor_nodes = build_actor_nodes(actors)
     feature_nodes = build_feature_nodes(features, *graph_maps)
-    return (
-        user_reqs,
-        actor_nodes,
-        feature_nodes,
-        count_leaf_features(feature_nodes),
+
+    # Load Scenarios and Acceptance Criteria
+    scenario_stmt = select(ScenarioModel).where(ScenarioModel.project_id == project_id)
+    scenario_stmt = scenario_stmt.where(ScenarioModel.workspace_id == workspace_id)
+    scenario_rows = (await session.execute(scenario_stmt)).scalars().all()
+
+    scenarios = [
+        {
+            "id": s.id,
+            "logical_uuid": s.logical_uuid,
+            "name": s.name,
+            "content": s.content,
+            "feature_id": s.feature_id,
+            "actor_id": s.actor_id,
+        }
+        for s in scenario_rows
+    ]
+
+    scenario_ids = [s.id for s in scenario_rows]
+    acceptance_criteria = []
+    if scenario_ids:
+        ac_stmt = select(ScenarioAcceptanceCriterionModel).where(
+            ScenarioAcceptanceCriterionModel.scenario_id.in_(scenario_ids)
+        )
+        ac_stmt = ac_stmt.where(
+            ScenarioAcceptanceCriterionModel.workspace_id == workspace_id
+        )
+        ac_stmt = ac_stmt.order_by(ScenarioAcceptanceCriterionModel.position.asc())
+        ac_rows = (await session.execute(ac_stmt)).scalars().all()
+        acceptance_criteria = [
+            {
+                "id": ac.id,
+                "logical_uuid": ac.logical_uuid,
+                "scenario_id": ac.scenario_id,
+                "content": ac.content,
+            }
+            for ac in ac_rows
+        ]
+
+    # Load Domain Rules and links
+    rule_stmt = (
+        select(DomainRuleModel)
+        .where(DomainRuleModel.project_id == project_id)
+        .options(selectinload(DomainRuleModel.links))
+    )
+    rule_stmt = rule_stmt.where(DomainRuleModel.workspace_id == workspace_id)
+    rule_rows = (await session.execute(rule_stmt)).scalars().all()
+    if not rule_rows:
+        raise ValueError("domain_rule_required")
+
+    id_to_uuid = {r.id: r.logical_uuid for r in rule_rows if r.logical_uuid}
+    rules = [
+        {
+            "id": r.id,
+            "logical_uuid": r.logical_uuid,
+            "title": r.title,
+            "statement": r.statement,
+            "confirmation_status": r.confirmation_status,
+            "parent_rule_id": r.parent_rule_id,
+            "parent_rule_uuid": id_to_uuid.get(r.parent_rule_id)
+            if r.parent_rule_id
+            else None,
+            "links": [
+                {
+                    "target_kind": lnk.target_kind,
+                    "target_logical_uuid": lnk.target_logical_uuid,
+                    "link_purpose": lnk.link_purpose,
+                }
+                for lnk in r.links
+            ],
+        }
+        for r in rule_rows
+    ]
+
+    context_hash = compute_flow_context_hash(
+        user_requirements=user_reqs,
+        actors=actor_nodes,
+        features=feature_nodes,
+        scenarios=scenarios,
+        acceptance_criteria=acceptance_criteria,
+        rules=rules,
+    )
+
+    return FlowGenerationContext(
+        user_requirements=user_reqs,
+        actors=actor_nodes,
+        features=feature_nodes,
+        leaf_feature_count=count_leaf_features(feature_nodes),
+        scenarios=scenarios,
+        acceptance_criteria=acceptance_criteria,
+        rules=rules,
+        context_hash=context_hash,
     )

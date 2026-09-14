@@ -13,6 +13,7 @@ from backend.core.locale import DEFAULT_LOCALE
 from backend.integration.skill_backed_services.llm_json_client import SyncSkillBackedLLMJsonClient
 from backend.integration.skill_backed_services.skill_imports import import_skill_module
 from backend.integration.skill_backed_services.spl_export_models import SplExportOutput
+from backend.integration.skill_backed_services.spl_export_payload import build_spl_export_payload
 
 logger = logging.getLogger(__name__)
 
@@ -88,17 +89,17 @@ class SplSemanticExportService:
             raise ValueError("spl_export_invalid_skill_output") from exc
 
     @staticmethod
-    def _resolve_llm_context(effective_context) -> dict:
+    def _resolve_llm_context(effective_context: LLMRequestContext | None) -> dict:
         return {
-            "api_url": getattr(effective_context, "api_url", None),
-            "api_key": getattr(effective_context, "api_key", None),
-            "model_name": getattr(effective_context, "model_name", None),
+            "api_url": effective_context.api_url if effective_context else None,
+            "api_key": effective_context.api_key if effective_context else None,
+            "model_name": effective_context.model_name if effective_context else None,
             "content_locale": (
-                getattr(effective_context, "content_locale", None)
+                (effective_context.content_locale if effective_context else None)
                 or DEFAULT_LOCALE.value
             ),
             "content_locale_source": (
-                getattr(effective_context, "content_locale_source", None)
+                (effective_context.content_locale_source if effective_context else None)
                 or "default"
             ),
         }
@@ -108,26 +109,11 @@ class SplSemanticExportService:
         detail: ProjectDetailResponse,
         content_locale: str,
     ) -> dict:
-        detail_dict = detail.model_dump()
-        return {
-            "project": {
-                "project_id": detail_dict.get("project_id", ""),
-                "project_name": detail_dict.get("project_name", ""),
-                "project_description": detail_dict.get("project_description", ""),
-                "user_requirements": detail_dict.get("user_requirements", ""),
-            },
-            "actors": detail_dict.get("actors", []),
-            "features": detail_dict.get("features", []),
-            "business_objects": detail_dict.get("business_objects", []),
-            "flows": detail_dict.get("flows", []),
-            "unresolved_gates": detail_dict.get("unresolved_gates", []),
-            "export_options": {
-                "mode": "semantic",
-                "language": content_locale,
-                "include_trace_links": True,
-                "include_warnings": True,
-            },
-        }
+        return build_spl_export_payload(
+            detail,
+            mode="semantic",
+            content_locale=content_locale,
+        )
 
     @staticmethod
     def _build_cache_key(detail: ProjectDetailResponse, context: dict) -> str:

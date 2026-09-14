@@ -12,6 +12,7 @@ async def verify_issue_resolved(
     issue_id: str,
     stage: str,
     session,
+    workspace_id: int,
 ) -> tuple[list[str], list[str]]:
     """Re-run detector for the stage and check if the target issue is gone.
 
@@ -36,7 +37,11 @@ async def verify_issue_resolved(
     if not detector:
         return [], []
 
-    remaining = await detector.detect(project_id=project_id, session=session)
+    remaining = await detector.detect(
+        project_id=project_id,
+        session=session,
+        workspace_id=workspace_id,
+    )
     still_open = [i.issueId for i in remaining if i.issueId == issue_id]
     same_code_remaining = [
         i.issueId for i in remaining

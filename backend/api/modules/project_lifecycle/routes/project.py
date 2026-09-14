@@ -165,7 +165,7 @@ async def delete_perception_slot(
         return await project_service.delete_perception_slot(
             project_id=owned_project.id,
             session=session,
-            workspace_id=ws_obj.id if ws_obj else None,
+            workspace_id=ws_obj.id,
         )
     except (ValueError, PermissionError) as error:
         from backend.api.modules.version_control.public import map_branch_error

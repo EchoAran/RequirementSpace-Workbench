@@ -3,6 +3,7 @@ from fastapi import HTTPException
 
 from backend.database.model import (
     BusinessObjectModel,
+    ChoiceModel,
     CollaborationTaskModel,
     ConfirmationStatus,
     FeatureModel,
@@ -51,6 +52,11 @@ async def get_node_project_id(
     node_kind: str,
     node,
 ) -> int | None:
+    if isinstance(node, ChoiceModel):
+        group = node.choice_group
+        if group is None or group.generation_type != "flow_refinement":
+            return None
+        return group.project_id
     if hasattr(node, "project_id"):
         return node.project_id
     relation_specs = {
@@ -106,6 +112,8 @@ async def load_validated_target(
 
 
 def mark_needs_confirmation(node) -> str:
+    if isinstance(node, ChoiceModel):
+        return node.status
     old_status = node.confirmation_status
     if old_status != ConfirmationStatus.NEEDS_CONFIRMATION.value:
         node.confirmation_status = (

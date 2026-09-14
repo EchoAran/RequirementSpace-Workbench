@@ -61,7 +61,7 @@ const KNOWN_SPECIAL_KEYS = new Set([
   'kano_category_name',
   'input_business_object_logical_uuids',
   'output_business_object_logical_uuids',
-  'next_step_logical_uuids',
+  'transitions',
 ]);
 
 function itemMatchesQuery(item: Record<string, any>, query: string): boolean {
@@ -347,7 +347,9 @@ export function CommitDetailDialog({ projectId, commitRef, open, onClose }: Comm
                                   const stepActors = Array.isArray(st.actor_logical_uuids) ? st.actor_logical_uuids : [];
                                   const stepInputs = Array.isArray(st.input_business_object_logical_uuids) ? st.input_business_object_logical_uuids : [];
                                   const stepOutputs = Array.isArray(st.output_business_object_logical_uuids) ? st.output_business_object_logical_uuids : [];
-                                  const nextSteps = Array.isArray(st.next_step_logical_uuids) ? st.next_step_logical_uuids : [];
+                                  const stepTransitions = Array.isArray(item.transitions)
+                                    ? item.transitions.filter((t: any) => t.source_step_logical_uuid === st.logical_uuid)
+                                    : [];
                                   return (
                                     <div key={idx} className="rounded bg-white/70 p-1.5 border border-slate-100">
                                       <p className="font-medium text-slate-700">
@@ -355,7 +357,7 @@ export function CommitDetailDialog({ projectId, commitRef, open, onClose }: Comm
                                         {st.step_type ? <span className="ml-1 text-[9px] text-indigo-600 bg-indigo-50 px-1 rounded">[{st.step_type}]</span> : ''}
                                       </p>
                                       {st.description && <p className="text-[10px] text-slate-500 mt-0.5">{st.description}</p>}
-                                      {(stepActors.length > 0 || stepInputs.length > 0 || stepOutputs.length > 0 || nextSteps.length > 0) && (
+                                      {(stepActors.length > 0 || stepInputs.length > 0 || stepOutputs.length > 0 || stepTransitions.length > 0) && (
                                         <div className="mt-1 flex flex-wrap gap-2 text-[9px] text-slate-400">
                                           {stepActors.length > 0 && (
                                             <span>Actors: {stepActors.map((a: string) => a.slice(0, 8)).join(', ')}</span>
@@ -366,14 +368,33 @@ export function CommitDetailDialog({ projectId, commitRef, open, onClose }: Comm
                                           {stepOutputs.length > 0 && (
                                             <span>Outputs: {stepOutputs.map((b: string) => b.slice(0, 8)).join(', ')}</span>
                                           )}
-                                          {nextSteps.length > 0 && (
-                                            <span>Next: {nextSteps.map((n: string) => n.slice(0, 8)).join(', ')}</span>
+                                          {stepTransitions.length > 0 && (
+                                            <span>Transitions: {stepTransitions.map((tr: any) => `${tr.target_step_logical_uuid?.slice(0, 8)}${tr.condition_text ? ` [${tr.condition_text}]` : ''}`).join(', ')}</span>
                                           )}
                                         </div>
                                       )}
                                     </div>
                                   );
                                 })}
+                              </div>
+                            )}
+
+                            {/* Transitions for Flows */}
+                            {item.transitions && Array.isArray(item.transitions) && item.transitions.length > 0 && (
+                              <div className="mt-2 space-y-1 border-t border-slate-100 pt-1.5 text-[10px] text-slate-500">
+                                <p className="font-semibold text-slate-600">{t('versionControl.diff.transitions', '流转分支 (Transitions)')}:</p>
+                                {item.transitions.map((tr: any, idx: number) => (
+                                  <div key={idx} className="flex flex-wrap items-center gap-1.5 font-mono text-[9px] bg-white/70 p-1 rounded border border-slate-100">
+                                    <span className="font-semibold text-slate-700">{tr.source_step_logical_uuid?.slice(0, 8) || '?'}</span>
+                                    <span className="text-slate-400">→</span>
+                                    <span className="font-semibold text-slate-700">{tr.target_step_logical_uuid?.slice(0, 8) || '?'}</span>
+                                    {tr.condition_text && (
+                                      <span className="text-indigo-600 font-sans">[{tr.condition_text}]</span>
+                                    )}
+                                    {tr.label && <span className="text-slate-500 font-sans">({tr.label})</span>}
+                                    {tr.is_default && <span className="text-emerald-600 font-sans font-medium">(Default)</span>}
+                                  </div>
+                                ))}
                               </div>
                             )}
 

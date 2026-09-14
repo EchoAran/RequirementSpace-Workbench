@@ -1,4 +1,11 @@
 from backend.core.detectors.base_issue_detector import BaseIssueDetector
+from backend.core.detectors.how import (
+    detect_branch_explanation_issues,
+    detect_flow_entry_issues,
+    detect_path_truncation_issues,
+    detect_required_rule_issue,
+    detect_rule_quality_issues,
+)
 from backend.core.detectors.issue_context_loader import (
     FlowIssueItem,
     IssueProjectContext,
@@ -13,7 +20,7 @@ from backend.schemas import (
 
 
 class HowIssueDetector(BaseIssueDetector):
-    async def detect(self, project_id: int, session, workspace_id: int | None = None) -> list[Issue]:
+    async def detect(self, project_id: int, session, workspace_id: int) -> list[Issue]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,
@@ -21,7 +28,11 @@ class HowIssueDetector(BaseIssueDetector):
         )
 
         issues: list[Issue] = []
-        issues.extend(self._detect_leaf_feature_without_flow(context))
+        issues.extend(detect_required_rule_issue(context))
+        issues.extend(detect_rule_quality_issues(context))
+        issues.extend(detect_flow_entry_issues(context))
+        issues.extend(detect_branch_explanation_issues(context))
+        issues.extend(detect_path_truncation_issues(context))
         issues.extend(self._detect_flow_without_feature(context))
         issues.extend(self._detect_flow_without_steps(context))
         issues.extend(self._detect_actor_action_step_without_actor(context))
@@ -33,37 +44,6 @@ class HowIssueDetector(BaseIssueDetector):
         issues.extend(self._detect_business_object_without_attributes(context))
 
         return issues
-
-    @staticmethod
-    def _detect_leaf_feature_without_flow(
-        context: IssueProjectContext,
-    ) -> list[Issue]:
-        # Non-equilibrium: if there are no flows, suggestion policy will handle GENERATE_FLOWS.
-        if not context.flows:
-            return []
-
-        flow_feature_ids = {
-            feature_id
-            for flow in context.flows
-            for feature_id in flow.feature_ids
-        }
-
-        return [
-            Issue(
-                code="LEAF_FEATURE_WITHOUT_FLOW",
-                stage=IssueStage.HOW,
-                severity=IssueSeverity.WARNING,
-                title="叶子功能缺少流程覆盖",
-                description=f"叶子功能“{feature.name}”还没有被流程覆盖。",
-                target=IssueTarget(
-                    targetType="feature",
-                    targetId=feature.feature_id,
-                ),
-                actionCode="open_flow_feature_panel",
-            )
-            for feature in context.leaf_features
-            if feature.feature_id not in flow_feature_ids
-        ]
 
     @staticmethod
     def _detect_flow_without_feature(
@@ -223,11 +203,17 @@ class HowIssueDetector(BaseIssueDetector):
         issues: list[Issue] = []
 
         for flow in context.flows:
+            outgoing_by_step: dict[int, list[int]] = {}
+            for trans in flow.transitions:
+                outgoing_by_step.setdefault(trans.source_step_id, []).append(
+                    trans.target_step_id
+                )
+
             for step in flow.steps:
                 if step.step_type != "judgment":
                     continue
 
-                if len(step.next_step_ids) >= 2:
+                if len(outgoing_by_step.get(step.step_id, [])) >= 2:
                     continue
 
                 issues.append(
@@ -246,7 +232,7 @@ class HowIssueDetector(BaseIssueDetector):
                             parentType="flow",
                             parentId=flow.flow_id,
                         ),
-                        actionCode="open_flow_step_next_panel",
+                        actionCode="open_flow_transition_panel",
                     )
                 )
 
@@ -301,6 +287,12 @@ class HowIssueDetector(BaseIssueDetector):
         }
         first_step_id = flow.steps[0].step_id
 
+        outgoing_by_step: dict[int, list[int]] = {}
+        for trans in flow.transitions:
+            outgoing_by_step.setdefault(trans.source_step_id, []).append(
+                trans.target_step_id
+            )
+
         visited: set[int] = set()
         stack = [first_step_id]
 
@@ -312,15 +304,9 @@ class HowIssueDetector(BaseIssueDetector):
 
             visited.add(step_id)
 
-            step = next(
-                item
-                for item in flow.steps
-                if item.step_id == step_id
-            )
-
-            for next_step_id in step.next_step_ids:
-                if next_step_id in step_ids:
-                    stack.append(next_step_id)
+            for target_id in outgoing_by_step.get(step_id, []):
+                if target_id in step_ids:
+                    stack.append(target_id)
 
         return step_ids - visited
 

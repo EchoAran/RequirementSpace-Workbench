@@ -251,16 +251,16 @@ export function ScopeAndDelivery() {
           <StageGuidanceBanner stage="scope" />
 
           <GlassSurface className="p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 border-b border-slate-200/50 pb-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-1.5">{t('scope.board.title')}</h2>
-                <p className="text-xs text-slate-500 flex flex-wrap items-center gap-1.5">
-                  {ir?.kanoStatus === 'skipped' && (
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">{t('scope.board.title')}</h3>
+                {ir?.kanoStatus === 'skipped' && (
+                  <p className="mt-1.5 text-xs text-slate-500 flex flex-wrap items-center gap-1.5">
                     <span className="inline-block px-2 py-0.5 bg-amber-50 border border-amber-200/60 text-amber-700 text-[10px] font-extrabold rounded">
                       {t('scope.board.kanoSkipped')}
                     </span>
-                  )}
-                </p>
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {(!ir?.kanoStatus || ir.kanoStatus === 'missing' || ir.kanoStatus === 'failed') && (
@@ -277,7 +277,7 @@ export function ScopeAndDelivery() {
                 {ir?.kanoStatus === 'generating' && (
                   <button
                     disabled={true}
-                    className="flex items-center gap-1.5 text-xs bg-slate-100 text-slate-500 font-bold px-4 py-2.5 rounded-xl border border-slate-200/50"
+                    className="flex items-center gap-1.5 text-[10px] bg-slate-100 text-slate-500 font-bold px-3 py-1.5 rounded-xl border border-slate-200/50 cursor-not-allowed"
                   >
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
                     {t('scope.board.generatingStatus')}
@@ -287,7 +287,7 @@ export function ScopeAndDelivery() {
                 {activeDraft && activeDraftType === 'scope' && (
                   <button
                     onClick={confirmScope}
-                    className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    className="flex items-center gap-1.5 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
                   >
                     {t('scope.board.confirmBtn')}
                   </button>
@@ -463,7 +463,7 @@ export function ScopeAndDelivery() {
         isWorking={isGenerating || isLoading}
         onDiscard={() => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) discardRepairDraft(dId);
           } else {
             discardDraft();
@@ -471,15 +471,15 @@ export function ScopeAndDelivery() {
         }}
         onRegenerate={(feedback) => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) regenerateRepairDraft(dId);
           } else {
-            regenerateScope(feedback)
-          };
+            regenerateScope(feedback);
+          }
         }}
         onConfirm={async () => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) await confirmRepairDraft(dId);
           } else {
             await confirmScope();
@@ -492,8 +492,8 @@ export function ScopeAndDelivery() {
         isWorking={isGeneratingChoices || isLoading}
         isGeneratingChoices={isGeneratingChoices}
         generationProgress={choiceGroupGenerationProgress}
-        onAccept={async (choiceId) => {
-          await acceptChoice(choiceId);
+        onAccept={async (choiceId, expectedVersion) => {
+          await acceptChoice(choiceId, false, expectedVersion);
         }}
         onDiscard={async () => {
           if (activeChoiceGroup) {

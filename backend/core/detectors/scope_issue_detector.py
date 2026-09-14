@@ -12,7 +12,7 @@ from backend.schemas import (
 
 
 class ScopeIssueDetector(BaseIssueDetector):
-    async def detect(self, project_id: int, session, workspace_id: int | None = None) -> list[Issue]:
+    async def detect(self, project_id: int, session, workspace_id: int) -> list[Issue]:
         context = await load_issue_project_context(
             project_id=project_id,
             session=session,

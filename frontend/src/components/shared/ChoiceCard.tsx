@@ -107,20 +107,20 @@ export const ChoiceCard: React.FC<ChoiceCardProps> = ({ choice, onAccept, onPrev
           {impact && (
             <div className="flex flex-wrap gap-1 mt-2">
               <span className="text-[10px] text-slate-400 mr-1 mt-0.5">{t('choiceCard.impactScope')}</span>
-              {impact.affectedObjects.map((objectId) => (
+              {impact.affectedObjects?.map((objectId: string) => (
                 <span
                   key={objectId}
                   className="rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-700 font-bold line-clamp-1 max-w-[80px]"
                 >
-                  {t('choiceCard.dataType', { title: ir?.nodes[objectId]?.title || objectId })}
+                  {t('choiceCard.dataType', { title: ir?.nodes?.[objectId]?.title || objectId })}
                 </span>
               ))}
-              {impact.affectedFlows.map((flowId) => (
+              {impact.affectedFlows?.map((flowId: string) => (
                 <span
                   key={flowId}
                   className="rounded border border-blue-200 bg-white px-1.5 py-0.5 text-[10px] text-blue-700 font-bold line-clamp-1 max-w-[80px]"
                 >
-                  {t('choiceCard.flowType', { title: ir?.nodes[flowId]?.title || flowId })}
+                  {t('choiceCard.flowType', { title: ir?.nodes?.[flowId]?.title || flowId })}
                 </span>
               ))}
             </div>

@@ -37,7 +37,7 @@ export function CreateMergeRequestDialog({ projectId, open, onClose, onCreated }
 
   const list = (branches || []).filter((b) => b.status !== 'deleted');
   const selectedSourceBranch = list.find((b) => b.public_id === source);
-  const isSourceEmpty = Boolean(selectedSourceBranch && !selectedSourceBranch.head_commit_id);
+  const isSourceEmpty = Boolean(selectedSourceBranch && !selectedSourceBranch.head_commit_id && !selectedSourceBranch.head_commit_public_id);
   // 计算 Diff 摘要预览（与后端 MR 创建后的摘要一致：merge_base → source_head）
   useEffect(() => {
     if (!source || !target || isSourceEmpty) { setDiffPreview(null); return; }

@@ -5,4 +5,5 @@ EDITABLE_FIELDS: dict[str, list[str]] = {
     "feature": ["name", "description", "actor_ids"],
     "flow": ["name", "description", "feature_ids"],
     "business_object": ["name", "description"],
+    "rule": ["title", "statement"],
 }

@@ -43,11 +43,11 @@ async def reject_commit_write(request: Request) -> None:
     说明：query 参数通过 request.query_params 读取；JSON body 通过 request.body()
     读取（Starlette 会缓存 body，路由的 Pydantic 解析复用同一缓存，因此不影响后续解析）。
     """
-    # 1. query 参数
+    # Query parameters are the primary branch selector.
     if _commit_ref_present(request.query_params.get("commit_id")):
         raise _reject()
 
-    # 2. JSON body：Pydantic 默认会静默忽略额外字段，因此需要显式检查。
+    # Request bodies require explicit inspection because unknown fields may be ignored.
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("application/json"):
         body = await request.body()

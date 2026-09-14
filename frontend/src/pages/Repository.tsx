@@ -25,6 +25,7 @@ export function Repository() {
   const ir = useWorkspaceStore((s) => s.ir);
   const branches = useWorkspaceStore((s) => s.branches);
   const currentBranch = useWorkspaceStore((s) => s.currentBranch);
+  const branchRef = useWorkspaceStore((s) => s.branchRef);
   const commits = useWorkspaceStore((s) => s.commits);
   const commitLoading = useWorkspaceStore((s) => s.commitLoading);
   const loadBranches = useWorkspaceStore((s) => s.loadBranches);
@@ -200,7 +201,7 @@ export function Repository() {
                   projectId={projectId}
                   baseRef={params.get('base_ref') || undefined}
                   targetRef={params.get('target_ref') || undefined}
-                  branchRef={currentBranch?.public_id || 'main'}
+                  branchRef={branchRef}
                   onChange={(b, tg) => openDiff(b, tg)}
                 />
                 <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-100">

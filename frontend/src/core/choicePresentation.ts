@@ -9,12 +9,16 @@ const choiceTypeKeys: Record<string, string> = {
   actor: 'overview.decisionQueue.types.actor',
   feature: 'overview.decisionQueue.types.feature',
   flow: 'overview.decisionQueue.types.flow',
+  rule: 'overview.decisionQueue.types.rule',
+  rule_discovery: 'overview.decisionQueue.types.rule',
+  domain_rule: 'overview.decisionQueue.types.rule',
   scenario: 'overview.decisionQueue.types.scenario',
   scenario_generation: 'overview.decisionQueue.types.scenario',
   acceptance_criteria: 'overview.decisionQueue.types.acceptanceCriteria',
   acceptance_criteria_generation: 'overview.decisionQueue.types.acceptanceCriteria',
   ac: 'overview.decisionQueue.types.acceptanceCriteria',
   scope: 'overview.decisionQueue.types.scope',
+  flow_refinement: 'overview.decisionQueue.types.flowRefinement',
 };
 
 const getChoiceTypeKey = (choice: any) => {

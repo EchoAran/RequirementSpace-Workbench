@@ -10,12 +10,14 @@ import { NodePanel } from '../right-panel/NodePanel';
 import { PanelShell, Section, TextField, SelectField, ActionRow, ActionButton } from '../right-panel/shared';
 import { SlotPanel } from '../right-panel/SlotPanel';
 import { StatusBadge } from './StatusBadge';
-import { ChevronLeft, ChevronRight, UserCheck, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, UserCheck, AlertTriangle } from 'lucide-react';
 import { normalizeScopeStatus } from '@/core/selectors';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { GherkinVisualRenderer, GherkinVisualEditor } from './GherkinVisualizer';
 import { useAuthStore } from '@/store/useAuthStore';
 import { workspaceApi } from '@/lib/api';
 import { TaskDecisionModal } from './TaskDecisionModal';
+import { FlowRuleAssociations } from './FlowRuleAssociations';
 
 const findChoiceById = (ir: RequirementSpaceIR | null, choiceId: string | null): Choice | null => {
   if (!ir || !choiceId) return null;
@@ -445,7 +447,8 @@ function ActorObjectPanel({ selectedObject }: { selectedObject: any }) {
   useEffect(() => {
     setActorName(selectedObject.actorName || '');
     setActorDesc(selectedObject.actorDescription || '');
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.actorId]);
 
   const handleSave = async () => {
     await updateActor(selectedObject.actorId, { 
@@ -830,57 +833,151 @@ function ScopeObjectPanel({ selectedObject }: { selectedObject: any }) {
 function BusinessObjectPanel({ selectedObject }: { selectedObject: any }) {
   const { t } = useTranslation();
   const updateBusinessObject = useWorkspaceStore((state) => state.updateBusinessObject);
+  const deleteBusinessObject = useWorkspaceStore((state) => state.deleteBusinessObject);
+  const addBusinessObjectAttribute = useWorkspaceStore((state) => state.addBusinessObjectAttribute);
+  const deleteBusinessObjectAttribute = useWorkspaceStore((state) => state.deleteBusinessObjectAttribute);
+  const canWrite = useWorkspaceStore((state) => state.workspaceCanWrite());
   const [boName, setBoName] = useState(selectedObject.businessObjectName || '');
   const [boDesc, setBoDesc] = useState(selectedObject.businessObjectDescription || '');
+  const [isAddingAttr, setIsAddingAttr] = useState(false);
+  const [attrName, setAttrName] = useState('');
+  const [attrType, setAttrType] = useState('string');
+  const [attrDesc, setAttrDesc] = useState('');
+  const [attrExample, setAttrExample] = useState('');
 
   useEffect(() => {
     setBoName(selectedObject.businessObjectName || '');
     setBoDesc(selectedObject.businessObjectDescription || '');
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.businessObjectId]);
 
   const handleSave = async () => {
     await updateBusinessObject(selectedObject.businessObjectId, boName, boDesc);
   };
+
+  const handleAddAttribute = async () => {
+    const normalizedName = attrName.trim();
+    if (!normalizedName) return;
+    await addBusinessObjectAttribute(selectedObject.businessObjectId, normalizedName, attrDesc.trim(), attrType, attrExample.trim());
+    setIsAddingAttr(false);
+    setAttrName('');
+    setAttrType('string');
+    setAttrDesc('');
+    setAttrExample('');
+  };
+
+  const attributes: any[] = selectedObject.businessObjectAttributes || [];
+
+  const attributesSection = (
+    <Section title={t("rightPanel.boAttrSubtitle") + t("rightPanel.boAttrDefinition")}>
+      <div className="space-y-3 select-text">
+        {attributes.length === 0 ? (
+          <div className="text-xs text-slate-400 italic">{t('rightPanel.boNoFields')}</div>
+        ) : (
+          attributes.map((attr) => (
+            <div key={attr.businessObjectAttributeId} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-1.5 shadow-sm">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-slate-800 text-xs">{attr.businessObjectAttributeName}</span>
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge status={attr.confirmationStatus || 'ai_assumption'} />
+                  <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-500 font-bold">{attr.businessObjectAttributeType}</span>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => void deleteBusinessObjectAttribute(selectedObject.businessObjectId, attr.businessObjectAttributeId)}
+                      className="p-1 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      title={t('how.deleteAttribute')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-slate-500 font-medium leading-relaxed">{attr.businessObjectAttributeDescription}</div>
+              {attr.businessObjectAttributeExample && (
+                <div className="text-[10px] text-indigo-600 bg-indigo-50/40 p-1.5 rounded font-mono leading-none">
+                  {t('rightPanel.fieldExample')}: {attr.businessObjectAttributeExample}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+
+        {canWrite && !isAddingAttr && (
+          <button
+            type="button"
+            onClick={() => setIsAddingAttr(true)}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 px-2.5 py-1.5 rounded-xl transition-colors cursor-pointer"
+          >
+            <Plus className="w-3 h-3" />
+            {t('how.addAttrBtn')}
+          </button>
+        )}
+
+        {isAddingAttr && (
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <label>
+                <span className="text-[10px] text-slate-400 font-bold block mb-1">{t('how.attributeName')}</span>
+                <input value={attrName} onChange={(e) => setAttrName(e.target.value)} placeholder={t('how.attributeNamePlaceholder')} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+              </label>
+              <label>
+                <span className="text-[10px] text-slate-400 font-bold block mb-1">{t('how.attributeType')}</span>
+                <select value={attrType} onChange={(e) => setAttrType(e.target.value)} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs cursor-pointer">
+                  {['string', 'integer', 'boolean', 'number', 'object', 'array'].map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="block">
+              <span className="text-[10px] text-slate-400 font-bold block mb-1">{t('how.attributeDescription')}</span>
+              <input value={attrDesc} onChange={(e) => setAttrDesc(e.target.value)} placeholder={t('how.attributeDescriptionPlaceholder')} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+            </label>
+            <label className="block">
+              <span className="text-[10px] text-slate-400 font-bold block mb-1">{t('how.attributeExample')}</span>
+              <input value={attrExample} onChange={(e) => setAttrExample(e.target.value)} placeholder={t('how.attributeExamplePlaceholder')} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs" />
+            </label>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setIsAddingAttr(false)} className="px-2.5 py-1 border border-slate-200 bg-white rounded-lg text-slate-600 text-xs font-bold cursor-pointer">{t('common.cancel')}</button>
+              <button type="button" disabled={!attrName.trim()} onClick={() => void handleAddAttribute()} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 cursor-pointer">{t('common.confirm')}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
 
   return (
     <PanelShell title={boName} subtitle={t("rightPanel.coreBoSubtitle")}>
       <Section title={t("rightPanel.boBaseAttrs")}>
         <TextField label={t("rightPanel.boName")} value={boName} onChange={setBoName} />
         <TextField label={t('rightPanel.boDesc')} value={boDesc} onChange={setBoDesc} multiline />
-        <ActionRow>
-          <ActionButton onClick={() => void handleSave()}>{t("rightPanel.saveBtn")}</ActionButton>
-          <ActionButton variant="secondary" onClick={() => { setBoName(selectedObject.businessObjectName || ''); setBoDesc(selectedObject.businessObjectDescription || ''); }}>
-            {t('rightPanel.resetBtn')}
-          </ActionButton>
-        </ActionRow>
+        {canWrite && (
+          <ActionRow>
+            <ActionButton onClick={() => void handleSave()}>{t("rightPanel.saveBtn")}</ActionButton>
+            <ActionButton variant="secondary" onClick={() => { setBoName(selectedObject.businessObjectName || ''); setBoDesc(selectedObject.businessObjectDescription || ''); }}>
+              {t('rightPanel.resetBtn')}
+            </ActionButton>
+          </ActionRow>
+        )}
       </Section>
 
       <ConfirmationStatusSection nodeKind="business_object" selectedObject={selectedObject} />
-      <Section title={t("rightPanel.boAttrSubtitle") + t("rightPanel.boAttrDefinition")}>
-        {(selectedObject.businessObjectAttributes || []).length === 0 ? (
-          <div className="text-xs text-slate-400 italic">{t('rightPanel.boNoFields')}</div>
-        ) : (
-          <div className="space-y-3 select-text">
-            {(selectedObject.businessObjectAttributes || []).map((attr: any) => (
-              <div key={attr.businessObjectAttributeId} className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-1.5 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-800 text-xs">{attr.businessObjectAttributeName}</span>
-                  <div className="flex items-center gap-1.5">
-                    <StatusBadge status={attr.confirmationStatus || 'ai_assumption'} />
-                    <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-500 font-bold">{attr.businessObjectAttributeType}</span>
-                  </div>
-                </div>
-                <div className="text-xs text-slate-500 font-medium leading-relaxed">{attr.businessObjectAttributeDescription}</div>
-                {attr.businessObjectAttributeExample && (
-                  <div className="text-[10px] text-indigo-600 bg-indigo-50/40 p-1.5 rounded font-mono leading-none">
-                    {t('rightPanel.fieldExample')}: {attr.businessObjectAttributeExample}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
+      {attributesSection}
+
+      {canWrite && (
+        <ActionButton
+          variant="danger"
+          onClick={() => {
+            if (!window.confirm(t('how.deleteBusinessObjectConfirm', { name: selectedObject.businessObjectName }))) return;
+            void deleteBusinessObject(selectedObject.businessObjectId);
+          }}
+        >
+          <span className="inline-flex items-center justify-center gap-1.5 w-full">
+            <Trash2 className="w-3.5 h-3.5" />
+            {t('how.deleteBusinessObjectBtn')}
+          </span>
+        </ActionButton>
+      )}
     </PanelShell>
   );
 }
@@ -929,7 +1026,8 @@ function FlowStepObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: 
     setSelectedActorIds(selectedObject.actorIds || []);
     setSelectedInputBoIds(selectedObject.inputBusinessObjectIds || []);
     setSelectedOutputBoIds(selectedObject.outputBusinessObjectIds || []);
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.stepId]);
 
   const handleSave = async () => {
     if (!stepName.trim()) {
@@ -1075,16 +1173,19 @@ function FlowStepObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: 
 }
 
 // 5. Dedicated Flow Panel
-function FlowObjectPanel({ selectedObject }: { selectedObject: any }) {
+function FlowObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: RequirementSpaceIR }) {
   const { t } = useTranslation();
   const updateFlow = useWorkspaceStore((state) => state.updateFlow);
+  const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
+  const canWrite = useWorkspaceStore((state) => state.workspaceCanWrite());
   const [flowName, setFlowName] = useState(selectedObject.flowName || '');
   const [flowDesc, setFlowDesc] = useState(selectedObject.flowDescription || '');
 
   useEffect(() => {
     setFlowName(selectedObject.flowName || '');
     setFlowDesc(selectedObject.flowDescription || '');
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.flowId]);
 
   const handleSave = async () => {
     await updateFlow(selectedObject.flowId, {
@@ -1106,6 +1207,9 @@ function FlowObjectPanel({ selectedObject }: { selectedObject: any }) {
           </ActionButton>
         </ActionRow>
       </Section>
+      <FlowRuleAssociations key={selectedObject.logicalUuid || selectedObject.flowId} targetKind="flow"
+        targetLogicalUuid={selectedObject.logicalUuid} rules={ir.domainRules || []}
+        readOnly={!canWrite} onOpenRule={rule => setSelectedObject({ ...rule, kind: 'rule' })} />
     </PanelShell>
   );
 }
@@ -1121,7 +1225,8 @@ function ScenarioObjectPanel({ selectedObject }: { selectedObject: any }) {
   useEffect(() => {
     setScenName(selectedObject.scenarioName || '');
     setScenContent(selectedObject.scenarioContent || '');
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.scenarioId]);
 
   const handleSave = async () => {
     await updateScenario(selectedObject.featureId, selectedObject.scenarioId, {
@@ -1176,7 +1281,8 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
 
   useEffect(() => {
     setAcContent(selectedObject.criterionContent || '');
-  }, [selectedObject]);
+    // 依赖稳定 ID：refreshWorkspace 替换对象身份时不得重置编辑中的草稿
+  }, [selectedObject?.criterionId]);
 
   const parent = useMemo(() => {
     for (const f of ir.features || []) {
@@ -1194,8 +1300,14 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
     await updateAcceptanceCriterion(parent.featureId, parent.scenarioId, selectedObject.criterionId, acContent);
   };
 
+  // AC 无名称字段：截取正文首行作为面板标题，为空时回退「类型 #ID」
+  const acFirstLine = (selectedObject.criterionContent || '').replace(/\s+/g, ' ').trim();
+  const acTitle = acFirstLine
+    ? (acFirstLine.length > 30 ? `${acFirstLine.slice(0, 30)}…` : acFirstLine)
+    : `${t('rightPanel.acSubtitle')} #${selectedObject.criterionId}`;
+
   return (
-    <PanelShell title={`${t('rightPanel.acSubtitle')} #${selectedObject.criterionId}`} subtitle={t("rightPanel.acSubtitle")}>
+    <PanelShell title={acTitle} subtitle={t("rightPanel.acSubtitle")}>
       <ConfirmationStatusSection nodeKind="acceptance_criterion" selectedObject={selectedObject} />
       
       <div className="px-5 py-3.5 border-b border-slate-100 select-none">
@@ -1261,6 +1373,121 @@ function ACObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any })
   );
 }
 
+// 8. Dedicated Domain Rule Panel
+function RuleObjectPanel({ selectedObject, ir }: { selectedObject: any; ir: any }) {
+  const { t } = useTranslation();
+  const updateDomainRule = useWorkspaceStore((state) => state.updateDomainRule);
+  const deleteDomainRule = useWorkspaceStore((state) => state.deleteDomainRule);
+  const setSelectedObject = useWorkspaceStore((state) => state.setSelectedObject);
+  const rules: any[] = ir?.domainRules || [];
+  const ruleId = selectedObject.id;
+
+  // 从 IR 实时取规则，保存刷新后面板能同步
+  const rule = useMemo(
+    () => rules.find((r: any) => r.id === ruleId) || selectedObject,
+    [rules, ruleId, selectedObject]
+  );
+
+  const [title, setTitle] = useState(rule.title || '');
+  const [statement, setStatement] = useState(rule.statement || '');
+  const [parentId, setParentId] = useState(rule.parentRuleId ? String(rule.parentRuleId) : '');
+  const [status, setStatus] = useState(rule.confirmationStatus || 'needs_confirmation');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setTitle(rule.title || '');
+    setStatement(rule.statement || '');
+    setParentId(rule.parentRuleId ? String(rule.parentRuleId) : '');
+    setStatus(rule.confirmationStatus || 'needs_confirmation');
+  }, [rule.id, rule.updatedAt]);
+
+  // 父规则候选排除自身及全部后代（防环）
+  const excludedIds = useMemo(() => {
+    const set = new Set<number>([ruleId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const r of rules) {
+        if (r.parentRuleId && set.has(r.parentRuleId) && !set.has(r.id)) {
+          set.add(r.id);
+          changed = true;
+        }
+      }
+    }
+    return set;
+  }, [rules, ruleId]);
+
+  const parentOptions = rules
+    .filter((r: any) => !excludedIds.has(r.id))
+    .map((r: any) => ({ value: String(r.id), label: r.title }));
+
+  const handleSave = async () => {
+    if (!title.trim() || !statement.trim()) return;
+    setSaving(true);
+    try {
+      await updateDomainRule(ruleId, {
+        title: title.trim(),
+        statement: statement.trim(),
+        parentRuleId: parentId ? Number(parentId) : null,
+        confirmationStatus: status,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(t('how.domainRules.deleteConfirm'))) return;
+    const ok = await deleteDomainRule(ruleId);
+    if (ok) setSelectedObject(null);
+  };
+
+  return (
+    <PanelShell title={rule.title || t('how.domainRules.addRule')} subtitle={t("rightPanel.ruleSubtitle")}>
+      <Section title={t("rightPanel.ruleBaseAttrs")}>
+        <TextField label={t("how.domainRules.titleLabel")} value={title} onChange={setTitle} />
+        <TextField label={t("how.domainRules.statementLabel")} value={statement} onChange={setStatement} multiline />
+        {parentOptions.length > 0 && (
+          <SelectField
+            label={t("how.domainRules.parentRuleLabel")}
+            value={parentId}
+            onChange={setParentId}
+            options={[{ value: '', label: t('how.domainRules.noParentRule') }, ...parentOptions]}
+          />
+        )}
+        <SelectField
+          label={t("rightPanel.confirmStatusTitle")}
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: 'needs_confirmation', label: t('nodeStatus.needs_confirmation') },
+            { value: 'confirmed', label: t('nodeStatus.confirmed') },
+          ]}
+        />
+        <ActionRow>
+          <ActionButton onClick={() => void handleSave()} disabled={saving || !title.trim() || !statement.trim()}>
+            {saving ? t('common.saving') : t("rightPanel.saveBtn")}
+          </ActionButton>
+          <ActionButton variant="secondary" onClick={() => {
+            setTitle(rule.title || '');
+            setStatement(rule.statement || '');
+            setParentId(rule.parentRuleId ? String(rule.parentRuleId) : '');
+            setStatus(rule.confirmationStatus || 'needs_confirmation');
+          }}>
+            {t('rightPanel.resetBtn')}
+          </ActionButton>
+        </ActionRow>
+      </Section>
+
+      <Section title={t("common.dangerZone")}>
+        <ActionButton variant="danger" onClick={() => void handleDelete()}>
+          {t('common.delete')}
+        </ActionButton>
+      </Section>
+    </PanelShell>
+  );
+}
+
 export function RightObjectPanel() {
   const { t } = useTranslation();
   const ir = useWorkspaceStore((state) => state.ir);
@@ -1270,7 +1497,7 @@ export function RightObjectPanel() {
     const saved = localStorage.getItem('right-panel-width');
     return saved ? parseInt(saved, 10) : 360;
   });
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useLocalStorageState('right-panel-collapsed', true);
 
   const [isResizing, setIsResizing] = useState(false);
 
@@ -1365,7 +1592,10 @@ export function RightObjectPanel() {
       return <FlowStepObjectPanel selectedObject={selectedObject} ir={ir} />;
     }
     if (kind === 'flow') {
-      return <FlowObjectPanel selectedObject={selectedObject} />;
+      return <FlowObjectPanel selectedObject={selectedObject} ir={ir} />;
+    }
+    if (kind === 'rule') {
+      return <RuleObjectPanel selectedObject={selectedObject} ir={ir} />;
     }
     if (kind === 'finding' || selectedObject.findingId) {
       return <IssuePanel issue={selectedObject as Finding} ir={ir} />;

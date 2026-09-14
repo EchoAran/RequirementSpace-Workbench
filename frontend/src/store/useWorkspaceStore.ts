@@ -8,6 +8,7 @@ import {
   BusinessObjectAttributeNode,
   FlowNode,
   FlowStepNode,
+  FlowTransition,
   ScopeStatus,
   Finding,
   Choice,
@@ -19,8 +20,12 @@ import {
   WorkspaceListItem,
   PendingManualAction,
   KnowledgeDocument,
+  DomainRule,
+  RuleOrigin,
+  PathProjectionItem,
+  ObjectUsageProjectionItem,
 } from '@/core/schema';
-import { workspaceApi } from '@/lib/api';
+import { workspaceApi, domainRuleApi } from '@/lib/api';
 import { setRequestBranch } from '@/lib/http';
 import {
   BranchSummary,
@@ -47,43 +52,43 @@ export type WorkspacePage = '/what' | '/flow' | '/scope' | '/preview' | '/overvi
 // -------------------------------------------------------------
 // Unified Normalization Helper for Backend Data Synchronization
 // -------------------------------------------------------------
-const mapBackendChoiceGroupToCompatible = (cg: any): ChoiceGroup => {
+const mapChoiceGroupResponse = (cg: any): ChoiceGroup => {
   return {
     id: cg.id.toString(),
-    slotId: (cg.slotId ?? cg.slot_id) ? String(cg.slotId ?? cg.slot_id) : '',
+    slotId: cg.slotId ? String(cg.slotId) : '',
     status: cg.status as any,
-    selectionMode: (cg.selectionMode ?? cg.selection_mode) as any,
-    sourceType: cg.sourceType ?? cg.source_type,
-    issueCode: cg.issueCode ?? cg.issue_code,
-    issueId: cg.issueId ?? cg.issue_id,
-    generationType: cg.generationType ?? cg.generation_type,
+    selectionMode: cg.selectionMode as any,
+    sourceType: cg.sourceType,
+    issueCode: cg.issueCode,
+    issueId: cg.issueId,
+    generationType: cg.generationType,
     target: cg.target,
-    candidateCount: cg.candidateCount ?? cg.candidate_count,
-    successCount: cg.successCount ?? cg.success_count,
-    failureCount: cg.failureCount ?? cg.failure_count,
-    statusDetail: cg.statusDetail ?? cg.status_detail,
-    choices: (cg.choices || []).map((c: any) => ({
+    candidateCount: cg.candidateCount,
+    successCount: cg.successCount,
+    failureCount: cg.failureCount,
+    statusDetail: cg.statusDetail,
+    choices: cg.choices.map((c: any) => ({
       id: c.id.toString(),
-      choiceGroupId: String(c.choiceGroupId ?? c.choice_group_id ?? cg.id),
+      choiceGroupId: String(c.choiceGroupId),
       title: c.title,
       rationale: c.rationale,
       status: c.status as any,
       patch: c.patch,
-      impactPreview: c.impactPreview ?? c.impact_preview,
+      impactPreview: c.impactPreview,
       payload: c.payload,
-      draftType: c.draftType ?? c.draft_type,
-      applyMode: c.applyMode ?? c.apply_mode,
+      draftType: c.draftType,
+      applyMode: c.applyMode,
       preview: c.preview,
-      comparisonSummary: c.comparisonSummary ?? c.comparison_summary,
+      comparisonSummary: c.comparisonSummary,
       score: c.score,
       error: c.error,
-      strategyId: c.strategyId ?? c.strategy_id,
-      strategyLabel: c.strategyLabel ?? c.strategy_label,
+      strategyId: c.strategyId,
+      strategyLabel: c.strategyLabel,
     }))
   };
 };
 
-const resolutionType = (res: any): string | undefined => res.resolutionType || res.resolution_type;
+const resolutionType = (res: any): string | undefined => res.resolutionType;
 const mapResolutionDraftType = (draftType?: string): 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' => {
   if (draftType === 'scenario_generation' || draftType === 'scenario') return 'scenario';
   if (draftType === 'acceptance_criteria_generation' || draftType === 'acceptance_criteria' || draftType === 'ac') return 'ac';
@@ -196,7 +201,8 @@ const getVisibleIssueStages = (unlockedStages?: string[]): Array<'what' | 'how' 
 };
 
 const loadBackendFindingsAndViews = async (
-  projectId: string
+  projectId: string,
+  branch?: string,
 ): Promise<{
   backendFindings: Finding[];
   findingsByView: {
@@ -208,10 +214,10 @@ const loadBackendFindingsAndViews = async (
 }> => {
   try {
     const [issuesRes, nextRes, gateRes, healthRes] = await Promise.all([
-      workspaceApi.listFindings(projectId, { view: 'issues', stage: 'all' }),
-      workspaceApi.listFindings(projectId, { view: 'next_action', stage: 'all' }),
-      workspaceApi.listFindings(projectId, { view: 'gate', stage: 'all' }),
-      workspaceApi.listFindings(projectId, { view: 'health', stage: 'all' })
+      workspaceApi.listFindings(projectId, { view: 'issues', stage: 'all', branch }),
+      workspaceApi.listFindings(projectId, { view: 'next_action', stage: 'all', branch }),
+      workspaceApi.listFindings(projectId, { view: 'gate', stage: 'all', branch }),
+      workspaceApi.listFindings(projectId, { view: 'health', stage: 'all', branch })
     ]);
 
     const findings_issues = issuesRes?.findings || [];
@@ -396,51 +402,6 @@ const buildSyntheticLinks = (
   return links;
 };
 
-const buildCompatibilityCache = (
-  actors: any[],
-  features: any[],
-  flows: any[],
-  choiceGroups: Record<string, ChoiceGroup>
-) => {
-  const actorsCompatible = actors.map(actor => ({
-    ...actor,
-    id: actor.actorId.toString(),
-    title: actor.actorName,
-    description: actor.actorDescription,
-    status: getConfirmationStatus(actor.confirmationStatus),
-    scopeStatus: 'in_scope'
-  }));
-  const flowStepsCompatible = flows.flatMap(flow => (
-    flow.flowSteps || []
-  ).map((step: any, index: number) => ({
-    ...step,
-    id: step.stepId.toString(),
-    title: step.stepName,
-    description: step.stepDescription,
-    status: 'confirmed',
-    position: index + 1
-  })));
-  const goalsCompatible = features.map(feature => ({
-    kind: 'feature',
-    featureId: feature.featureId,
-    featureName: feature.featureName,
-    featureDescription: feature.featureDescription
-  }));
-  const choicesCompatible: Choice[] = [];
-  Object.values(choiceGroups).forEach((group: any) => {
-    if (group.choices) choicesCompatible.push(...group.choices);
-  });
-  return {
-    actorsCompatible,
-    flowStepsCompatible,
-    goalsCompatible,
-    capabilitiesCompatible: goalsCompatible,
-    tasksCompatible: goalsCompatible,
-    scopeItemsCompatible: features.filter(feature => feature.scope !== null),
-    choicesCompatible
-  };
-};
-
 const normalizeRequirementSpace = (
   space: RequirementSpace | null,
   issueFindings?: Finding[] | null,
@@ -496,12 +457,6 @@ const normalizeRequirementSpace = (
   }
 
   const choiceGroupsRecord = backendChoiceGroups || space.choiceGroups || {};
-  const compatibilityCache = buildCompatibilityCache(
-    actors,
-    features,
-    flows,
-    choiceGroupsRecord
-  );
 
   return {
     ...space,
@@ -516,20 +471,19 @@ const normalizeRequirementSpace = (
     slots: slotsRecord,
     choiceGroups: choiceGroupsRecord,
     findings: issuesList,
-    // Stable Selector Cache Fields
-    ...compatibilityCache,
-    linksCompatible: linksList,
   } as any;
 };
 
 const isSlotFillingDraft = (draft: any | null | undefined) => (
-  draft?.perceptionJobId !== undefined || draft?.perception_job_id !== undefined
+  draft?.perceptionJobId !== undefined
 );
 
 const generationTypeLabelMap: Record<string, string> = {
   actor: 'confirmationWorkspace.nodeKindLabels.actor',
   feature: 'confirmationWorkspace.nodeKindLabels.feature',
   flow: 'confirmationWorkspace.nodeKindLabels.flow',
+  rule: 'confirmationWorkspace.nodeKindLabels.domain_rule',
+  domain_rule: 'confirmationWorkspace.nodeKindLabels.domain_rule',
   scenario: 'confirmationWorkspace.nodeKindLabels.scenario',
   acceptance_criteria: 'confirmationWorkspace.nodeKindLabels.acceptance_criterion',
   scope: 'confirmationWorkspace.nodeKindLabels.scope',
@@ -574,26 +528,6 @@ const findConflictingChoiceGroup = (
 };
 
 const GENERATION_CONFLICT_PENDING_ERROR = 'generation_choice_conflict_pending';
-const CHOICE_GROUP_DISABLED_ERROR = 'choice_group_disabled';
-
-const shouldUseLegacyGeneration = async (
-  requestChoiceGroup: () => Promise<unknown>,
-  getState: () => Pick<WorkspaceState, 'sessionVersion' | 'pendingGenerationConflict'>,
-  expectedVersion: number,
-): Promise<boolean> => {
-  try {
-    await requestChoiceGroup();
-    return false;
-  } catch (error) {
-    const state = getState();
-    return (
-      state.sessionVersion === expectedVersion
-      && !state.pendingGenerationConflict
-      && error instanceof Error
-      && error.message === CHOICE_GROUP_DISABLED_ERROR
-    );
-  }
-};
 
 const buildInitialChoiceProgress = (candidateCount?: number, candidateLabels: string[] = []) => {
   const totalCandidates = candidateCount || 2;
@@ -621,8 +555,14 @@ type PendingGenerationConflict =
       existingGroupLabel: string;
     }
   | {
-      action: 'generateFlowsAndObjects';
+      action: 'generateFlows';
       generationType: 'flow';
+      existingGroupId: string;
+      existingGroupLabel: string;
+    }
+  | {
+      action: 'generateRules';
+      generationType: 'rule';
       existingGroupId: string;
       existingGroupLabel: string;
     }
@@ -645,6 +585,15 @@ type PendingGenerationConflict =
       existingGroupId: string;
       existingGroupLabel: string;
       scenarioIds?: number[];
+    }
+  | {
+      action: 'refineFlow';
+      generationType: 'flow_refinement';
+      existingGroupId: string;
+      existingGroupLabel: string;
+      flowId?: number;
+      focusStepId?: number;
+      userFeedback?: string;
     };
 
 export interface WorkspaceState {
@@ -729,7 +678,7 @@ export interface WorkspaceState {
   // Project Lifecycles
   loadWorkspaces: () => Promise<void>;
   openExistingProject: () => Promise<void>;
-  openWorkspace: (workspaceId: string, branchRef?: string) => Promise<boolean>;
+  openWorkspace: (workspaceId: string, branchRef: string) => Promise<boolean>;
   refreshWorkspace: () => Promise<void>;
   exitWorkspace: () => void;
   updateProject: (projectId: string, name: string, description: string) => Promise<void>;
@@ -812,10 +761,22 @@ export interface WorkspaceState {
   regenerateFeatures: (feedback?: string) => Promise<void>;
   confirmFeatures: () => Promise<void>;
   
-  generateFlowsAndObjects: (forceReplace?: boolean) => Promise<void>;
-  regenerateFlowsAndObjects: (feedback?: string) => Promise<void>;
-  confirmFlowsAndObjects: () => Promise<void>;
+  generateFlows: (forceReplace?: boolean) => Promise<void>;
+  regenerateFlows: (feedback?: string) => Promise<void>;
+  confirmFlowDraft: () => Promise<void>;
+  flowPathProjections: Record<number, PathProjectionItem[]>;
+  flowPathLoading: Record<number, boolean>;
+  flowPathErrors: Record<number, string | null>;
+  flowObjectUsages: Record<number, ObjectUsageProjectionItem[]>;
+  flowObjectUsageLoading: Record<number, boolean>;
+  flowObjectUsageErrors: Record<number, string | null>;
+  loadFlowPaths: (flowId: number) => Promise<PathProjectionItem[]>;
+  loadFlowObjectUsage: (flowId: number) => Promise<ObjectUsageProjectionItem[]>;
+  refineFlow: (flowId: number, focusStepId?: number, userFeedback?: string, forceReplace?: boolean) => Promise<void>;
   
+  generateRules: (forceReplace?: boolean) => Promise<void>;
+  regenerateRules: (feedback?: string) => Promise<void>;
+
   generateScenarios: (featureIds?: number[] | number, forceReplace?: boolean) => Promise<void>;
   regenerateScenarios: (feedback?: string) => Promise<void>;
   confirmScenarios: (generateAc: boolean) => Promise<void>;
@@ -872,7 +833,9 @@ export interface WorkspaceState {
   }) => Promise<void>;
   updateFlowStep: (flowId: number, stepId: number, updates: Partial<FlowStepNode>) => Promise<void>;
   deleteFlowStep: (flowId: number, stepId: number) => Promise<void>;
-  reorderFlowSteps: (flowId: number, stepIds: number[]) => Promise<void>;
+  createFlowTransition: (flowId: number, payload: { sourceStepId: number; targetStepId: number; conditionText?: string; label?: string; isDefault?: boolean; position?: number; semanticTags?: string[]; ruleIds?: number[]; confirmationStatus?: NodeStatus }) => Promise<void>;
+  updateFlowTransition: (flowId: number, transitionId: number, updates: Partial<FlowTransition>) => Promise<void>;
+  deleteFlowTransition: (flowId: number, transitionId: number) => Promise<void>;
 
   // Scope
   updateScope: (featureId: number, updates: Partial<ScopeNode>) => Promise<void>;
@@ -884,7 +847,7 @@ export interface WorkspaceState {
 
   openSlot: (slotId: string) => void;
   expandSlot: (slotId: string) => Promise<void>;
-  acceptChoice: (choiceId: string, force?: boolean) => Promise<void>;
+  acceptChoice: (choiceId: string, force?: boolean, expectedWorkspaceVersion?: string | number | null) => Promise<void>;
   rejectChoice: (choiceId: string) => Promise<void>;
   discardChoiceGroup: (groupId: number) => Promise<void>;
   activeStaleChoice: { projectId: string; choiceId: number; staleReason: string } | null;
@@ -975,6 +938,30 @@ export interface WorkspaceState {
     }
   ) => Promise<any>;
   cancelTask: (projectId: string, taskId: number) => Promise<any>;
+
+  // Domain Rules Actions
+  loadDomainRules: () => Promise<void>;
+  createDomainRule: (payload: {
+    title: string;
+    statement: string;
+    origin?: RuleOrigin;
+    confirmationStatus?: string;
+    parentRuleId?: number | null;
+  }) => Promise<DomainRule | null>;
+  updateDomainRule: (
+    ruleId: number,
+    payload: {
+      title?: string;
+      statement?: string;
+      origin?: RuleOrigin;
+      confirmationStatus?: string;
+      parentRuleId?: number | null;
+    }
+  ) => Promise<DomainRule | null>;
+  deleteDomainRule: (ruleId: number) => Promise<boolean>;
+  replaceTargetRules: (
+    targetKind: 'flow' | 'flow_step' | 'flow_transition', targetLogicalUuid: string, ruleIds: number[]
+  ) => Promise<void>;
 }
 
 const buildSelectedScopeObject = (feature: any) => {
@@ -1069,6 +1056,7 @@ export const withWorkspaceId = (state: WorkspaceState): string => {
 
 type WorkspaceHydrationData = Awaited<ReturnType<typeof loadBackendFindingsAndViews>> & {
   backendChoiceGroups: Record<string, ChoiceGroup>;
+  projectDetail?: RequirementSpace;
 };
 
 const loadWorkspaceHydration = async (
@@ -1095,18 +1083,20 @@ const loadWorkspaceHydration = async (
     const backendChoiceGroups: Record<string, ChoiceGroup> = {};
     if (Array.isArray(hydrationRes?.choiceGroups)) {
       for (const group of hydrationRes.choiceGroups) {
-        const compatible = mapBackendChoiceGroupToCompatible(group);
-        backendChoiceGroups[compatible.id] = compatible;
+        const choiceGroup = mapChoiceGroupResponse(group);
+        backendChoiceGroups[choiceGroup.id] = choiceGroup;
       }
     }
 
+    const rawFindingsByView = hydrationRes.findingsByView as any;
     return {
+      projectDetail: hydrationRes.projectDetail,
       backendFindings: hydrationRes.backendFindings || [],
-      findingsByView: hydrationRes.findingsByView || {
-        issues: [],
-        next_action: [],
-        gate: [],
-        health: [],
+      findingsByView: {
+        issues: rawFindingsByView?.issues || [],
+        next_action: rawFindingsByView?.nextAction || [],
+        gate: rawFindingsByView?.gate || [],
+        health: rawFindingsByView?.health || [],
       },
       backendChoiceGroups,
     };
@@ -1115,8 +1105,8 @@ const loadWorkspaceHydration = async (
 
     // 2. Resilient fallback to concurrent parallel requests
     const [findingsResult, choiceGroupsResult] = await Promise.all([
-      loadBackendFindingsAndViews(projectId),
-      workspaceApi.listChoiceGroups(projectId, 'open').catch((error) => {
+      loadBackendFindingsAndViews(projectId, branchRef),
+      workspaceApi.listChoiceGroups(projectId, 'open', branchRef).catch((error) => {
         console.warn('Failed to load choice groups:', error);
         return [];
       }),
@@ -1133,8 +1123,8 @@ const loadWorkspaceHydration = async (
     const backendChoiceGroups: Record<string, ChoiceGroup> = {};
     if (Array.isArray(choiceGroupsResult)) {
       for (const group of choiceGroupsResult) {
-        const compatible = mapBackendChoiceGroupToCompatible(group);
-        backendChoiceGroups[compatible.id] = compatible;
+        const choiceGroup = mapChoiceGroupResponse(group);
+        backendChoiceGroups[choiceGroup.id] = choiceGroup;
       }
     }
 
@@ -1151,7 +1141,7 @@ const buildOpenedWorkspaceState = (
   initialPrompt: space.userRequirements,
   ...hydration,
   backendFindingsLoaded: true,
-  ir: space,
+  ir: hydration.projectDetail || space,
   selectedObject: null,
   selectedObjectId: null,
   selectedNodeId: null,
@@ -1204,7 +1194,7 @@ function buildAggregateTarget(finding: Finding): any {
       };
     }
   }
-  if (finding.code === 'LEAF_FEATURE_WITHOUT_FLOW' || finding.code === 'LEAF_FEATURE_WITHOUT_SCOPE') {
+  if (finding.code === 'LEAF_FEATURE_WITHOUT_SCOPE') {
     const features = meta.missing_features || [];
     if (features.length > 0) {
       return { target_type: 'feature', target_id: features[0].feature_id };
@@ -1222,6 +1212,9 @@ const resolveProcessorActionPage = (route: string) => {
   if (
     route.endsWith('/how') ||
     route.endsWith('/flow') ||
+    route.includes('/how/') ||
+    route.includes('/flow/') ||
+    route.includes('/rules') ||
     route === 'how' ||
     route === 'flow' ||
     route.endsWith('/projects/how') ||
@@ -1246,6 +1239,21 @@ const findProcessorPanelTarget = (
   ir: RequirementSpace | null
 ) => {
   if (!ir) return null;
+  if (panel === 'domain_rule' || panel === 'rule' || panel === 'rule_source_link' || panel === 'rule_apply_link') {
+    const id = (payload.rule_id || payload.target_id || payload.ruleId || payload.targetId)?.toString();
+    const rule = (ir as any).domainRules?.find(
+      (item: any) => item.id?.toString() === id || item.ruleId?.toString() === id || item.logicalUuid === id
+    );
+    return rule ? { ...rule, kind: 'domain_rule' } : null;
+  }
+  if (panel === 'flow_transition_panel' || panel === 'flow_transition') {
+    const flowId = (payload.flow_id || payload.flowId)?.toString();
+    const transId = (payload.transition_id || payload.target_id || payload.transitionId || payload.targetId)?.toString();
+    const flow = ir.flows?.find(
+      (item: any) => item.flowId.toString() === flowId
+    );
+    return flow ? { ...flow, targetTransitionId: transId, kind: 'flow' } : null;
+  }
   if (panel === 'feature' || panel === 'scope') {
     const id = (
       payload.feature_id ||
@@ -1354,8 +1362,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           scenarioIds = action.payload.scenario_ids;
         }
         await get().generateAcceptanceCriteria(scenarioIds, false);
+      } else if (code === 'GENERATE_RULES' || draftType === 'rule_generation' || draftType === 'rule') {
+        await get().generateRules(false);
       } else if (code === 'GENERATE_FLOWS_AND_BUSINESS_OBJECTS' || draftType === 'flow_generation' || draftType === 'flows_and_business_objects_generation') {
-        await get().generateFlowsAndObjects(false);
+        await get().generateFlows(false);
       } else if (code === 'GENERATE_SCOPE' || draftType === 'scope_generation') {
         await get().generateScope(false);
       }
@@ -1482,7 +1492,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const payload = action.payload || {};
     let found = false;
     if (panel === 'perception_slot') {
-      const jobId = payload.perception_job_id || payload.perceptionJobId;
+      const jobId = payload.perception_job_id;
       if (jobId) {
         await get().expandSlot(jobId.toString());
         found = true;
@@ -1565,6 +1575,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       };
     } else if (kind === 'retry') {
       const stage = (context.stage || 'what') as 'what' | 'how' | 'scope';
+      if (!get().workspaceCanWrite()) {
+        set({ error: 'versionControl.readOnlyToast' });
+        return null;
+      }
       const projectId = get().ir?.projectId;
       if (projectId) {
         await workspaceApi.rediagnoseNextSuggestion(projectId, stage);
@@ -1630,10 +1644,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     // Default / standard path
     await get().refreshWorkspace();
     if (get().sessionVersion !== version) return;
-    if (res.draftId || res.draft_id) {
+    if (res.draftId) {
       set({
         activeDraft: res.draft,
-        activeDraftType: mapResolutionDraftType(res.action?.draftType || res.action?.draft_type),
+        activeDraftType: mapResolutionDraftType(res.action?.draft_type),
         lastActionMessageToken: 'store.actions.actionTriggered'
       });
     }
@@ -1641,10 +1655,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   };
 
   const syncChoiceGroupToWorkspace = (group: any, state: WorkspaceState) => {
-    const compatible = mapBackendChoiceGroupToCompatible(group);
+    const choiceGroup = mapChoiceGroupResponse(group);
     const nextChoiceGroups = {
       ...state.backendChoiceGroups,
-      [compatible.id]: compatible,
+      [choiceGroup.id]: choiceGroup,
     };
 
     return {
@@ -1701,6 +1715,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     projectId: string,
     candidateCount?: number,
   ) => {
+    const version = get().sessionVersion;
     let effectiveCandidateCount = candidateCount;
     let candidateLabels: string[] = [];
     if (effectiveCandidateCount === undefined) {
@@ -1712,7 +1727,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           .filter((strategy: any) => strategy.enabled)
           .slice(0, effectiveCandidateCount)
           .map((strategy: any) => getGenerationStrategyPresentation(strategy, i18n.t).label);
-        set({ projectConfiguration });
+        if (get().sessionVersion === version) set({ projectConfiguration });
       } catch {
         // Keep generation available when the configuration summary cannot be loaded.
       }
@@ -1724,8 +1739,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     projectId: string,
     group: ChoiceGroup,
     version: number,
+    branch: string,
   ) => {
-    await workspaceApi.discardChoiceGroup(projectId, Number(group.id));
+    await workspaceApi.discardChoiceGroup(projectId, Number(group.id), branch);
     if (get().sessionVersion !== version) return false;
     set((state: WorkspaceState) => ({
       ...removeChoiceGroupFromWorkspace(group.id, state),
@@ -1851,6 +1867,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   activeDraft: null,
   activeDraftType: null,
   isGenerating: false,
+  flowPathProjections: {},
+  flowPathLoading: {},
+  flowPathErrors: {},
+  flowObjectUsages: {},
+  flowObjectUsageLoading: {},
+  flowObjectUsageErrors: {},
 
   activeChoiceGroup: null,
   choiceGroupGenerationProgress: null,
@@ -1915,12 +1937,19 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   openWorkspace: async (workspaceId, branchRef) => {
     const version = get().sessionVersion + 1;
-    const effectiveBranch = branchRef || 'main';
     // 把 URL 分支写入请求上下文，使后续所有项目读写在缺省时自动携带该分支。
-    setRequestBranch(effectiveBranch);
+    setRequestBranch(branchRef);
     set({
       sessionVersion: version,
+      branchRef: branchRef,
       stageProgress: null,
+      backendChoiceGroups: {},
+      activeChoiceGroup: null,
+      activeStaleChoice: null,
+      pendingGenerationConflict: null,
+      isGeneratingChoices: false,
+      generatingChoiceGroupType: null,
+      choiceGroupGenerationProgress: null,
       branches: [],
       currentBranch: null,
       branchLoading: true,
@@ -1928,13 +1957,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       error: null,
     });
     try {
-      const space = await workspaceApi.getById(workspaceId);
+      const space = await workspaceApi.getById(workspaceId, branchRef);
       if (get().sessionVersion !== version) return false;
       const projectId = space.projectId;
       const hydration = await loadWorkspaceHydration(projectId, version, get);
       if (!hydration) return false;
       set(buildOpenedWorkspaceState(space, hydration));
-      set({ branchRef: effectiveBranch, isLoading: false });
+      set({ branchRef: branchRef, isLoading: false });
       await get().loadBranches();
       if (get().sessionVersion !== version) return false;
       await get().loadCommits();
@@ -1952,10 +1981,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const id = get().ir?.projectId;
     if (!id) return;
     try {
-      const space = await workspaceApi.getById(id);
+      let space = await workspaceApi.getById(id, get().branchRef);
       if (get().sessionVersion !== version) return;
       const hydration = await loadWorkspaceHydration(id, version, get);
       if (!hydration) return;
+      space = hydration.projectDetail || space;
 
       set((s: WorkspaceState) => ({
         ...hydration,
@@ -2021,6 +2051,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     set({
       sessionVersion: version,
       branchRef,
+      backendChoiceGroups: {},
+      activeChoiceGroup: null,
+      activeStaleChoice: null,
+      pendingGenerationConflict: null,
+      isGeneratingChoices: false,
+      generatingChoiceGroupType: null,
+      choiceGroupGenerationProgress: null,
       branches: [],
       currentBranch: null,
       branchLoading: true,
@@ -2030,10 +2067,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       activeShadowDraft: null,
     });
     try {
-      const space = await workspaceApi.getById(id);
+      let space = await workspaceApi.getById(id, get().branchRef);
       if (get().sessionVersion !== version) return false;
       const hydration = await loadWorkspaceHydration(id, version, get);
       if (!hydration) return false;
+      space = hydration.projectDetail || space;
       set({
         ...hydration,
         backendFindingsLoaded: true,
@@ -2116,6 +2154,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     action: 'enter_how' | 'enter_scope' | 'enter_preview',
     options?: { navigate?: (path: string) => void; force?: boolean }
   ) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     if (get().stageTransitionInFlight) {
       console.warn('Stage transition already in flight, ignoring request.');
       return;
@@ -2432,16 +2474,16 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       if (get().sessionVersion !== version) return;
       const mapped = (logs || []).map((log: any) => ({
         id: (log.id || 1).toString(),
-        timestamp: log.createdAt || log.created_at || new Date().toISOString(),
-        actionType: log.actionType || log.action_type || 'store.actions.actionTriggered',
+        timestamp: log.createdAt || new Date().toISOString(),
+        actionType: log.actionType || 'store.actions.actionTriggered',
         summary: log.summary || 'store.actions.actionTriggered',
-        targetIds: log.targetId || log.target_id ? [log.targetId || log.target_id] : [],
-        actorUserId: log.actorUserId !== undefined ? log.actorUserId : log.actor_user_id,
-        actorType: log.actorType !== undefined ? log.actorType : (log.actor_type || 'system'),
-        actorEmail: log.actorEmail !== undefined ? log.actorEmail : log.actor_email,
+        targetIds: log.targetId ? [log.targetId] : [],
+        actorUserId: log.actorUserId,
+        actorType: log.actorType || 'system',
+        actorEmail: log.actorEmail,
         diff: log.diff !== undefined ? log.diff : null,
-        requestId: log.requestId !== undefined ? log.requestId : log.request_id,
-        taskId: log.taskId !== undefined ? log.taskId : log.task_id
+        requestId: log.requestId,
+        taskId: log.taskId
       }));
       set({ auditLogs: mapped });
     } catch (err) {
@@ -2491,19 +2533,19 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   confirmAIOnboarding: async () => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || !draft.draft_id) return null;
+    if (!draft || !draft.draftId) return null;
     set({ isLoading: true, error: null });
     try {
-      const res = await workspaceApi.confirmProjectCreationDraft(draft.draft_id);
+      const res = await workspaceApi.confirmProjectCreationDraft(draft.draftId);
       if (get().sessionVersion !== version) return null;
-      const projectId = res.project_id;
+      const projectId = res.projectId;
       set({
         activeDraft: null,
         activeDraftType: null,
         creationWorkspaceId: null,
         creationDocuments: [],
       });
-      const opened = await get().openWorkspace(projectId);
+      const opened = await get().openWorkspace(projectId, 'main');
       if (!opened) return null;
       set({ lastActionMessageToken: 'store.project.modelFrameworkConfirmed' });
       return projectId;
@@ -2522,10 +2564,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   regenerateAIOnboarding: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || !draft.draft_id) return;
+    if (!draft || !draft.draftId) return;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.project.regeneratingDraft' });
     try {
-      const updated = await workspaceApi.regenerateProjectCreationDraft(draft.draft_id, feedback);
+      const updated = await workspaceApi.regenerateProjectCreationDraft(draft.draftId, feedback);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: updated, isGenerating: false, lastActionMessageToken: 'store.project.draftRegenerated' });
     } catch (err) {
@@ -2542,9 +2584,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   discardAIOnboarding: async () => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || !draft.draft_id) return;
+    if (!draft || !draft.draftId) return;
     try {
-      await workspaceApi.discardProjectCreationDraft(draft.draft_id);
+      await workspaceApi.discardProjectCreationDraft(draft.draftId);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: null, activeDraftType: null, currentSystemView: 'home' });
     } catch (err) {
@@ -2605,7 +2647,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     try {
       const res = await workspaceApi.acceptProjectCreationChoice(group.id, choiceId);
       if (get().sessionVersion !== version) return null;
-      const projectId = res.projectId ?? res.project_id;
+      const projectId = res.projectId;
       if (!projectId) {
         throw new Error('project_id_missing');
       }
@@ -2616,7 +2658,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         creationWorkspaceId: null,
         creationDocuments: [],
       });
-      const opened = await get().openWorkspace(String(projectId));
+      const opened = await get().openWorkspace(String(projectId), 'main');
       if (!opened) return null;
       set({ lastActionMessageToken: 'store.project.createdSuccess' });
       // Reload open groups since this one is resolved
@@ -2663,11 +2705,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     try {
       const res = await workspaceApi.deferProjectCreationChoiceGroup(group.id);
       if (get().sessionVersion !== version) return null;
-      const projectId = res.projectId ?? res.project_id;
+      const projectId = res.projectId;
       if (!projectId) {
         throw new Error('project_id_missing');
       }
-      const opened = await get().openWorkspace(String(projectId));
+      const opened = await get().openWorkspace(String(projectId), 'main');
       if (!opened) return null;
       set({
         activeChoiceGroup: null,
@@ -2729,8 +2771,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       await get().generateFeatures(true);
       return;
     }
-    if (conflict.action === 'generateFlowsAndObjects') {
-      await get().generateFlowsAndObjects(true);
+    if (conflict.action === 'generateFlows') {
+      await get().generateFlows(true);
+      return;
+    }
+    if (conflict.action === 'generateRules') {
+      await get().generateRules(true);
       return;
     }
     if (conflict.action === 'generateScope') {
@@ -2743,6 +2789,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     if (conflict.action === 'generateAcceptanceCriteria') {
       await get().generateAcceptanceCriteria(conflict.scenarioIds, true);
+      return;
+    }
+    if (conflict.action === 'refineFlow' && conflict.flowId !== undefined) {
+      await get().refineFlow(conflict.flowId, conflict.focusStepId, conflict.userFeedback, true);
     }
   },
 
@@ -2757,11 +2807,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       conflictAction,
       conflictArgs,
     } = params;
-    if (import.meta.env.VITE_GENERATION_CHOICE_GROUP_ENABLED === 'false') {
-      set({ isGeneratingChoices: false, isGenerating: false });
-      throw new Error(CHOICE_GROUP_DISABLED_ERROR);
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return null;
     }
-
     const conflictingGroup = findConflictingChoiceGroup(get().backendChoiceGroups, generationType, target);
     if (conflictingGroup && !forceReplace && !userFeedback) {
       return reuseExistingGenerationChoiceGroup(conflictingGroup);
@@ -2776,11 +2825,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       );
     }
 
+    const version = get().sessionVersion;
+    const branch = get().branchRef;
     const { effectiveCandidateCount, candidateLabels } = candidateCount === undefined
       ? await loadGenerationChoiceDefaults(projectId)
       : { effectiveCandidateCount: candidateCount, candidateLabels: [] };
 
-    const version = get().sessionVersion;
+    if (get().sessionVersion !== version) return null;
     set({
       isGeneratingChoices: true,
       generatingChoiceGroupType: generationType,
@@ -2795,6 +2846,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           projectId,
           conflictingGroup,
           version,
+          branch,
         );
         if (!discarded) return null;
       }
@@ -2805,7 +2857,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         target: target || null,
         candidate_count: candidateCount,
         user_feedback: userFeedback || null,
-      });
+      }, branch);
       if (get().sessionVersion !== version) return null;
       return completeGenerationChoiceGroup(group);
     } catch (err) {
@@ -2835,7 +2887,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         knowledge_workspace_id: get().creationWorkspaceId || undefined,
       });
       if (get().sessionVersion !== version) return null;
-      const projectId = res.projectId ?? res.project_id;
+      const projectId = res.projectId;
       if (!projectId) {
         throw new Error('project_id_missing');
       }
@@ -2843,7 +2895,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         creationWorkspaceId: null,
         creationDocuments: [],
       });
-      const opened = await get().openWorkspace(String(projectId));
+      const opened = await get().openWorkspace(String(projectId), 'main');
       if (!opened) return null;
       set({ lastActionMessageToken: 'store.project.blankWorkspaceInitialized' });
       return String(projectId);
@@ -2860,7 +2912,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (get().creationWorkspaceId) return;
     try {
       const ws = await workspaceApi.createKnowledgeWorkspace();
-      set({ creationWorkspaceId: ws.public_id || (ws as any).publicId, creationDocuments: [] });
+      set({ creationWorkspaceId: ws.public_id, creationDocuments: [] });
     } catch (err) {
       console.error('Failed to initialize creation knowledge workspace', err);
     }
@@ -3062,40 +3114,24 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   // AI Generators per phase
   generateActors: async (forceReplace = false) => {
-    const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    const useLegacyGeneration = await shouldUseLegacyGeneration(
-      () => get().createGenerationChoiceGroup({
+    await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'actor',
         forceReplace,
         conflictAction: 'generateActors',
-      }),
-      get,
-      version,
-    );
-    if (!useLegacyGeneration) return;
-
-    try {
-      const draft = await workspaceApi.createActorGenerationDraft(pId);
-      if (get().sessionVersion !== version) return;
-      set({ activeDraft: draft, activeDraftType: 'actor', isGeneratingChoices: false, isGenerating: false, lastActionMessageToken: 'store.actor.listGenerated' });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : 'store.actor.generateFailed';
-      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
-    }
+      });
   },
 
   regenerateActors: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.actor.regeneratingList' });
     try {
       let updated;
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         updated = await workspaceApi.regenerateSlotFillingDraft(draftId, feedback);
       } else {
         updated = await workspaceApi.regenerateActorGenerationDraft(draftId, feedback);
@@ -3121,11 +3157,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isLoading: true, error: null, lastActionMessageToken: 'store.actor.applyingDraft' });
     try {
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
       } else {
         await workspaceApi.confirmActorGenerationDraft(draftId);
@@ -3147,42 +3183,24 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   generateFeatures: async (forceReplace = false) => {
-    const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    const useLegacyGeneration = await shouldUseLegacyGeneration(
-      () => get().createGenerationChoiceGroup({
+    await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'feature',
         forceReplace,
         conflictAction: 'generateFeatures',
-      }),
-      get,
-      version,
-    );
-    if (!useLegacyGeneration) return;
-
-    try {
-      const draft = await workspaceApi.createFeatureGenerationDraft(pId);
-      if (get().sessionVersion !== version) return;
-      set({ activeDraft: draft, activeDraftType: 'feature', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessageToken: 'store.feature.treeGenerated',
       });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : 'store.feature.generateFailed';
-      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
-    }
   },
 
   regenerateFeatures: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.feature.regeneratingTree' });
     try {
       let updated;
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         updated = await workspaceApi.regenerateSlotFillingDraft(draftId, feedback);
       } else {
         updated = await workspaceApi.regenerateFeatureGenerationDraft(draftId, feedback);
@@ -3208,11 +3226,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isLoading: true, error: null, lastActionMessageToken: 'store.feature.applyingTree' });
     try {
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
       } else {
         await workspaceApi.confirmFeatureGenerationDraft(draftId);
@@ -3233,39 +3251,21 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  generateFlowsAndObjects: async (forceReplace = false) => {
-    const version = get().sessionVersion;
+  generateFlows: async (forceReplace = false) => {
     const pId = withWorkspaceId(get());
-    const useLegacyGeneration = await shouldUseLegacyGeneration(
-      () => get().createGenerationChoiceGroup({
+    await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'flow',
         forceReplace,
-        conflictAction: 'generateFlowsAndObjects',
-      }),
-      get,
-      version,
-    );
-    if (!useLegacyGeneration) return;
-
-    try {
-      const draft = await workspaceApi.createFlowGenerationDraft(pId);
-      if (get().sessionVersion !== version) return;
-      set({ activeDraft: draft, activeDraftType: 'flow', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessageToken: 'store.flow.flowAndObjectsGenerated',
+        conflictAction: 'generateFlows',
       });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : 'store.flow.generateFailed';
-      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
-    }
   },
 
-  regenerateFlowsAndObjects: async (feedback) => {
+  regenerateFlows: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.flow.regeneratingFlow' });
     try {
       const updated = isSlotFillingDraft(draft)
@@ -3285,7 +3285,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
-  confirmFlowsAndObjects: async () => {
+  confirmFlowDraft: async () => {
     if (!get().workspaceCanWrite()) {
       set({ error: 'versionControl.readOnlyToast' });
       return;
@@ -3293,7 +3293,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
     if (!draft) return;
-    const draftId = draft.draftId || draft.draft_id;
+    const draftId = draft.draftId;
     if (!draftId) return;
     set({ isLoading: true, error: null, lastActionMessageToken: 'store.flow.applyingFlow' });
     try {
@@ -3318,8 +3318,153 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
 
+  loadFlowPaths: async (flowId: number) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) {
+      const errMsg = 'Project ID is required to load flow paths';
+      set((state: WorkspaceState) => ({
+        flowPathLoading: { ...state.flowPathLoading, [flowId]: false },
+        flowPathErrors: { ...state.flowPathErrors, [flowId]: errMsg },
+      }));
+      throw new Error(errMsg);
+    }
+    set((state: WorkspaceState) => ({
+      flowPathLoading: { ...state.flowPathLoading, [flowId]: true },
+      flowPathErrors: { ...state.flowPathErrors, [flowId]: null },
+    }));
+    try {
+      const res = await workspaceApi.getFlowPaths(projectId, flowId);
+      const rawPaths: any[] = res?.paths || [];
+      const paths: PathProjectionItem[] = rawPaths.map((p: any) => ({
+        pathId: p.pathId || '',
+        name: p.name || '',
+        isMain: Boolean(p.isMain),
+        status: p.status || 'valid',
+        stepIds: p.stepIds || [],
+        stepLogicalUuids: p.stepLogicalUuids || [],
+        transitionIds: p.transitionIds || [],
+        transitionLogicalUuids: p.transitionLogicalUuids || [],
+        summary: p.summary || '',
+      }));
+      set((state: WorkspaceState) => ({
+        flowPathProjections: {
+          ...state.flowPathProjections,
+          [flowId]: paths,
+        },
+        flowPathLoading: {
+          ...state.flowPathLoading,
+          [flowId]: false,
+        },
+        flowPathErrors: {
+          ...state.flowPathErrors,
+          [flowId]: null,
+        },
+      }));
+      return paths;
+    } catch (err: any) {
+      const errMsg = err?.message || 'Failed to load flow paths';
+      set((state: WorkspaceState) => ({
+        flowPathLoading: {
+          ...state.flowPathLoading,
+          [flowId]: false,
+        },
+        flowPathErrors: {
+          ...state.flowPathErrors,
+          [flowId]: errMsg,
+        },
+      }));
+      throw err;
+    }
+  },
+
+  loadFlowObjectUsage: async (flowId: number) => {
+    const projectId = get().ir?.projectId;
+    if (!projectId) {
+      const errMsg = 'Project ID is required to load object usage';
+      set((state: WorkspaceState) => ({
+        flowObjectUsageLoading: { ...state.flowObjectUsageLoading, [flowId]: false },
+        flowObjectUsageErrors: { ...state.flowObjectUsageErrors, [flowId]: errMsg },
+      }));
+      throw new Error(errMsg);
+    }
+    set((state: WorkspaceState) => ({
+      flowObjectUsageLoading: { ...state.flowObjectUsageLoading, [flowId]: true },
+      flowObjectUsageErrors: { ...state.flowObjectUsageErrors, [flowId]: null },
+    }));
+    try {
+      const res = await workspaceApi.getFlowObjectUsage(projectId, flowId);
+      const objects = res?.objects || [];
+      set((state: WorkspaceState) => ({
+        flowObjectUsages: {
+          ...state.flowObjectUsages,
+          [flowId]: objects,
+        },
+        flowObjectUsageLoading: {
+          ...state.flowObjectUsageLoading,
+          [flowId]: false,
+        },
+        flowObjectUsageErrors: {
+          ...state.flowObjectUsageErrors,
+          [flowId]: null,
+        },
+      }));
+      return objects;
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || 'Failed to load flow object usage';
+      set((state: WorkspaceState) => ({
+        flowObjectUsageLoading: {
+          ...state.flowObjectUsageLoading,
+          [flowId]: false,
+        },
+        flowObjectUsageErrors: {
+          ...state.flowObjectUsageErrors,
+          [flowId]: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+        },
+      }));
+      throw err;
+    }
+  },
+
+  refineFlow: async (flowId: number, focusStepId?: number, userFeedback?: string, forceReplace = false) => {
+    const pId = withWorkspaceId(get());
+    await get().createGenerationChoiceGroup({
+      projectId: pId,
+      generationType: 'flow_refinement',
+      target: {
+        target_kind: focusStepId ? 'flow_step' : 'flow',
+        target_id: focusStepId || flowId,
+        flow_id: flowId,
+        focus_step_id: focusStepId,
+      },
+      forceReplace,
+      userFeedback,
+      conflictAction: 'refineFlow',
+      conflictArgs: { flowId, focusStepId, userFeedback },
+    });
+  },
+
+  generateRules: async (forceReplace = false) => {
+    const pId = withWorkspaceId(get());
+    await get().createGenerationChoiceGroup({
+      projectId: pId,
+      generationType: 'rule',
+      forceReplace,
+      conflictAction: 'generateRules',
+    });
+  },
+
+  regenerateRules: async (feedback) => {
+    const pId = withWorkspaceId(get());
+    await get().createGenerationChoiceGroup({
+      projectId: pId,
+      generationType: 'rule',
+      forceReplace: true,
+      userFeedback: feedback,
+      conflictAction: 'generateRules',
+    });
+  },
+
   generateScenarios: async (featureIds, forceReplace = false) => {
-    const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     const isSingleTarget = featureIds !== undefined && featureIds !== null && (
       !Array.isArray(featureIds) || featureIds.length === 1
@@ -3334,68 +3479,25 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         ? { generation_mode: 'batch', feature_ids: targetFeatureIds }
         : { generation_mode: 'full' };
 
-    const useLegacyGeneration = await shouldUseLegacyGeneration(
-      () => get().createGenerationChoiceGroup({
+    await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'scenario',
         target: generationTarget,
         forceReplace,
         conflictAction: 'generateScenarios',
         conflictArgs: { featureIds },
-      }),
-      get,
-      version,
-    );
-    if (!useLegacyGeneration) return;
-
-    set({ isGenerating: true, error: null, lastActionMessageToken: 'store.scenario.generatingDraft' });
-    try {
-      if (Array.isArray(featureIds)) {
-        if (featureIds.length === 0) {
-          const draft = await workspaceApi.createScenarioGenerationDraft(pId);
-          if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessageToken: 'store.scenario.draftGenerated' });
-        } else if (featureIds.length === 1) {
-          const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds[0]);
-          if (get().sessionVersion !== version) return;
-          set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessageToken: 'store.scenario.draftGenerated' });
-        } else {
-          const drafts = await Promise.all(
-            featureIds.map(fId => workspaceApi.createScenarioGenerationDraft(pId, fId))
-          );
-          if (get().sessionVersion !== version) return;
-          const combinedScenarios = drafts.flatMap(d => d.scenarios || []);
-          const draftIds = drafts.map(d => d.draftId || d.draft_id);
-          const combinedDraft = {
-            project_id: pId,
-            generation_mode: 'batch',
-            draftIds,
-            scenarios: combinedScenarios,
-            draft_id: draftIds[0],
-          };
-          set({ activeDraft: combinedDraft, activeDraftType: 'scenario', isGenerating: false, lastActionMessageToken: 'store.scenario.combinedDraftGenerated' });
-        }
-      } else {
-        const draft = await workspaceApi.createScenarioGenerationDraft(pId, featureIds);
-        if (get().sessionVersion !== version) return;
-        set({ activeDraft: draft, activeDraftType: 'scenario', isGenerating: false, lastActionMessageToken: 'store.scenario.draftGenerated' });
-      }
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : 'store.finding.generateFailed';
-      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
-    }
+      });
   },
 
   regenerateScenarios: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.finding.generatingScenario' });
     try {
       let updated;
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         updated = await workspaceApi.regenerateSlotFillingDraft(draftId, feedback);
       } else {
         updated = await workspaceApi.regenerateScenarioGenerationDraft(draftId, feedback);
@@ -3431,9 +3533,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           )
         );
       } else {
-        const draftId = draft.draftId || draft.draft_id;
+        const draftId = draft.draftId;
         if (!draftId) return;
-        if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+        if (draft.perceptionJobId !== undefined) {
           await workspaceApi.confirmSlotFillingDraft(draftId);
         } else {
           await workspaceApi.confirmScenarioGenerationDraft(draftId, { generate_acceptance_criteria: generateAc });
@@ -3460,19 +3562,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const pId = withWorkspaceId(get());
     const isSingleTarget = Array.isArray(scenarioIds) && scenarioIds.length === 1;
     if (isSingleTarget) {
-      const useLegacyGeneration = await shouldUseLegacyGeneration(
-        () => get().createGenerationChoiceGroup({
+      await get().createGenerationChoiceGroup({
           projectId: pId,
           generationType: 'acceptance_criteria',
           target: { generation_mode: 'single', scenario_ids: scenarioIds },
           forceReplace,
           conflictAction: 'generateAcceptanceCriteria',
           conflictArgs: { scenarioIds },
-        }),
-        get,
-        version,
-      );
-      if (!useLegacyGeneration) return;
+        });
+      return;
     }
     try {
       const draft = await workspaceApi.createAcceptanceCriteriaGenerationDraft(pId, scenarioIds);
@@ -3490,12 +3588,12 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   regenerateAcceptanceCriteria: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.finding.generatingAC' });
     try {
       let updated;
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         updated = await workspaceApi.regenerateSlotFillingDraft(draftId, feedback);
       } else {
         updated = await workspaceApi.regenerateAcceptanceCriteriaGenerationDraft(draftId, feedback);
@@ -3521,11 +3619,11 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || (!draft.draft_id && !draft.draftId)) return;
-    const draftId = draft.draftId || draft.draft_id;
+    if (!draft || !draft.draftId) return;
+    const draftId = draft.draftId;
     set({ isLoading: true, error: null, lastActionMessageToken: 'store.finding.applyingAC' });
     try {
-      if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+      if (draft.perceptionJobId !== undefined) {
         await workspaceApi.confirmSlotFillingDraft(draftId);
       } else {
         await workspaceApi.confirmAcceptanceCriteriaGenerationDraft(draftId);
@@ -3547,40 +3645,22 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
   },
 
   generateScope: async (forceReplace = false) => {
-    const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
-    const useLegacyGeneration = await shouldUseLegacyGeneration(
-      () => get().createGenerationChoiceGroup({
+    await get().createGenerationChoiceGroup({
         projectId: pId,
         generationType: 'scope',
         forceReplace,
         conflictAction: 'generateScope',
-      }),
-      get,
-      version,
-    );
-    if (!useLegacyGeneration) return;
-
-    try {
-      const draft = await workspaceApi.createScopeGenerationDraft(pId);
-      if (get().sessionVersion !== version) return;
-      set({ activeDraft: draft, activeDraftType: 'scope', isGenerating: false, isGeneratingChoices: false,
-        lastActionMessageToken: 'store.finding.kanoGenerated',
       });
-    } catch (err) {
-      if (get().sessionVersion !== version) return;
-      const errMsg = err instanceof Error ? err.message : 'store.finding.generateFailed';
-      set({ error: errMsg, isGenerating: false, isGeneratingChoices: false });
-    }
   },
 
   regenerateScope: async (feedback) => {
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || !draft.draft_id) return;
+    if (!draft || !draft.draftId) return;
     set({ isGenerating: true, error: null, lastActionMessageToken: 'store.finding.generatingKano' });
     try {
-      const updated = await workspaceApi.regenerateScopeGenerationDraft(draft.draft_id, feedback);
+      const updated = await workspaceApi.regenerateScopeGenerationDraft(draft.draftId, feedback);
       if (get().sessionVersion !== version) return;
       set({ activeDraft: updated, isGenerating: false, lastActionMessageToken: 'store.finding.kanoDraftRegenerated' });
     } catch (err) {
@@ -3602,10 +3682,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     const version = get().sessionVersion;
     const draft = get().activeDraft;
-    if (!draft || !draft.draft_id) return;
+    if (!draft || !draft.draftId) return;
     set({ isLoading: true, error: null, lastActionMessageToken: 'store.finding.applyingKano' });
     try {
-      await workspaceApi.confirmScopeGenerationDraft(draft.draft_id);
+      await workspaceApi.confirmScopeGenerationDraft(draft.draftId);
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
@@ -3632,9 +3712,9 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
           draft.draftIds.map((id: string) => workspaceApi.discardDraft(id, get().activeDraftType))
         );
       } else {
-        const draftId = draft.draftId || draft.draft_id;
+        const draftId = draft.draftId;
         if (!draftId) return;
-        if (draft.perceptionJobId !== undefined || draft.perception_job_id !== undefined) {
+        if (draft.perceptionJobId !== undefined) {
           await workspaceApi.discardSlotFillingDraft(draftId);
         } else {
           await workspaceApi.discardDraft(draftId, get().activeDraftType);
@@ -4308,13 +4388,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const pId = withWorkspaceId(get());
     try {
-      const stepName = step.stepName || step.name || '';
-      const stepDescription = step.stepDescription || step.description || '';
-      const stepType = step.stepType || step.step_type || 'actorAction';
-      const actorIds = step.actorIds || step.actor_ids || [];
-      const inputBusinessObjectIds = step.inputBusinessObjectIds || step.input_business_object_ids || [];
-      const outputBusinessObjectIds = step.outputBusinessObjectIds || step.output_business_object_ids || [];
-      const connectFromStepId = step.connectFromStepId || step.connect_from_step_id;
+      const stepName = step.stepName || '';
+      const stepDescription = step.stepDescription || '';
+      const stepType = step.stepType || 'actorAction';
+      const actorIds = step.actorIds || [];
+      const inputBusinessObjectIds = step.inputBusinessObjectIds || [];
+      const outputBusinessObjectIds = step.outputBusinessObjectIds || [];
+      const connectFromStepId = step.connectFromStepId;
 
       // 1. Create the new flow step
       const newStep = await workspaceApi.createFlowStep(pId, flowId, {
@@ -4323,30 +4403,27 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         step_type: stepType,
         actor_ids: actorIds,
         input_business_object_ids: inputBusinessObjectIds,
-        output_business_object_ids: outputBusinessObjectIds,
-        next_step_ids: []
+        output_business_object_ids: outputBusinessObjectIds
       });
       if (get().sessionVersion !== version) return;
 
-      // 2. Sequential/Targeted binding for nextStepIds
-      const newStepId = newStep.step_id || newStep.stepId;
+      // 2. Sequential/Targeted transition binding
+      const newStepId = newStep.stepId;
       const flow = get().ir?.flows.find(f => f.flowId === flowId);
       if (flow) {
         if (connectFromStepId) {
-          const fromStep = flow.flowSteps.find(s => s.stepId === connectFromStepId);
-          if (fromStep) {
-            const currentNext = fromStep.nextStepIds || [];
-            if (!currentNext.includes(newStepId)) {
-              await workspaceApi.updateFlowStep(pId, flowId, fromStep.stepId, {
-                next_step_ids: [...currentNext, newStepId]
-              });
-              if (get().sessionVersion !== version) return;
-            }
-          }
+          await workspaceApi.createFlowTransition(pId, flowId, {
+            source_step_id: connectFromStepId,
+            target_step_id: newStepId,
+            is_default: true
+          });
+          if (get().sessionVersion !== version) return;
         } else if (flow.flowSteps.length > 0) {
           const prevStep = flow.flowSteps[flow.flowSteps.length - 1];
-          await workspaceApi.updateFlowStep(pId, flowId, prevStep.stepId, {
-            next_step_ids: [newStepId]
+          await workspaceApi.createFlowTransition(pId, flowId, {
+            source_step_id: prevStep.stepId,
+            target_step_id: newStepId,
+            is_default: true
           });
           if (get().sessionVersion !== version) return;
         }
@@ -4384,7 +4461,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         actor_ids: updates.actorIds,
         input_business_object_ids: updates.inputBusinessObjectIds,
         output_business_object_ids: updates.outputBusinessObjectIds,
-        next_step_ids: updates.nextStepIds,
         last_seen_updated_at: originalStep?.updatedAt
       });
       if (get().sessionVersion !== version) return;
@@ -4398,6 +4474,81 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       } else {
         set({ error: err instanceof Error ? err.message : 'store.flowStep.updateFailed' });
       }
+    }
+  },
+
+  createFlowTransition: async (flowId, payload) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      await workspaceApi.createFlowTransition(pId, flowId, {
+        source_step_id: payload.sourceStepId,
+        target_step_id: payload.targetStepId,
+        condition_text: payload.conditionText,
+        label: payload.label,
+        is_default: payload.isDefault,
+        position: payload.position,
+        semantic_tags: payload.semanticTags,
+        rule_ids: payload.ruleIds,
+        confirmation_status: payload.confirmationStatus
+      });
+      if (get().sessionVersion !== version) return;
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      set({ lastActionMessageToken: 'store.flowStep.updateSuccess' });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : 'store.flowStep.updateFailed' });
+    }
+  },
+
+  updateFlowTransition: async (flowId, transitionId, updates) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      await workspaceApi.updateFlowTransition(pId, flowId, transitionId, {
+        label: updates.label,
+        condition_text: updates.conditionText,
+        is_default: updates.isDefault,
+        position: updates.position,
+        semantic_tags: updates.semanticTags,
+        rule_ids: updates.ruleIds,
+        confirmation_status: updates.confirmationStatus
+      });
+      if (get().sessionVersion !== version) return;
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      set({ lastActionMessageToken: 'store.flowStep.updateSuccess' });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : 'store.flowStep.updateFailed' });
+    }
+  },
+
+  deleteFlowTransition: async (flowId, transitionId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      await workspaceApi.deleteFlowTransition(pId, flowId, transitionId);
+      if (get().sessionVersion !== version) return;
+      await get().refreshWorkspace();
+      if (get().sessionVersion !== version) return;
+      set({ lastActionMessageToken: 'store.flowStep.updateSuccess' });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : 'store.flowStep.updateFailed' });
     }
   },
 
@@ -4521,6 +4672,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   expandSlot: async (slotId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4558,7 +4713,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       });
     }
   },
-  acceptChoice: async (choiceId, force) => {
+  acceptChoice: async (choiceId, force, expectedWorkspaceVersion) => {
     if (!get().workspaceCanWrite()) {
       set({ error: 'versionControl.readOnlyToast' });
       return;
@@ -4570,7 +4725,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (isNaN(choiceIdNum)) return;
     set({ isLoading: true, error: null });
     try {
-      const result = await workspaceApi.acceptChoice(projectId, choiceIdNum, force || false);
+      const result = await workspaceApi.acceptChoice(projectId, choiceIdNum, force || false, expectedWorkspaceVersion);
       if (get().sessionVersion !== version) return;
       if (result?.is_stale) {
         set({ activeStaleChoice: { projectId, choiceId: choiceIdNum, staleReason: result.stale_reason }, isLoading: false });
@@ -4741,7 +4896,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
         activeDraft: null,
         activeDraftType: null,
       });
-      const rIds = res.resolvedIssueIds || res.resolved_issue_ids;
+      const rIds = res.resolvedIssueIds;
       if (res && rIds && rIds.length > 0) {
         set({ lastActionMessageToken: 'store.finding.issuesResolved' });
       }
@@ -4754,6 +4909,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   discardRepairDraft: async (draftId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4771,6 +4930,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   regenerateRepairDraft: async (draftId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -4815,6 +4978,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
   },
   runDiagnosis: async (stage?: 'what' | 'how' | 'scope') => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return;
+    }
     const version = get().sessionVersion;
     const projectId = get().ir?.projectId;
     if (!projectId) return;
@@ -5054,7 +5221,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const projectId = withWorkspaceId(get());
     try {
-      const res = await workspaceApi.getActiveShadowDraft(projectId);
+      const res = await workspaceApi.getActiveShadowDraft(projectId, get().branchRef || undefined);
       if (get().sessionVersion !== version) return null;
       if (res && res.status !== 'idle') {
         set({ activeShadowDraft: res });
@@ -5075,7 +5242,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const projectId = withWorkspaceId(get());
     set({ isLoading: true });
     try {
-      const res = await workspaceApi.prepareShadowDraft(projectId);
+      const res = await workspaceApi.prepareShadowDraft(projectId, get().branchRef || undefined);
       if (get().sessionVersion !== version) return null;
       set({ activeShadowDraft: res, isLoading: false });
       return res;
@@ -5090,7 +5257,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion;
     const projectId = withWorkspaceId(get());
     try {
-      const res = await workspaceApi.getShadowDraft(projectId, draftId);
+      const res = await workspaceApi.getShadowDraft(projectId, draftId, get().branchRef || undefined);
       if (get().sessionVersion !== version) return null;
       set({ activeShadowDraft: res });
       return res;
@@ -5106,7 +5273,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const projectId = withWorkspaceId(get());
     set({ isLoading: true });
     try {
-      await workspaceApi.discardShadowDraft(projectId, draftId);
+      await workspaceApi.discardShadowDraft(projectId, draftId, get().branchRef || undefined);
       if (get().sessionVersion !== version) return;
       set({ activeShadowDraft: null, isLoading: false });
       await get().refreshWorkspace();
@@ -5126,7 +5293,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const projectId = withWorkspaceId(get());
     set({ isLoading: true });
     try {
-      await workspaceApi.commitShadowDraft(projectId, draftId);
+      await workspaceApi.commitShadowDraft(projectId, draftId, get().branchRef || undefined);
       if (get().sessionVersion !== version) return;
       set({ activeShadowDraft: null, isLoading: false });
       await get().refreshWorkspace();
@@ -5142,7 +5309,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const projectId = withWorkspaceId(get());
     set({ isLoading: true });
     try {
-      const res = await workspaceApi.regenerateShadowDraft(projectId, draftId, feedback);
+      const res = await workspaceApi.regenerateShadowDraft(projectId, draftId, feedback, get().branchRef || undefined);
       if (get().sessionVersion !== version) return null;
       set({ activeShadowDraft: res, isLoading: false });
       return res;
@@ -5259,26 +5426,118 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       throw err;
     }
   },
+
+  loadDomainRules: async () => {
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      const branch = get().branchRef;
+      const rulesRes = await domainRuleApi.list(pId, { branch });
+      if (get().sessionVersion !== version) return;
+      set((s: WorkspaceState) => {
+        if (!s.ir) return s;
+        return {
+          ir: {
+            ...s.ir,
+            domainRules: rulesRes.rules,
+          },
+        };
+      });
+    } catch (err) {
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : 'store.errors.loadRulesFailed' });
+      throw err;
+    }
+  },
+
+  replaceTargetRules: async (targetKind, targetLogicalUuid, ruleIds) => {
+    if (!get().workspaceCanWrite()) throw new Error('versionControl.readOnlyToast');
+    const version = get().sessionVersion;
+    await domainRuleApi.replaceTargetRules(withWorkspaceId(get()), {
+      targetKind, targetLogicalUuid, ruleIds,
+    }, get().branchRef);
+    if (get().sessionVersion !== version) return;
+    await get().refreshWorkspace();
+  },
+
+  createDomainRule: async (payload) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return null;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      const branch = get().branchRef;
+      const rule = await domainRuleApi.create(pId, payload, branch);
+      if (get().sessionVersion !== version) return null;
+      await get().refreshWorkspace();
+      return rule;
+    } catch (err) {
+      if (get().sessionVersion !== version) return null;
+      set({ error: err instanceof Error ? err.message : 'store.errors.createRuleFailed' });
+      throw err;
+    }
+  },
+
+  updateDomainRule: async (ruleId, payload) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return null;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    const original = (get().ir?.domainRules || []).find((r: DomainRule) => r.id === ruleId);
+    try {
+      const branch = get().branchRef;
+      const rule = await domainRuleApi.update(pId, ruleId, {
+        ...payload,
+        lastSeenUpdatedAt: original?.updatedAt,
+      }, branch);
+      if (get().sessionVersion !== version) return null;
+      await get().refreshWorkspace();
+      return rule;
+    } catch (err: any) {
+      if (get().sessionVersion !== version) return null;
+      if (err?.status === 409) {
+        set({ error: 'store.errors.parallelConflict' });
+      } else {
+        set({ error: err instanceof Error ? err.message : 'store.errors.updateRuleFailed' });
+      }
+      throw err;
+    }
+  },
+
+  deleteDomainRule: async (ruleId) => {
+    if (!get().workspaceCanWrite()) {
+      set({ error: 'versionControl.readOnlyToast' });
+      return false;
+    }
+    const version = get().sessionVersion;
+    const pId = withWorkspaceId(get());
+    try {
+      const branch = get().branchRef;
+      await domainRuleApi.delete(pId, ruleId, branch);
+      if (get().sessionVersion !== version) return false;
+      await get().refreshWorkspace();
+      return true;
+    } catch (err) {
+      if (get().sessionVersion !== version) return false;
+      set({ error: err instanceof Error ? err.message : 'store.errors.deleteRuleFailed' });
+      throw err;
+    }
+  },
+
 };
 });
 
-// Backward compatibility selectors for components
-const emptyArray: any[] = [];
+const emptyActors: ActorNode[] = [];
 
-export const selectActors = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as ActorNode[];
-  return (state.ir as any).actorsCompatible || emptyArray;
-};
+export const selectActors = (state: WorkspaceState) => state.ir?.actors ?? emptyActors;
 
-export const selectChoices = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray as Choice[];
-  return (state.ir as any).choicesCompatible || emptyArray;
-};
-
-export const selectScopeItems = (state: WorkspaceState) => {
-  if (!state.ir) return emptyArray;
-  return (state.ir as any).scopeItemsCompatible || emptyArray;
-};
+export const selectChoices = (state: WorkspaceState): Choice[] => (
+  Object.values(state.backendChoiceGroups).flatMap(group => group.choices ?? [])
+);
 
 export const selectSelectedObject = (state: WorkspaceState) => {
   if (state.selectedObject) return state.selectedObject;

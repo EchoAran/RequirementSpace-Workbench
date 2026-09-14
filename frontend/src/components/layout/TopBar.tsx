@@ -100,7 +100,7 @@ export function TopBar() {
   const unreadCount = notifications.filter((n: any) => !n.readAt).length;
 
   return (
-    <header className="h-16 flex-shrink-0 border-b border-slate-200/60 bg-white/75 backdrop-blur-md flex items-center justify-between px-6 z-30 sticky top-0 shadow-2xs">
+    <header className="h-16 flex-shrink-0 border-b border-slate-200/60 bg-white/95 flex items-center justify-between px-6 z-50 sticky top-0 shadow-2xs">
       <div className="flex items-center gap-4">
         <button 
           onClick={() => {

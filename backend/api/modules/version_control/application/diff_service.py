@@ -139,7 +139,7 @@ def _resolve_base_state(
     """解析 Diff 基线：优先显式 ref，缺省为分支 head 提交。"""
     if ref:
         return resolve_state(db, project_id, ref)
-    branch, _, permissions = resolve_branch_context(db, project_id, branch_ref or "main")
+    branch, _, permissions = resolve_branch_context(db, project_id, branch_ref)
     if branch is None:
         raise BranchNotFoundError(f"Branch '{branch_ref or 'main'}' not found in project {project_id}")
     if branch.head_commit_id is None:
@@ -162,7 +162,7 @@ def _resolve_target_state(
     """解析 Diff 目标：优先显式 ref，缺省为分支当前工作区（未提交变更）。"""
     if ref:
         return resolve_state(db, project_id, ref)
-    branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref or "main")
+    branch, workspace, permissions = resolve_branch_context(db, project_id, branch_ref)
     if branch is None:
         raise BranchNotFoundError(f"Branch '{branch_ref or 'main'}' not found in project {project_id}")
     state = serialize_workspace(db, workspace) if workspace else _empty_state()

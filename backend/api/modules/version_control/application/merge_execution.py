@@ -50,6 +50,11 @@ from backend.api.modules.version_control.schemas import (
     MergeRequestPayload,
     MergeResponse,
 )
+from backend.core.model_invariants.rule_invariants import (
+    ALLOWED_RULE_LINK_TARGET_KINDS,
+    validate_rule_link_purpose,
+    validate_rule_parent_graph,
+)
 from backend.database.model import (
     AuditLogModel,
     MergeRequestModel,
@@ -249,6 +254,17 @@ def _validate_merged_structure(
     feature_uuids = {e["logical_uuid"] for e in merged_state.get("features", [])}
     actor_uuids = {e["logical_uuid"] for e in merged_state.get("actors", [])}
     bo_uuids = {e["logical_uuid"] for e in merged_state.get("business_objects", [])}
+    flow_uuids = {e["logical_uuid"] for e in merged_state.get("flows", [])}
+    scenario_uuids = {e["logical_uuid"] for e in merged_state.get("scenarios", [])}
+    acceptance_criterion_uuids = {
+        criterion["logical_uuid"]
+        for scenario in merged_state.get("scenarios", [])
+        for criterion in scenario.get("acceptance_criteria", [])
+    }
+    rule_uuids = {
+        rule["logical_uuid"]
+        for rule in merged_state.get("domain_rules", [])
+    }
     step_uuids: dict[str, str] = {}
     for flow in merged_state.get("flows", []):
         for step in flow.get("steps", []):
@@ -279,14 +295,88 @@ def _validate_merged_structure(
             for out_uuid in step.get("output_business_object_logical_uuids", []):
                 if out_uuid not in bo_uuids:
                     errors.append(f"flow_step {step['logical_uuid']} output refers to missing business object {out_uuid}")
-            for nxt_uuid in step.get("next_step_logical_uuids", []):
-                if nxt_uuid not in step_uuids:
-                    errors.append(f"flow_step {step['logical_uuid']} next refers to missing step {nxt_uuid}")
-                elif step_uuids[nxt_uuid] != flow["logical_uuid"]:
-                    errors.append(f"flow_step {step['logical_uuid']} next step {nxt_uuid} belongs to a different flow")
+        seen_edges: set[tuple[str, str]] = set()
+        seen_positions: set[tuple[str, int]] = set()
+        default_sources: set[str] = set()
+        for trans in flow.get("transitions", []):
+            s_uuid = trans.get("source_step_logical_uuid")
+            t_uuid = trans.get("target_step_logical_uuid")
+            if s_uuid and s_uuid not in step_uuids:
+                errors.append(f"flow_transition {trans['logical_uuid']} source refers to missing step {s_uuid}")
+            elif s_uuid and step_uuids[s_uuid] != flow["logical_uuid"]:
+                errors.append(f"flow_transition {trans['logical_uuid']} source step {s_uuid} belongs to a different flow")
+            if t_uuid and t_uuid not in step_uuids:
+                errors.append(f"flow_transition {trans['logical_uuid']} target refers to missing step {t_uuid}")
+            elif t_uuid and step_uuids[t_uuid] != flow["logical_uuid"]:
+                errors.append(f"flow_transition {trans['logical_uuid']} target step {t_uuid} belongs to a different flow")
+            if s_uuid == t_uuid:
+                errors.append(
+                    f"flow_transition {trans['logical_uuid']} forms a self loop"
+                )
+            edge_key = (s_uuid, t_uuid)
+            if edge_key in seen_edges:
+                errors.append(
+                    f"flow {flow['logical_uuid']} contains duplicate transition {s_uuid}->{t_uuid}"
+                )
+            seen_edges.add(edge_key)
+            position_key = (s_uuid, trans.get("position", 0))
+            if position_key in seen_positions:
+                errors.append(
+                    f"flow {flow['logical_uuid']} contains duplicate outgoing position "
+                    f"{position_key[1]} for step {s_uuid}"
+                )
+            seen_positions.add(position_key)
+            if trans.get("is_default"):
+                if s_uuid in default_sources:
+                    errors.append(
+                        f"flow {flow['logical_uuid']} contains multiple default transitions "
+                        f"for step {s_uuid}"
+                    )
+                default_sources.add(s_uuid)
     for scope in merged_state.get("scopes", []):
         if scope["feature_logical_uuid"] not in feature_uuids:
             errors.append(f"scope {scope['logical_uuid']} refers to missing feature {scope['feature_logical_uuid']}")
+
+    try:
+        validate_rule_parent_graph({
+            rule["logical_uuid"]: rule.get("parent_rule_logical_uuid")
+            for rule in merged_state.get("domain_rules", [])
+        })
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    targets_by_kind = {
+        "feature": feature_uuids,
+        "scenario": scenario_uuids,
+        "acceptance_criterion": acceptance_criterion_uuids,
+        "flow": flow_uuids,
+        "flow_step": set(step_uuids),
+        "flow_transition": {
+            transition["logical_uuid"]
+            for flow in merged_state.get("flows", [])
+            for transition in flow.get("transitions", [])
+        },
+    }
+    for link in merged_state.get("rule_links", []):
+        if link.get("rule_logical_uuid") not in rule_uuids:
+            errors.append(
+                f"rule_link {link['logical_uuid']} refers to missing rule "
+                f"{link.get('rule_logical_uuid')}"
+            )
+        target_kind = link.get("target_kind")
+        if target_kind not in ALLOWED_RULE_LINK_TARGET_KINDS:
+            errors.append(
+                f"rule_link {link['logical_uuid']} has invalid target kind {target_kind}"
+            )
+        elif target_kind != "knowledge" and link.get("target_logical_uuid") not in targets_by_kind[target_kind]:
+            errors.append(
+                f"rule_link {link['logical_uuid']} refers to missing {target_kind} "
+                f"{link.get('target_logical_uuid')}"
+            )
+        try:
+            validate_rule_link_purpose(link.get("link_purpose"))
+        except ValueError as exc:
+            errors.append(str(exc))
 
     if errors:
         raise MergeConflictError("merge_structure_invalid", structure_errors=errors)

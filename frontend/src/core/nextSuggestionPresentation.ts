@@ -19,6 +19,7 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
     if (type.includes('feature')) return i18n.t('suggestion.featureDraft');
     if (type.includes('scenario')) return i18n.t('suggestion.scenarioDraft');
     if (type.includes('acceptance_criteria') || type.includes('ac')) return i18n.t('suggestion.acDraft');
+    if (type.includes('rule')) return i18n.t('suggestion.ruleDraft');
     if (type.includes('flow')) return i18n.t('suggestion.flowDraft');
     if (type.includes('scope')) return i18n.t('suggestion.scopeDraft');
     return i18n.t('suggestion.draft');
@@ -81,6 +82,13 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
 
     if (kind === 'open_panel') {
       const panel = action.panel || '';
+      if (code === 'REVIEW_RULES' || code === 'REVIEW_STALE_RULES') {
+        return {
+          label: i18n.t('suggestion.reviewRules'),
+          loadingLabel: i18n.t('suggestion.openingRules'),
+          icon: 'open',
+        };
+      }
       if (panel === 'feature' || code === 'BIND_ACTORS_TO_FEATURE') {
         return {
           label: i18n.t('suggestion.openRelationPanel'),
@@ -160,6 +168,12 @@ export function getNextSuggestionPresentation(finding: Finding): SuggestionPrese
       return {
         label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.acDraft') }),
         loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.acDraft') }),
+        icon: 'generate',
+      };
+    case 'GENERATE_RULES':
+      return {
+        label: i18n.t('suggestion.generate', { name: i18n.t('suggestion.ruleDraft') }),
+        loadingLabel: i18n.t('suggestion.generating', { name: i18n.t('suggestion.ruleDraft') }),
         icon: 'generate',
       };
     case 'GENERATE_FLOWS_AND_BUSINESS_OBJECTS':

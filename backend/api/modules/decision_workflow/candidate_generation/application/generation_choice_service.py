@@ -158,11 +158,12 @@ def _build_candidate_context(
     return CandidateContext(
         index=index,
         strategy=strategy_id,
-        seed_hint=None,
+        seed_hint=base_context.seed_hint if base_context else None,
         user_feedback=base_context.user_feedback if base_context else None,
         target=base_context.target if base_context else None,
         project_id=base_context.project_id if base_context else None,
         session=base_context.session if base_context else None,
+        workspace_id=base_context.workspace_id if base_context else None,
         strategy_id=strategy_id,
         strategy_label=label,
         strategy_description=description,
@@ -370,7 +371,8 @@ class GenerationChoiceService:
         source_type: str | None = None,
         source_id: str | None = None,
         context_hash: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         """Create and persist a generation choice group."""
         from .choice_group_creator import create_choice_group
@@ -617,6 +619,7 @@ class GenerationChoiceService:
         strategy_id, strategy_label, _, _ = strategy
         new_choice = ChoiceModel(
             choice_group_id=group.id,
+            workspace_id=group.workspace_id,
             title=candidate.title,
             rationale=candidate.rationale,
             status="candidate",

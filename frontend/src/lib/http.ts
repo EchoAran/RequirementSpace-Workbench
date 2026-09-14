@@ -106,6 +106,8 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   try {
     const response = await fetch(fullUrl, config);
 
+    if (response.status === 204) return undefined as T;
+
     // Check if the response is JSON
     const contentType = response.headers.get('Content-Type') || '';
     const isJson = contentType.includes('application/json');

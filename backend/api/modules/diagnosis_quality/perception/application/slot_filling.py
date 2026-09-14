@@ -15,12 +15,6 @@ class PerceptionSlotFillingService:
         self._discarder = PerceptionDraftDiscarder()
         self._confirmer = PerceptionDraftConfirmer()
 
-        # Retain filler attributes for compatibility
-        self._actors_filler = self._creator._actors_filler
-        self._features_filler = self._creator._features_filler
-        self._scenarios_filler = self._creator._scenarios_filler
-        self._acceptance_criteria_filler = self._creator._acceptance_criteria_filler
-        self._flows_filler = self._creator._flows_filler
 
     async def create_actor_draft(
         self,
@@ -28,9 +22,9 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_actor_draft(
             project_id=project_id,
@@ -48,9 +42,9 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_feature_draft(
             project_id=project_id,
@@ -68,9 +62,9 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_scenario_draft(
             project_id=project_id,
@@ -88,9 +82,9 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_acceptance_criteria_draft(
             project_id=project_id,
@@ -108,9 +102,9 @@ class PerceptionSlotFillingService:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.create_flow_draft(
             project_id=project_id,
@@ -127,10 +121,10 @@ class PerceptionSlotFillingService:
         draft_id: str,
         owner_user_id: int,
         session,
+        workspace_id: int,
         user_feedback: str | None = None,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._creator.regenerate_draft(
             draft_id=draft_id,
@@ -147,9 +141,9 @@ class PerceptionSlotFillingService:
         draft_id: str,
         owner_user_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._confirmer.confirm_draft(
             draft_id=draft_id,

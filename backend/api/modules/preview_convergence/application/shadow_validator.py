@@ -8,11 +8,18 @@ class PreviewShadowValidator:
     def __init__(self) -> None:
         self.gate_evaluator = StageGateEvaluator()
 
-    async def evaluate_gates(self, project_id: int, session: AsyncSession) -> dict:
+    async def evaluate_gates(
+        self,
+        project_id: int,
+        session: AsyncSession,
+        workspace_id: int,
+    ) -> dict:
         """
         Evaluate stage gates for the project.
         """
-        return await self.gate_evaluator.evaluate_gates(project_id, session)
+        return await self.gate_evaluator.evaluate_gates(
+            project_id, session, workspace_id=workspace_id
+        )
 
     def validate_patch(self, patch: dict, base_snapshot: dict, project_id: str) -> bool:
         return ShadowPatchValidator.validate_patch(

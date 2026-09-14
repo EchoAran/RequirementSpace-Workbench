@@ -1,3 +1,11 @@
+"""Step writing and persistence application helpers.
+
+This module handles step existence validation, position assignment, relationship
+updates (actors, business objects), and state diff tracking for flow step mutations.
+"""
+
+from __future__ import annotations
+
 from sqlalchemy import func, insert, select
 from sqlalchemy.orm import selectinload
 
@@ -8,7 +16,6 @@ from backend.database.model import (
     FlowStepModel,
     flow_step_actor_table,
     flow_step_input_business_object_table,
-    flow_step_next_table,
     flow_step_output_business_object_table,
 )
 
@@ -17,40 +24,35 @@ async def ensure_flow_exists(
     session,
     project_id: int,
     flow_id: int,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
+    """Ensure the target flow exists in the project and workspace."""
     stmt = select(FlowModel).where(
         FlowModel.project_id == project_id,
         FlowModel.id == flow_id,
     )
-    if workspace_id is not None:
-        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+    stmt = stmt.where(FlowModel.workspace_id == workspace_id)
     result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
         raise ValueError("flow_not_found")
 
 
-async def get_next_step_position(session, flow_id: int) -> int:
-    result = await session.execute(
-        select(func.max(FlowStepModel.position)).where(
+async def get_next_position_index(session, flow_id: int) -> int:
+    """Calculate the next 1-based sequential position index for a new step."""
+    max_position = await session.scalar(
+        select(func.coalesce(func.max(FlowStepModel.position), 0)).where(
             FlowStepModel.flow_id == flow_id
         )
     )
-    maximum = result.scalar()
-    return 1 if maximum is None else maximum + 1
+    return int(max_position or 0) + 1
 
 
-async def _validated_ids(
-    session,
-    statement,
-    requested_ids: list[int],
-    error_code: str,
-) -> list[int]:
-    result = await session.execute(statement)
-    valid_ids = result.scalars().all()
-    if len(valid_ids) != len(requested_ids):
+async def _validated_ids(session, statement, requested_ids: list[int], error_code: str) -> list[int]:
+    """Validate that all requested IDs exist in database, raising ValueError on mismatch."""
+    valid_ids = (await session.scalars(statement)).all()
+    if len(valid_ids) != len(set(requested_ids)):
         raise ValueError(error_code)
-    return valid_ids
+    return list(valid_ids)
 
 
 async def _write_actor_links(
@@ -58,16 +60,16 @@ async def _write_actor_links(
     project_id: int,
     step_id: int,
     actor_ids: list[int],
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
+    """Insert associations between flow step and actors."""
     if not actor_ids:
         return
     stmt = select(ActorModel.id).where(
         ActorModel.project_id == project_id,
         ActorModel.id.in_(actor_ids),
     )
-    if workspace_id is not None:
-        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+    stmt = stmt.where(ActorModel.workspace_id == workspace_id)
     valid_ids = await _validated_ids(
         session,
         stmt,
@@ -77,7 +79,10 @@ async def _write_actor_links(
     await session.execute(
         insert(flow_step_actor_table),
         [
-            {"flow_step_id": step_id, "actor_id": actor_id}
+            {
+                "flow_step_id": step_id,
+                "actor_id": actor_id,
+            }
             for actor_id in valid_ids
         ],
     )
@@ -91,16 +96,16 @@ async def _write_business_object_links(
     business_object_ids: list[int],
     table,
     error_code: str,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
+    """Insert associations between flow step and business objects."""
     if not business_object_ids:
         return
     stmt = select(BusinessObjectModel.id).where(
         BusinessObjectModel.project_id == project_id,
         BusinessObjectModel.id.in_(business_object_ids),
     )
-    if workspace_id is not None:
-        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+    stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     valid_ids = await _validated_ids(
         session,
         stmt,
@@ -119,35 +124,6 @@ async def _write_business_object_links(
     )
 
 
-async def _write_next_step_links(
-    session,
-    flow_id: int,
-    step_id: int,
-    next_step_ids: list[int],
-) -> None:
-    if not next_step_ids:
-        return
-    valid_ids = await _validated_ids(
-        session,
-        select(FlowStepModel.id).where(
-            FlowStepModel.flow_id == flow_id,
-            FlowStepModel.id.in_(next_step_ids),
-        ),
-        next_step_ids,
-        "invalid_next_step_ids",
-    )
-    await session.execute(
-        insert(flow_step_next_table),
-        [
-            {
-                "source_step_id": step_id,
-                "target_step_id": target_step_id,
-            }
-            for target_step_id in valid_ids
-        ],
-    )
-
-
 async def write_flow_step_links(
     session,
     *,
@@ -157,9 +133,9 @@ async def write_flow_step_links(
     actor_ids: list[int],
     input_business_object_ids: list[int],
     output_business_object_ids: list[int],
-    next_step_ids: list[int],
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
+    """Write actor and business object associations for a newly created step."""
     await _write_actor_links(
         session,
         project_id,
@@ -185,23 +161,22 @@ async def write_flow_step_links(
         error_code="invalid_output_business_object_ids",
         workspace_id=workspace_id,
     )
-    await _write_next_step_links(
-        session,
-        flow_id,
-        step_id,
-        next_step_ids,
+
+
+async def load_flow_step(
+    session,
+    step_id: int,
+) -> FlowStepModel:
+    """Load flow step entity with eager-loaded actors and business objects."""
+    stmt = select(FlowStepModel).where(
+        FlowStepModel.id == step_id,
     )
-
-
-async def load_flow_step(session, step_id: int):
     result = await session.execute(
-        select(FlowStepModel)
-        .where(FlowStepModel.id == step_id)
+        stmt
         .options(
             selectinload(FlowStepModel.actors),
             selectinload(FlowStepModel.input_business_objects),
             selectinload(FlowStepModel.output_business_objects),
-            selectinload(FlowStepModel.next_steps),
         )
     )
     return result.scalar_one()
@@ -211,8 +186,9 @@ async def load_flow_step_for_update(
     session,
     flow_id: int,
     step_id: int,
-    workspace_id: int | None = None,
-):
+    workspace_id: int,
+) -> FlowStepModel:
+    """Load flow step entity for update mutation with eager loading."""
     stmt = (
         select(FlowStepModel)
         .where(
@@ -223,11 +199,9 @@ async def load_flow_step_for_update(
             selectinload(FlowStepModel.actors),
             selectinload(FlowStepModel.input_business_objects),
             selectinload(FlowStepModel.output_business_objects),
-            selectinload(FlowStepModel.next_steps),
         )
     )
-    if workspace_id is not None:
-        stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
+    stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
     result = await session.execute(stmt)
     step = result.scalar_one_or_none()
     if step is None:
@@ -235,7 +209,8 @@ async def load_flow_step_for_update(
     return step
 
 
-def capture_flow_step_state(step) -> dict:
+def capture_flow_step_state(step: FlowStepModel) -> dict:
+    """Capture snapshot of step attributes for auditing diff generation."""
     return {
         "name": step.name,
         "description": step.description,
@@ -249,66 +224,44 @@ def capture_flow_step_state(step) -> dict:
             business_object.id
             for business_object in step.output_business_objects
         ],
-        "next_step_ids": [next_step.id for next_step in step.next_steps],
     }
 
 
-def apply_flow_step_scalar_updates(step, request) -> None:
+def apply_flow_step_scalar_updates(step: FlowStepModel, request) -> None:
+    """Apply scalar field updates from request onto step model."""
     new_step_type = (
         request.step_type
         if request.step_type is not None
         else step.step_type
     )
-    new_actor_ids = (
-        request.actor_ids
-        if request.actor_ids is not None
-        else [actor.id for actor in step.actors]
+    step.name = request.name if request.name is not None else step.name
+    step.description = (
+        request.description
+        if request.description is not None
+        else step.description
     )
-    if new_step_type == "actorAction" and not new_actor_ids:
-        raise ValueError("actor_ids_cannot_be_empty_for_actor_action")
-
-    if request.name is not None:
-        step.name = request.name
-    if request.description is not None:
-        step.description = request.description
-    if request.step_type is not None:
-        step.step_type = request.step_type
-
-
-async def _validated_models(
-    session,
-    statement,
-    requested_ids: list[int],
-    error_code: str,
-) -> list:
-    result = await session.execute(statement)
-    models = result.scalars().all()
-    if len(models) != len(requested_ids):
-        raise ValueError(error_code)
-    return models
+    step.step_type = new_step_type
 
 
 async def _replace_relationship(
     session,
     *,
-    step,
+    step: FlowStepModel,
     attribute: str,
     requested_ids: list[int] | None,
     statement,
     error_code: str,
 ) -> None:
+    """Replace collection relationship if new IDs are provided in request."""
     if requested_ids is None:
         return
     if not requested_ids:
         setattr(step, attribute, [])
         return
-    models = await _validated_models(
-        session,
-        statement,
-        requested_ids,
-        error_code,
-    )
-    setattr(step, attribute, models)
+    entities = (await session.scalars(statement)).all()
+    if len(entities) != len(set(requested_ids)):
+        raise ValueError(error_code)
+    setattr(step, attribute, list(entities))
 
 
 async def apply_flow_step_relationship_updates(
@@ -316,16 +269,16 @@ async def apply_flow_step_relationship_updates(
     *,
     project_id: int,
     flow_id: int,
-    step,
+    step: FlowStepModel,
     request,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
+    """Update actors and business objects relationships on the step."""
     actor_stmt = select(ActorModel).where(
         ActorModel.project_id == project_id,
         ActorModel.id.in_(request.actor_ids or []),
     )
-    if workspace_id is not None:
-        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+    actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
 
     await _replace_relationship(
         session,
@@ -342,8 +295,7 @@ async def apply_flow_step_relationship_updates(
             request.input_business_object_ids or []
         ),
     )
-    if workspace_id is not None:
-        in_bo_stmt = in_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+    in_bo_stmt = in_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
 
     await _replace_relationship(
         session,
@@ -360,8 +312,7 @@ async def apply_flow_step_relationship_updates(
             request.output_business_object_ids or []
         ),
     )
-    if workspace_id is not None:
-        out_bo_stmt = out_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+    out_bo_stmt = out_bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
 
     await _replace_relationship(
         session,
@@ -371,20 +322,10 @@ async def apply_flow_step_relationship_updates(
         statement=out_bo_stmt,
         error_code="invalid_output_business_object_ids",
     )
-    await _replace_relationship(
-        session,
-        step=step,
-        attribute="next_steps",
-        requested_ids=request.next_step_ids,
-        statement=select(FlowStepModel).where(
-            FlowStepModel.flow_id == flow_id,
-            FlowStepModel.id.in_(request.next_step_ids or []),
-        ),
-        error_code="invalid_next_step_ids",
-    )
 
 
-def build_flow_step_update_diff(before: dict, step) -> dict:
+def build_flow_step_update_diff(before: dict, step: FlowStepModel) -> dict:
+    """Compute dictionary diff between before snapshot and current step state."""
     after = capture_flow_step_state(step)
     return {
         field: {"before": before[field], "after": value}

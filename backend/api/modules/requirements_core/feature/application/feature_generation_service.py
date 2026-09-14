@@ -78,7 +78,8 @@ class FeatureGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -121,6 +122,7 @@ class FeatureGenerationService:
             project_id=draft["project_id"],
             user_feedback=user_feedback,
             session=session,
+                                                    workspace_id=draft["workspace_id"],
         )
 
         draft_payload["draft_id"] = draft_id
@@ -149,7 +151,8 @@ class FeatureGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -166,6 +169,10 @@ class FeatureGenerationService:
             session=session,
             workspace_id=workspace_id,
         )
+        changed_targets = [
+            ("feature", uid)
+            for uid in result.get("feature_logical_uuids", [])
+        ]
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what", "how", "scope"},
@@ -177,7 +184,9 @@ class FeatureGenerationService:
             },
             session=session,
             workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
+        result.pop("feature_logical_uuids", None)
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -211,7 +220,7 @@ class FeatureGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         user_requirements, actor_nodes = await self._load_project_context(
             project_id=project_id,
@@ -289,34 +298,17 @@ class FeatureGenerationService:
     async def _load_project_context(
         project_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[str, list[ActorNode]]:
         from backend.database.model import ActorModel, BranchWorkspaceModel, ProjectModel
 
-        project_result = await session.execute(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
-        )
-        project = project_result.scalar_one_or_none()
-
-        if project is None:
+        workspace = await session.get(BranchWorkspaceModel, workspace_id)
+        if workspace is None or workspace.project_id != project_id:
             raise ValueError("project_not_found")
-
-        user_requirements = project.user_requirements
-        if workspace_id is not None:
-            ws_result = await session.execute(
-                select(BranchWorkspaceModel.user_requirements).where(
-                    BranchWorkspaceModel.id == workspace_id,
-                )
-            )
-            ws_user_reqs = ws_result.scalar_one_or_none()
-            if ws_user_reqs is not None:
-                user_requirements = ws_user_reqs
+        user_requirements = workspace.user_requirements
 
         actor_stmt = select(ActorModel).where(ActorModel.project_id == project_id)
-        if workspace_id is not None:
-            actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
         actor_result = await session.execute(actor_stmt)
         actor_models = actor_result.scalars().all()
 
@@ -373,7 +365,7 @@ class FeatureGenerationService:
         session,
         project_id: int,
         features: list[dict],
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import FeatureModel
 
@@ -389,9 +381,7 @@ class FeatureGenerationService:
             session.add(model)
             models_by_number[feature["feature_number"]] = model
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         return models_by_number
 
     @staticmethod
@@ -413,9 +403,7 @@ class FeatureGenerationService:
             for actor_id in feature.get("actor_ids", [])
         ]
         if rows:
-            res = session.execute(insert(feature_actor_table), rows)
-            if hasattr(res, "__await__"):
-                await res
+            await session.execute(insert(feature_actor_table), rows)
 
     def _update_project_from_root(
         self,
@@ -453,7 +441,7 @@ class FeatureGenerationService:
         self,
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         project_id = draft["project_id"]
         features = draft["features"]
@@ -478,12 +466,13 @@ class FeatureGenerationService:
             features,
             models_by_number,
         )
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         return {
             "project_id": project_id,
             "feature_count": len(features),
+            "feature_logical_uuids": [
+                m.logical_uuid for m in models_by_number.values()
+            ],
             "message": "features_created",
         }
 

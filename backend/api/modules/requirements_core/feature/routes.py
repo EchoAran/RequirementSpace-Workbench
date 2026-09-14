@@ -56,7 +56,7 @@ async def list_features(
         raise map_branch_error(error)
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await feature_service.list_features(
             project_id=owned_project.id,
             session=session,
@@ -88,11 +88,11 @@ async def create_feature(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await feature_service.create_feature(
             project_id=owned_project.id,
             req=request,
@@ -131,11 +131,11 @@ async def update_feature(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await feature_service.update_feature(
             project_id=owned_project.id,
             feature_id=feature_id,
@@ -178,11 +178,11 @@ async def delete_feature(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await feature_service.delete_feature(
             project_id=owned_project.id,
             feature_id=feature_id,
@@ -241,21 +241,21 @@ async def create_feature_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await feature_generation_service.create_draft(
                 project_id=owned_project.id,
                 owner_user_id=user.id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -315,13 +315,13 @@ async def confirm_feature_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, draft.project_id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await feature_generation_service.confirm_draft(
             draft_id=draft.draft_id,

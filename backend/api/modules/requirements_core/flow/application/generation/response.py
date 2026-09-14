@@ -25,6 +25,7 @@ def build_flow_step_preview(
         "step_name": step["step_name"],
         "step_description": step["step_description"],
         "step_type": step["step_type"],
+        "rule_refs": step.get("rule_refs", []),
         "actor_names": [
             actor_names[actor_id]
             for actor_id in step.get("actor_ids", [])
@@ -43,10 +44,25 @@ def build_flow_step_preview(
                 [],
             )
         ],
-        "next_step_names": [
-            step_names[number]
-            for number in step.get("next_steps", [])
-        ],
+    }
+
+
+def build_flow_transition_preview(
+    transition: dict,
+    *,
+    step_names: dict[str, str],
+) -> dict:
+    source_num = transition.get("source_step_number")
+    target_num = transition.get("target_step_number")
+    return {
+        "source_step_name": step_names.get(source_num, source_num),
+        "target_step_name": step_names.get(target_num, target_num),
+        "label": transition.get("label", ""),
+        "condition_text": transition.get("condition_text", ""),
+        "is_default": transition.get("is_default", False),
+        "position": transition.get("position", 0),
+        "semantic_tags": transition.get("semantic_tags", []),
+        "rule_refs": transition.get("rule_refs", []),
     }
 
 
@@ -65,6 +81,7 @@ def build_flow_preview(
     return {
         "flow_name": flow["flow_name"],
         "flow_description": flow["flow_description"],
+        "rule_refs": flow.get("rule_refs", []),
         "feature_names": [
             feature_names[feature_id]
             for feature_id in flow.get("feature_ids", [])
@@ -77,6 +94,13 @@ def build_flow_preview(
                 step_names=step_names,
             )
             for step in steps
+        ],
+        "transitions": [
+            build_flow_transition_preview(
+                transition,
+                step_names=step_names,
+            )
+            for transition in flow.get("transitions", [])
         ],
     }
 

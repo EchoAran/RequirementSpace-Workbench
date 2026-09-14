@@ -75,9 +75,9 @@ class ProjectRequirementsService:
         user_requirements: str,
         actor: ActorContext,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> UserRequirementsResponse:
-        """直接更新项目的用户需求文本，优先持久化到分支工作区"""
+        """直接更新分支工作区的用户需求文本"""
         result = await session.execute(
             select(ProjectModel).where(ProjectModel.id == project_id)
         )
@@ -88,24 +88,18 @@ class ProjectRequirementsService:
 
         from backend.database.model import BranchWorkspaceModel
 
-        ws_obj = None
-        if workspace_id is not None:
-            ws_res = await session.execute(
-                select(BranchWorkspaceModel).where(
-                    BranchWorkspaceModel.id == workspace_id,
-                    BranchWorkspaceModel.project_id == project_id,
-                )
+        ws_res = await session.execute(
+            select(BranchWorkspaceModel).where(
+                BranchWorkspaceModel.id == workspace_id,
+                BranchWorkspaceModel.project_id == project_id,
             )
-            ws_obj = ws_res.scalar_one_or_none()
-            if ws_obj is None:
-                raise ValueError(f"Workspace {workspace_id} not found in project {project_id}")
+        )
+        ws_obj = ws_res.scalar_one_or_none()
+        if ws_obj is None:
+            raise ValueError(f"Workspace {workspace_id} not found in project {project_id}")
 
-        if ws_obj is not None:
-            old_requirements = ws_obj.user_requirements if ws_obj.user_requirements is not None else ""
-            ws_obj.user_requirements = user_requirements
-        else:
-            old_requirements = project.user_requirements if project.user_requirements is not None else ""
-            project.user_requirements = user_requirements
+        old_requirements = ws_obj.user_requirements if ws_obj.user_requirements is not None else ""
+        ws_obj.user_requirements = user_requirements
 
         await session.flush()
 
@@ -116,8 +110,8 @@ class ProjectRequirementsService:
             project_id=project_id,
             action_type="update_user_requirements",
             summary="手动更新用户需求文档",
-            target_type="workspace" if ws_obj is not None else "project",
-            target_id=str(workspace_id if ws_obj is not None else project_id),
+            target_type="workspace",
+            target_id=str(workspace_id),
             actor=actor,
             diff=diff,
         )
@@ -133,7 +127,7 @@ class ProjectRequirementsService:
         user_feedback: str | None,
         actor: ActorContext,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> UserRequirementsResponse:
         """基于审计日志 and 用户反馈，使用LLM对需求文档进行精炼优化"""
         # 1. 加载当前项目的 user_requirements
@@ -147,23 +141,17 @@ class ProjectRequirementsService:
 
         from backend.database.model import BranchWorkspaceModel
 
-        ws_obj = None
-        if workspace_id is not None:
-            ws_res = await session.execute(
-                select(BranchWorkspaceModel).where(
-                    BranchWorkspaceModel.id == workspace_id,
-                    BranchWorkspaceModel.project_id == project_id,
-                )
+        ws_res = await session.execute(
+            select(BranchWorkspaceModel).where(
+                BranchWorkspaceModel.id == workspace_id,
+                BranchWorkspaceModel.project_id == project_id,
             )
-            ws_obj = ws_res.scalar_one_or_none()
-            if ws_obj is None:
-                raise ValueError(f"Workspace {workspace_id} not found in project {project_id}")
-
-        current_requirements = (
-            (ws_obj.user_requirements if ws_obj.user_requirements is not None else "")
-            if ws_obj is not None
-            else (project.user_requirements if project.user_requirements is not None else "")
         )
+        ws_obj = ws_res.scalar_one_or_none()
+        if ws_obj is None:
+            raise ValueError(f"Workspace {workspace_id} not found in project {project_id}")
+
+        current_requirements = ws_obj.user_requirements if ws_obj.user_requirements is not None else ""
 
         # 2. 加载最近30条审计日志
         audit_result = await session.execute(
@@ -203,10 +191,7 @@ class ProjectRequirementsService:
             raise ValueError("llm_refinement_failed")
 
         # 6. 更新需求
-        if ws_obj is not None:
-            ws_obj.user_requirements = llm_result
-        else:
-            project.user_requirements = llm_result
+        ws_obj.user_requirements = llm_result
         await session.flush()
 
         # 7. 插入审计日志
@@ -216,8 +201,8 @@ class ProjectRequirementsService:
             project_id=project_id,
             action_type="refine_user_requirements",
             summary="通过LLM精炼优化用户需求文档",
-            target_type="workspace" if ws_obj is not None else "project",
-            target_id=str(workspace_id if ws_obj is not None else project_id),
+            target_type="workspace",
+            target_id=str(workspace_id),
             actor=actor,
             diff=diff,
         )

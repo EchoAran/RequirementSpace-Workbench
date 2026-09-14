@@ -3,7 +3,6 @@ Version Control Merge Request REST API Routes.
 MR 创建、列表、详情、评论、审批、关闭。
 """
 
-import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

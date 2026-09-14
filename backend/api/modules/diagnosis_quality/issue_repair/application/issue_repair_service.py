@@ -102,7 +102,6 @@ _ISSUE_CODE_TO_STAGE: dict[str, str] = {
     "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA": "what",
     "DUPLICATE_SCENARIO_NAME": "what",
     # How stage
-    "LEAF_FEATURE_WITHOUT_FLOW": "how",
     "FLOW_WITHOUT_FEATURE": "how",
     "FLOW_WITHOUT_STEPS": "how",
     "ACTOR_ACTION_STEP_WITHOUT_ACTOR": "how",
@@ -123,7 +122,6 @@ _AI_SOLVERS: dict[str, object] = {
     "SCOPE_WITHOUT_REASON": ScopeReasonSolver(),
     "LEAF_FEATURE_WITHOUT_ACTOR": ActorFeatureCoverageSolver(),
     "BUSINESS_OBJECT_WITHOUT_ATTRIBUTES": BusinessObjectAttributeSolver(),
-    "LEAF_FEATURE_WITHOUT_FLOW": FlowFeatureCoverageSolver(),
     "FLOW_WITHOUT_FEATURE": FlowFeatureCoverageSolver(),
     "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO": ScenarioCoverageSolver(),
     # P4 P1: Relationship solvers
@@ -161,7 +159,7 @@ class IssueRepairService:
         target: dict | None,
         metadata: dict,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
     ) -> dict:
@@ -296,7 +294,7 @@ class IssueRepairService:
                 issue_code,
                 stage,
                 issue_target,
-                getattr(resolution, "draftId", None),
+                resolution.draftId,
             )
 
         result = resolution.to_dict()
@@ -341,7 +339,7 @@ class IssueRepairService:
         ai_solver,
         metadata: dict,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
     ) -> dict:
@@ -373,7 +371,7 @@ class IssueRepairService:
                 project_id=project_id, issue_code=issue_code,
                 issue_id=issue_id, stage=stage, target=target,
                 issue_fp=issue_fp, context_hash=context_hash,
-                result=result, session=session,
+                result=result, session=session, workspace_id=workspace_id,
             )
 
         if not result.candidates:
@@ -473,7 +471,7 @@ class IssueRepairService:
         stage: str,
         ai_solver,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> RepairResult:
         try:
             return await ai_solver.solve(
@@ -529,7 +527,7 @@ class IssueRepairService:
                 issue_code,
                 stage,
                 issue_target,
-                getattr(resolution, "draftId", None),
+                resolution.draftId,
             )
         response = resolution.to_dict()
         response["project_id"] = project_id
@@ -576,7 +574,7 @@ class IssueRepairService:
         context_hash: str,
         candidate,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
     ) -> dict:
@@ -639,6 +637,7 @@ class IssueRepairService:
         context_hash: str,
         result: RepairResult,
         session: AsyncSession,
+        workspace_id: int,
     ) -> dict:
         """Validate multiple AI candidates and create a ChoiceGroup."""
         from backend.api.modules.decision_workflow.public import ChoiceService
@@ -666,6 +665,7 @@ class IssueRepairService:
                 context_hash=context_hash,
                 candidates=valid_candidates,
                 session=session,
+                workspace_id=workspace_id,
             )
             return {
                 "project_id": project_id,
@@ -722,7 +722,7 @@ class IssueRepairService:
         project_id: int,
         stage: str,
         session: AsyncSession,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> list[Issue]:
         detector = _STAGE_DETECTORS.get(stage)
         if detector is None:
@@ -809,7 +809,7 @@ class IssueRepairService:
             "LEAF_FEATURE_WITHOUT_ACTOR", "ACTOR_WITHOUT_FEATURE",
             "FEATURE_ACTOR_PAIR_WITHOUT_SCENARIO", "SCENARIO_ACTOR_NOT_IN_FEATURE_ACTORS",
             "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA", "DUPLICATE_SCENARIO_NAME",
-            "LEAF_FEATURE_WITHOUT_FLOW", "FLOW_WITHOUT_FEATURE", "FLOW_WITHOUT_STEPS",
+            "FLOW_WITHOUT_FEATURE", "FLOW_WITHOUT_STEPS",
             "ACTOR_ACTION_STEP_WITHOUT_ACTOR", "INVALID_STEP_ACTOR", "INVALID_STEP_BUSINESS_OBJECT",
             "JUDGMENT_STEP_WITH_TOO_FEW_BRANCHES",
             "UNREACHABLE_FLOW_STEP", "BUSINESS_OBJECT_WITHOUT_USAGE",

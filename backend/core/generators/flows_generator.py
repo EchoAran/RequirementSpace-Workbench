@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from backend.core.generators.base_generator import BaseGenerator, GenerateInput
@@ -12,71 +12,151 @@ from backend.core.generators.prompts import (
 from backend.schemas import ActorNode, FeatureNode
 
 
-# 为流程生成器定义专属的输入类型
 @dataclass
 class FlowsGeneratorInput(GenerateInput):
     user_requirements: str
     actors: list[ActorNode]
     features: list[FeatureNode]
+    rules: list[dict[str, Any]] = field(default_factory=list)
+    scenarios: list[dict[str, Any]] = field(default_factory=list)
+    acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
+    context_hash: str = ""
     user_feedback: str | None = None
 
+
 class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
+    """Generates business flows and object specifications using LLMHandler."""
+
     async def generate(
         self,
         input_data: FlowsGeneratorInput,
         use_combined_prompt: bool = False,
     ) -> dict:
-        actors, features = self._serialize_prompt_context(input_data)
+        (
+            actors,
+            features,
+            rules,
+            scenarios,
+            acceptance_criteria,
+        ) = self._serialize_prompt_context(input_data)
         if use_combined_prompt:
             return await self._generate_combined(
                 input_data,
                 actors,
                 features,
+                rules,
+                scenarios,
+                acceptance_criteria,
             )
         return await self._generate_sequential(
             input_data,
             actors,
             features,
+            rules,
+            scenarios,
+            acceptance_criteria,
         )
 
     @staticmethod
     def _serialize_prompt_context(
         input_data: FlowsGeneratorInput,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str, str, str]:
         actors_payload = ActorNode.schema(
             many=True,
-            only=("actorId", "actorName", "actorDescription")
+            only=("actorId", "actorName", "actorDescription"),
         ).dump(input_data.actors)
         actors = json.dumps(
             {"actors": actors_payload},
             ensure_ascii=False,
-            indent=2
+            indent=2,
         )
         features_payload = FeatureNode.schema(
             many=True,
-            only=("featureId", "featureName", "featureDescription", "actorIds")
-        ).dump(node for node in input_data.features if len(node.childrenIds) == 0)      # 筛选出没有孩子的结点，即叶子结点
+            only=("featureId", "featureName", "featureDescription", "actorIds"),
+        ).dump(node for node in input_data.features if len(node.childrenIds) == 0)
         features = json.dumps(
             {"features": features_payload},
             ensure_ascii=False,
-            indent=2
+            indent=2,
         )
-        return actors, features
+        rules_payload = [
+            {
+                "rule_id": r.get("id"),
+                "logical_uuid": r.get("logical_uuid"),
+                "title": r.get("title"),
+                "statement": r.get("statement"),
+                "confirmation_status": r.get("confirmation_status"),
+                "parent_rule_uuid": r.get("parent_rule_uuid"),
+                "source_links": [
+                    {
+                        "target_kind": lnk.get("target_kind"),
+                        "target_logical_uuid": lnk.get("target_logical_uuid"),
+                        "link_purpose": lnk.get("link_purpose"),
+                        "context_text": lnk.get("context_text", ""),
+                    }
+                    for lnk in (r.get("links") or r.get("source_links") or [])
+                ],
+            }
+            for r in input_data.rules
+        ]
+        rules = json.dumps(
+            {"rules": rules_payload},
+            ensure_ascii=False,
+            indent=2,
+        )
+        scenarios_payload = [
+            {
+                "scenario_id": s.get("id"),
+                "logical_uuid": s.get("logical_uuid"),
+                "feature_id": s.get("feature_id"),
+                "actor_id": s.get("actor_id"),
+                "name": s.get("name"),
+                "content": s.get("content"),
+            }
+            for s in input_data.scenarios
+        ]
+        scenarios = json.dumps(
+            {"scenarios": scenarios_payload},
+            ensure_ascii=False,
+            indent=2,
+        )
+        ac_payload = [
+            {
+                "ac_id": ac.get("id"),
+                "logical_uuid": ac.get("logical_uuid"),
+                "scenario_id": ac.get("scenario_id"),
+                "content": ac.get("content"),
+            }
+            for ac in input_data.acceptance_criteria
+        ]
+        acceptance_criteria = json.dumps(
+            {"acceptance_criteria": ac_payload},
+            ensure_ascii=False,
+            indent=2,
+        )
+        return actors, features, rules, scenarios, acceptance_criteria
 
     async def _generate_combined(
         self,
         input_data: FlowsGeneratorInput,
         actors: str,
         features: str,
+        rules: str,
+        scenarios: str,
+        acceptance_criteria: str,
     ) -> dict:
         response = await self._llm_handler.call_llm(
             prompt=flows_generate_combined_prompt.replace(
-                "{{user_requirements}}", f"{input_data.user_requirements}").replace(
-                "{{actors}}", f"{actors}").replace(
-                "{{features}}", f"{features}"
-            ),
+                "{{user_requirements}}", f"{input_data.user_requirements}"
+            )
+            .replace("{{actors}}", f"{actors}")
+            .replace("{{features}}", f"{features}")
+            .replace("{{scenarios}}", f"{scenarios}")
+            .replace("{{acceptance_criteria}}", f"{acceptance_criteria}")
+            .replace("{{rules}}", f"{rules}"),
             query=input_data.user_feedback or "",
             print_log=False,
+            raise_on_failure=True,
             protected_inputs=self._protected_inputs(input_data),
         )
         result = self._loads_llm_json(response)
@@ -89,32 +169,41 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
         input_data: FlowsGeneratorInput,
         actors: str,
         features: str,
+        rules: str,
+        scenarios: str,
+        acceptance_criteria: str,
     ) -> dict:
         user_requirements = input_data.user_requirements
         feedback = input_data.user_feedback or ""
         flows_response = await self._llm_handler.call_llm(
             prompt=flows_generate_prompt.replace(
-                "{{user_requirements}}",f"{user_requirements}").replace(
-                "{{actors}}", f"{actors}").replace(
-                "{{features}}", f"{features}"
-            ),
+                "{{user_requirements}}", f"{user_requirements}"
+            )
+            .replace("{{actors}}", f"{actors}")
+            .replace("{{features}}", f"{features}")
+            .replace("{{scenarios}}", f"{scenarios}")
+            .replace("{{acceptance_criteria}}", f"{acceptance_criteria}")
+            .replace("{{rules}}", f"{rules}"),
             query=feedback,
             print_log=False,
+            raise_on_failure=True,
             protected_inputs=self._protected_inputs(input_data),
         )
         flows_result = self._loads_llm_json(flows_response)
         if not isinstance(flows_result, dict):
             raise ValueError("invalid_llm_response")
 
-        flows_ = self._dumps_prompt_payload({"flows": flows_result.get("flows", [])})
+        flows_ = self._dumps_prompt_payload(
+            {"flows": flows_result.get("flows", [])}
+        )
 
         business_objects_response = await self._llm_handler.call_llm(
             prompt=business_objects_generate_prompt.replace(
-                "{{user_requirements}}", f"{user_requirements}").replace(
-                "{{flows}}", flows_
-            ),
+                "{{user_requirements}}", f"{user_requirements}"
+            ).replace("{{flows}}", flows_),
             query=feedback,
             print_log=False,
+            raise_on_failure=True,
             protected_inputs=self._protected_inputs(input_data),
         )
         business_objects_result = self._loads_llm_json(business_objects_response)
@@ -132,12 +221,13 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
 
         relations_response = await self._llm_handler.call_llm(
             prompt=business_object_in_flows_prompt.replace(
-                "{{user_requirements}}", f"{user_requirements}").replace(
-                "{{flows}}", flows_).replace(
-                "{{business_objects}}", business_objects_
-            ),
+                "{{user_requirements}}", f"{user_requirements}"
+            )
+            .replace("{{flows}}", flows_)
+            .replace("{{business_objects}}", business_objects_),
             query=feedback,
             print_log=False,
+            raise_on_failure=True,
             protected_inputs=self._protected_inputs(input_data),
         )
         relations_result = self._loads_llm_json(relations_response)
@@ -152,7 +242,6 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
     def _loads_llm_json(response: str | None) -> Any:
         if response is None:
             raise ValueError("empty_llm_response")
-
         return json.loads(response)
 
     @staticmethod
@@ -169,13 +258,15 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
         business_objects_result: dict,
         relations_result: Any,
     ) -> dict:
-        flows = flows_result.get("flows", [])
+        flows = flows_result.get("flows")
         if not isinstance(flows, list):
-            flows = []
+            raise ValueError("invalid_flows_structure: 'flows' must be a list")
 
-        business_objects = business_objects_result.get("business_objects", [])
+        business_objects = business_objects_result.get("business_objects")
         if not isinstance(business_objects, list):
-            business_objects = []
+            raise ValueError(
+                "invalid_business_objects_structure: 'business_objects' must be a list"
+            )
 
         if isinstance(relations_result, dict):
             relations = relations_result.get("business_object_in_flows")
@@ -185,7 +276,9 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
             relations = relations_result
 
         if not isinstance(relations, list):
-            relations = []
+            raise ValueError(
+                "invalid_relations_structure: expected list of flow object relations"
+            )
 
         relation_by_flow_name = {
             relation.get("flow_name"): relation
@@ -195,7 +288,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
 
         for flow_index, flow in enumerate(flows):
             if not isinstance(flow, dict):
-                continue
+                raise ValueError("invalid_flow_item: expected dictionary")
 
             relation = relation_by_flow_name.get(flow.get("flow_name"))
             if relation is None and flow_index < len(relations):
@@ -214,7 +307,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
 
             for step in flow.get("flow_steps", []):
                 if not isinstance(step, dict):
-                    continue
+                    raise ValueError("invalid_step_item: expected dictionary")
 
                 step_relation = step_relation_by_number.get(
                     step.get("step_number"),

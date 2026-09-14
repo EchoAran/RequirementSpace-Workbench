@@ -78,46 +78,32 @@ async def _generate_features(
     feedback: str,
     actor_nodes: list[ActorNode],
 ) -> list[dict]:
-    if hasattr(feature_generation_service, "_skill_generator"):
-        requirement_text = user_requirements
-        if feedback:
-            requirement_text = (
-                f"{user_requirements}\n\n"
-                f"User feedback for regeneration:\n{feedback}"
-            )
-        actor_names = [actor.actorName for actor in actor_nodes]
-        prompt = feature_generation_service._skill_generator._build_prompt(
-            requirement_text,
-            actor_names,
+    requirement_text = user_requirements
+    if feedback:
+        requirement_text = (
+            f"{user_requirements}\n\n"
+            f"User feedback for regeneration:\n{feedback}"
         )
-        raw_feature_tree = (
-            await feature_generation_service._llm_json_client.ask_json(
-                prompt,
-                protected_inputs=collect_protected_texts(
-                    user_requirements,
-                    feedback,
-                    actor_names,
-                ),
-            )
-        )
-        return feature_generation_service._adapter.to_current_features(
-            raw_feature_tree=raw_feature_tree,
-            actors=actor_nodes,
-        )
-
-    from backend.core.generators.features_generator import (
-        FeaturesGenerator,
-        FeaturesGeneratorInput,
+    actor_names = [actor.actorName for actor in actor_nodes]
+    prompt = feature_generation_service._skill_generator._build_prompt(
+        requirement_text,
+        actor_names,
     )
-
-    raw_features = await FeaturesGenerator().generate(
-        FeaturesGeneratorInput(
-            user_requirements=user_requirements,
-            actors=actor_nodes,
-            user_feedback=feedback,
+    raw_feature_tree = (
+        await feature_generation_service._llm_json_client.ask_json(
+            prompt,
+            protected_inputs=collect_protected_texts(
+                user_requirements,
+                feedback,
+                actor_names,
+            ),
         )
     )
-    return raw_features.get("features", [])
+    return feature_generation_service._adapter.to_current_features(
+        raw_feature_tree=raw_feature_tree,
+        actors=actor_nodes,
+    )
+
 
 def _stable_feature_id(value) -> int:
     try:

@@ -7,17 +7,17 @@ async def mark_perception_jobs_stale(
     project_id: int,
     stages: set[str],
     session,
+    workspace_id: int,
     perception_kinds: set[str] | None = None,
     clear_active_slot: bool = True,
-    workspace_id: int | None = None,
 ) -> None:
     await PerceptionJobInvalidator.mark_perception_jobs_stale(
         project_id=project_id,
         stages=stages,
         session=session,
+        workspace_id=workspace_id,
         perception_kinds=perception_kinds,
         clear_active_slot=clear_active_slot,
-        workspace_id=workspace_id,
     )
 
 
@@ -26,7 +26,7 @@ async def _clear_active_slot_if_affected(
     stages: set[str],
     perception_kinds: set[str] | None,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> None:
     await PerceptionJobInvalidator._clear_active_slot_if_affected(
         project_id=project_id,

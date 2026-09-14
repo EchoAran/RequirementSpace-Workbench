@@ -35,7 +35,7 @@ class ScopeGenerationDraftCreateRequest(BaseModel):
     project_id: str
 
 
-class GeneratedScopePreview(BaseModel):
+class GeneratedScopePreview(CamelModel):
     feature_id: int
     feature_name: str
     scope_status: str
@@ -48,18 +48,18 @@ class GeneratedScopePreview(BaseModel):
     kano_category_name: str | None = None
 
 
-class ScopeGenerationDraftResponse(BaseModel):
+class ScopeGenerationDraftResponse(CamelModel):
     draft_id: str
     project_id: str
     scopes: list[GeneratedScopePreview]
 
 
-class ScopeGenerationConfirmResponse(BaseModel):
+class ScopeGenerationConfirmResponse(CamelModel):
     project_id: str
     scope_count: int
     message: str = "scopes_created"
 
 
-class ScopeGenerationDraftDiscardResponse(BaseModel):
+class ScopeGenerationDraftDiscardResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"

@@ -1,15 +1,4 @@
-"""
-Version Control Observability Helpers (Phase 7).
-
-封装版本控制领域的结构化日志与失败审计，作为运维信号的统一入口：
-  - 领域日志统一走 core/logging 的 log_event（category=domain，可开关），
-    覆盖迁移、提交冲突、合并冲突/阻塞/head 变化、diff/合并耗时；
-  - 失败审计（record_vc_failure_event）留在路由层，用独立会话持久化，避免随出错请求回滚丢失。
-
-分层约定：
-  - service 层（diff/merge/baseline_migration）调用 log_vc_event / monitor_vc_operation / log_vc_duration；
-  - 路由层调用 audit_vc_failure（先记日志再落审计），并负责成功事件的 record_vc_event。
-"""
+"""Structured logging and failure auditing for version-control operations."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +9,7 @@ from contextlib import contextmanager
 from backend.api.modules.version_control.audit import record_vc_failure_event
 from backend.core.logging.logger import get_logger, log_event
 
-# 版本控制领域日志统一使用 domain 类目（默认关闭，运维按需开启 LOG_ENABLED_CATEGORIES=...,domain）。
+# Version-control events share one independently configurable logging category.
 VC_CATEGORY = "domain"
 vc_logger = get_logger("backend.version_control")
 

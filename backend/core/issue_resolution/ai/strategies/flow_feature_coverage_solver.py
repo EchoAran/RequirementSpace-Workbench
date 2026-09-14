@@ -1,6 +1,6 @@
-"""AI Solver for LEAF_FEATURE_WITHOUT_FLOW and FLOW_WITHOUT_FEATURE.
+"""AI Solver for FLOW_WITHOUT_FEATURE.
 
-Matches flows to features (or vice versa) by semantic analysis.
+Matches flows to leaf features by semantic analysis.
 - High-confidence single match → repair_draft (addLinks.flow_feature_relation)
 - Multiple matches → choice_group
 - No match → manual_action
@@ -22,11 +22,11 @@ from backend.database.model import FeatureModel, FlowModel, ProjectModel
 
 
 class FlowFeatureCoverageSolver(BaseIssueAISolver):
-    """AI solver for LEAF_FEATURE_WITHOUT_FLOW and FLOW_WITHOUT_FEATURE."""
+    """AI solver for FLOW_WITHOUT_FEATURE."""
 
     @property
     def supported_issue_codes(self) -> list[str]:
-        return ["LEAF_FEATURE_WITHOUT_FLOW", "FLOW_WITHOUT_FEATURE"]
+        return ["FLOW_WITHOUT_FEATURE"]
 
     def repair_type(self) -> str:
         return "bind_flow_feature"
@@ -55,7 +55,7 @@ class FlowFeatureCoverageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         target_id = int(target.get("target_id") or target.get("targetId") or 0) if target else 0
 
@@ -64,65 +64,37 @@ class FlowFeatureCoverageSolver(BaseIssueAISolver):
         )
         project = project_res.scalar_one_or_none()
 
-        if issue_code == "LEAF_FEATURE_WITHOUT_FLOW":
-            # Match feature → flows
-            res = await session.execute(self._scope(
-                select(FeatureModel).where(
-                    FeatureModel.id == target_id,
-                    FeatureModel.project_id == project_id,
-                )
-            , FeatureModel, workspace_id))
-            feature = res.scalar_one_or_none()
-
-            flows_res = await session.execute(self._scope(
-                select(FlowModel).where(FlowModel.project_id == project_id)
-            , FlowModel, workspace_id))
-            flows = flows_res.scalars().all()
-            matches = [{"id": f.id, "name": f.name, "description": f.description} for f in flows]
-
-            return {
-                "user_requirements": project.user_requirements if project else "",
-                "target_type": "feature",
-                "target_name": feature.name if feature else "",
-                "target_description": feature.description if feature else "",
-                "target_id": target_id,
-                "feature_context": "",
-                "target_match_label": "流程",
-                "matches": matches,
-            }
-        else:
-            # FLOW_WITHOUT_FEATURE: match flow → features
-            res = await session.execute(self._scope(
-                select(FlowModel).where(
-                    FlowModel.id == target_id,
-                    FlowModel.project_id == project_id,
-                )
-            , FlowModel, workspace_id))
-            flow = res.scalar_one_or_none()
-
-            features_res = await session.execute(self._scope(
-                select(FeatureModel).where(FeatureModel.project_id == project_id)
-            , FeatureModel, workspace_id))
-            features = features_res.scalars().all()
-            # Determine leaf features (no FeatureRelation where they are parent)
-            from backend.database.model import FeatureRelationModel
-            parent_ids_res = await session.execute(
-                select(FeatureRelationModel.parent_feature_id).distinct()
+        res = await session.execute(self._scope(
+            select(FlowModel).where(
+                FlowModel.id == target_id,
+                FlowModel.project_id == project_id,
             )
-            parent_ids = {row[0] for row in parent_ids_res.fetchall()}
-            leaf_features = [f for f in features if f.id not in parent_ids]
-            matches = [{"id": f.id, "name": f.name, "description": f.description} for f in leaf_features]
+        , FlowModel, workspace_id))
+        flow = res.scalar_one_or_none()
 
-            return {
-                "user_requirements": project.user_requirements if project else "",
-                "target_type": "flow",
-                "target_name": flow.name if flow else "",
-                "target_description": flow.description if flow else "",
-                "target_id": target_id,
-                "feature_context": "",
-                "target_match_label": "叶子功能",
-                "matches": matches,
-            }
+        features_res = await session.execute(self._scope(
+            select(FeatureModel).where(FeatureModel.project_id == project_id)
+        , FeatureModel, workspace_id))
+        features = features_res.scalars().all()
+        # Determine leaf features (no FeatureRelation where they are parent)
+        from backend.database.model import FeatureRelationModel
+        parent_ids_res = await session.execute(
+            select(FeatureRelationModel.parent_feature_id).distinct()
+        )
+        parent_ids = {row[0] for row in parent_ids_res.fetchall()}
+        leaf_features = [f for f in features if f.id not in parent_ids]
+        matches = [{"id": f.id, "name": f.name, "description": f.description} for f in leaf_features]
+
+        return {
+            "user_requirements": project.user_requirements if project else "",
+            "target_type": "flow",
+            "target_name": flow.name if flow else "",
+            "target_description": flow.description if flow else "",
+            "target_id": target_id,
+            "feature_context": "",
+            "target_match_label": "叶子功能",
+            "matches": matches,
+        }
 
     def parse_response(self, raw_json: dict) -> RepairResult:
         """Same pattern as ActorFeatureCoverageSolver:

@@ -2,7 +2,7 @@
 from pydantic import Field
 
 from backend.api.base_schema import CamelModel
-from backend.api.modules.diagnosis_quality.issue_compat.schemas import (
+from backend.api.modules.diagnosis_quality.issue_repair.schemas import (
     IssueTargetResponse,
 )
 

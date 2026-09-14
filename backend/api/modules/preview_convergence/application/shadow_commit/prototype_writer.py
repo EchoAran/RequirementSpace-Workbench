@@ -1,8 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.model import (
+    BranchWorkspaceModel,
     PreviewShadowDraftModel,
     PrototypePreviewModel,
+    RequirementBranchModel,
 )
 
 from .common import _CommitIdMaps
@@ -71,6 +73,7 @@ def _map_prototype_pages(
 
 async def _copy_prototype_preview(
     project_id: int,
+    workspace_id: int,
     draft: PreviewShadowDraftModel,
     patch: dict,
     id_maps: _CommitIdMaps,
@@ -95,10 +98,16 @@ async def _copy_prototype_preview(
             "css": prototype_preview.get("css", ""),
         }
     )
+    workspace = await session.get(BranchWorkspaceModel, workspace_id)
+    branch_ref = None
+    if workspace is not None:
+        branch = await session.get(RequirementBranchModel, workspace.branch_id)
+        branch_ref = branch.public_id if branch else None
     detail = (
         await prototype_generation_service._project_service.get_project_detail(
             project_id=project_id,
             session=session,
+            branch_ref=branch_ref,
         )
     )
     session.add(

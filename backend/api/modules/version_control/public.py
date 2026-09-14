@@ -2,10 +2,6 @@
 Version Control Domain Module Public Facade.
 对外导出的稳定 API 接口与迁移工具。
 """
-from backend.api.modules.version_control.application.baseline_migration import (
-    migrate_all_projects_to_version_control,
-    migrate_project_to_version_control,
-)
 from backend.api.modules.version_control.application.branch_service import (
     create_branch,
     delete_branch,
@@ -13,6 +9,11 @@ from backend.api.modules.version_control.application.branch_service import (
     list_branches,
     rename_branch,
     resolve_branch_context,
+)
+from backend.api.modules.version_control.application.clean_initialization import (
+    create_initial_workspace,
+    finalize_initial_commit,
+    initialize_project_version_control,
 )
 from backend.api.modules.version_control.application.commit_service import (
     create_commit,
@@ -75,9 +76,11 @@ __all__ = [
     "copy_workspace",
     "create_branch",
     "create_commit",
+    "create_initial_workspace",
     "create_merge_request",
     "delete_branch",
     "ensure_logical_uuid",
+    "finalize_initial_commit",
     "find_entity_meta",
     "generate_logical_uuid",
     "get_branch_detail",
@@ -86,13 +89,11 @@ __all__ = [
     "get_entity_diff",
     "get_merge_preview",
     "get_mr_detail",
+    "initialize_project_version_control",
     "list_branches",
     "list_commits",
     "list_merge_requests",
     "map_branch_error",
-
-    "migrate_all_projects_to_version_control",
-    "migrate_project_to_version_control",
     "perform_merge",
     "rename_branch",
     "resolve_branch_context",
@@ -104,4 +105,3 @@ __all__ = [
     "serialize_workspace",
     "to_deterministic_json",
 ]
-

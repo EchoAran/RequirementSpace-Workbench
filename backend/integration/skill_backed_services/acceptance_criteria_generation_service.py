@@ -39,7 +39,7 @@ class SkillBackedAcceptanceCriteriaGenerationService(
         generation_mode: str,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         (
             user_requirements,

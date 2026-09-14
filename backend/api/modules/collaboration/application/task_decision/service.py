@@ -1,6 +1,7 @@
 from .batch import decide_batch_task
 from .common import _load_decidable_task
 from .conflict import decide_conflict_task
+from .flow_refinement_choice import decide_flow_refinement_choice_task
 from .single import decide_single_task
 
 
@@ -35,6 +36,12 @@ async def decide_task(
     )
     if task.task_type == "confirm_nodes":
         return await decide_batch_task(
+            *common_arguments,
+            snapshot_service,
+            now,
+        )
+    if task.target_type == "flow_refinement_choice":
+        return await decide_flow_refinement_choice_task(
             *common_arguments,
             snapshot_service,
             now,

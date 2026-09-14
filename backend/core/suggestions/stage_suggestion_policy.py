@@ -17,7 +17,7 @@ class StageSuggestionPolicy(ABC):
         self,
         project_id: int,
         session,
+        workspace_id: int,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> NextSuggestion:
         pass

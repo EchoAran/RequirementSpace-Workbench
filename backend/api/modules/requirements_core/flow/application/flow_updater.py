@@ -20,9 +20,7 @@ async def load_flow_for_update(session, project_id: int, flow_id: int):
             selectinload(FlowModel.steps).selectinload(
                 FlowStepModel.output_business_objects
             ),
-            selectinload(FlowModel.steps).selectinload(
-                FlowStepModel.next_steps
-            ),
+            selectinload(FlowModel.transitions),
         )
     )
     flow = result.scalar_one_or_none()

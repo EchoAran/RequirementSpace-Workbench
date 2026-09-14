@@ -100,7 +100,7 @@ class SkillBackedPrototypePageGenerator(PrototypePageGeneratorPort):
         html = str(code.get("HTML", ""))
         javascript = str(code.get("Javascript", ""))
         css = str(code.get("CSS", ""))
-        if not html and not javascript and not css:
+        if not isinstance(code.get("HTML"), str) or not html.strip():
             raise ValueError("invalid_skill_payload")
         return {
             "HTML": html,

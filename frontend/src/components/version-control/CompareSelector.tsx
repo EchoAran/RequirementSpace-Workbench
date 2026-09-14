@@ -24,7 +24,7 @@ interface CompareSelectorProps {
   projectId: string;
   baseRef?: string;
   targetRef?: string;
-  branchRef?: string;
+  branchRef: string;
   onChange: (baseRef: string | undefined, targetRef: string | undefined) => void;
 }
 
@@ -42,7 +42,7 @@ function toRef(state: RefState): string {
   return `${state.kind}:${state.value}`;
 }
 
-export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'main', onChange }: CompareSelectorProps) {
+export function CompareSelector({ projectId, baseRef, targetRef, branchRef, onChange }: CompareSelectorProps) {
   const { t } = useTranslation();
   const branches = useWorkspaceStore((s) => s.branches);
   const [base, setBase] = useState<RefState>({ kind: 'workspace', value: branchRef });
@@ -66,11 +66,9 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
 
   // 从 URL 初始化（base_ref/target_ref 深链回读）。
   useEffect(() => {
-    const b = parseRef(baseRef);
-    const tg = parseRef(targetRef);
-    if (b) setBase(b);
-    if (tg) setTarget(tg);
-  }, [baseRef, targetRef]);
+    setBase(parseRef(baseRef) ?? { kind: 'workspace', value: branchRef });
+    setTarget(parseRef(targetRef) ?? { kind: 'workspace', value: branchRef });
+  }, [baseRef, targetRef, branchRef]);
 
   const swap = () => {
     setBase(target);
@@ -91,7 +89,7 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
     if (newKind === 'workspace') {
       defaultValue = branchRef;
     } else if (newKind === 'branch') {
-      defaultValue = branchChoices[0]?.public_id || 'main';
+      defaultValue = branchChoices.find((b) => b.public_id === branchRef || b.name === branchRef)?.public_id ?? '';
     } else if (newKind === 'commit') {
       defaultValue = commitOptions[0]?.public_id || '';
     }
@@ -103,7 +101,7 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
     if (state.kind === 'commit' && commitOptions.length > 0) {
       return commitOptions.some((c) => c.public_id === state.value);
     }
-    if (state.kind === 'branch' && branchChoices.length > 0) {
+    if (state.kind === 'branch') {
       return branchChoices.some((b) => b.public_id === state.value || b.name === state.value);
     }
     return true;
@@ -127,7 +125,7 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
         </select>
         {state.kind === 'workspace' && (
           <select
-            value={state.value}
+            value={branchChoices.find((b) => b.public_id === state.value || b.name === state.value)?.public_id ?? state.value}
             onChange={(e) => setState({ ...state, value: e.target.value })}
             aria-label={`${label} value`}
             className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
@@ -136,14 +134,14 @@ export function CompareSelector({ projectId, baseRef, targetRef, branchRef = 'ma
               <option value={branchRef}>{branchRef}</option>
             ) : (
               branchChoices.map((b) => (
-                <option key={b.public_id} value={b.name}>{b.name}</option>
+                <option key={b.public_id} value={b.public_id}>{b.name}</option>
               ))
             )}
           </select>
         )}
         {state.kind === 'branch' && (
           <select
-            value={state.value}
+            value={branchChoices.find((b) => b.public_id === state.value || b.name === state.value)?.public_id ?? state.value}
             onChange={(e) => setState({ ...state, value: e.target.value })}
             aria-label={`${label} value`}
             className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"

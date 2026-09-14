@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from backend.core.model_invariants.flow_invariants import (
+    validate_no_self_loop,
+    validate_transition_position,
+)
+from backend.core.model_invariants.rule_invariants import (
+    validate_rule_confirmation_status,
+    validate_rule_link_purpose,
+    validate_rule_link_target,
+    validate_rule_origin,
+    validate_rule_text,
+)
 
 
 @dataclass(frozen=True)
@@ -14,7 +26,13 @@ class _PatchSections:
     business_object_attributes: list
     flows: list
     flow_steps: list
+    flow_transitions: list
     scopes: list
+    domain_rules: list = field(default_factory=list)
+    rule_links: list = field(default_factory=list)
+    domain_rule_updates: list = field(default_factory=list)
+    rule_link_updates: list = field(default_factory=list)
+    transition_updates: list = field(default_factory=list)
 
     @classmethod
     def from_patch(cls, patch: dict) -> _PatchSections:
@@ -40,7 +58,13 @@ class _PatchSections:
             ),
             flows=patch.get("flows_added", []),
             flow_steps=patch.get("flow_steps_added", []),
+            flow_transitions=patch.get("flow_transitions_added", []),
             scopes=patch.get("scopes_added", []),
+            domain_rules=patch.get("domain_rules_added", []),
+            rule_links=patch.get("rule_links_added", []),
+            domain_rule_updates=patch.get("domain_rules_updated", []),
+            rule_link_updates=patch.get("rule_links_updated", []),
+            transition_updates=patch.get("flow_transitions_updated", []),
         )
 
 
@@ -52,6 +76,8 @@ class _TempIds:
     flows: set[str]
     business_objects: set[str]
     flow_steps: set[str]
+    domain_rules: set[str] = field(default_factory=set)
+    flow_transitions: set[str] = field(default_factory=set)
 
 
 def _validate_project_id(
@@ -87,6 +113,12 @@ def _collect_real_ids(base_snapshot: dict) -> dict[str, set]:
             for feature in features
             for scenario in feature.get("scenarios", [])
         },
+        "acceptance_criterion": {
+            criterion.get("id", criterion.get("criterion_id"))
+            for feature in features
+            for scenario in feature.get("scenarios", [])
+            for criterion in scenario.get("acceptance_criteria", [])
+        },
         "flow": {item["id"] for item in flows},
         "business_object": {
             item["id"]
@@ -96,6 +128,20 @@ def _collect_real_ids(base_snapshot: dict) -> dict[str, set]:
             step["id"]
             for flow in flows
             for step in flow.get("flow_steps", [])
+        },
+        "domain_rule": {
+            item["id"]
+            for item in base_snapshot.get("domain_rules", [])
+        },
+        "flow_transition": {
+            transition["id"]
+            for flow in flows
+            for transition in flow.get("transitions", [])
+        },
+        "rule_link": {
+            link["id"]
+            for rule in base_snapshot.get("domain_rules", [])
+            for link in rule.get("links", [])
         },
     }
 
@@ -144,9 +190,13 @@ def _verify_ref(
         "actor": "Actor",
         "feature": "Feature",
         "scenario": "Scenario",
+        "acceptance_criterion": "Acceptance Criterion",
         "flow": "Flow",
         "business_object": "Business Object",
         "flow_step": "Flow Step",
+        "domain_rule": "Domain Rule",
+        "flow_transition": "Flow Transition",
+        "rule_link": "Rule Link",
     }
     raise ValueError(
         f"{labels[ref_type]} ID {ref_id} in reference '{ref}' "
@@ -188,6 +238,8 @@ def _collect_temp_ids(sections: _PatchSections) -> _TempIds:
         ),
         (sections.flows, set(), "flows_added"),
         (sections.flow_steps, set(), "flow_steps_added"),
+        (sections.domain_rules, set(), "domain_rules_added"),
+        (sections.flow_transitions, set(), "flow_transitions_added"),
     )
     for items, category_ids, field_name in category_specs:
         for item in items:
@@ -205,6 +257,8 @@ def _collect_temp_ids(sections: _PatchSections) -> _TempIds:
         business_objects=category_specs[3][1],
         flows=category_specs[4][1],
         flow_steps=category_specs[5][1],
+        domain_rules=category_specs[6][1],
+        flow_transitions=category_specs[7][1],
     )
 
 
@@ -334,7 +388,6 @@ def _validate_step_references(
     actor_refs = step.get("actor_refs", [])
     input_bo_refs = step.get("input_bo_refs", [])
     output_bo_refs = step.get("output_bo_refs", [])
-    next_step_refs = step.get("next_step_refs", [])
     if step.get("step_type") == "actorAction" and not actor_refs:
         raise ValueError(
             f"Flow step '{step.get('name')}' of type 'actorAction' "
@@ -353,13 +406,231 @@ def _validate_step_references(
             "business_object",
             temp_ids.business_objects,
         ),
-        (next_step_refs, "flow_step", temp_ids.flow_steps),
     )
     for references, expected_type, allowed_temp_ids in reference_specs:
         for reference in references:
             _verify_ref(
                 reference,
                 expected_type,
+                allowed_temp_ids,
+                real_ids,
+                project_id,
+            )
+
+
+def _validate_flow_transitions(
+    sections: _PatchSections,
+    temp_ids: _TempIds,
+    real_ids: dict[str, set],
+    project_id: str,
+) -> None:
+    seen_transitions: set[tuple[str, str]] = set()
+    defaults_by_source: dict[str, str] = {}
+    for trans in sections.flow_transitions:
+        flow_ref = trans.get("flow_ref")
+        _verify_ref(
+            flow_ref,
+            "flow",
+            temp_ids.flows,
+            real_ids,
+            project_id,
+        )
+        source_ref = trans.get("source_step_ref")
+        target_ref = trans.get("target_step_ref")
+        _verify_ref(
+            source_ref,
+            "flow_step",
+            temp_ids.flow_steps,
+            real_ids,
+            project_id,
+        )
+        _verify_ref(
+            target_ref,
+            "flow_step",
+            temp_ids.flow_steps,
+            real_ids,
+            project_id,
+        )
+        validate_no_self_loop(source_ref, target_ref)
+        trans_key = (str(source_ref), str(target_ref))
+        if trans_key in seen_transitions:
+            raise ValueError(
+                f"Duplicate transition from step {source_ref} to step {target_ref} already exists in patch."
+            )
+        seen_transitions.add(trans_key)
+
+        position = trans.get("position")
+        if position is not None:
+            validate_transition_position(position)
+
+        if trans.get("is_default"):
+            if str(source_ref) in defaults_by_source:
+                raise ValueError(
+                    f"Source step already has default transition ({source_ref})"
+                )
+            defaults_by_source[str(source_ref)] = trans.get("temp_id", str(source_ref))
+
+
+def _validate_domain_rules(
+    sections: _PatchSections,
+    temp_ids: _TempIds,
+    real_ids: dict[str, set],
+    project_id: str,
+) -> None:
+    parent_map: dict[str, str] = {}
+    for rule in sections.domain_rules:
+        validate_rule_text(rule.get("title", ""), rule.get("statement", ""))
+        validate_rule_origin(rule.get("origin", ""))
+        validate_rule_confirmation_status(
+            rule.get("confirmation_status", "")
+        )
+        parent_ref = rule.get("parent_ref")
+        rule_ref = rule.get("temp_id")
+        if parent_ref:
+            _verify_ref(
+                parent_ref,
+                "domain_rule",
+                temp_ids.domain_rules,
+                real_ids,
+                project_id,
+            )
+            parent_map[str(rule_ref)] = str(parent_ref)
+
+    for rule_ref, parent_ref in parent_map.items():
+        visited = {rule_ref}
+        current = parent_ref
+        while current in parent_map:
+            if current in visited:
+                raise ValueError(
+                    "Cyclic parent hierarchy detected for domain rule."
+                )
+            visited.add(current)
+            current = parent_map[current]
+
+    for link in sections.rule_links:
+        _verify_ref(
+            link.get("rule_ref"),
+            "domain_rule",
+            temp_ids.domain_rules,
+            real_ids,
+            project_id,
+        )
+        target_kind = link.get("target_kind", "")
+        target_ref = link.get("target_ref", "")
+        validate_rule_link_target(target_kind, target_ref)
+        validate_rule_link_purpose(link.get("link_purpose", ""))
+        if target_kind != "knowledge":
+            temp_ids_by_kind = {
+                "feature": temp_ids.features,
+                "scenario": temp_ids.scenarios,
+                "acceptance_criterion": set(),
+                "flow": temp_ids.flows,
+                "flow_step": temp_ids.flow_steps,
+                "flow_transition": temp_ids.flow_transitions,
+            }
+            allowed_temp_ids = temp_ids_by_kind.get(target_kind)
+            if allowed_temp_ids is None:
+                raise ValueError(
+                    f"Unsupported shadow rule link target '{target_kind}'."
+                )
+            _verify_ref(
+                target_ref,
+                target_kind,
+                allowed_temp_ids,
+                real_ids,
+                project_id,
+            )
+
+    for update in sections.domain_rule_updates:
+        _verify_ref(
+            update.get("rule_ref"),
+            "domain_rule",
+            temp_ids.domain_rules,
+            real_ids,
+            project_id,
+        )
+        if "title" in update or "statement" in update:
+            validate_rule_text(
+                update.get("title", "placeholder"),
+                update.get("statement", "placeholder"),
+            )
+        if "origin" in update:
+            validate_rule_origin(update["origin"])
+        if "confirmation_status" in update:
+            validate_rule_confirmation_status(update["confirmation_status"])
+
+    for update in sections.rule_link_updates:
+        _verify_ref(
+            update.get("rule_link_ref"),
+            "rule_link",
+            set(),
+            real_ids,
+            project_id,
+        )
+        if "rule_ref" in update:
+            _verify_ref(
+                update["rule_ref"],
+                "domain_rule",
+                temp_ids.domain_rules,
+                real_ids,
+                project_id,
+            )
+        if "link_purpose" in update:
+            validate_rule_link_purpose(update["link_purpose"])
+        if "target_kind" in update or "target_ref" in update:
+            if "target_kind" not in update or "target_ref" not in update:
+                raise ValueError(
+                    "Rule link target_kind and target_ref must be updated together."
+                )
+            validate_rule_link_target(
+                update["target_kind"],
+                update["target_ref"],
+            )
+
+
+def _validate_transition_updates(
+    sections: _PatchSections,
+    temp_ids: _TempIds,
+    real_ids: dict[str, set],
+    project_id: str,
+) -> None:
+    for update in sections.transition_updates:
+        _verify_ref(
+            update.get("transition_ref"),
+            "flow_transition",
+            temp_ids.flow_transitions,
+            real_ids,
+            project_id,
+        )
+        for field_name in ("source_step_ref", "target_step_ref"):
+            if field_name in update:
+                _verify_ref(
+                    update[field_name],
+                    "flow_step",
+                    temp_ids.flow_steps,
+                    real_ids,
+                    project_id,
+                )
+        if "position" in update:
+            validate_transition_position(update["position"])
+
+
+def _validate_removed_references(
+    patch: dict,
+    temp_ids: _TempIds,
+    real_ids: dict[str, set],
+    project_id: str,
+) -> None:
+    specs = (
+        ("rule_links_removed", "rule_link", set()),
+        ("flow_transitions_removed", "flow_transition", set()),
+        ("domain_rules_removed", "domain_rule", set()),
+    )
+    for collection_name, target_kind, allowed_temp_ids in specs:
+        for reference in patch.get(collection_name, []):
+            _verify_ref(
+                reference,
+                target_kind,
                 allowed_temp_ids,
                 real_ids,
                 project_id,
@@ -462,8 +733,17 @@ class ShadowPatchValidator:
             _validate_business_object_attributes,
             _validate_flows,
             _validate_flow_steps,
+            _validate_flow_transitions,
+            _validate_transition_updates,
             _validate_scopes,
+            _validate_domain_rules,
         )
         for validator in validators:
             validator(sections, temp_ids, real_ids, project_id)
+        _validate_removed_references(
+            patch,
+            temp_ids,
+            real_ids,
+            project_id,
+        )
         return True

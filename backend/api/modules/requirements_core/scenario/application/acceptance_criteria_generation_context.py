@@ -16,9 +16,11 @@ from backend.schemas import FeatureNode, ScenarioNode
 def build_scenario_statement(
     project_id: int,
     scenario_ids: list[int] | None,
+    workspace_id: int,
 ):
     statement = select(ScenarioModel).where(
-        ScenarioModel.project_id == project_id
+        ScenarioModel.project_id == project_id,
+        ScenarioModel.workspace_id == workspace_id,
     )
     if scenario_ids is None:
         return statement
@@ -34,9 +36,10 @@ async def load_target_scenarios(
     session,
     project_id: int,
     scenario_ids: list[int] | None,
+    workspace_id: int,
 ) -> list:
     result = await session.execute(
-        build_scenario_statement(project_id, scenario_ids)
+        build_scenario_statement(project_id, scenario_ids, workspace_id)
     )
     scenarios = result.scalars().all()
     if not scenarios:
@@ -54,10 +57,12 @@ async def load_target_scenarios(
 async def ensure_acceptance_criteria_absent(
     session,
     scenario_ids: list[int],
+    workspace_id: int,
 ) -> None:
     result = await session.execute(
         select(ScenarioAcceptanceCriterionModel).where(
-            ScenarioAcceptanceCriterionModel.scenario_id.in_(scenario_ids)
+            ScenarioAcceptanceCriterionModel.scenario_id.in_(scenario_ids),
+            ScenarioAcceptanceCriterionModel.workspace_id == workspace_id,
         )
     )
     if result.scalars().all():
@@ -68,6 +73,7 @@ async def load_scenario_reference_nodes(
     session,
     project_id: int,
     scenarios: list,
+    workspace_id: int,
 ) -> tuple[dict, dict]:
     actor_ids = {scenario.actor_id for scenario in scenarios}
     feature_ids = {scenario.feature_id for scenario in scenarios}
@@ -75,12 +81,14 @@ async def load_scenario_reference_nodes(
         select(ActorModel).where(
             ActorModel.id.in_(actor_ids),
             ActorModel.project_id == project_id,
+            ActorModel.workspace_id == workspace_id,
         )
     )
     feature_result = await session.execute(
         select(FeatureModel).where(
             FeatureModel.id.in_(feature_ids),
             FeatureModel.project_id == project_id,
+            FeatureModel.workspace_id == workspace_id,
         )
     )
     actors_by_id = {
@@ -120,24 +128,32 @@ async def load_acceptance_criteria_generation_context(
     project_id: int,
     scenario_ids: list[int] | None,
     session,
+    workspace_id: int,
 ):
-    project = await load_generation_project(session, project_id)
+    from backend.database.model import BranchWorkspaceModel
+
+    workspace = await session.get(BranchWorkspaceModel, workspace_id)
+    if workspace is None or workspace.project_id != project_id:
+        raise ValueError("project_not_found")
     scenarios = await load_target_scenarios(
         session,
         project_id,
         scenario_ids,
+        workspace_id,
     )
     await ensure_acceptance_criteria_absent(
         session,
         [scenario.id for scenario in scenarios],
+        workspace_id,
     )
     actor_nodes, feature_nodes = await load_scenario_reference_nodes(
         session,
         project_id,
         scenarios,
+        workspace_id,
     )
     return (
-        project.user_requirements,
+        workspace.user_requirements,
         actor_nodes,
         feature_nodes,
         build_scenario_nodes(scenarios),

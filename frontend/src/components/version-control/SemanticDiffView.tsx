@@ -8,7 +8,7 @@ import {
   DiffResult,
   DiffTypeSummary,
 } from '@/core/versionControl';
-import { DiffEntityDetail } from './DiffEntityDetail';
+import { DiffEntityDetail, entityDisplayName, formatFieldLabel } from './DiffEntityDetail';
 import { cn } from '@/lib/utils';
 
 interface SemanticDiffViewProps {
@@ -34,6 +34,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   flow_step: 'flow_step',
   scope: 'scope',
   project_metadata: 'project_metadata',
+  path_projection: 'path_projection',
 };
 
 const CHANGE_TYPE_ICONS: Record<DiffChangeType, typeof FilePlus2> = {
@@ -92,9 +93,88 @@ function typeLabelKey(entityType: string): string {
   return `versionControl.diff.entityType.${base}`;
 }
 
+/** 细节行副标题：字段修改显示翻译后的字段名，关系变更显示对端对象名，顺序调整显示前后位置。 */
+function detailSuffix(entry: DiffEntry, t: (k: string, opts?: any) => string): string {
+  if (entry.change_type === 'field_changed') {
+    return entry.field ? formatFieldLabel(entry.field, t) : '';
+  }
+  if (entry.change_type === 'relation_added' || entry.change_type === 'relation_removed') {
+    return entry.related_entity_name || '';
+  }
+  if (entry.change_type === 'ordered_item_moved'
+    && entry.before_position !== undefined && entry.after_position !== undefined) {
+    const ord = (pos: number) => t('versionControl.diff.positionOrdinal', { pos });
+    return `${ord(entry.before_position)} → ${ord(entry.after_position)}`;
+  }
+  return '';
+}
+
+/** 树节点：对象修改聚合节点 + 嵌套细节，或独立的新增/删除/孤立细节行。 */
+interface DiffRow {
+  key: string;
+  node?: DiffEntry;
+  entry?: DiffEntry;
+  details: DiffEntry[];
+}
+
+function buildRows(entries: DiffEntry[]): DiffRow[] {
+  const nodes = new Map<string, { node: DiffEntry; details: DiffEntry[] }>();
+  const standalone: DiffEntry[] = [];
+  const orphanDetails: DiffEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.change_type === 'entity_updated') {
+      if (!nodes.has(entry.entity_uuid)) {
+        nodes.set(entry.entity_uuid, { node: entry, details: [] });
+      }
+    } else if (entry.change_type === 'entity_added' || entry.change_type === 'entity_removed') {
+      standalone.push(entry);
+    } else {
+      orphanDetails.push(entry);
+    }
+  }
+
+  const attached = new Set<DiffEntry>();
+  for (const detail of orphanDetails) {
+    const bucket = nodes.get(detail.entity_uuid);
+    if (bucket) {
+      bucket.details.push(detail);
+      attached.add(detail);
+    }
+  }
+
+  // 仅一条细节的「对象修改」节点降级为该细节的独立记录：
+  // 审批状态翻转、纯顺序重排、单字段编辑只应产生一条有意义的记录，
+  // 避免「对象修改 + 字段修改」这类冗余对。
+  const demotedDetails: DiffEntry[] = [];
+  for (const [uuid, bucket] of nodes) {
+    if (bucket.details.length === 1) {
+      demotedDetails.push(bucket.details[0]);
+      nodes.delete(uuid);
+    }
+  }
+
+  const rows: DiffRow[] = [];
+  for (const [uuid, bucket] of nodes) {
+    rows.push({ key: `node-${uuid}`, node: bucket.node, details: bucket.details });
+  }
+  for (const entry of standalone) {
+    rows.push({ key: `single-${entry.change_type}-${entry.entity_uuid}`, entry, details: [] });
+  }
+  for (const detail of demotedDetails) {
+    rows.push({ key: `detail-${detail.change_type}-${detail.entity_uuid}-${detail.path}`, entry: detail, details: [] });
+  }
+  for (const entry of orphanDetails) {
+    if (!attached.has(entry)) {
+      rows.push({ key: `orphan-${entry.change_type}-${entry.entity_uuid}-${entry.path}`, entry, details: [] });
+    }
+  }
+  return rows;
+}
+
 /**
- * 语义 Diff 工作台：左侧按对象类型分组的变更树，右侧选中变更的文本/关系详情。
- * 支持按对象类型与变更种类筛选，状态由 props 传入（可来自 URL）。
+ * 语义 Diff 工作台：左侧按对象类型分组的变更树（同一对象的字段细节聚合在对象节点下），
+ * 右侧选中变更的文本/关系详情。支持按对象类型与变更种类筛选，状态由 props 传入（可来自 URL）。
  */
 export function SemanticDiffView({
   projectId,
@@ -179,7 +259,7 @@ export function SemanticDiffView({
   }, [projectId, baseRef, targetRef, branch, entityType, changeType]);
 
   const grouped = useMemo(() => {
-    if (!result) return [] as { type: string; summary?: DiffTypeSummary; entries: DiffEntry[] }[];
+    if (!result) return [] as { type: string; summary?: DiffTypeSummary; rows: DiffRow[] }[];
     const byType: Record<string, DiffEntry[]> = {};
     for (const entry of result.entries) {
       (byType[entry.entity_type] ||= []).push(entry);
@@ -189,7 +269,7 @@ export function SemanticDiffView({
       .map((type) => ({
         type,
         summary: result.summary.by_type[type],
-        entries: byType[type],
+        rows: buildRows(byType[type]),
       }));
   }, [result]);
 
@@ -206,6 +286,45 @@ export function SemanticDiffView({
     setSelected(entry);
     onEntitySelect?.(entry);
   };
+
+  const isSelected = (entry: DiffEntry) =>
+    selected?.entity_uuid === entry.entity_uuid
+    && selected?.path === entry.path
+    && selected?.change_type === entry.change_type;
+
+  // 对象修改节点：聚合同一对象的细节条目传给详情面板
+  const relatedEntries = useMemo(() => {
+    if (!selected || !result || selected.change_type !== 'entity_updated') return undefined;
+    return result.entries.filter(
+      (e) => e.entity_uuid === selected.entity_uuid
+        && e.entity_type === selected.entity_type
+        && e.change_type !== 'entity_updated'
+    );
+  }, [selected, result]);
+
+  const renderEntryRow = (entry: DiffEntry, nested: boolean) => (
+    <button
+      type="button"
+      onClick={() => { selectEntry(entry); setMobilePane('detail'); }}
+      aria-current={isSelected(entry) ? 'true' : undefined}
+      className={cn(
+        'flex w-full items-start gap-2 py-1.5 text-left text-xs transition-colors rounded-lg',
+        nested ? 'pl-3 pr-2 ml-3' : 'px-3 mx-1',
+        isSelected(entry) ? 'bg-indigo-50 text-indigo-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
+      )}
+    >
+      <ChangeIcon type={entry.change_type} className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', changeColor(entry.change_type))} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{entityDisplayName(entry, t)}</span>
+        <span className={cn('block text-[10px] font-medium', changeColor(entry.change_type))}>
+          {entry.entity_type === 'path_projection'
+            ? t('versionControl.diff.pathProjectionChanged')
+            : t(changeLabelKey(entry.change_type))}
+          {detailSuffix(entry, t) ? ` · ${detailSuffix(entry, t)}` : ''}
+        </span>
+      </span>
+    </button>
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3">
@@ -275,37 +394,32 @@ export function SemanticDiffView({
                       <ChevronRight className={cn('h-3.5 w-3.5 text-slate-400 transition-transform', collapsed && '-rotate-90')} />
                       <span>{t(typeLabelKey(group.type))}</span>
                       <span className="ml-auto text-[11px] font-medium text-slate-400">
-                        {group.summary ? `+${group.summary.added} ~${group.summary.modified} -${group.summary.removed}` : group.entries.length}
+                        {group.summary ? `+${group.summary.added} ~${group.summary.modified} -${group.summary.removed}` : group.rows.length}
                       </span>
                     </button>
 
                     {!collapsed && (
                       <ul id={`diff-group-${group.type}`} className="ml-4 border-l border-slate-100 pb-1">
-                        {group.entries.map((entry, i) => {
-                          const isSelected = selected?.entity_uuid === entry.entity_uuid && selected?.path === entry.path && selected?.change_type === entry.change_type;
-                          return (
-                            <li key={`${entry.change_type}-${entry.entity_uuid}-${i}`}>
-                              <button
-                                type="button"
-                                onClick={() => { selectEntry(entry); setMobilePane('detail'); }}
-                                aria-current={isSelected ? 'true' : undefined}
-                                className={cn(
-                                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-xs transition-colors rounded-lg mx-1',
-                                  isSelected ? 'bg-indigo-50 text-indigo-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
+                        {group.rows.map((row) => (
+                          <li key={row.key}>
+                            {row.node ? (
+                              <>
+                                {renderEntryRow(row.node, false)}
+                                {row.details.length > 0 && (
+                                  <ul className="mb-1 space-y-0.5">
+                                    {row.details.map((detail) => (
+                                      <li key={`${detail.change_type}-${detail.path}-${detail.related_entity_uuid ?? ''}`}>
+                                        {renderEntryRow(detail, true)}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
-                              >
-                                <ChangeIcon type={entry.change_type} className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', changeColor(entry.change_type))} />
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate">{entry.entity_name || entry.entity_uuid}</span>
-                                  <span className={cn('block text-[10px] font-medium', changeColor(entry.change_type))}>
-                                    {t(changeLabelKey(entry.change_type))}
-                                    {entry.field ? ` · ${entry.field}` : ''}
-                                  </span>
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
+                              </>
+                            ) : (
+                              renderEntryRow(row.entry!, false)
+                            )}
+                          </li>
+                        ))}
                       </ul>
                     )}
                   </div>
@@ -334,7 +448,7 @@ export function SemanticDiffView({
                 <p className="text-sm font-medium">{t('versionControl.diff.selectNode')}</p>
               </div>
             ) : (
-              <DiffEntityDetail entry={selected} onJump={onJump} />
+              <DiffEntityDetail entry={selected} relatedEntries={relatedEntries} onJump={onJump} />
             )}
           </div>
         </div>
@@ -343,4 +457,3 @@ export function SemanticDiffView({
     </div>
   );
 }
-

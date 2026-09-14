@@ -11,12 +11,25 @@ Actors:
 Leaf features:
 {{features}}
 
+Scenarios:
+{{scenarios}}
+
+Acceptance criteria:
+{{acceptance_criteria}}
+
+Domain rules:
+{{rules}}
+
 # Rules
 - Return one JSON object only, without Markdown or commentary.
+- Generate the main end-to-end flows from the supplied scenarios and user goals. Link only relevant supplied leaf features; do not invent flows or links merely to cover every feature.
 - Do not invent requirements. IDs must reference supplied actors and leaf features.
 - Business-object numbers are globally unique (`B-001`, `B-002`). Step numbers are unique within each flow (`S-001`, `S-002`).
-- `step_type` is exactly `actorAction`, `systemAction`, or `judgment`; a judgment has at least two successors.
-- `next_steps` may reference only steps in the same flow.
+- `step_type` is exactly `actorAction`, `systemAction`, or `judgment`.
+- `transitions` must define directed edges between steps in the same flow; each transition specifies source_step_number, target_step_number, label, condition_text, is_default, semantic_tags, and rule_refs.
+- At most one default transition (`is_default: true`) per source step; multiple outgoing transitions must have distinguishable labels or conditions.
+- `rule_refs` must only reference existing domain rule logical UUIDs from the input domain rules.
+- Choose associations by scope: execution, validation, and calculation rules belong in flow_steps[].rule_refs; routing conditions and branch-selection rules in transitions[].rule_refs; cross-step and whole-flow constraints in flows[].rule_refs. Use empty arrays when no rule applies. Do not force coverage of every step or put every rule on transitions. Reuse a rule UUID at multiple locations only when it genuinely applies there; do not copy flow-wide associations to every step.
 - Step input/output numbers may reference only generated business objects.
 - Attribute examples are always JSON strings.
 
@@ -36,6 +49,7 @@ Leaf features:
   "flows": [{
     "flow_name": "Flow name",
     "flow_description": "Trigger and primary path",
+    "rule_refs": [],
     "feature_ids": [1],
     "flow_steps": [{
       "step_number": "S-001",
@@ -43,10 +57,21 @@ Leaf features:
       "step_description": "Step description",
       "actor_ids": [1],
       "step_type": "actorAction",
+      "rule_refs": [],
       "input_business_object_numbers": [],
-      "output_business_object_numbers": ["B-001"],
-      "next_steps": []
-    }]
+      "output_business_object_numbers": ["B-001"]
+    }],
+    "transitions": [
+      {
+        "source_step_number": "S-001",
+        "target_step_number": "S-002",
+        "label": "Save note",
+        "condition_text": "",
+        "is_default": true,
+        "semantic_tags": [],
+        "rule_refs": ["rule-logical-uuid"]
+      }
+    ]
   }]
 }
 

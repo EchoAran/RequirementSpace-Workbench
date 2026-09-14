@@ -12,8 +12,8 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
         self,
         project_id: int,
         session,
+        workspace_id: int,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> NextSuggestion:
         context = await load_issue_project_context(
             project_id=project_id,
@@ -21,6 +21,21 @@ class HowSuggestionPolicy(StageSuggestionPolicy):
             workspace_id=workspace_id,
         )
         pub_id = public_project_id or str(project_id)
+
+        if not context.domain_rules:
+            return NextSuggestion(
+                sourceType="generator",
+                code="GENERATE_RULES",
+                title="生成领域规则",
+                description="业务流程必须依赖规则，请先从 What 阶段模型中生成领域规则。",
+                action={
+                    "kind": "create_draft",
+                    "draft_type": "rule_generation",
+                    "payload": {
+                        "project_id": pub_id,
+                    },
+                },
+            )
 
         if not context.flows or not context.business_objects:
             return NextSuggestion(

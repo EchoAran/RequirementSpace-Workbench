@@ -19,6 +19,18 @@
     "networkMessage": "Unable to connect. Check whether the service is running."
   },
   "findingText": {
+    "GENERATE_RULES": {
+      "title": "Generate domain rules",
+      "description": "Start the How stage by discovering and reviewing domain rules from the What model."
+    },
+    "REVIEW_RULES": {
+      "title": "Review domain rules",
+      "description": "Review the existing domain rules before generating flows."
+    },
+    "REVIEW_STALE_RULES": {
+      "title": "Review stale domain rules",
+      "description": "What-stage sources changed. Review the affected domain rules again."
+    },
     "ACTOR_WITHOUT_FEATURE": {
       "title": "Actor Not Linked to a Feature",
       "description": "This actor is not linked to any feature."
@@ -42,10 +54,6 @@
     "DUPLICATE_SCENARIO_NAME": {
       "title": "Duplicate Scenario Name",
       "description": "Duplicate scenario names exist under the same feature and actor."
-    },
-    "LEAF_FEATURE_WITHOUT_FLOW": {
-      "title": "Leaf Feature Missing Flow Coverage",
-      "description": "This leaf feature is not covered by a flow."
     },
     "FLOW_WITHOUT_FEATURE": {
       "title": "Flow Not Linked to a Feature",
@@ -142,6 +150,82 @@
     "PERCEPTION_FAILED": {
       "title": "AI Analysis Failed",
       "description": "The stage analysis failed. Retry the diagnosis."
+    },
+    "UNLINKED_AI_DOMAIN_RULE": {
+      "title": "AI Domain Rule Missing Evidence Source",
+      "description": "This AI-generated domain rule is not linked to any requirement, scenario, or flow step."
+    },
+    "CONFIRMED_FLOW_REFERENCES_UNCONFIRMED_RULE": {
+      "title": "Confirmed Flow References Unconfirmed Rule",
+      "description": "A confirmed flow references a domain rule that is still pending confirmation."
+    },
+    "FLOW_TRANSITION_WITHOUT_EXPLANATION": {
+      "title": "Flow Transition Missing Explanation",
+      "description": "A transition in a confirmed flow is missing condition text or a linked domain rule."
+    },
+    "DOMAIN_RULE_REQUIRED": {
+      "title": "Flow Requires Domain Rules",
+      "description": "Business flows must depend on at least one domain rule."
+    },
+    "RULE_WITHOUT_SOURCE": {
+      "title": "Rule Missing Requirement Source",
+      "description": "This rule was generated or extracted, but is not linked to any requirement source."
+    },
+    "RULE_NOT_APPLIED": {
+      "title": "Rule Not Applied to Flows",
+      "description": "This rule is not linked to any flow, step, or transition."
+    },
+    "FLOW_USES_UNCONFIRMED_RULE": {
+      "title": "Confirmed Flow Depends on Unconfirmed Rule",
+      "description": "This confirmed flow depends on a domain rule that is still pending confirmation."
+    },
+    "FLOW_ENTRY_AMBIGUOUS": {
+      "title": "Flow Has Multiple Entry Steps",
+      "description": "Multiple steps have in-degree zero, creating ambiguity about the starting point."
+    },
+    "FLOW_WITHOUT_ENTRY": {
+      "title": "Flow Has No Definite Entry Step",
+      "description": "All steps have predecessor transitions (possible cycle), with no distinct starting step."
+    },
+    "BRANCH_WITHOUT_EXPLANATION": {
+      "title": "Branch Transition Missing Explanation",
+      "description": "A confirmed flow has outgoing branches that lack distinguishing conditions or explanations."
+    },
+    "BRANCH_WITHOUT_DEFAULT": {
+      "title": "Multiple Exits Missing Default Branch",
+      "description": "A step has multiple outgoing branches, but none is marked as default."
+    },
+    "TRANSITION_RULE_STALE": {
+      "title": "Transition References Stale Rule",
+      "description": "A flow transition references a rule that has been deleted or invalidated."
+    },
+    "FLOW_PATH_TRUNCATED": {
+      "title": "Flow Path Projection Truncated",
+      "description": "Path combinatorial expansion exceeded the safe limit and was truncated."
+    },
+    "AMBIGUOUS_FLOW_PATH": {
+      "title": "Ambiguous Flow Path",
+      "description": "The flow contains branch paths with ambiguous or conflicting conditions."
+    },
+    "NO_ENTRY_FLOW_PATH": {
+      "title": "Flow Has No Entry Step",
+      "description": "This flow has no entry step and cannot form a valid traversal path."
+    },
+    "TRUNCATED_FLOW_PATH": {
+      "title": "Flow Path Traversal Truncated",
+      "description": "Flow path traversal exceeded the maximum depth due to excessive steps or complex cycles."
+    },
+    "ENTER_HOW_GATE_BLOCKED": {
+      "title": "How Stage Entry Blocked",
+      "description": "The What stage has incomplete acceptance criteria or blocking issues."
+    },
+    "ENTER_SCOPE_GATE_BLOCKED": {
+      "title": "Scope Stage Entry Blocked",
+      "description": "The How stage has unreviewed domain rules, unexplained transitions, or blocking issues."
+    },
+    "RULE_SLOT": {
+      "title": "Domain Rule Suggestion",
+      "description": "AI suggests adding or refining domain rules."
     }
   },
   "stageProgress": {
@@ -238,12 +322,15 @@
     "draftConfirmLabel": "Confirm and Enter Workspace"
   },
   "shell": {
-    "loading": "Loading Project Workspace",
-    "loadingProgress": "Restoring project context, please wait...",
+    "loading": "Loading project workspace",
+    "loadingProgress": "Restoring project context from URL, please wait...",
     "loadingBackup": "Preparing project data...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "close": "Close"
   },
   "nav": {
+    "blockingIssues": "Blocking issues",
+    "pendingSuggestions": "Suggestions to refine",
     "overview": "Overview",
     "what": "What to do",
     "flow": "How it works",
@@ -258,6 +345,8 @@
     "pendingIssues": "{{count}} pending",
     "blockingSuggestions": "Blocking suggestions",
     "status": {
+      "ready_to_enter": "Ready to Enter",
+      "needs_suggestion": "Needs Refinement",
       "playable": "Playable",
       "ready": "Ready",
       "real_ready": "Ready",
@@ -754,9 +843,11 @@
         "scenario": "Scenario",
         "feature": "Feature Tree",
         "flow": "Workflow",
+        "rule": "Domain Rules",
         "scope": "Scope Analysis",
         "acceptanceCriteria": "Acceptance Criteria",
-        "projectCreation": "Project Draft"
+        "projectCreation": "Project Draft",
+        "flowRefinement": "Flow Refinement"
       }
     },
     "continueProcessing": "Continue",
@@ -772,6 +863,7 @@
       "unknown": "Pending Item"
     },
     "headlines": {
+      "hasSuggestions": "Suggestions are available to refine the model",
       "converged": "Current model has mostly converged",
       "notStarted": "Current model modeling has not started yet",
       "readyToAdvance": "Pre-stage modeling is ready to advance",
@@ -800,8 +892,11 @@
       "currentSource": "Source: {{source}}"
     },
     "sections": {
+      "pendingSuggestions": "{{count}} suggestion(s) to refine",
+      "suggestionBadge": "Suggestion to refine",
+      "enterPreview": "Enter Preview stage",
+      "readyToAdvanceDescription": "The current stage meets the transition requirements and can advance.",
       "configTitle": "Project Configuration",
-      "configSubtitle": "Manage AI strategy, reference materials, and team LLM connections.",
       "configBtn": "Open Config",
       "issuesTitle": "Pending Issues",
       "highRisk": "High Risk {{count}}",
@@ -891,7 +986,10 @@
     "impactAnalysisError": "Impact analysis failed",
     "kanoRecommendTitle": "AI Recommended Kano Scope",
     "kanoRecommendDesc": "AI recommended scope based on system priority and business value.",
-    "addFeaturePlaceholder": "e.g. 'Face ID Login' (optional)"
+    "addFeaturePlaceholder": "e.g. 'Face ID Login' (optional)",
+    "allModules": "All Modules",
+    "moduleFilterLabel": "Filter by Module",
+    "searchPlaceholder": "Search features or scope decisions..."
   },
   "what": {
     "confirmAddActor": "Add Actor",
@@ -1037,6 +1135,199 @@
     }
   },
   "how": {
+    "domainRules": {
+      "sectionTitle": "Domain Rules & Constraints",
+      "stateNotStartedTitle": "No domain rules yet",
+      "stateNotStartedDesc": "Flow generation requires domain rules. Discover rules with AI or add at least one manually.",
+      "aiDiscover": "AI Discover Rules",
+      "aiRediscover": "AI Rediscover Rules",
+      "aiDiscoverTooltip": "Discover domain rules and business constraints from requirements, scenarios, and ACs",
+      "ruleRequiredForFlow": "Add a domain rule first",
+      "ruleRequiredTooltip": "Flows must be generated from rules. Add or generate at least one domain rule above first.",
+      "addRule": "Add Rule",
+      "addFirstRule": "Add First Rule",
+      "createModalTitle": "Add Domain Rule",
+      "editModalTitle": "Edit Domain Rule",
+      "titleLabel": "Rule Title",
+      "titlePlaceholder": "e.g. Order Timeout Cancellation Rule",
+      "statementLabel": "Rule Statement & Constraints",
+      "statementPlaceholder": "e.g. Unpaid orders auto-cancel after 15 minutes and release inventory",
+      "parentRuleLabel": "Parent Rule (Optional)",
+      "noParentRule": "None (Top-level Rule)",
+      "refinedFrom": "Refined from",
+      "linkedObjects": "Linked Objects",
+      "cardView": "Card View",
+      "compactView": "Compact View",
+      "deleteConfirm": "Are you sure you want to delete this domain rule?",
+      "createFailed": "Failed to create rule",
+      "updateFailed": "Failed to update rule",
+      "conflictError": "Version conflict detected. The content was updated by another operation, please reload and try again."
+    },
+    "pathProjection": {
+      "title": "Path Projection",
+      "focus": "Focus Path",
+      "allPaths": "All Paths",
+      "mainPath": "Main Path",
+      "branchPath": "Branch Path",
+      "stepsCount": "{{count}} steps",
+      "statusCycle": "Cycle detected",
+      "statusAmbiguous": "Ambiguous",
+      "statusTruncated": "Truncated"
+    },
+    "transitionLabel": {
+      "unspecified": "Unspecified condition",
+      "default": "Default"
+    },
+    "involvedBusinessObjects": "Involved Business Objects",
+    "noInvolvedObjects": "No input/output business objects associated with steps in this flow",
+    "objectUsageLoading": "Loading business object projection...",
+    "objectUsageError": "Failed to load business object projection",
+    "retryLoad": "Retry",
+    "createBusinessObjectBtn": "New Business Object",
+    "multiFlowSharedNotice": "This object is also used by {{count}} other flow(s) ({{flows}})",
+    "multiFlowSharedNoticeTitle": "Shared Business Object",
+    "boDetailTitle": "Business Object Details & Attributes",
+    "saveBoBasics": "Save Basics",
+    "addAttrBtn": "Add Attribute",
+    "canvas": {
+      "positionLabel": "Source Transition Order (Position)",
+      "positionHelp": "Evaluation order among branches originating from the same step (lower number evaluates first)",
+      "relatedFindings": "Related Findings",
+      "noRelatedFindings": "No related findings",
+      "relatedChoices": "Related Choices",
+      "noRelatedChoices": "No related choices",
+      "accessibleViewTitle": "Accessible Flow Steps and Transitions List",
+      "accessibleSteps": "Steps List",
+      "accessibleTransitions": "Transitions List",
+      "selectStep": "Select and edit step {{name}}",
+      "selectTransition": "Select and edit transition from {{from}} to {{to}}",
+      "saveTransition": "Save Branch Settings",
+      "saving": "Saving...",
+      "defaultBranch": "Default Branch",
+      "normalBranch": "Normal Branch",
+      "fromStep": "Source Step",
+      "toStep": "Target Next Step",
+      "transitionLabelField": "Branch Label",
+      "transitionConditionField": "Condition Text",
+      "setDefaultBranch": "Set as Default Branch",
+      "defaultBranchHelp": "Fallback branch when no conditions match",
+      "semanticTagsField": "Semantic Tags (comma separated)",
+      "statusField": "Confirmation Status",
+      "linkedRulesField": "Linked Rules",
+      "selectedCount": "{{count}} selected",
+      "noAvailableRules": "No available business rules",
+      "stepInspector": "Step Details & Rules",
+      "linkInspector": "Branch Transition Details",
+      "toggleAccessibleList": "Toggle Accessible List Mode",
+      "blocking": "Blocking",
+      "warning": "Warning",
+      "noOutbound": "End step, no outbound transitions",
+      "clearDefault": "Unset Default Branch",
+      "disconnectTransition": "Disconnect Transition",
+      "disconnectLink": "Disconnect Branch Link",
+      "pathLoading": "Loading paths...",
+      "pathError": "Failed to load paths",
+      "retry": "Retry",
+      "noPaths": "No paths",
+      "statusConfirmed": "Confirmed",
+      "statusNeedsConfirmation": "Needs Confirmation",
+      "statusAiAssumption": "AI Assumption",
+      "transitionLabelPlaceholder": "e.g. Approved / Limit Exceeded",
+      "transitionConditionPlaceholder": "e.g. amount >= 10000",
+      "positionPlaceholder": "e.g. 0, 1, 2...",
+      "stepNumbered": "Step #{{id}}",
+      "itemsCount": "{{count}} items",
+      "weightNumbered": " (Weight: {{position}})",
+      "choiceNumbered": "Choice #{{id}}",
+      "noOutboundTransitions": "No outbound branches; drag from step port to connect",
+      "businessRule": "Business Rule",
+      "deleteTransition": "Delete Transition",
+      "refinementStepsDelta": " (+{{count}} steps)",
+      "refinementTransitionsDelta": " (+{{count}} transitions)",
+      "refinementRulesDelta": " (+{{count}} rules)",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "restoreWindow": "Restore Window Size",
+      "maximizeWindow": "Maximize Window",
+      "selectTransitionLabel": "Transition: {{text}}",
+      "defaultBranchShort": "Default",
+      "stepTypeJudgment": "Judgment Branch",
+      "stepTypeSystem": "System Action",
+      "stepTypeActor": "Actor Action",
+      "mainPath": "Main Path",
+      "subPath": "Sub-branch Path",
+      "deleteStepConfirm": "Are you sure you want to delete step \"{{name}}\"?",
+      "deleteStep": "Delete Step",
+      "deleteThisStep": "Delete this step",
+      "inputBoPrefix": "In: ",
+      "outputBoPrefix": "Out: ",
+      "inputObjects": "Input Objects",
+      "outputObjects": "Output Objects",
+      "aiAssumptionRule": "AI Assumption Rule",
+      "detailedRule": "Refinement Rule",
+      "canvasTipsTitle": "💡 Canvas Interaction Tips:",
+      "tipDragLink": "Drag to Connect",
+      "tipDragLinkDesc": "Drag from the arrow dot on the right of a step card to another step.",
+      "tipDisconnect": "Disconnect",
+      "tipDisconnectDesc": "Click a transition line to select and disconnect.",
+      "tipFreeLayout": "Free Layout",
+      "tipFreeLayoutDesc": "Drag step cards to reposition freely.",
+      "tipZoomPan": "Zoom & Pan",
+      "tipZoomPanDesc": "Scroll to zoom canvas, drag on empty canvas to pan.",
+      "resizeWidth": "Drag to resize window width",
+      "resizeHeight": "Drag to resize window height",
+      "resizeDimensions": "Drag to resize window dimensions",
+      "addStepName": "Step Name *",
+      "addStepNamePlaceholder": "e.g., Enter phone number and get verification code",
+      "addStepDesc": "Step Description",
+      "addStepDescPlaceholder": "Additional notes on step preconditions or operation details",
+      "addStepType": "Step Type",
+      "actorActionOption": "Actor Action (actorAction)",
+      "systemActionOption": "System Action (systemAction)",
+      "judgmentOption": "Judgment Branch (judgment)",
+      "actorRoleRequired": "Assigned Actor Role",
+      "noActorTip": "No roles defined yet. Please define actor roles in What stage first, or switch step type to \"System Action\".",
+      "connectFromStep": "Connect from which existing step?",
+      "noAutoConnect": "(Do not auto-connect from existing step)",
+      "cancel": "Cancel",
+      "confirmAdd": "Add Step"
+    },
+    "noAttributesYet": "No attributes defined yet",
+    "attributeName": "Field name",
+    "attributeNamePlaceholder": "e.g. order_id",
+    "attributeType": "Type",
+    "attributeDescription": "Description",
+    "attributeDescriptionPlaceholder": "Describe the field's business meaning",
+    "attributeExample": "Example value",
+    "attributeExamplePlaceholder": "Example",
+    "deleteAttribute": "Delete field",
+    "deleteBusinessObjectBtn": "Delete Object",
+    "deleteBusinessObjectConfirm": "Delete business object “{{name}}”? This clears its attributes and workflow-step relationships.",
+    "summary": {
+      "steps": "steps",
+      "transitions": "transitions",
+      "rules": "rules",
+      "objects": "objects",
+      "blockingIssues": "blocking issues",
+      "warnings": "warnings"
+    },
+    "ruleAssociations": {
+      "added": "Added rule associations",
+      "flow": "Flow-wide rules",
+      "flow_step": "Rules applying directly to this step",
+      "flow_transitionHint": "Rules linked to this branch constrain its transition conditions. Click Save Branch Properties after making changes.",
+      "flow_transition": "Branch transition rules",
+      "openRule": "Open rule details; changing its text affects every reference",
+      "noAvailable": "No available rules. Create a rule in the business rules section first.",
+      "saveFailed": "Failed to save rule associations"
+    },
+    "linkedRulesLabel": "Linked Business Rules",
+    "noLinkedRules": "No business rules linked to this step",
+    "addStep": "Add Step",
+    "noDescription": "No description",
+    "stepBOsEmpty": "No business objects linked",
+    "stepInputBOsLabel": "Input Objects",
+    "stepOutputBOsLabel": "Output Objects",
     "branchNode": "Branch node",
     "stepType": {
       "actorAction": "User Action",
@@ -1044,12 +1335,17 @@
       "judgment": "Decision Branch"
     },
     "title": "Business Flows",
-    "onboardingTitle": "Business Flow Modeling",
-    "onboardingDesc": "At this stage (How), you can model system dynamic behaviors and data entities by defining Flows and Business Objects.",
-    "onboardingTips": "In the What stage, we identified capabilities; now, we design the operational steps and object attributes.",
-    "onboardingAlert": "No business flows defined yet. Use AI flow generation or click button above to add manually.",
+    "onboardingTitle": "Rule-Driven Business Flow Modeling",
+    "onboardingDesc": "The How stage starts with domain rules, then uses them to shape flows, steps, branches, and transitions. Business objects are maintained inside flows as step input/output attributes.",
+    "onboardingTips": "What identifies actors and capabilities; How begins by discovering and reviewing domain rules before modeling concrete flows.",
+    "onboardingAlert": "No business flows are defined yet. Review the domain rules first, then generate a flow with AI or create one manually.",
     "generateBtn": "AI Generate Flows",
     "regenerateBtn": "AI Regenerate Flows",
+    "refineFlowPath": "Deep Analyze Path",
+    "refineStepPath": "Deep Analyze Step Path",
+    "refineFlowTitle": "Deeply refine branches and rules for the current flow",
+    "refineStepPathTitle": "Deeply refine path branches and rules for the selected step",
+    "refinementOverlayBadge": "Refinement Pending",
     "aiTitle": "AI Recommended Flow Generated",
     "aiDesc": "AI analyzed the system capability model and generated optimal business flow recommended assets.",
     "aiFeedbackPlaceholder": "Add optional feedback for flow adjustment",
@@ -1135,21 +1431,21 @@
     "dependenciesAction": "Define at least one actor and system feature in What before defining workflow steps and business object relationships here.",
     "goToWhat": "Go to What to model actors and capabilities",
     "focusMode": "Focus Canvas",
-    "focusCanvasBtn": "Focus Canvas Editor",
     "focusModeTooltip": "Maximize to standalone canvas to edit steps and connection links",
     "openFocusCanvas": "Focus Canvas Mode",
-    "stepsCount": "Steps",
-    "linksCount": "Links",
     "autoLayout": "Auto Layout",
     "autoLayoutTitle": "Auto-arrange all steps into clean DAG hierarchy",
     "fitViewTitle": "Fit and center view to screen",
     "canvasTips": "💡 Tip: Drag right connector port to link steps; click link to disconnect; drag cards to reposition",
+    "canvasTipsAriaExpand": "Expand canvas tips",
+    "canvasTipsAriaCollapse": "Collapse canvas tips",
     "inputPort": "Input Port",
-    "outputPort": "Drag to create link to next step",
+    "outputPort": "Drag to create transition to target step",
     "stepInspector": "Step Inspector",
+    "inspectorCollapse": "Collapse inspector panel",
+    "inspectorExpand": "Expand inspector panel",
     "assignedActorsLabel": "Assigned Actors",
     "businessObjectsLabel": "Input / Output Business Objects",
-    "nextStepsLabel": "Next Steps (Branches)",
     "linkInspector": "Connection Link Inspector",
     "disconnectLink": "Disconnect Link",
     "flowOverview": "Flow Overview",
@@ -1157,10 +1453,10 @@
     "generatedDraftTitle": "AI-Recommended Workflow and Entity Draft Generated",
     "generatedDraftDescription": "AI designed swimlane steps and related business objects that fit the system model.",
     "generatedDraftFeedbackPlaceholder": "Add workflow adjustment feedback (optional)",
-    "deleteBusinessObjectConfirm": "Delete business object “{{name}}”? This clears its attributes and workflow-step relationships.",
     "actorRequired": "An actor interaction step must select at least one actor.",
     "parentCategory": "Parent Category",
-    "boRelatedStepsLabel": "Related Steps"
+    "boRelatedStepsLabel": "Related Steps",
+    "transitionsLabel": "Transitions (Branches)"
   },
   "preview": {
     "title": "Prototype & Export",
@@ -1208,13 +1504,8 @@
     "acEmptyText": "No AC details found",
     "flowStepsLabel": "Workflow Steps",
     "flowStepsEmpty": "No flows bound",
-    "flowRoleFormat": "Actor: {{name}}",
-    "flowRoleSystem": "System",
     "unresolvedIssuesTitle": "Unresolved Workspace Issues ({{count}} items)",
     "unresolvedIssuesDesc": "Unresolved code inconsistencies or delivery defects exist. Return to previous stages to fix them.",
-    "stageGuidanceTitle": "Sequence Diagram",
-    "stageGuidanceFlowFormat": "Flow: {{name}}",
-    "stageGuidanceEmpty": "No steps defined in this flow.",
     "stageWhatTitle": "What to Do",
     "stageHowTitle": "How it Works",
     "stageScopeTitle": "Scope",
@@ -1287,6 +1578,7 @@
       "prototypeFailure": "Prototype generation failed",
       "shadowRegenerating": "Shadow draft regeneration started. Please wait.",
       "regenerateFailed": "Regeneration failed: {{error}}",
+      "discard": "Discard Draft",
       "discardConfirm": "Discard the current shadow draft? This will not change existing project data.",
       "shadowDiscarded": "Shadow draft discarded.",
       "discardFailed": "Failed to discard the shadow draft: {{error}}",
@@ -1355,12 +1647,14 @@
       "noExecutionSteps": "No related steps.",
       "actorInitiated": "Actor initiated",
       "unresolvedIssues": "Unresolved System Design Issues ({{count}})",
-      "unresolvedIssuesDescription": "The workspace has unresolved business conflicts or workflow gaps. Fix them in the related stages before exporting the product specification.",
-      "reviewingFlow": "Reviewing workflow sequence: {{name}}"
+      "unresolvedIssuesDescription": "The workspace has unresolved business conflicts or workflow gaps. Fix them in the related stages before exporting the product specification."
     },
     "shadowDiagTitle": "Diagnosing Exceptions"
   },
   "suggestion": {
+    "ruleDraft": "Domain Rule Draft",
+    "reviewRules": "Review Domain Rules",
+    "openingRules": "Opening domain rules...",
     "actorDraft": "Actor Draft",
     "featureDraft": "Feature Draft",
     "scenarioDraft": "Scenario Draft",
@@ -1488,6 +1782,8 @@
     "business_object": "Business Object",
     "flow": "Flow",
     "step": "Flow Step",
+    "flow_transition": "Flow Transition",
+    "domain_rule": "Domain Rule",
     "scope": "Scope",
     "project": "Project Settings",
     "node": "Node",
@@ -1591,8 +1887,8 @@
     "missing_step": "Missing flow step detected"
   },
   "rightPanel": {
-    "editTitle": "Model Asset Edit Panel",
-    "editDesc": "The right panel allows you to review and edit actors, features, flows, and data objects.",
+    "editTitle": "Model Asset & Rule Edit Panel",
+    "editDesc": "The right panel allows you to review and edit actors, features, flows, data objects, and business rules.",
     "projectSubtitle": "System Workspace",
     "projectName": "System Workspace Name",
     "projectDesc": "System Workspace Description",
@@ -1776,12 +2072,14 @@
     "acReadOnlyWarning": "Unable to locate parent page and context fields for this criterion, read-only.",
     "acNoBindingWarning": "Unable to locate parent page and context fields for this criterion, read-only.",
     "confirmStatusTitle": "Confirmation Status",
+    "ruleSubtitle": "Domain Rule",
+    "ruleBaseAttrs": "Rule Attributes",
     "assigneeLabel2": "Assigner",
     "statusAndScope": "Status and Scope",
     "coreBoSubtitle": "Core Business Object",
     "fieldExample": "Field Example Value",
     "boAttrSubtitle2": "Business Attribute",
-    "editPanelSubtitle": "Model Asset Panel",
+    "editPanelSubtitle": "Model Asset & Rule Panel",
     "unknownObject": "Unknown Object",
     "objectAttrDetail": "Object Attribute Details",
     "assignerLabel": "Assigner",
@@ -1806,7 +2104,17 @@
       "acceptance_criterion": "Acceptance Criterion",
       "scope": "Scope",
       "perception_slot": "Perception Slot",
+      "rule": "Business Rule",
       "selected": "Selected Object"
+    },
+    "previewFields": {
+      "name": "Name",
+      "description": "Description",
+      "title": "Title",
+      "statement": "Statement",
+      "actor_ids": "Linked Actors",
+      "feature_ids": "Linked Features",
+      "feature_kind": "Feature Kind"
     },
     "currentStage": "Current Stage: {{stage}}",
     "entireWorkspace": "Entire Workspace",
@@ -1961,26 +2269,6 @@
     "pageBadge": "Page",
     "emptyTip": "No pages or interface components assigned to this role"
   },
-  "flowStepCard": {
-    "inputLabel": "Input",
-    "outputLabel": "Output",
-    "triggerRuleLabel": "Trigger Rule",
-    "statusLabel": "Status",
-    "slotTitle": "Slot: {{title}}",
-    "slotStatus": {
-      "filled": "Filled",
-      "deferred": "Deferred",
-      "pending": "Pending"
-    },
-    "choiceCount": "{{count}} Choices",
-    "expandSlot": "Click to expand Slot",
-    "generating": "Generating...",
-    "relatedIssues": "{{count}} Related Issues",
-    "relatedChoices": "{{count}} Related Choices",
-    "nextStepLabel": "Next Step",
-    "exceptionBranchLabel": "Exception Branch",
-    "pageType": "Page"
-  },
   "issueCard": {
     "severity": {
       "high": "High Risk",
@@ -2019,10 +2307,12 @@
       "feature": "existing feature tree, related scenarios, AC, and scope analysis",
       "scenario": "existing scenarios and AC under the target feature",
       "acceptance_criteria": "existing AC of the target scenario",
-      "flow": "existing flows, steps, business objects, and attributes",
+      "flow": "existing flows, steps, and transitions in this workspace (confirmed business objects will be preserved)",
+      "rule": "existing domain rules and constraints (new rules will be merged)",
       "scope": "existing scope and Kano analysis results"
     },
     "confirmAdopt": "Adopting this plan will regenerate {{target}}, overwriting existing content. Continue?",
+    "confirmReplaceFlowSet": "Adopting this candidate will replace all existing flows in the current workspace, while confirmed business objects will be safely preserved. Continue?",
     "compDimension": "Dimension",
     "planLabel": "Plan {{index}}",
     "adoptingBtn": "Adopting...",
@@ -2035,6 +2325,7 @@
       "criteria": "AC {{count}}",
       "scopes": "Scope {{count}}",
       "businessObjects": "Objects {{count}}",
+      "rules": "Rules {{count}}",
       "title": "Stats"
     },
     "actorsDiffTitle": "Actor Differences",
@@ -2049,6 +2340,10 @@
     "flowsDiffUnique": "Plan-unique Flow",
     "flowsDiffModified": "Steps Diff",
     "flowsDiffIdentical": "Flow steps are identical to other plans",
+    "rulesDiffTitle": "Business Rule Differences",
+    "rulesDiffUnique": "Plan-unique Rule",
+    "rulesDiffModified": "Statement Diff",
+    "rulesDiffIdentical": "Business rules are identical to other plans",
     "scenariosDiffTitle": "Scenario Differences",
     "scenariosDiffUnique": "Plan-unique Scenario",
     "scenariosDiffModified": "Scenario Content Diff",
@@ -2066,6 +2361,10 @@
       "exclude": "Excluded"
     },
     "loadingSteps": {
+      "genericRule": "Discovering business rules and domain constraints...",
+      "constraints": "Extracting constraints and rules from scenarios and AC...",
+      "sources": "Establishing traceability links to upstream requirement evidence...",
+      "dedup": "Deduplicating rule semantics and validating fingerprints...",
       "vision": "Retrieving project vision...",
       "benchmarking": "Analyzing industry benchmarks...",
       "outline": "Evolving project outline...",
@@ -2134,6 +2433,8 @@
       "scenario": "Select Scenario Plan",
       "feature": "Select Feature Plan",
       "flow": "Select Flow & Object Plan",
+      "rule": "Select Domain Rule Plan",
+      "domain_rule": "Select Domain Rule Plan",
       "scope": "Select Scope Plan",
       "acceptance_criteria": "Select AC Plan",
       "generic": "Select Project Draft"
@@ -2199,6 +2500,11 @@
     "acCount": "({{count}} nodes)",
     "acBadge": "AC",
     "flowsCount": "Contains {{count}} business flows",
+    "rulesCount": "Contains {{count}} domain rules",
+    "ruleStatement": "Rule Statement",
+    "ruleSource": "Rule Sources",
+    "transitionsCount": "{{count}} transitions",
+    "replaceFlowSetWarning": "Note: Adopting this candidate will replace {{count}} existing flow(s) in this workspace. Confirmed business objects are preserved.",
     "businessObjectsCount": "{{count}} business data objects",
     "stepInteract": "Interact",
     "stepAuto": "Auto",
@@ -2215,7 +2521,18 @@
       "postponed": "Postponed",
       "exclude": "Excluded"
     },
-    "noPreview": "No preview info available"
+    "noPreview": "No preview info available",
+    "refinementFlowTarget": "Target Workflow",
+    "refinementAddedSteps": "Added Steps ({{count}})",
+    "refinementAddedTransitions": "Added Transitions ({{count}})",
+    "refinementUpdatedTransitions": "Updated Transitions ({{count}})",
+    "refinementAddedRules": "Elaborated Rules ({{count}})",
+    "refinementAnchorAfter": "Anchor After: #{{step}}",
+    "refinementAddBadge": "Add",
+    "refinementUpdateBadge": "Reroute",
+    "doneEmptyBadge": "Complete",
+    "doneEmptyDesc": "Current flow path and domain rules are already complete. No additional branches needed (valid empty result).",
+    "doneEmptyResult": "No Refinement Needed (Complete)"
   },
   "draftPreview": {
     "headerTitle": "AI Recommended Draft",
@@ -2246,7 +2563,6 @@
     "flowStepRole": "Roles",
     "flowStepInput": "Input Objects",
     "flowStepOutput": "Output Objects",
-    "flowStepNext": "Next Step",
     "businessObjectsTitle": "Business Objects",
     "businessObjectsCount": "{{count}} objects",
     "businessObjectExisting": "Existing",
@@ -2274,7 +2590,8 @@
     "discardDraftBtn": "Discard Draft",
     "generatingDraftTitle": "Generating {{title}}, please wait...",
     "generatingDraftDesc": "AI is intelligently planning and refining for the best system design.",
-    "closeDiscardTooltip": "Close and discard draft"
+    "closeDiscardTooltip": "Close and discard draft",
+    "flowStepTransitions": "Transitions"
   },
   "gherkinVisualizer": {
     "noGiven": "No pre-conditions",
@@ -2372,19 +2689,19 @@
     }
   },
   "stageGuidance": {
-    "severity": {
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
-    },
-    "noIssues": "No pending issues found for current stage, model is healthy. Keep refining the model or re-diagnose.",
+    "loading": "Loading the current stage status and suggestions...",
+    "stageTransition": "Stage Transition",
+    "readyToAdvanceTitle": "Current stage is complete",
+    "readyToAdvanceDescription": "The stage can advance. Optional suggestions can still be completed later.",
+    "incompleteTitle": "Current stage is not complete",
+    "incompleteDescription": "Complete the required modeling work before advancing.",
+    "noIssues": "No pending issues found for current stage, model is healthy. Keep refining the model.",
+    "diagnoseBtn": "Diagnose requirements space",
     "reDiagnoseBtn": "Re-diagnose",
     "nextActionSuggestion": "Next Action",
-    "issuesCount": "{{count}} pending issues remaining",
-    "locateBtn": "Locate",
+    "issuesLabel": "Pending Issues",
     "ignoreTooltip": "Ignore",
-    "healthTitle": "Workspace Health: {{count}} improvement suggestions",
-    "healthBadge": "Suggestion"
+    "healthLabel": "Workspace Health"
   },
   "taskDecision": {
     "fieldLabels": {
@@ -2622,9 +2939,21 @@
     }
   },
   "common": {
-    "unknownError": "Unknown Error",
+    "create": "Create",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "optional": "Optional",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "dangerZone": "Danger Zone",
     "currentProject": "Current Project",
-    "cancel": "Cancel"
+    "unknownError": "Unknown Error",
+    "readOnly": "Read Only"
   },
   "store": {
     "actions": {
@@ -2832,7 +3161,7 @@
       "nextActionText": "Next action suggestion",
       "missingActionText": "missing executable action",
       "reDiagnose": "Re-diagnose: {{desc}}",
-      "viewSuggestion": "View processing suggestion"
+      "viewSuggestion": "Generate suggestion"
     },
     "errors": {
       "timeout": "AI service request timeout, please try again; check connection if this persists.",
@@ -2864,7 +3193,14 @@
       "discardDraftFailed": "Failed to discard draft",
       "analysisError": "Analysis error occurred",
       "draftExpired": "Draft is invalid, please reconfigure and regenerate.",
-      "generatingPlansFailed": "Failed to generate plans, please try again"
+      "generatingPlansFailed": "Failed to generate plans, please try again",
+      "loadRulesFailed": "Failed to load domain rules",
+      "createRuleFailed": "Failed to create domain rule",
+      "updateRuleFailed": "Failed to update domain rule",
+      "deleteRuleFailed": "Failed to delete domain rule",
+      "updateDiscoveryFailed": "Failed to update rule discovery status",
+      "updateDiscoveryStatusFailed": "Failed to update rule discovery status",
+      "parallelConflict": "This entity was modified by another operation. Please refresh."
     },
     "scenario": {
       "updateSuccess": "Success scenario updated.",
@@ -2938,6 +3274,7 @@
       "compareWithWorkspace": "Compare with workspace",
       "changeSummary": "{{added}} added / {{removed}} removed / {{modified}} modified",
       "mergeRequests": "Merge Requests",
+      "backToRepo": "Back to Repository",
       "loadMore": "Load more",
       "viewFullModel": "View full model",
       "revertCommit": "Revert to this commit",
@@ -2994,6 +3331,7 @@
       "entityRemoved": "Object removed",
       "entityUpdated": "Object modified",
       "orderedMoved": "Reordered",
+      "positionOrdinal": "Position #{{pos}}",
       "filterAll": "All",
       "filterAdded": "Added",
       "filterRemoved": "Removed",
@@ -3031,6 +3369,7 @@
         "scope_status": "Scope Status",
         "kano_category": "Kano Category",
         "kano_category_name": "Kano Category",
+        "kano_status": "Kano Status",
         "positive_summary": "In Scope Rationale",
         "negative_summary": "Out of Scope Impact",
         "reason": "Decision Reason",
@@ -3051,8 +3390,70 @@
         "output_business_objects": "Output Business Objects",
         "user_requirements": "User Requirements",
         "confirmation_status": "Confirmation Status",
-        "unlocked_stages": "Unlocked Stages"
+        "unlocked_stages": "Unlocked Stages",
+        "label": "Transition Label",
+        "condition_text": "Condition",
+        "is_default": "Default Route",
+        "semantic_tags": "Semantic Tags",
+        "origin": "Origin",
+        "statement": "Rule Statement",
+        "target_kind": "Target Type",
+        "link_purpose": "Link Purpose",
+        "context_text": "Context",
+        "duties": "Responsibilities",
+        "parent_name": "Parent Feature",
+        "feature_name": "Feature",
+        "actor_name": "Actor",
+        "scenario_name": "Scenario",
+        "actor_logical_uuids": "Actors",
+        "actor_logical_uuid": "Actor",
+        "feature_logical_uuid": "Feature",
+        "feature_logical_uuids": "Features",
+        "input_business_object_logical_uuids": "Input Objects",
+        "output_business_object_logical_uuids": "Output Objects",
+        "source_step_logical_uuid": "Previous Step",
+        "target_step_logical_uuid": "Next Step",
+        "parent_rule_logical_uuid": "Parent Rule",
+        "rule_logical_uuid": "Linked Rule",
+        "target_logical_uuid": "Linked Target",
+        "parent_feature_logical_uuid": "Parent Feature",
+        "child_feature_logical_uuid": "Child Feature"
       },
+      "confirmationStatus": {
+        "confirmed": "Confirmed",
+        "needs_confirmation": "Needs Confirmation",
+        "ai_assumption": "AI Assumption"
+      },
+      "kanoStatus": {
+        "missing": "Not Generated",
+        "generating": "Generating",
+        "generated": "Generated",
+        "failed": "Generation Failed",
+        "skipped": "Skipped"
+      },
+      "stageName": {
+        "what": "What",
+        "how": "How",
+        "scope": "Scope"
+      },
+      "stepTypeValue": {
+        "actorAction": "User Action",
+        "systemAction": "System Action",
+        "judgment": "Decision Branch"
+      },
+      "booleanTrue": "Yes",
+      "booleanFalse": "No",
+      "projectNode": "Project Settings",
+      "pathProjectionNote": "The execution paths of this flow (step sequences combined with transitions) have changed.",
+      "pathProjectionChanged": "Execution path changed",
+      "pathMainCount": "Main paths: {{before}} → {{after}}",
+      "pathBranchCount": "Branch paths: {{before}} → {{after}}",
+      "otherProperties": "Other Properties",
+      "changedFieldCount": "{{count}} fields changed",
+      "latestEntityState": "Latest Entity Snapshot",
+      "addedEntityDetail": "Details of the Added Entity",
+      "removedEntityDetail": "Snapshot of the Removed Entity",
+      "commonStep": "Regular Step",
       "entityType": {
         "actor": "Actor",
         "feature": "Feature",
@@ -3063,16 +3464,26 @@
         "business_object_attribute": "Business object attribute",
         "flow": "Flow",
         "flow_step": "Flow step",
+        "flow_transition": "Flow transition",
+        "domain_rule": "Domain rule",
+        "rule_link": "Rule link",
+        "path_projection": "Execution path projection",
         "scope": "Scope",
         "project_metadata": "Project metadata"
-      }
+      },
+      "transitions": "Transitions"
     },
     "errors": {
       "source_branch_empty": "The source branch has no commits yet. Please commit your changes before creating a merge request.",
       "source_target_same": "Source and target branches cannot be the same.",
       "duplicate_open_mr": "An open merge request already exists between these branches.",
       "source_branch_not_found": "Source branch not found.",
-      "target_branch_not_found": "Target branch not found."
+      "target_branch_not_found": "Target branch not found.",
+      "branchCreationForbidden": "Branch creation forbidden",
+      "objectNotFoundInCurrentWorkspace": "Object not found in current workspace",
+      "permission_denied": "Permission denied",
+      "source_branch_required": "Source branch is required",
+      "target_branch_required": "Target branch is required"
     },
     "discardConfirmTitle": "Discard unsaved edits?",
     "discardConfirmMessage": "Switching branches will discard your unsaved edits. Continue?",
@@ -3091,6 +3502,7 @@
         "closed": "Closed"
       },
       "paginationCount": "Showing {{shown}} of {{total}}",
+      "overviewTab": "Overview",
       "loadMore": "Load More ({{remaining}} remaining)",
       "newMr": "New MR",
       "openMrs": "Open MRs",
@@ -3101,6 +3513,8 @@
       "commentPlaceholder": "Add review comment...",
       "blocksMerge": "blocks merge",
       "postComment": "Post Comment",
+      "writeComment": "Write comment",
+      "collapseComposer": "Collapse comment box",
       "commentsHeader": "Comments ({{count}})",
       "required": "required",
       "resolve": "Resolve",
@@ -3108,7 +3522,11 @@
       "reviewsHeader": "Reviews",
       "stale": "stale",
       "staleReason": "stale ({{reason}})",
-      "whyCantMerge": "Why can't merge?",
+      "descriptionTitle": "Description",
+      "createdBy": "by {{author}}",
+      "activityTitle": "Reviews & Discussion",
+      "activityEmpty": "No reviews or comments yet. Select a change in the Diff tab to leave an inline comment.",
+      "inlineComment": "Inline comment",
       "submitReview": "Submit Review",
       "approve": "Approve",
       "requestChanges": "Request Changes",
@@ -3122,6 +3540,11 @@
         "mergeable": "Mergeable",
         "merged": "Merged",
         "closed": "Closed"
+      },
+      "commentStatus": {
+        "active": "Open",
+        "resolved": "Resolved",
+        "expired": "Outdated"
       },
       "blocking": {
         "missing_approval": "Waiting for an admin/owner to approve",
@@ -3289,6 +3712,177 @@
           }
         ]
       },
+      "guidance": {
+        "title": "Read Guidance, Resolve Issues & Advance",
+        "category": "workflow",
+        "badge": "How to Proceed",
+        "summary": "If you are unsure what to do next, start with Pending Issues and Next Suggestion in Overview, then open the relevant stage. Guidance at the top of each stage page explains what is missing, what can be refined and when you can advance.",
+        "highlights": [
+          {
+            "title": "Find Work to Do in Overview",
+            "desc": "Pending Issues shows specific problems and may also contain a Suggestion to refine card. Issue cards are marked High Risk, Needs Resolution or Notice and can be opened for details. Refinement suggestions help improve the model; their presence does not necessarily prevent stage progression."
+          },
+          {
+            "title": "Start with Next Suggestion",
+            "desc": "Next Suggestion in Overview recommends a current action. When progression is available, it displays Enter How Stage, Enter Scope Stage or Enter Preview Stage. Stage pages also offer action buttons, such as generating content, reviewing domain rules or completing workflow steps."
+          },
+          {
+            "title": "Expand Issues & Quality Hints on a Stage Page",
+            "desc": "Expand Pending Issues or Workspace Health at the top of a stage page to read the details. Items with related objects can be opened for details or to highlight those objects. Buttons beside issues start the relevant action. Workspace Health hints can be addressed as needed."
+          },
+          {
+            "title": "Use Stage Guidance to Decide Whether to Proceed",
+            "desc": "The left navigation shows stage status, pending counts and notices about blocking issues or suggestions to refine. If the stage is incomplete, follow the stated reason to add missing content. When requirements are met and no blocking items remain, the stage page shows Current stage is complete and a button to advance."
+          },
+          {
+            "title": "When Model Readiness Verification Failed Appears",
+            "desc": "Attempting a stage transition or preview generation may open Model Readiness Verification Failed. The dialog explains what must be completed or confirmed for this operation and provides action buttons or manual repair guidance. Address the items, then request the original operation again."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Choose an Issue or Suggestion in Overview",
+            "desc": "Read a card in Pending Issues or select Next Suggestion. Opening an issue card takes you to the relevant page and shows issue details. Selecting a suggestion opens the relevant action entry or performs its recommended operation."
+          },
+          {
+            "step": 2,
+            "title": "Complete the Model Using the Available Action",
+            "desc": "Expand Pending Issues on the stage page and use the action beside the relevant explanation. If automatic handling is unavailable, edit the related actor, feature, scenario, rule or workflow manually."
+          },
+          {
+            "step": 3,
+            "title": "Review & Apply AI Proposals",
+            "desc": "If candidates or a draft appear, review the content before adopting a suitable candidate or confirming the draft. Reject unsuitable candidates. Generating a proposal alone does not resolve the problem; address any reported conflict first."
+          },
+          {
+            "step": 4,
+            "title": "Diagnose Further as Needed",
+            "desc": "When What or How offers Diagnose requirements space, run AI diagnosis for further refinement suggestions. The button changes to Re-diagnose when related suggestions exist. Read the results and decide what to add; you do not need to complete every refinement suggestion before advancing."
+          },
+          {
+            "step": 5,
+            "title": "Confirm the Guidance & Advance",
+            "desc": "Use the stage transition entry when it appears. If a readiness dialog opens, address the listed causes and try again. If an operation fails, read the error and use the retry or manual action available on that page."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Why are refinement suggestions shown alongside pending issues?",
+            "a": "This area brings together content that needs attention. Issues describe specific gaps or errors, while refinement suggestions propose further improvements. Read each card label, explanation and action; refinement suggestions need not all be treated as blockers."
+          },
+          {
+            "q": "Why can I not advance when there are no pending issues?",
+            "a": "Required content may still be missing, a prerequisite stage may be incomplete or analysis may still be running. Read the stage notice and navigation lock reason, complete the requirements and try again."
+          },
+          {
+            "q": "Why are there suggestions when an advance button is available?",
+            "a": "Nonblocking refinement suggestions may remain after required conditions are met. You can advance or continue refining the current stage. Next Action and Stage Transition can appear together on a stage page."
+          },
+          {
+            "q": "Why does an issue remain after I generate a draft?",
+            "a": "Drafts and candidates must be reviewed and applied to the model. Adopt a candidate or confirm a draft, resolve any conflict, then check the updated status or request the original operation again."
+          },
+          {
+            "q": "Does Ignore change the model?",
+            "a": "No. Ignoring stops displaying that issue or quality hint but does not add missing content or change model relationships. Ignore a hint if it is inapplicable to your requirements. Mandatory modeling content still needs to be completed."
+          },
+          {
+            "q": "What do Cancel and Continue anyway mean in the readiness dialog?",
+            "a": "Cancel stops this operation so you can return to editing. Continue anyway attempts to proceed past the listed blocking items without repairing the content. A first transition still cannot skip mandatory content, a locked stage or analysis in progress. Stage transitions that bypass blockers leave an audit record."
+          }
+        ]
+      },
+      "ai_assistant": {
+        "title": "AI Assistant: Q&A, Changes & Conversational Creation",
+        "category": "workflow",
+        "badge": "AI Modeling Help",
+        "summary": "In a project workspace, open AI Assistant using the purple sparkle button at the bottom right. Use Q&A to understand existing requirements and Modify to change an existing object. To add an object, use the conversational creation entry on its page. Model changes are drafted first and applied after review and confirmation.",
+        "highlights": [
+          {
+            "title": "Open, Collapse & Move the Assistant",
+            "desc": "Expand the assistant with the floating button at the bottom right and collapse it with the minus button in its header. Drag the floating button or window header to keep the model visible."
+          },
+          {
+            "title": "Choose the Q&A Scope",
+            "desc": "In Q&A, Scope offers the current stage or Entire Workspace. Selecting an object on the page also allows questions about that object. Changing pages or selecting an object resets the scope selection, so check the displayed scope before sending."
+          },
+          {
+            "title": "Ask About Existing Requirements",
+            "desc": "Type a question and send it with the send button or Enter. Use Shift+Enter for a new line. Ask about a feature responsibility, the meaning of a workflow or content that needs attention in the current stage. Answers explain the project model and do not themselves change it."
+          },
+          {
+            "title": "Modify an Existing Object Through Conversation",
+            "desc": "Select a supported object, such as an actor, feature, workflow or business object. Switch to Modify, check the Object name and select Start Editing. Describe the desired changes and answer follow-up questions. When ready, choose Generate Edit Draft or Continue Chatting."
+          },
+          {
+            "title": "Review the Before & After Changes",
+            "desc": "Preview Changes shows the original and proposed content and may include a rationale. Select Confirm Changes to save and refresh the workspace. If the proposal is unsuitable, select Discard and start editing again."
+          },
+          {
+            "title": "Create Objects from Their Page Entries",
+            "desc": "What offers conversational entries for adding actors, feature modules and child features. How offers entries for creating workflows and business objects. Describe the new object, answer follow-up questions and select Generate Draft. Review the preview and select Confirm & Create, or continue chatting or discard the draft."
+          }
+        ],
+        "steps": [
+          {
+            "step": 1,
+            "title": "Open the Assistant & Choose a Scope",
+            "desc": "Open the assistant on the relevant stage and select Q&A. To ask about one object, select it on the page first and check the object name displayed in Scope."
+          },
+          {
+            "step": 2,
+            "title": "Ask to Understand the Existing Model",
+            "desc": "Describe what you want to understand, such as which actors use a feature or what a workflow accomplishes. Read the answer before deciding whether a change is needed."
+          },
+          {
+            "step": 3,
+            "title": "Select an Object & Start Editing",
+            "desc": "Select the object to change, switch to Modify, check its name and select Start Editing. If the button is unavailable, follow the prompt to select a supported object."
+          },
+          {
+            "step": 4,
+            "title": "Describe the Changes & Add Detail",
+            "desc": "State the content to change and the expected result, such as adding responsibility for reviewing refund requests to an actor. Answer follow-up questions. When the generation entry appears, generate an edit draft or continue chatting."
+          },
+          {
+            "step": 5,
+            "title": "Review Changes & Confirm or Discard",
+            "desc": "Compare each original and proposed value before selecting Confirm Changes. Select Discard if you do not want to apply it. Retry generation if it fails; if confirmation fails, read the error and retry confirmation in the preview."
+          },
+          {
+            "step": 6,
+            "title": "Use Page Entries to Add New Objects",
+            "desc": "Start a new object conversation from the relevant page entry. After generating a draft, check its name, description and any displayed relationships, then select Confirm & Create and inspect the saved object."
+          }
+        ],
+        "faqs": [
+          {
+            "q": "Will requesting changes in Q&A save them directly?",
+            "a": "No. Q&A explains existing project content. To change the model, select an object, use Modify, generate an edit draft and review and confirm it."
+          },
+          {
+            "q": "Why is Start Editing unavailable?",
+            "a": "Modification requires a specific supported object. Entire Workspace, the current stage or an unsupported object cannot start an edit. Check the object name, prompt and button state in the assistant."
+          },
+          {
+            "q": "Can the floating assistant add new objects directly?",
+            "a": "The floating assistant provides Q&A and changes to existing objects. To create actors, features, workflows or business objects, use the conversational creation entry on What or How."
+          },
+          {
+            "q": "Can I continue the same conversation after generating an edit draft?",
+            "a": "Before generation, use Continue Chatting to add detail. Once Preview Changes opens, the available actions are Confirm Changes and Discard. Discarding requires starting a new edit."
+          },
+          {
+            "q": "What happens when I collapse, clear Q&A or switch modes?",
+            "a": "Collapsing only folds the window. Clear in Q&A removes the displayed question and answer history without changing the model. Switching from Modify to Q&A resets the edit process and discards an unconfirmed edit draft, so decide whether to save first."
+          },
+          {
+            "q": "What if an answer or draft does not match my requirements?",
+            "a": "Ask a more specific question and check the Q&A scope. Before generation, continue chatting to clarify changes or creation details. Discard unsuitable drafts. If a request, generation or confirmation fails, retry using the available entry; a failure message does not mean the content was saved."
+          }
+        ]
+      },
       "what": {
         "title": "What Stage: Actors & Features",
         "category": "workflow",
@@ -3337,56 +3931,69 @@
         ]
       },
       "flow": {
-        "title": "Flow Stage: Business Flow Orchestration",
+        "title": "How Stage: Rule-Driven Flow Modeling",
         "category": "workflow",
-        "badge": "Behavioral Dynamics",
-        "summary": "The Flow stage turns static capabilities into dynamic business execution flows, visualizing role interactions, sequences, and data transitions via swimlane diagrams.",
+        "badge": "Rules & Flows",
+        "summary": "The How stage starts by discovering and reviewing domain rules, then uses them to constrain flows, steps, branches, and transitions. Business objects are maintained in each flow through step input/output relationships and field attributes.",
         "highlights": [
           {
-            "title": "Step Assignment & Sequences",
-            "desc": "Assign acting roles and parent features to each step, configuring sequential transitions and branch conditions."
+            "title": "Dedicated Domain Rule View",
+            "desc": "Discover or rediscover rules with AI, add them manually, and inspect their hierarchy, confirmation status, and linked objects in card or compact view."
           },
           {
-            "title": "Business Objects & Data Flow",
-            "desc": "Define input business objects consumed and output business objects produced by each step to ensure data consistency."
+            "title": "Rule-Driven Flow Generation",
+            "desc": "Domain rules are a prerequisite for flow generation. Steps and branches can also link to specific rules, preserving traceability from requirement evidence to execution paths."
           },
           {
-            "title": "Interactive Swimlane Visualization",
-            "desc": "Automatically renders swimlane diagrams grouped by actors, supporting node layout adjustments and focus views."
+            "title": "Branch and Path Modeling",
+            "desc": "Arrange actor actions, system actions, and decision branches on the flow canvas; maintain conditions and default branches, then focus the main or alternative routes with path projection."
           },
           {
-            "title": "State Machine Foundation",
-            "desc": "Flow definitions directly map to finite state machines, serving as the code generation blueprint for prototype UI events."
+            "title": "Business Object Attributes in Context",
+            "desc": "Each flow summarizes its involved business objects and shows how they participate through step input/output relationships and field attributes."
           }
         ],
         "steps": [
           {
             "step": 1,
-            "title": "Create Business Flow",
-            "desc": "Create a new flow, associate it with core features, and define the business goal."
+            "title": "Discover and Review Domain Rules",
+            "desc": "Use AI rule discovery or add rules manually, then check each statement, confirmation status, and source links."
           },
           {
             "step": 2,
-            "title": "Orchestrate Steps & Roles",
-            "desc": "Add step nodes, assign responsible actors, and connect directional transitions."
+            "title": "Generate or Create a Business Flow",
+            "desc": "Once at least one domain rule exists, generate flows with AI or create a flow manually and associate the relevant features."
           },
           {
             "step": 3,
-            "title": "Bind Input/Output Data Objects",
-            "desc": "Attach relevant business entities and attributes to each step to form an end-to-end data pipeline."
+            "title": "Arrange Steps, Branches, and Rules",
+            "desc": "Add typed steps, assign actors, connect steps on the canvas, and define branch conditions, default paths, and linked rules."
+          },
+          {
+            "step": 4,
+            "title": "Maintain Object Attributes in Each Flow",
+            "desc": "Use the Involved Business Objects area inside an expanded flow to manage objects and field attributes, then assign step input/output relationships."
           }
         ],
         "faqs": [
           {
-            "q": "How do I connect transitions between steps?",
-            "a": "Specify 'Next Steps' in the step inspector, and the system will automatically draw directional arrows in the swimlane diagram."
+            "q": "Why are domain rules required before flow generation?",
+            "a": "Domain rules provide constraints for flow steps and branches. Generate or add at least one rule in the rule view before generating flows."
+          },
+          {
+            "q": "How do I maintain the business objects used by a flow?",
+            "a": "Expand a flow and use its Involved Business Objects area to create or select an object. Click an object to edit its name, description, and fields; set input/output relationships on the relevant flow steps."
+          },
+          {
+            "q": "How do I create and refine branches?",
+            "a": "Drag from a step port to a target step on the flow canvas. Select the transition to edit its condition, evaluation order, default-branch setting, and linked domain rules."
           }
         ]
       },
       "scope": {
         "title": "Scope Stage: Scope & Acceptance Criteria",
         "category": "workflow",
-        "badge": "Acceptance & Gate Check",
+        "badge": "Acceptance & Progression",
         "summary": "The Scope stage establishes product acceptance criteria through rigorous Gherkin scenarios and scope boundaries, unlocking prototype compilation.",
         "highlights": [
           {
@@ -3402,8 +4009,8 @@
             "desc": "Bind acceptance rules to specific features, business objects, and steps to eliminate ambiguity."
           },
           {
-            "title": "Gate Check Verification",
-            "desc": "Completing scope criteria triggers the full specification Gate Check, unlocking prototype sandbox compilation."
+            "title": "Checks Before Entering Preview",
+            "desc": "When entering Preview, the system checks prerequisite content. If Model Readiness Verification Failed appears, complete or confirm the listed content and try again."
           }
         ],
         "steps": [
@@ -3419,8 +4026,8 @@
           },
           {
             "step": 3,
-            "title": "Execute Gate Check & Unlock Prototype",
-            "desc": "Run the Gate Check to verify specification completeness and finalize the 3 prerequisite stages."
+            "title": "Confirm Stage Status & Enter Preview",
+            "desc": "After completing scope decisions, check stage status and use Enter Preview Stage when available. If checks fail, address the listed causes and try again."
           }
         ],
         "faqs": [

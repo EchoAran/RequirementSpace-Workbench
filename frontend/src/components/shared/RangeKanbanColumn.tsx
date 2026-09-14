@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { NodeKindToText } from '@/core/presentationLabels';
+import { X } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 
 interface DragItem {
@@ -117,6 +117,7 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                 }`}>
                   {item.title}
                 </h5>
+                {item.status && <StatusBadge status={item.status} className="shrink-0" />}
               </div>
 
               {item.scope && (
@@ -143,13 +144,6 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                   </button>
                 </div>
               )}
-              
-              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 items-center justify-between">
-                <div className="w-full flex justify-between items-center">
-                  {item.status ? <StatusBadge status={item.status} /> : <span />}
-                  {item.kind && <span className="text-[10px] text-slate-400 italic">{NodeKindToText[item.kind as keyof typeof NodeKindToText] || item.kind}</span>}
-                </div>
-              </div>
             </div>
           );
         })}
@@ -175,12 +169,14 @@ export function RangeKanbanColumn({ columnKey, title, items, highlightTarget, se
                   <p className="text-[10px] text-indigo-600 font-bold mt-1">{t('rangeKanban.parentModule', { name: activeKanoItem.parentModuleName })}</p>
                 )}
               </div>
-              <button 
+              <button
                 type="button"
                 onClick={() => setActiveKanoItem(null)}
-                className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs font-bold cursor-pointer"
+                aria-label={t('rangeKanban.closeBtn')}
+                title={t('rangeKanban.closeBtn')}
+                className="text-slate-400 hover:text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer"
               >
-                {t('rangeKanban.closeBtn')}
+                <X className="w-3 h-3" />
               </button>
             </div>
 

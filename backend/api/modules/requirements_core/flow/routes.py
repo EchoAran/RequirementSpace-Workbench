@@ -10,19 +10,27 @@ from backend.api.dependencies.ownership import (
 )
 from backend.api.modules.project_lifecycle.public import DraftRegenerateRequest
 from backend.api.modules.requirements_core.flow.application.flow_generation_service import FlowGenerationService
+from backend.api.modules.requirements_core.flow.application.flow_object_usage_service import FlowObjectUsageService
 from backend.api.modules.requirements_core.flow.application.flow_service import FlowService
+from backend.api.modules.requirements_core.flow.application.flow_transition_service import FlowTransitionService
+from backend.api.modules.requirements_core.flow.application.path_projection_service import PathProjectionService
 from backend.api.modules.requirements_core.flow.schemas import (
     FlowCreateRequest,
     FlowGenerationConfirmResponse,
     FlowGenerationDraftCreateRequest,
     FlowGenerationDraftDiscardResponse,
     FlowGenerationDraftResponse,
+    FlowObjectUsageResponse,
     FlowResponse,
     FlowStepCreateRequest,
     FlowStepResponse,
     FlowStepsReorderRequest,
     FlowStepUpdateRequest,
+    FlowTransitionCreateRequest,
+    FlowTransitionResponse,
+    FlowTransitionUpdateRequest,
     FlowUpdateRequest,
+    PathProjectionResponse,
 )
 from backend.api.modules.version_control.dependencies import reject_commit_write
 from backend.api.modules.version_control.public import map_branch_error, resolve_branch_context
@@ -36,6 +44,9 @@ router = APIRouter(
 )
 
 flow_service = FlowService()
+flow_transition_service = FlowTransitionService()
+path_projection_service = PathProjectionService()
+flow_object_usage_service = FlowObjectUsageService()
 
 @router.post("", response_model=FlowResponse)
 async def create_flow(
@@ -54,14 +65,14 @@ async def create_flow(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.create_flow(
             project_id=owned_project.id,
             req=request,
@@ -100,14 +111,14 @@ async def update_flow(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.update_flow(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -150,14 +161,14 @@ async def delete_flow(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.delete_flow(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -178,6 +189,56 @@ async def delete_flow(
         )
 
 
+@router.get("/{flow_id}/paths", response_model=PathProjectionResponse)
+async def get_flow_paths(
+    project_id: str,
+    flow_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+):
+    try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    ws_id = ws_obj.id
+    return await path_projection_service.get_path_projections(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
+@router.get("/{flow_id}/object-usage", response_model=FlowObjectUsageResponse)
+async def get_flow_object_usage(
+    project_id: str,
+    flow_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+):
+    try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    ws_id = ws_obj.id
+    return await flow_object_usage_service.get_flow_object_usage(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
 @router.post("/{flow_id}/steps", response_model=FlowStepResponse)
 async def create_flow_step(
     project_id: str,
@@ -196,14 +257,14 @@ async def create_flow_step(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.create_flow_step(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -243,14 +304,14 @@ async def reorder_flow_steps(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.reorder_flow_steps(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -292,14 +353,14 @@ async def update_flow_step(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.update_flow_step(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -341,14 +402,14 @@ async def delete_flow_step(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await flow_service.delete_flow_step(
             project_id=owned_project.id,
             flow_id=flow_id,
@@ -368,6 +429,163 @@ async def delete_flow_step(
             status_code=500,
             detail=f"Failed to delete flow step: {error}",
         )
+
+
+@router.post("/{flow_id}/transitions", response_model=FlowTransitionResponse)
+async def create_flow_transition(
+    project_id: str,
+    flow_id: int,
+    request: FlowTransitionCreateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
+):
+    try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms["can_write"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests",
+        )
+
+    ws_id = ws_obj.id
+    return await flow_transition_service.create_transition(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        request=request,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
+@router.get("/{flow_id}/transitions", response_model=list[FlowTransitionResponse])
+async def list_flow_transitions(
+    project_id: str,
+    flow_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+):
+    try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    ws_id = ws_obj.id
+    return await flow_transition_service.list_transitions(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
+@router.get("/{flow_id}/transitions/{transition_id}", response_model=FlowTransitionResponse)
+async def get_flow_transition(
+    project_id: str,
+    flow_id: int,
+    transition_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+):
+    try:
+        _branch_obj, ws_obj, _perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    ws_id = ws_obj.id
+    return await flow_transition_service.get_transition(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        transition_id=transition_id,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
+@router.put("/{flow_id}/transitions/{transition_id}", response_model=FlowTransitionResponse)
+async def update_flow_transition(
+    project_id: str,
+    flow_id: int,
+    transition_id: int,
+    request: FlowTransitionUpdateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
+):
+    try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms["can_write"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests",
+        )
+
+    ws_id = ws_obj.id
+    return await flow_transition_service.update_transition(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        transition_id=transition_id,
+        request=request,
+        session=session,
+        workspace_id=ws_id,
+    )
+
+
+@router.delete("/{flow_id}/transitions/{transition_id}")
+async def delete_flow_transition(
+    project_id: str,
+    flow_id: int,
+    transition_id: int,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    owned_project: ProjectModel = Depends(require_project_member),
+    commit_guard: None = Depends(reject_commit_write),
+):
+    try:
+        _branch_obj, ws_obj, perms = await session.run_sync(
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+
+    if not perms["can_write"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests",
+        )
+
+    ws_id = ws_obj.id
+    await flow_transition_service.delete_transition(
+        project_id=owned_project.id,
+        flow_id=flow_id,
+        transition_id=transition_id,
+        session=session,
+        workspace_id=ws_id,
+    )
+    return {"status": "ok"}
 
 
 # Generation Router
@@ -394,7 +612,6 @@ FLOW_GENERATION_ERRORS = {
     "invalid_feature_reference",
     "duplicate_step_number",
     "invalid_step_number_format",
-    "invalid_next_step_reference",
     "invalid_actor_reference",
     "invalid_step_type",
 }
@@ -416,13 +633,13 @@ async def create_flow_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await flow_generation_service.create_draft(
@@ -490,13 +707,13 @@ async def confirm_flow_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, draft.project_id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await flow_generation_service.confirm_draft(
             draft_id=draft.draft_id,

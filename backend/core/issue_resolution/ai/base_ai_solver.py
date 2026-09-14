@@ -51,11 +51,9 @@ class BaseIssueAISolver(ABC):
         self._llm_handler = LLMHandler()
 
     @staticmethod
-    def _scope(stmt, model, workspace_id: int | None = None):
-        """把查询限定到指定分支工作区；未指定时保持项目级行为（迁移期兼容）。"""
-        if workspace_id is not None:
-            stmt = stmt.where(model.workspace_id == workspace_id)
-        return stmt
+    def _scope(stmt, model, workspace_id: int):
+        """Restrict entity queries to the requested branch workspace."""
+        return stmt.where(model.workspace_id == workspace_id)
 
     @property
     @abstractmethod
@@ -70,7 +68,7 @@ class BaseIssueAISolver(ABC):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         """Build the context dict for the LLM prompt."""
         ...
@@ -149,7 +147,7 @@ class BaseIssueAISolver(ABC):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> RepairResult:
         """Main entry point: build context, call LLM, parse result."""
         try:

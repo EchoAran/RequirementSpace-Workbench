@@ -81,6 +81,7 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
         scenario_ids = payload.get("scenario_ids", [])
+        workspace_id = kwargs["workspace_id"]
         if scenario_ids:
             await session.execute(
                 delete(ScenarioAcceptanceCriterionModel).where(
@@ -88,10 +89,21 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 )
             )
             await session.flush()
-        workspace_id = kwargs.get("workspace_id")
+            from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+                RequirementNodeResolver,
+            )
+            await RequirementNodeResolver().sweep_orphaned_links(
+                session=session,
+                project_id=payload["project_id"],
+                workspace_id=workspace_id,
+            )
         result = await self._service._persist_acceptance_criteria_generation_draft(
             draft=payload, session=session, workspace_id=workspace_id,
         )
+        changed_targets = [
+            ("acceptance_criterion", uid)
+            for uid in result.get("ac_logical_uuids", [])
+        ]
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(
             project_id=payload["project_id"],
@@ -99,7 +111,9 @@ class AcceptanceCriteriaGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             perception_kinds={"ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
+        result.pop("ac_logical_uuids", None)
         return result
 
     def is_duplicate(self, candidate: GenerationCandidate, existing: list[GenerationCandidate]) -> bool:

@@ -56,6 +56,7 @@ class PreviewShadowConvergenceService:
     async def _generate_shadow_patch(
         self,
         project_id: int,
+        workspace_id: int,
         base_snapshot: dict,
         session: AsyncSession = None,
         feedback: str = "",
@@ -64,6 +65,7 @@ class PreviewShadowConvergenceService:
         return await PreviewShadowMerger.generate_shadow_patch(
             service=self,
             project_id=project_id,
+            workspace_id=workspace_id,
             base_snapshot=base_snapshot,
             session=session,
             feedback=feedback,
@@ -78,21 +80,20 @@ class PreviewShadowConvergenceService:
 
 
     async def _update_progress(self, draft_id: str, progress: int, message: str) -> None:
-        try:
-            async with AsyncSessionLocal() as session:
-                draft_res = await session.execute(
-                    select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
-                )
-                draft = draft_res.scalar_one_or_none()
-                if draft and draft.status == "generating":
-                    progress_info = {
-                        "progress": progress,
-                        "message": message
-                    }
-                    draft.error_message = json.dumps(progress_info, ensure_ascii=False)
-                    await session.commit()
-        except Exception:
-            pass
+        if not draft_id:
+            return
+        async with AsyncSessionLocal() as session:
+            draft_res = await session.execute(
+                select(PreviewShadowDraftModel).where(PreviewShadowDraftModel.draft_id == draft_id)
+            )
+            draft = draft_res.scalar_one_or_none()
+            if draft and draft.status == "generating":
+                progress_info = {
+                    "progress": progress,
+                    "message": message
+                }
+                draft.error_message = json.dumps(progress_info, ensure_ascii=False)
+                await session.commit()
 
     async def converge_shadow_snapshot_task(
         self,
@@ -118,11 +119,12 @@ class PreviewShadowConvergenceService:
 
         try:
             await asyncio.sleep(0.5)  # Let parent request return safely
-            draft_input = await self._load_convergence_input(project_id, draft_id)
-            if draft_input is None:
-                return
-
             try:
+                draft_input = await self._load_convergence_input(project_id, draft_id)
+                if draft_input is None:
+                    return
+                if draft_input.get("workspace_id") is None:
+                    raise ValueError("shadow_draft_missing_workspace")
                 artifacts = await self._build_convergence_artifacts(
                     project_id=project_id,
                     draft_id=draft_id,
@@ -168,30 +170,28 @@ class PreviewShadowConvergenceService:
         project_id: int,
         draft_id: str,
     ) -> dict | None:
-        try:
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    select(PreviewShadowDraftModel).where(
-                        PreviewShadowDraftModel.draft_id == draft_id
-                    )
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(PreviewShadowDraftModel).where(
+                    PreviewShadowDraftModel.draft_id == draft_id
                 )
-                draft = result.scalar_one_or_none()
-                if not draft:
-                    return None
-                project = await session.get(ProjectModel, project_id)
-                feedback = ""
-                prefix = "Regenerating draft with feedback: "
-                if draft.error_message and draft.error_message.startswith(prefix):
-                    feedback = draft.error_message[len(prefix):].strip()
-                return {
-                    "project_public_id": (
-                        project.public_id if project else str(project_id)
-                    ),
-                    "base_snapshot": draft.base_snapshot_json,
-                    "feedback": feedback,
-                }
-        except Exception:
-            return None
+            )
+            draft = result.scalar_one_or_none()
+            if not draft:
+                return None
+            project = await session.get(ProjectModel, project_id)
+            feedback = ""
+            prefix = "Regenerating draft with feedback: "
+            if draft.error_message and draft.error_message.startswith(prefix):
+                feedback = draft.error_message[len(prefix):].strip()
+            return {
+                "project_public_id": (
+                    project.public_id if project else str(project_id)
+                ),
+                "workspace_id": draft.workspace_id,
+                "base_snapshot": draft.base_snapshot_json,
+                "feedback": feedback,
+            }
 
     async def _build_convergence_artifacts(
         self,
@@ -199,6 +199,7 @@ class PreviewShadowConvergenceService:
         project_id: int,
         draft_id: str,
         project_public_id: str,
+        workspace_id: int,
         base_snapshot: dict,
         feedback: str,
         prototype_generation_service,
@@ -206,6 +207,7 @@ class PreviewShadowConvergenceService:
         await self._update_progress(draft_id, 5, "preview.full.loadingShadow")
         patch = await self._generate_shadow_patch(
             project_id=project_id,
+            workspace_id=workspace_id,
             base_snapshot=base_snapshot,
             feedback=feedback,
             draft_id=draft_id,
@@ -273,22 +275,19 @@ class PreviewShadowConvergenceService:
         error: Exception,
         error_trace: str,
     ) -> None:
-        try:
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    select(PreviewShadowDraftModel).where(
-                        PreviewShadowDraftModel.draft_id == draft_id
-                    )
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(PreviewShadowDraftModel).where(
+                    PreviewShadowDraftModel.draft_id == draft_id
                 )
-                draft = result.scalar_one_or_none()
-                if draft:
-                    draft.status = "failed"
-                    draft.error_message = (
-                        f"Convergence failed: {error!s}\n{error_trace}"
-                    )
-                    await session.commit()
-        except Exception:
-            pass
+            )
+            draft = result.scalar_one_or_none()
+            if draft:
+                draft.status = "failed"
+                draft.error_message = (
+                    f"Convergence failed: {error!s}\n{error_trace}"
+                )
+                await session.commit()
 
     async def commit_shadow_draft(
         self,

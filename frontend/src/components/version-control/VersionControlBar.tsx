@@ -15,6 +15,7 @@ export function VersionControlBar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const currentBranch = useWorkspaceStore((s) => s.currentBranch);
+  const branchRef = useWorkspaceStore((s) => s.branchRef);
   const [showCommit, setShowCommit] = useState(false);
 
   const isProtected = currentBranch?.is_protected || currentBranch?.name === 'main';
@@ -26,7 +27,7 @@ export function VersionControlBar() {
 
   const openDiffCompare = () => {
     if (!projectId) return;
-    navigate(`/projects/${projectId}/repo?diff=1&branch=${encodeURIComponent(currentBranch?.public_id || 'main')}`);
+    navigate(`/projects/${projectId}/repo?diff=1&branch=${encodeURIComponent(branchRef)}`);
   };
 
   return (

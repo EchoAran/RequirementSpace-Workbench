@@ -1,3 +1,0 @@
-from backend.core.prompt_resolver import LocalizedPromptProxy
-
-acceptance_criteria_perceive_prompt = LocalizedPromptProxy("acceptance_criteria_perceive")

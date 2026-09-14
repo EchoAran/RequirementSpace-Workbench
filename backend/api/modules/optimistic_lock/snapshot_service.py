@@ -19,9 +19,13 @@ from backend.database.model import (
     ActorModel,
     BusinessObjectAttributeModel,
     BusinessObjectModel,
+    ChoiceModel,
+    DomainRuleModel,
     FeatureModel,
     FlowModel,
     FlowStepModel,
+    FlowTransitionModel,
+    RuleLinkModel,
     ScenarioAcceptanceCriterionModel,
     ScenarioModel,
     ScopeModel,
@@ -37,6 +41,10 @@ KIND_TO_MODEL = {
     "flow": FlowModel,
     "flow_step": FlowStepModel,
     "scope": ScopeModel,
+    "domain_rule": DomainRuleModel,
+    "rule_link": RuleLinkModel,
+    "flow_transition": FlowTransitionModel,
+    "flow_refinement_choice": ChoiceModel,
 }
 
 
@@ -55,10 +63,13 @@ class NodeSnapshotService:
             options.append(selectinload(BusinessObjectModel.attributes))
         elif model_cls == FlowModel:
             options.append(selectinload(FlowModel.steps))
+            options.append(selectinload(FlowModel.transitions))
         elif model_cls == FlowStepModel:
             options.append(selectinload(FlowStepModel.actors))
             options.append(selectinload(FlowStepModel.input_business_objects))
             options.append(selectinload(FlowStepModel.output_business_objects))
+        elif model_cls == ChoiceModel:
+            options.append(selectinload(ChoiceModel.choice_group))
 
         query = sa.select(model_cls).where(model_cls.id == node_id).options(*options)
         res = await session.execute(query)

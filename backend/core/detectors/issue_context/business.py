@@ -56,7 +56,7 @@ async def _load_business_object_counts(
 async def load_issue_business_objects(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> list[BusinessObjectIssueItem]:
     stmt = select(BusinessObjectModel).where(
         BusinessObjectModel.project_id == project_id,

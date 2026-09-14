@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from backend.api.base_schema import CamelModel
 
 
 class BlankProjectCreateRequest(BaseModel):
@@ -8,7 +9,7 @@ class BlankProjectCreateRequest(BaseModel):
     knowledge_workspace_id: str | None = None
 
 
-class BlankProjectCreateResponse(BaseModel):
+class BlankProjectCreateResponse(CamelModel):
     project_id: str
     project_name: str
     project_description: str

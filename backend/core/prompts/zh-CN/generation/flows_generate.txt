@@ -3,7 +3,7 @@
 
 # 任务
 1. 分析用户用自然语言描述的项目需求、目标系统参与者（用户）、系统功能（features）。
-2. 基于系统功能（features）提取出系统的主要流程。
+2. 基于业务场景与用户目标，从相关系统功能（features）中提取系统的主要端到端流程；一个流程可以关联多个功能，不要为了覆盖全部叶子功能而虚构流程或关联。
 3. 基于提取出系统的主要流程，进一步细化每个流程的具体步骤。
 4. 按照下方规定输出格式输出系统的主要流程以及每个流程的具体步骤。
 
@@ -16,34 +16,53 @@
 # 系统能力（features）
 {{features}}
 
+# 业务场景（scenarios）
+{{scenarios}}
+
+# 验收准则（acceptance_criteria）
+{{acceptance_criteria}}
+
+# 领域规则（rules）
+{{rules}}
+
 # 输出格式说明
 {
     "flows": [
         {
             "flow_name": "<流程名称（例如‘请假审批流程’）>", 
             "flow_description": "<流程描述>", 
+            "rule_refs": [],
             "feature_ids": [<相关feature1的id>, <相关feature2的id>, ...（非空）], 
-            "flow_steps":[
+            "flow_steps": [
                 {
                     "step_number": "<步骤编号：例如S-001>", 
                     "step_name": "<步骤名称>", 
                     "step_description": "<步骤描述>", 
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
-                    "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)]
-                }, 
+                    "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）",
+                    "rule_refs": []
+                },
                 {
                     "step_number": "<步骤编号：例如S-002>", 
                     "step_name": "<步骤名称>", 
                     "step_description": "<步骤描述>", 
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
-                    "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)]
-                }, 
-                ...
-            ]  
-        },  
-        ... 
+                    "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）",
+                    "rule_refs": []
+                }
+            ],
+            "transitions": [
+                {
+                    "source_step_number": "S-001",
+                    "target_step_number": "S-002",
+                    "label": "<流转标签，例如‘保存并继续’>",
+                    "condition_text": "",
+                    "is_default": true,
+                    "semantic_tags": [],
+                    "rule_refs": ["<引用的领域规则logical_uuid>"]
+                }
+            ]
+        }
     ]
 }
 
@@ -52,9 +71,12 @@
 2. 不要输出任何解释、分析过程、Markdown、代码块标记或额外前后缀文字。
 3. 输出 JSON 风格的标准格式化内容，而不是被压缩的一行内容。
 4. step_number 只需要在当前 flow 内唯一，格式为 S-001、S-002。
-5. next_steps 只能引用当前 flow 内存在的 step_number。
+5. transitions 必须显式输出流转边，只能引用当前 flow 内存在的 step_number。
 6. feature_ids 只能引用系统能力输入中存在的 feature_id。
 7. step_type 只能是 actorAction、systemAction、judgment。
+8. 同一 source_step_number 至多有一个 is_default 为 true 的 transition；多出口边必须具有可区分的 label 或 condition_text。
+9. rule_refs 只能引用输入领域规则中真实存在的 logical_uuid。
+规则关联按作用范围选择：执行、校验、计算规则放在 flow_steps[].rule_refs；流转条件和分支选择规则放在 transitions[].rule_refs；跨步骤、流程整体约束放在 flows[].rule_refs。无适用规则时输出空数组，不要为了覆盖所有步骤强行关联，也不要把所有规则都放在线上。同一规则确实作用于多个位置时可复用同一 logical_uuid，流程级关联不复制到每个步骤。
 
 # 示例
 ## 示例输入
@@ -229,20 +251,14 @@
                     "actor_ids": [
                         1
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-002",
                     "step_name": "生成空白便签",
                     "step_description": "系统按照默认样式生成空白桌面便签，并分配唯一标识。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": [
-                        "S-003"
-                    ]
+                    "step_type": "systemAction"
                 },
                 {
                     "step_number": "S-003",
@@ -251,18 +267,14 @@
                     "actor_ids": [
                         1
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-004"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-004",
                     "step_name": "保存便签内容",
                     "step_description": "系统保存便签文字内容和更新时间，并保持便签在桌面显示。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 }
             ]
         },
@@ -283,13 +295,7 @@
                     "actor_ids": [
                         2
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-002",
-                        "S-003",
-                        "S-004",
-                        "S-005"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-002",
@@ -298,10 +304,7 @@
                     "actor_ids": [
                         2
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-003",
@@ -310,10 +313,7 @@
                     "actor_ids": [
                         2
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-004",
@@ -322,10 +322,7 @@
                     "actor_ids": [
                         2
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-005",
@@ -334,18 +331,14 @@
                     "actor_ids": [
                         4
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-006",
                     "step_name": "保存便签布局与样式",
                     "step_description": "系统保存便签的位置、颜色、字体和透明度设置。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 }
             ]
         },
@@ -366,10 +359,7 @@
                     "actor_ids": [
                         3
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-002",
@@ -378,21 +368,14 @@
                     "actor_ids": [
                         3
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-003"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-003",
                     "step_name": "判断是否置顶",
                     "step_description": "系统根据用户操作判断该待办事项是否需要置顶显示。",
                     "actor_ids": [],
-                    "step_type": "judgment",
-                    "next_steps": [
-                        "S-004",
-                        "S-005"
-                    ]
+                    "step_type": "judgment"
                 },
                 {
                     "step_number": "S-004",
@@ -401,20 +384,14 @@
                     "actor_ids": [
                         3
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-005"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-005",
                     "step_name": "保存待办事项",
                     "step_description": "系统保存待办事项内容、截止时间、置顶状态和初始完成状态。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_type": "systemAction"
                 },
                 {
                     "step_number": "S-006",
@@ -423,18 +400,14 @@
                     "actor_ids": [
                         3
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-007"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-007",
                     "step_name": "更新任务状态",
                     "step_description": "系统更新待办事项完成状态，并刷新待办清单展示。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 }
             ]
         },
@@ -453,37 +426,28 @@
                     "actor_ids": [
                         4
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-002",
                     "step_name": "判断控制类型",
                     "step_description": "系统判断用户选择的是隐藏所有便签还是恢复显示便签。",
                     "actor_ids": [],
-                    "step_type": "judgment",
-                    "next_steps": [
-                        "S-003",
-                        "S-004"
-                    ]
+                    "step_type": "judgment"
                 },
                 {
                     "step_number": "S-003",
                     "step_name": "隐藏所有便签",
                     "step_description": "系统将所有桌面便签设置为隐藏状态，并更新全局显示控制状态。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 },
                 {
                     "step_number": "S-004",
                     "step_name": "恢复显示便签",
                     "step_description": "系统将已隐藏的便签恢复显示，并更新全局显示控制状态。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 }
             ]
         },
@@ -505,10 +469,7 @@
                     "actor_ids": [
                         5
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-002",
@@ -517,10 +478,7 @@
                     "actor_ids": [
                         5
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-003"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-003",
@@ -529,18 +487,14 @@
                     "actor_ids": [
                         5
                     ],
-                    "step_type": "actorAction",
-                    "next_steps": [
-                        "S-004"
-                    ]
+                    "step_type": "actorAction"
                 },
                 {
                     "step_number": "S-004",
                     "step_name": "保存偏好设置",
                     "step_description": "系统保存偏好设置，并将配置用于后续软件启动和新建便签。",
                     "actor_ids": [],
-                    "step_type": "systemAction",
-                    "next_steps": []
+                    "step_type": "systemAction"
                 }
             ]
         }

@@ -77,7 +77,18 @@ class FlowStepState(BaseModel):
     actor_logical_uuids: list[str] = Field(default_factory=list)
     input_business_object_logical_uuids: list[str] = Field(default_factory=list)
     output_business_object_logical_uuids: list[str] = Field(default_factory=list)
-    next_step_logical_uuids: list[str] = Field(default_factory=list)
+
+class FlowTransitionState(BaseModel):
+    logical_uuid: str
+    source_step_logical_uuid: str
+    target_step_logical_uuid: str
+    label: str = Field(default="")
+    condition_text: str = Field(default="")
+    is_default: bool = Field(default=False)
+    position: int = Field(default=0)
+    semantic_tags: list[str] = Field(default_factory=list)
+    origin: str = Field(default="manual")
+    confirmation_status: str = Field(default="ai_assumption")
 
 class FlowState(BaseModel):
     logical_uuid: str
@@ -86,6 +97,7 @@ class FlowState(BaseModel):
     confirmation_status: str = Field(default="ai_assumption")
     feature_logical_uuids: list[str] = Field(default_factory=list)
     steps: list[FlowStepState] = Field(default_factory=list)
+    transitions: list[FlowTransitionState] = Field(default_factory=list)
 
 class ScopeState(BaseModel):
     logical_uuid: str
@@ -98,8 +110,24 @@ class ScopeState(BaseModel):
     kano_category_name: str | None = None
     confirmation_status: str = Field(default="ai_assumption")
 
+class DomainRuleState(BaseModel):
+    logical_uuid: str
+    parent_rule_logical_uuid: str | None = None
+    title: str
+    statement: str
+    origin: str
+    confirmation_status: str
+
+class RuleLinkState(BaseModel):
+    logical_uuid: str
+    rule_logical_uuid: str
+    target_kind: str
+    target_logical_uuid: str
+    link_purpose: str
+    context_text: str = Field(default="")
+
 class RequirementSpaceState(BaseModel):
-    schema_version: str = Field(default="1.0")
+    schema_version: str = Field(default="2.0")
     project_metadata: ProjectMetadataState
     actors: list[ActorState] = Field(default_factory=list)
     features: list[FeatureState] = Field(default_factory=list)
@@ -108,6 +136,8 @@ class RequirementSpaceState(BaseModel):
     business_objects: list[BusinessObjectState] = Field(default_factory=list)
     flows: list[FlowState] = Field(default_factory=list)
     scopes: list[ScopeState] = Field(default_factory=list)
+    domain_rules: list[DomainRuleState] = Field(default_factory=list)
+    rule_links: list[RuleLinkState] = Field(default_factory=list)
 
 
 # ==========================================

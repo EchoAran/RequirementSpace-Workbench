@@ -18,7 +18,7 @@ DEFAULT_STRATEGIES = [
         "label": "均衡版",
         "description": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。",
         "instruction": "在功能完整性与复杂度之间保持均衡，优先生成可落地、边界清晰的方案。覆盖核心业务角色、主流程、关键异常和必要验收条件，避免过度拆分、重复角色和低价值边界场景。",
-        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "scope", "acceptance_criteria"],
+        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "flow_refinement", "rule", "scope", "acceptance_criteria"],
         "is_builtin": True,
         "enabled": True,
         "order": 0
@@ -28,7 +28,7 @@ DEFAULT_STRATEGIES = [
         "label": "全面版",
         "description": "尽可能完整覆盖主路径、异常路径、边界条件和验收条件。",
         "instruction": "尽可能完整覆盖主路径、异常路径、边界条件、权限约束和验收条件。可以比均衡版更细，但不得编造与需求明显无关的内容。",
-        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "scope", "acceptance_criteria"],
+        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "flow_refinement", "rule", "scope", "acceptance_criteria"],
         "is_builtin": True,
         "enabled": True,
         "order": 1
@@ -38,7 +38,7 @@ DEFAULT_STRATEGIES = [
         "label": "精简版",
         "description": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。",
         "instruction": "优先生成最小可行、低复杂度、便于快速评审和落地的方案。只覆盖最核心角色、主流程和必须验收条件，避免引入暂不必要的扩展场景、复杂权限和过细边界。",
-        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "scope", "acceptance_criteria"],
+        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "flow_refinement", "rule", "scope", "acceptance_criteria"],
         "is_builtin": True,
         "enabled": False,
         "order": 2
@@ -48,7 +48,7 @@ DEFAULT_STRATEGIES = [
         "label": "风控版",
         "description": "重点识别权限、数据一致性、异常处理和合规风险。",
         "instruction": "重点识别权限、数据一致性、异常处理、审计追踪和合规风险。生成方案时应补充关键风险场景、失败兜底、边界校验和验收条件，但不要脱离当前需求编造无关流程。",
-        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "scope", "acceptance_criteria"],
+        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "flow_refinement", "rule", "scope", "acceptance_criteria"],
         "is_builtin": True,
         "enabled": False,
         "order": 3
@@ -58,7 +58,7 @@ DEFAULT_STRATEGIES = [
         "label": "流程优先版",
         "description": "优先围绕端到端业务流程、状态流转和协作节点组织方案。",
         "instruction": "优先围绕端到端业务流程、状态流转、协作节点和前后置条件组织方案。生成内容应突出流程顺序、触发条件、角色交接和完成标准，避免只罗列静态功能点。",
-        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "scope", "acceptance_criteria"],
+        "generation_types": ["project_creation", "actor", "feature", "scenario", "flow", "flow_refinement", "rule", "scope", "acceptance_criteria"],
         "is_builtin": True,
         "enabled": False,
         "order": 4
@@ -103,9 +103,6 @@ BUILTIN_STRATEGY_TEXTS = {
     },
 }
 
-LEGACY_DEFAULT_STRATEGIES = DEFAULT_STRATEGIES[:2]
-
-
 def normalize_generation_strategy(strategy: dict) -> dict:
     normalized = dict(strategy)
     strategy_id = normalized.get("id")
@@ -130,16 +127,14 @@ def localize_generation_strategy(strategy: dict, locale: str) -> dict:
 
 
 def _is_default_strategy_config(db_config: ProjectGenerationStrategyConfigModel) -> bool:
+    if db_config.enabled is not True or db_config.candidate_count != 2:
+        return False
     normalized = [
         normalize_generation_strategy(strategy)
         for strategy in (db_config.strategies or [])
         if isinstance(strategy, dict)
     ]
-    return (
-        db_config.enabled is True
-        and db_config.candidate_count == 2
-        and normalized in (DEFAULT_STRATEGIES, LEGACY_DEFAULT_STRATEGIES)
-    )
+    return normalized == DEFAULT_STRATEGIES
 
 class GenerationStrategyConfigService:
     def get_default_config(self) -> GenerationStrategyConfigResponse:

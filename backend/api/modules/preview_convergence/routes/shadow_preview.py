@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.llm import get_llm_context
 from backend.api.dependencies.ownership import require_owned_project
 from backend.api.modules.preview_convergence.application.shadow_convergence import (
@@ -22,7 +23,7 @@ from backend.api.modules.preview_convergence.schemas.shadow_preview import (
 )
 from backend.core.llm_context import LLMRequestContext
 from backend.database.database import get_session
-from backend.database.model import PreviewShadowDraftModel, ProjectModel
+from backend.database.model import PreviewShadowDraftModel, ProjectModel, UserModel
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/preview-shadow-drafts",
@@ -30,6 +31,26 @@ router = APIRouter(
 )
 
 convergence_service = PreviewShadowConvergenceService()
+
+
+async def _resolve_shadow_workspace(
+    session: AsyncSession,
+    project_id: int,
+    branch: str | None,
+    user_id: int,
+    require_write: bool = False,
+) -> int:
+    from backend.api.modules.version_control.public import map_branch_error, resolve_branch_context
+
+    try:
+        _, workspace, permissions = await session.run_sync(
+            lambda db: resolve_branch_context(db, project_id, branch, user_id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+    if require_write and not permissions.get("can_write", False):
+        raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+    return workspace.id
 
 
 def _build_draft_response(
@@ -86,17 +107,19 @@ def _unready_gate_names(gates: dict) -> list[str]:
     ]
 
 
-async def _get_or_generate_real_preview(project_id: int, session):
+async def _get_or_generate_real_preview(project_id: int, session, branch_ref: str | None = None):
     service = get_prototype_generation_service()
     preview = await service.get_latest_preview(
         project_id=project_id,
         session=session,
         raise_if_missing=False,
+        branch_ref=branch_ref,
     )
     if preview is None:
         preview = await service.start_generation(
             project_id=project_id,
             force_regenerate=True,
+            branch_ref=branch_ref,
         )
     return preview
 
@@ -105,12 +128,14 @@ async def _find_matching_shadow_draft(
     session,
     *,
     project_id: int,
+    workspace_id: int,
     snapshot_hash: str,
 ):
     result = await session.execute(
         select(PreviewShadowDraftModel)
         .where(
             PreviewShadowDraftModel.project_id == project_id,
+            PreviewShadowDraftModel.workspace_id == workspace_id,
             PreviewShadowDraftModel.status.in_(["generating", "ready"]),
             PreviewShadowDraftModel.base_snapshot_hash == snapshot_hash,
         )
@@ -120,10 +145,11 @@ async def _find_matching_shadow_draft(
     return result.scalar_one_or_none()
 
 
-async def _mark_active_shadow_drafts_stale(session, project_id: int) -> None:
+async def _mark_active_shadow_drafts_stale(session, project_id: int, workspace_id: int) -> None:
     result = await session.execute(
         select(PreviewShadowDraftModel).where(
             PreviewShadowDraftModel.project_id == project_id,
+            PreviewShadowDraftModel.workspace_id == workspace_id,
             PreviewShadowDraftModel.status.in_(["generating", "ready"]),
         )
     )
@@ -137,11 +163,13 @@ async def _create_shadow_draft(
     session,
     *,
     project_id: int,
+    workspace_id: int,
     snapshot_hash: str,
     base_snapshot: dict,
 ) -> PreviewShadowDraftModel:
     draft = PreviewShadowDraftModel(
         project_id=project_id,
+        workspace_id=workspace_id,
         draft_id=f"draft_{uuid.uuid4().hex[:12]}",
         status="generating",
         source="shadow_project",
@@ -179,6 +207,8 @@ def _start_shadow_convergence(
 @router.post("", response_model=PreviewShadowDraftResponse)
 async def prepare_shadow_draft(
     project_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     llm_ctx: LLMRequestContext = Depends(get_llm_context),
     owned_project: ProjectModel = Depends(require_owned_project)
@@ -187,8 +217,14 @@ async def prepare_shadow_draft(
     Prepare preview draft. If converged, loads or generates real prototype.
     If unconverged, retrieves or spawns shadow convergence.
     """
-    # 1. Evaluate stage gates
-    gates = await convergence_service.gate_evaluator.evaluate_gates(owned_project.id, session)
+    ws_id = await _resolve_shadow_workspace(
+        session, owned_project.id, branch, user.id, require_write=True
+    )
+
+    # Stage gates determine whether convergence is applicable.
+    gates = await convergence_service.gate_evaluator.evaluate_gates(
+        owned_project.id, session, workspace_id=ws_id
+    )
     all_passed = gates["what"] and gates["how"] and gates["scope"]
 
     if all_passed:
@@ -196,6 +232,7 @@ async def prepare_shadow_draft(
             preview = await _get_or_generate_real_preview(
                 owned_project.id,
                 session,
+                branch_ref=branch,
             )
             return PreviewShadowDraftResponse(
                 source="real_project",
@@ -208,20 +245,22 @@ async def prepare_shadow_draft(
             raise HTTPException(status_code=500, detail=f"Failed to generate real preview: {e!s}")
 
     unready_gates = _unready_gate_names(gates)
-    base_snapshot = await build_project_snapshot(owned_project.id, session)
+    base_snapshot = await build_project_snapshot(owned_project.id, ws_id, session)
     current_hash = calculate_stable_snapshot_hash(base_snapshot)
     existing_draft = await _find_matching_shadow_draft(
         session,
         project_id=owned_project.id,
+        workspace_id=ws_id,
         snapshot_hash=current_hash,
     )
     if existing_draft is not None:
         return _build_draft_response(existing_draft, unready_gates)
 
-    await _mark_active_shadow_drafts_stale(session, owned_project.id)
+    await _mark_active_shadow_drafts_stale(session, owned_project.id, ws_id)
     new_draft = await _create_shadow_draft(
         session,
         project_id=owned_project.id,
+        workspace_id=ws_id,
         snapshot_hash=current_hash,
         base_snapshot=base_snapshot,
     )
@@ -232,6 +271,8 @@ async def prepare_shadow_draft(
 @router.get("/active", response_model=PreviewShadowDraftResponse)
 async def get_active_shadow_draft(
     project_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
@@ -239,8 +280,12 @@ async def get_active_shadow_draft(
     Get the current active shadow draft for the project if one exists.
     Returns status=idle if no active draft exists.
     """
-    # 1. Evaluate stage gates
-    gates = await convergence_service.gate_evaluator.evaluate_gates(owned_project.id, session)
+    ws_id = await _resolve_shadow_workspace(session, owned_project.id, branch, user.id)
+
+    # Stage gates determine whether convergence is applicable.
+    gates = await convergence_service.gate_evaluator.evaluate_gates(
+        owned_project.id, session, workspace_id=ws_id
+    )
     unready_gates = []
     if not gates["what"]:
         unready_gates.append("what")
@@ -250,14 +295,15 @@ async def get_active_shadow_draft(
         unready_gates.append("scope")
 
     # Build base snapshot and hash to match active draft
-    base_snapshot = await build_project_snapshot(owned_project.id, session)
+    base_snapshot = await build_project_snapshot(owned_project.id, ws_id, session)
     current_hash = calculate_stable_snapshot_hash(base_snapshot)
 
-    # 2. Check for active draft matching current snapshot hash
+    # An active draft is reusable only for the same snapshot hash.
     existing_res = await session.execute(
         select(PreviewShadowDraftModel)
         .where(
             PreviewShadowDraftModel.project_id == owned_project.id,
+            PreviewShadowDraftModel.workspace_id == ws_id,
             PreviewShadowDraftModel.status.in_(["generating", "ready", "failed"]),
             PreviewShadowDraftModel.base_snapshot_hash == current_hash,
         )
@@ -280,15 +326,19 @@ async def get_active_shadow_draft(
 async def get_shadow_draft(
     project_id: str,
     draft_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
     """
     Get detailed shadow draft status and payload.
     """
+    ws_id = await _resolve_shadow_workspace(session, owned_project.id, branch, user.id)
     draft_res = await session.execute(
         select(PreviewShadowDraftModel).where(
             PreviewShadowDraftModel.project_id == owned_project.id,
+            PreviewShadowDraftModel.workspace_id == ws_id,
             PreviewShadowDraftModel.draft_id == draft_id,
         )
     )
@@ -297,7 +347,9 @@ async def get_shadow_draft(
         raise HTTPException(status_code=404, detail="shadow_draft_not_found")
 
     # Recalculate unready gates
-    gates = await convergence_service.gate_evaluator.evaluate_gates(owned_project.id, session)
+    gates = await convergence_service.gate_evaluator.evaluate_gates(
+        owned_project.id, session, workspace_id=ws_id
+    )
     unready_gates = []
     if not gates["what"]:
         unready_gates.append("what")
@@ -313,12 +365,17 @@ async def get_shadow_draft(
 async def discard_shadow_draft(
     project_id: str,
     draft_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
     """
     Soft discard shadow draft.
     """
+    await _resolve_shadow_workspace(
+        session, owned_project.id, branch, user.id, require_write=True
+    )
     try:
         await convergence_service.discard_shadow_draft(owned_project.id, draft_id, session)
         return {"message": "shadow_draft_discarded"}
@@ -334,12 +391,17 @@ async def discard_shadow_draft(
 async def commit_shadow_draft(
     project_id: str,
     draft_id: str,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     owned_project: ProjectModel = Depends(require_owned_project)
 ):
     """
     Commit shadow draft transaction-safe write-back.
     """
+    await _resolve_shadow_workspace(
+        session, owned_project.id, branch, user.id, require_write=True
+    )
     try:
         await convergence_service.commit_shadow_draft(owned_project.id, draft_id, session)
         return {"message": "shadow_draft_committed"}
@@ -361,6 +423,8 @@ async def regenerate_shadow_draft(
     project_id: str,
     draft_id: str,
     request: PreviewShadowRegenerateRequest,
+    branch: str | None = Query(None),
+    user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     llm_ctx: LLMRequestContext = Depends(get_llm_context),
     owned_project: ProjectModel = Depends(require_owned_project)
@@ -368,9 +432,13 @@ async def regenerate_shadow_draft(
     """
     Force regenerate shadow convergence (e.g. following user adjustment request).
     """
+    ws_id = await _resolve_shadow_workspace(
+        session, owned_project.id, branch, user.id, require_write=True
+    )
     draft_res = await session.execute(
         select(PreviewShadowDraftModel).where(
             PreviewShadowDraftModel.project_id == owned_project.id,
+            PreviewShadowDraftModel.workspace_id == ws_id,
             PreviewShadowDraftModel.draft_id == draft_id,
         )
     )
@@ -378,8 +446,8 @@ async def regenerate_shadow_draft(
     if not draft:
         raise HTTPException(status_code=404, detail="shadow_draft_not_found")
 
-    # 1. Re-build and update to the latest database snapshot and hash
-    base_snapshot = await build_project_snapshot(owned_project.id, session)
+    # Regeneration binds the draft to the latest database snapshot.
+    base_snapshot = await build_project_snapshot(owned_project.id, ws_id, session)
     current_hash = calculate_stable_snapshot_hash(base_snapshot)
 
     # Mark existing draft as regenerating with latest baseline snapshot
@@ -393,7 +461,9 @@ async def regenerate_shadow_draft(
     _start_shadow_convergence(owned_project.id, draft_id, llm_ctx)
 
     # Recalculate unready gates
-    gates = await convergence_service.gate_evaluator.evaluate_gates(owned_project.id, session)
+    gates = await convergence_service.gate_evaluator.evaluate_gates(
+        owned_project.id, session, workspace_id=ws_id
+    )
     unready_gates = []
     if not gates["what"]:
         unready_gates.append("what")

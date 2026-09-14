@@ -7,10 +7,10 @@ from backend.database.model import (
     BusinessObjectModel,
     FlowModel,
     FlowStepModel,
+    FlowTransitionModel,
     flow_feature_table,
     flow_step_actor_table,
     flow_step_input_business_object_table,
-    flow_step_next_table,
     flow_step_output_business_object_table,
 )
 
@@ -28,14 +28,14 @@ class AssociationRows:
     actors: list = field(default_factory=list)
     input_business_objects: list = field(default_factory=list)
     output_business_objects: list = field(default_factory=list)
-    next_steps: list = field(default_factory=list)
+    transitions: list[FlowTransitionModel] = field(default_factory=list)
 
 
 async def create_missing_business_objects(
     session,
     project_id: int,
     items: list[dict],
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> tuple[dict, int]:
     model_ids_by_draft_id = {}
     new_items = []
@@ -80,7 +80,7 @@ async def create_flow_models(
     session,
     project_id: int,
     payloads: list[dict],
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> list[FlowContext]:
     contexts = []
     for payload in payloads:
@@ -100,7 +100,7 @@ async def create_flow_models(
 async def create_flow_step_models(
     session,
     contexts: list[FlowContext],
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> int:
     for context in contexts:
         for position, payload in enumerate(
@@ -135,6 +135,26 @@ def collect_association_rows(
             for feature_id in context.payload.get("feature_ids", [])
         )
         collect_step_rows(rows, context, business_object_ids)
+        for pos, trans in enumerate(context.payload.get("transitions", [])):
+            src_step = context.steps_by_number.get(trans.get("source_step_number"))
+            tgt_step = context.steps_by_number.get(trans.get("target_step_number"))
+            if src_step and tgt_step:
+                rows.transitions.append(
+                    FlowTransitionModel(
+                        project_id=context.model.project_id,
+                        workspace_id=context.model.workspace_id,
+                        flow_id=context.model.id,
+                        source_step_id=src_step.id,
+                        target_step_id=tgt_step.id,
+                        label=trans.get("label", ""),
+                        condition_text=trans.get("condition_text") or "",
+                        is_default=trans.get("is_default", False),
+                        position=trans.get("position", pos),
+                        semantic_tags=trans.get("semantic_tags", []),
+                        origin="ai_generated",
+                        confirmation_status="confirmed",
+                    )
+                )
     return rows
 
 
@@ -175,13 +195,7 @@ def collect_step_rows(
                 [],
             )
         )
-        rows.next_steps.extend(
-            {
-                "source_step_id": step.id,
-                "target_step_id": context.steps_by_number[number].id,
-            }
-            for number in payload.get("next_steps", [])
-        )
+
 
 
 async def persist_association_rows(
@@ -199,14 +213,15 @@ async def persist_association_rows(
             flow_step_output_business_object_table,
             rows.output_business_objects,
         ),
-        (flow_step_next_table, rows.next_steps),
     ):
         if values:
             await session.execute(insert(table), values)
+    if rows.transitions:
+        session.add_all(rows.transitions)
     await session.flush()
 
 
-async def persist_flow_draft(draft: dict, session, workspace_id: int | None = None) -> dict:
+async def persist_flow_draft(draft: dict, session, workspace_id: int) -> dict:
     project_id = draft["project_id"]
     business_object_ids, business_object_count = (
         await create_missing_business_objects(

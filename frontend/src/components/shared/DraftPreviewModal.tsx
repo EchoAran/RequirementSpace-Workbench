@@ -6,6 +6,7 @@ import { Check, RefreshCw, Sparkles, X } from 'lucide-react';
 import { GherkinVisualRenderer } from './GherkinVisualizer';
 import { ExpandableFeatureTree, DetailedActorList } from './ChoicePreviewRenderer';
 import { getScopeStatusText } from '@/core/presentationLabels';
+import { FlowDraftCanvas } from '@/components/how/flow_canvas/FlowDraftCanvas';
 
 type DraftType = 'project' | 'actor' | 'feature' | 'flow' | 'scenario' | 'ac' | 'scope' | 'repair' | null;
 
@@ -183,17 +184,6 @@ function FlowDraftPreview({ draft }: { draft: any }) {
     flow_name: pickField(flow, 'flow_name', 'flowName'),
     flow_description: pickField(flow, 'flow_description', 'flowDescription'),
     feature_names: pickArray(flow, 'feature_names', 'featureNames'),
-    flow_steps: pickArray(flow, 'flow_steps', 'flowSteps').map((step: any) => ({
-      ...step,
-      step_number: pickField(step, 'step_number', 'stepNumber'),
-      step_name: pickField(step, 'step_name', 'stepName'),
-      step_description: pickField(step, 'step_description', 'stepDescription'),
-      step_type: pickField(step, 'step_type', 'stepType'),
-      actor_names: pickArray(step, 'actor_names', 'actorNames'),
-      input_business_object_names: pickArray(step, 'input_business_object_names', 'inputBusinessObjectNames'),
-      output_business_object_names: pickArray(step, 'output_business_object_names', 'outputBusinessObjectNames'),
-      next_step_names: pickArray(step, 'next_step_names', 'nextStepNames'),
-    })),
   }));
   const normalizedBusinessObjects = businessObjects.map((businessObject: any) => ({
     ...businessObject,
@@ -229,52 +219,7 @@ function FlowDraftPreview({ draft }: { draft: any }) {
                 {flow.feature_names?.length > 0 && <DetailChips items={flow.feature_names} tone="indigo" />}
               </div>
 
-              {asArray(flow.flow_steps).length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {asArray(flow.flow_steps).map((step: any, stepIndex: number) => (
-                    <div key={step.step_number || step.step_name || stepIndex} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-black text-slate-500">
-                          {step.step_number || t('draftPreview.flowStepNum', { num: String(stepIndex + 1).padStart(3, '0') })}
-                        </span>
-                        <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
-                          {step.step_type || 'step'}
-                        </span>
-                        <h6 className="min-w-0 text-xs font-extrabold text-slate-900">{step.step_name}</h6>
-                      </div>
-                      {step.step_description && (
-                        <p className="mt-2 text-xs leading-relaxed text-slate-600">{step.step_description}</p>
-                      )}
-                      <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2">
-                        {step.actor_names?.length > 0 && (
-                          <div>
-                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepRole')}</div>
-                            <DetailChips items={step.actor_names} tone="amber" />
-                          </div>
-                        )}
-                        {step.input_business_object_names?.length > 0 && (
-                          <div>
-                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepInput')}</div>
-                            <DetailChips items={step.input_business_object_names} />
-                          </div>
-                        )}
-                        {step.output_business_object_names?.length > 0 && (
-                          <div>
-                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepOutput')}</div>
-                            <DetailChips items={step.output_business_object_names} tone="emerald" />
-                          </div>
-                        )}
-                        {step.next_step_names?.length > 0 && (
-                          <div>
-                            <div className="mb-1 font-black text-slate-400">{t('draftPreview.flowStepNext')}</div>
-                            <DetailChips items={step.next_step_names} tone="indigo" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <FlowDraftCanvas flow={flow} className="mt-4" />
             </div>
           ))}
         </div>

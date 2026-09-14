@@ -2,7 +2,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
+from pydantic import Field
+
 from backend.api.base_schema import CamelModel
+from backend.api.modules.decision_workflow.public import ChoiceGroupResponse
 from backend.api.modules.diagnosis_quality.public import FindingResponse
 
 
@@ -144,9 +147,24 @@ class FlowStepDetail(CamelModel):
     actor_ids: list[int] = []
     input_business_object_ids: list[int] = []
     output_business_object_ids: list[int] = []
-    next_step_ids: list[int] = []
     confirmation_status: str | None = None
     updated_at: datetime
+
+class FlowTransitionDetail(CamelModel):
+    kind: str = "flow_transition"
+    logical_uuid: str | None = None
+    transition_id: int
+    source_step_id: int
+    target_step_id: int
+    label: str = ""
+    condition_text: str = ""
+    is_default: bool = False
+    position: int = 0
+    semantic_tags: list[str] = []
+    rule_ids: list[int] = Field(default_factory=list)
+    origin: str = "manual"
+    confirmation_status: str | None = None
+    updated_at: datetime | None = None
 
 class FlowDetail(CamelModel):
     kind: str = "flow"
@@ -156,7 +174,34 @@ class FlowDetail(CamelModel):
     flow_description: str
     feature_ids: list[int] = []
     flow_steps: list[FlowStepDetail] = []
+    transitions: list[FlowTransitionDetail] = []
     confirmation_status: str | None = None
+    updated_at: datetime
+
+class RuleLinkDetail(CamelModel):
+    id: int
+    logical_uuid: str
+    rule_id: int
+    target_kind: str
+    target_logical_uuid: str
+    link_purpose: str = "applies_to"
+    context_text: str = ""
+    created_at: datetime
+    updated_at: datetime
+
+class DomainRuleDetail(CamelModel):
+    kind: str = "domain_rule"
+    logical_uuid: str | None = None
+    rule_id: int
+    id: int
+    parent_rule_id: int | None = None
+    title: str
+    statement: str
+    origin: str = "manual"
+    confirmation_status: str = "needs_confirmation"
+    links: list[RuleLinkDetail] = []
+    child_rule_ids: list[int] = []
+    created_at: datetime
     updated_at: datetime
 
 class UnresolvedGateResponse(CamelModel):
@@ -177,6 +222,7 @@ class ProjectDetailResponse(CamelModel):
     features: list[FeatureDetail] = []
     business_objects: list[BusinessObjectDetail] = []
     flows: list[FlowDetail] = []
+    domain_rules: list[DomainRuleDetail] = []
     kano_status: str = "missing"
     unlocked_stages: list[str] = []
     unresolved_gates: list[UnresolvedGateResponse] = []
@@ -275,6 +321,5 @@ class WorkspaceHydrationResponse(CamelModel):
     project_detail: ProjectDetailResponse | None = None
     backend_findings: list[FindingResponse] = []
     findings_by_view: FindingsByView = FindingsByView()
-    choice_groups: list[dict] = []
+    choice_groups: list[ChoiceGroupResponse] = []
     stage_progress: StageProgressResponse | None = None
-

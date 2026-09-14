@@ -72,10 +72,11 @@ async def _load_project(project_id: int, session) -> ProjectModel:
     return project
 
 
-async def _load_feature_data(project_id: int, session, workspace_id: int | None = None):
-    stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
-    if workspace_id is not None:
-        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+async def _load_feature_data(project_id: int, session, workspace_id: int):
+    stmt = select(FeatureModel).where(
+        FeatureModel.project_id == project_id,
+        FeatureModel.workspace_id == workspace_id,
+    )
     features = (await session.execute(stmt)).scalars().all()
     feature_ids = [feature.id for feature in features]
     parent_ids = set()
@@ -109,7 +110,7 @@ async def _load_feature_data(project_id: int, session, workspace_id: int | None 
             )
             .where(
                 FeatureModel.project_id == project_id,
-                *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
+                FeatureModel.workspace_id == workspace_id,
             )
         )
     ).all()
@@ -119,13 +120,13 @@ async def _load_feature_data(project_id: int, session, workspace_id: int | None 
     return feature_ids, leaf_features, feature_actor_map
 
 
-async def _load_scenario_data(project_id: int, session, workspace_id: int | None = None):
+async def _load_scenario_data(project_id: int, session, workspace_id: int):
     stmt = (
         select(ScenarioModel)
         .join(FeatureModel, FeatureModel.id == ScenarioModel.feature_id)
         .where(
             FeatureModel.project_id == project_id,
-            *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
+            FeatureModel.workspace_id == workspace_id,
         )
     )
     result = await session.execute(stmt)
@@ -164,11 +165,12 @@ async def _load_scenario_data(project_id: int, session, workspace_id: int | None
 async def _load_what_data(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> tuple[WhatProgressData, list[int]]:
-    actor_stmt = select(ActorModel.id).where(ActorModel.project_id == project_id)
-    if workspace_id is not None:
-        actor_stmt = actor_stmt.where(ActorModel.workspace_id == workspace_id)
+    actor_stmt = select(ActorModel.id).where(
+        ActorModel.project_id == project_id,
+        ActorModel.workspace_id == workspace_id,
+    )
     actor_ids = (await session.execute(actor_stmt)).scalars().all()
     feature_ids, leaf_features, feature_actor_map = (
         await _load_feature_data(project_id, session, workspace_id)
@@ -243,11 +245,12 @@ async def _load_step_maps(step_ids: list[int], session):
 async def _load_how_data(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> HowProgressData:
-    flow_stmt = select(FlowModel).where(FlowModel.project_id == project_id)
-    if workspace_id is not None:
-        flow_stmt = flow_stmt.where(FlowModel.workspace_id == workspace_id)
+    flow_stmt = select(FlowModel).where(
+        FlowModel.project_id == project_id,
+        FlowModel.workspace_id == workspace_id,
+    )
     flows = (await session.execute(flow_stmt)).scalars().all()
     flow_ids = [flow.id for flow in flows]
     steps = []
@@ -266,10 +269,11 @@ async def _load_how_data(
     bo_stmt = (
         select(BusinessObjectModel)
         .options(selectinload(BusinessObjectModel.attributes))
-        .where(BusinessObjectModel.project_id == project_id)
+        .where(
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.workspace_id == workspace_id,
+        )
     )
-    if workspace_id is not None:
-        bo_stmt = bo_stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     object_result = await session.execute(bo_stmt)
     business_objects = object_result.scalars().all()
     return HowProgressData(
@@ -288,7 +292,7 @@ async def _load_how_data(
 async def _load_scoped_feature_ids(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> set[int]:
     stmt = (
         select(ScopeModel.feature_id)
@@ -296,7 +300,7 @@ async def _load_scoped_feature_ids(
         .where(
             FeatureModel.project_id == project_id,
             ScopeModel.status != None,
-            *([FeatureModel.workspace_id == workspace_id] if workspace_id is not None else []),
+            FeatureModel.workspace_id == workspace_id,
         )
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -306,16 +310,15 @@ async def _load_scoped_feature_ids(
 async def _load_latest_jobs(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> dict:
     stmt = (
         select(PerceptionJobModel)
-        .where(PerceptionJobModel.project_id == project_id)
+        .where(
+            PerceptionJobModel.project_id == project_id,
+            PerceptionJobModel.workspace_id == workspace_id,
+        )
     )
-    if workspace_id is not None:
-        stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-    else:
-        stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
     stmt = stmt.order_by(PerceptionJobModel.id.desc())
     jobs = (await session.execute(stmt)).scalars().all()
     latest_jobs = {}
@@ -328,7 +331,7 @@ async def _load_latest_jobs(
 async def load_stage_progress_data(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> StageProgressData:
     project = await _load_project(project_id, session)
     what, _feature_ids = await _load_what_data(project_id, session, workspace_id)
@@ -339,17 +342,13 @@ async def load_stage_progress_data(
         workspace_id,
     )
     latest_jobs = await _load_latest_jobs(project_id, session, workspace_id)
-    raw_unlocked = project.unlocked_stages
-    kano_status = project.kano_status or "missing"
-    if workspace_id is not None:
-        ws_row = (await session.execute(
-            select(BranchWorkspaceModel).where(
-                BranchWorkspaceModel.id == workspace_id
-            )
-        )).scalar_one_or_none()
-        if ws_row is not None:
-            raw_unlocked = ws_row.unlocked_stages or ""
-            kano_status = ws_row.kano_status or "missing"
+    ws_row = (await session.execute(
+        select(BranchWorkspaceModel).where(
+            BranchWorkspaceModel.id == workspace_id
+        )
+    )).scalar_one()
+    raw_unlocked = ws_row.unlocked_stages or ""
+    kano_status = ws_row.kano_status or "missing"
 
     unlocked_stages = (
         {

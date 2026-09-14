@@ -287,7 +287,7 @@ class AIAddDraftHandler:
             "message": "draft_created",
         }
 
-    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int | None = None) -> dict:
+    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int) -> dict:
         """Confirm a draft — dispatches to add or edit path based on target_type."""
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
 
@@ -304,6 +304,7 @@ class AIAddDraftHandler:
             draft,
             owner_user_id,
             db_session,
+            workspace_id=workspace_id,
         )
         created_id = await self._apply_confirmed_draft(draft, db_session, workspace_id=workspace_id)
         await self._record_draft_application(
@@ -334,6 +335,7 @@ class AIAddDraftHandler:
         draft,
         owner_user_id,
         db_session,
+        workspace_id: int,
     ) -> None:
         stored_hash = draft.get("context_hash")
         if not stored_hash:
@@ -356,6 +358,7 @@ class AIAddDraftHandler:
                 current_hash,
                 owner_user_id,
                 db_session,
+                workspace_id=workspace_id,
             )
 
     async def _handle_draft_context_conflict(
@@ -367,6 +370,7 @@ class AIAddDraftHandler:
         current_hash,
         owner_user_id,
         db_session,
+        workspace_id: int,
     ) -> None:
         from fastapi import HTTPException
 
@@ -399,6 +403,7 @@ class AIAddDraftHandler:
                 "current_context_hash": current_hash,
                 "target_type": target_type,
                 "draft_id": draft_id,
+                "workspace_id": workspace_id,
             },
         )
         db_session.add(task)
@@ -434,11 +439,11 @@ class AIAddDraftHandler:
             },
         )
 
-    async def _apply_confirmed_draft(self, draft, db_session, workspace_id: int | None = None):
+    async def _apply_confirmed_draft(self, draft, db_session, workspace_id: int):
         target_type = draft.get("target_type", "")
         project_id = draft.get("project_id")
         if target_type.startswith("edit_"):
-            return await self._confirm_edit_draft(draft, db_session)
+            return await self._confirm_edit_draft(draft, db_session, workspace_id=workspace_id)
         generated = draft.get("generated_object", {})
         await self._pre_confirm_validation(
             target_type,
@@ -528,6 +533,7 @@ class AIAddDraftHandler:
             "feature": ["features", "actors"],
             "flow": ["features", "flows"],
             "business_object": ["business_objects", "flows"],
+            "rule": ["rules"],
         }
         return _map.get(lookup, [])
 
@@ -772,6 +778,7 @@ class AIAddDraftHandler:
         from backend.database.model import (
             ActorModel,
             BusinessObjectModel,
+            DomainRuleModel,
             FeatureModel,
             FlowModel,
         )
@@ -820,6 +827,12 @@ class AIAddDraftHandler:
                 raise ValueError("target_not_found")
             return {"id": obj.id, "name": obj.name, "description": obj.description}
 
+        elif base_type == "rule":
+            obj = await db_session.get(DomainRuleModel, target_id)
+            if obj is None:
+                raise ValueError("target_not_found")
+            return {"id": obj.id, "title": obj.title, "statement": obj.statement}
+
         raise ValueError(f"unsupported_target_type: {base_type}")
 
     @staticmethod
@@ -838,7 +851,7 @@ class AIAddDraftHandler:
             if "old" not in change or "new" not in change:
                 raise ValueError(f"edit_diff_validation_failed: {field} missing old/new")
 
-    async def _confirm_edit_draft(self, draft: dict, db_session) -> int | None:
+    async def _confirm_edit_draft(self, draft: dict, db_session, workspace_id: int) -> int | None:
         """Confirm an edit draft: re-validate, apply diff via update CRUD."""
         from backend.core.rules import EDITABLE_FIELDS
 
@@ -871,22 +884,27 @@ class AIAddDraftHandler:
         if base_type == "actor":
             from backend.api.modules.requirements_core.public import ActorService
             req = ActorUpdateRequest(**{k: v for k, v in update_payload.items() if k in EDITABLE_FIELDS["actor"]})
-            await ActorService().update_actor(project_id, created_id, req, db_session)
+            await ActorService().update_actor(project_id, created_id, req, db_session, workspace_id=workspace_id)
 
         elif base_type == "feature":
             from backend.api.modules.requirements_core.public import FeatureService
             req = FeatureUpdateRequest(**{k: v for k, v in update_payload.items() if k in EDITABLE_FIELDS["feature"]})
-            await FeatureService().update_feature(project_id, created_id, req, db_session)
+            await FeatureService().update_feature(project_id, created_id, req, db_session, workspace_id=workspace_id)
 
         elif base_type == "flow":
             from backend.api.modules.requirements_core.public import FlowService
             req = FlowUpdateRequest(**{k: v for k, v in update_payload.items() if k in EDITABLE_FIELDS["flow"]})
-            await FlowService().update_flow(project_id, created_id, req, db_session)
+            await FlowService().update_flow(project_id, created_id, req, db_session, workspace_id=workspace_id)
 
         elif base_type == "business_object":
             from backend.api.modules.requirements_core.public import BusinessObjectService
             req = BOUpdateRequest(**{k: v for k, v in update_payload.items() if k in EDITABLE_FIELDS["business_object"]})
-            await BusinessObjectService().update_bo(project_id, created_id, req, db_session)
+            await BusinessObjectService().update_bo(project_id, created_id, req, db_session, workspace_id=workspace_id)
+
+        elif base_type == "rule":
+            from backend.api.modules.requirements_core.public import DomainRuleService, DomainRuleUpdateRequest
+            req = DomainRuleUpdateRequest(**{k: v for k, v in update_payload.items() if k in EDITABLE_FIELDS["rule"]})
+            await DomainRuleService().update_rule(db_session, project_id, created_id, req, workspace_id=workspace_id)
 
         return created_id
 
@@ -926,7 +944,7 @@ class AIAddDraftHandler:
                     raise ValueError(f"invalid_feature_reference: {missing}")
 
     async def _persist_generated_object(
-        self, target_type: str, generated: dict, project_id: int, db_session, workspace_id: int | None = None,
+        self, target_type: str, generated: dict, project_id: int, db_session, workspace_id: int,
     ) -> int | None:
         """Persist the generated object via the appropriate CRUD service."""
         from backend.api.modules.requirements_core.public import (
@@ -983,7 +1001,7 @@ class AIAddDraftHandler:
                     data_type=attr.get("data_type", "string"),
                     example=attr.get("example", ""),
                 )
-                await svc.create_business_object_attribute(project_id, bo_result.business_object_id, attr_req, db_session)
+                await svc.create_business_object_attribute(project_id, bo_result.business_object_id, attr_req, db_session, workspace_id=workspace_id)
             return bo_result.business_object_id
 
         return None

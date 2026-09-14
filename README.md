@@ -1,8 +1,8 @@
 # RequirementSpace Workbench
 
-RequirementSpace Workbench 是一个面向产品需求分析与需求空间建模的本地工作台。它将原始需求逐步整理为参与者、功能树、场景、验收标准、业务流程、业务对象、范围决策和原型预览，并通过 AI 辅助发现缺口、生成草稿和修复问题。
+RequirementSpace Workbench 是一个面向产品需求分析与需求空间建模的本地工作台。它将原始需求逐步整理为参与者、功能树、场景、验收标准、领域规则、业务流程、业务对象、范围决策和原型预览，并通过 AI 辅助发现缺口、生成草稿和修复问题。
 
-当前版本已经支持多用户登录、用户数据隔离、用户级 LLM 配置和公开项目标识。
+当前版本支持多用户登录、项目成员协作、分支工作区、版本比较与合并、用户级 LLM 配置，以及中英文界面和项目内容语言设置。
 
 ## 项目愿景
 
@@ -20,7 +20,7 @@ RequirementSpace Workbench 的设计吸收了需求工程、认知外化、渐�
 
 ### 1. 需求是空间，而不是清单
 
-一个需求只有放入关系网络中才具有完整含义。参与者回答“谁受到影响”，功能树回答“系统提供什么能力”，场景与流程回答“事情如何发生”，业务对象回答“什么在过程中流转”，范围决策回答“当前承诺到哪里为止”。
+一个需求只有放入关系网络中才具有完整含义。参与者回答“谁受到影响”，功能树回答“系统提供什么能力”，场景与流程回答“事情如何发生”，领域规则回答“必须遵守什么业务约束”，业务对象回答“什么在过程中流转”，范围决策回答“当前承诺到哪里为止”。
 
 因此，工作台保存的不只是若干独立条目，还包括条目之间的依赖、冲突、覆盖关系与阶段状态。需求分析的目标也不只是增加内容，而是逐步降低空间中的关键不确定性。
 
@@ -36,10 +36,10 @@ RequirementSpace Workbench 的设计吸收了需求工程、认知外化、渐�
 
 ### 3. 渐进式形式化
 
-模糊意图不应被迫一步变成完整规格。系统按照 **What → Flow → Scope** 逐层提高表达精度：
+模糊意图不应被迫一步变成完整规格。系统按照 **What → How → Scope** 逐层提高表达精度：
 
-- **What**：确认参与者、目标、能力以及功能之间的关系。
-- **Flow**：把静态能力放入场景，补充验收标准、业务流程与业务对象。
+- **What**：确认参与者、功能树、场景及验收标准，明确能力与可验证结果。
+- **How**：提炼领域规则，以流程步骤和显式转移表达主路径、判断分支与异常路径，并关联业务对象。
 - **Scope**：在理解价值和依赖后，做出本期、暂缓与排除决策。
 
 这种顺序允许用户先使用自然语言表达，再逐渐形成可验证、可追踪、可进入开发的结构化模型。
@@ -74,8 +74,8 @@ AI 负责扩大可见范围与降低分析成本
 
 ```mermaid
 flowchart LR
-    A[原始需求 / 空白项目] --> B[What<br/>参与者与功能树]
-    B --> C[Flow<br/>场景、验收标准、流程与对象]
+    A[原始需求 / 空白项目] --> B[What<br/>参与者、功能树、场景与验收标准]
+    B --> C[How<br/>规则、流程图、路径与对象使用]
     C --> D[Scope<br/>范围与优先级决策]
     D --> E[Prototype<br/>原型预览]
 
@@ -99,19 +99,19 @@ flowchart LR
 
 <!-- Screenshot placeholder: docs/images/readme/01-project-overview.png -->
 > 🖼️ **截图占位：项目总览**  
-> 建议展示项目摘要、What / Flow / Scope 阶段导航、完成状态与当前阶段建议。
+> 建议展示项目摘要、分支选择、What / How / Scope 阶段导航、完成状态与当前阶段建议。
 
 ### 2. What：参与者与功能树
 
 <!-- Screenshot placeholder: docs/images/readme/02-what-feature-tree.png -->
 > 🖼️ **截图占位：What 工作区**  
-> 建议展示参与者、功能树、节点关系以及右侧详情面板。
+> 建议展示参与者、功能树、场景、验收标准以及右侧详情面板。
 
-### 3. Flow：场景、验收标准与业务流程
+### 3. How：领域规则与业务流程
 
 <!-- Screenshot placeholder: docs/images/readme/03-flow-modeling.png -->
-> 🖼️ **截图占位：Flow 工作区**  
-> 建议展示场景列表、验收标准、流程编辑和业务对象之间的关联。
+> 🖼️ **截图占位：How 工作区**
+> 建议展示规则卡片、规则细化关系、流程画布、转移详情、路径预览和步骤内业务对象使用。
 
 ### 4. Scope：范围决策与 Kano 分析
 
@@ -142,14 +142,39 @@ flowchart LR
 ## 核心能力
 
 - 从自然语言需求创建项目，或创建空白项目手动建模
-- What 阶段：参与者、功能树及其关系
-- Flow 阶段：场景、验收标准、业务流程和业务对象
+- What 阶段：参与者、功能树、场景、验收标准及其关系
+- How 阶段：领域规则、流程步骤、显式转移、派生路径和业务对象使用
 - Scope 阶段：本期、暂缓、排除与 Kano 分析
 - AI 感知、槽位补全、单对象新增和解释式编辑
-- 多候选 Choice Group 生成与选择
+- 多候选方案生成、比较、选择，以及单流程和局部步骤细化
 - 问题检测、修复草稿、影响预览和阶段门禁
 - 原型预览、Shadow Draft、确认提交和 Markdown/JSON 导出
-- 多用户项目、草稿、会话及生成数据隔离
+- 分支工作区、版本提交、语义差异比较、合并请求和协作权限
+- SPL 产品线建模与导出，覆盖规则、流程步骤和转移关系
+- 项目知识文档上传与管理、中英文操作指南和 AI 问答
+- 按项目成员权限与分支工作区隔离需求、草稿、候选、诊断和生成状态
+
+## 规则、流程与路径建模
+
+领域规则使用开放的业务陈述，不要求用户把规则写成固定模板。规则是独立对象，可通过父子关系逐层细化；规则链接分别表达来源依据（`source`）和约束作用域（`applies_to`），避免把“从哪里提炼”误当成“作用在哪里”。
+
+规则视图提供卡片和紧凑呈现，并展示细化层级。跨步骤的 Flow 级约束放在流程右侧规则面板；聚焦流程内部时，展示步骤及转移对应的约束。规则支持手动维护、AI 新增、解释与编辑预览，确认后才写入。
+
+流程以步骤和独立的 `FlowTransition` 构成有向图。判断条件、主路径和异常分支由实际转移表达，不再使用步骤排序或 `next_steps` 推断连线；调整步骤顺序不改变流程拓扑。持久化流程与生成草稿使用一致的画布表达。
+
+路径预览是从流程图实时计算的只读投影，而不是另一份可编辑、可提交的流程。它可展示默认路径和分支，并标记完整、歧义、循环或截断状态。业务对象仍是可复用的独立实体，但在 How 中按流程和步骤的实际使用位置展示，不再作为脱离流程的顶层视图。
+
+流程生成结合场景、验收标准和领域规则。当前至少需要一条规则才能生成流程和通过 How 准入；尚不支持“已审查且无需规则”的零规则完成状态。规则不只在确认后才进入生成上下文，已确认流程引用未确认规则的问题由质量检测提示。
+
+流程细化限定为单个流程或一个步骤的一跳邻域，单次最多新增 5 个步骤、8 条转移和 3 条规则。草稿保存上下文基线，应用时检查过期状态、引用、连通性及新增阻断问题，并以事务写入；强制应用不绕过过期检查。
+
+## 分支、版本与协作
+
+项目成员权限和分支写权限共同决定可执行操作。默认 `main` 分支受保护、只读；日常编辑应在有写权限的工作分支中进行，再通过版本提交、差异比较和合并请求收敛变更。
+
+需求模型、范围决策、Kano 状态与阶段进度属于当前分支工作区。生成、候选选择、诊断、原型和 Shadow Draft 都使用明确的分支上下文；切换分支会清理旧交互状态，并避免迟到响应覆盖新分支。项目知识库仍由项目共享，不按需求分支复制。
+
+阶段入口以服务端阶段进度为准：What 检查参与者、叶子功能、场景与验收标准；How 检查规则、流程步骤及引用；Scope 检查范围覆盖和 Kano 已生成或已跳过。阻断问题未处理时不能推进阶段。只读分支不能借诊断、候选应用或预览确认间接写入。
 
 ## 用户与 LLM 配置
 
@@ -182,7 +207,7 @@ project.content_locale > user.preferred_locale > zh-CN
 /projects/550e8400-e29b-41d4-a716-446655440000/overview
 ```
 
-不同用户无法通过公开 ID 读取或修改他人的项目及其关联资源；不存在的项目和无权访问的项目统一返回 `404`。
+项目访问由成员身份和角色授权，写入还受分支权限约束；公开 ID 本身不授予访问权。不存在的项目和无权访问的项目统一返回 `404`。
 
 ## 目录结构
 
@@ -190,10 +215,14 @@ project.content_locale > user.preferred_locale > zh-CN
 .
 |-- backend/
 |   |-- api/
-|   |   |-- dependencies/       # 鉴权、归属校验、请求级 LLM 上下文
-|   |   |-- routes/             # HTTP 路由
-|   |   |-- schemas/            # Pydantic 请求与响应模型
-|   |   `-- services/           # 应用服务
+|   |   |-- bootstrap.py        # 应用服务、生成器与端口装配
+|   |   `-- modules/            # 按业务域组织 routes、schemas、application 与 ports
+|   |       |-- requirements_core/ # 参与者、功能、场景、规则、流程等
+|   |       |-- decision_workflow/ # 候选与决策工作流
+|   |       |-- diagnosis_quality/ # 检测、感知与阶段建议
+|   |       |-- preview_convergence/ # 原型、Shadow Draft 与导出
+|   |       |-- version_control/   # 分支、提交、比较与合并
+|   |       `-- ...             # 鉴权、协作、知识库、配置与乐观锁
 |   |-- core/                   # 生成器、检测器、门禁、安全工具
 |   |-- database/               # SQLAlchemy 模型和数据库初始化
 |   |-- integration/            # skill-backed 生成服务
@@ -204,6 +233,8 @@ project.content_locale > user.preferred_locale > zh-CN
 |   |   |-- components/
 |   |   |-- pages/
 |   |   |-- lib/                # HTTP、鉴权和业务 API
+|   |   |-- core/               # 共享业务模型与工具
+|   |   |-- locales/            # 中英文界面与操作指南
 |   |   `-- store/              # 鉴权和工作区状态
 |   `-- package.json
 |-- alembic/                    # 数据库迁移
@@ -216,7 +247,7 @@ project.content_locale > user.preferred_locale > zh-CN
 
 ## 环境要求
 
-- Python 3.10+，推荐 Python 3.11
+- Python 3.11+
 - Node.js 20+
 - npm 10+
 
@@ -287,7 +318,7 @@ ADMIN_INVITE_CODE_HASH=$argon2id$...
 - 健康检查：<http://127.0.0.1:8000/api/health>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
-后端启动时会检查数据库结构并执行 Alembic。空数据库会从当前 SQLAlchemy metadata 创建完整结构；旧数据库缺少 `users` 或 `projects.public_id` 时会拒绝启动，必须按下文重置数据库。
+空数据库会从当前 SQLAlchemy metadata 创建完整结构，并将 Alembic 版本标记为 head。已有数据库会检查表和列是否与当前模型一致；缺表、多表或列不一致都会拒绝启动，不会自动迁移或修复旧数据。旧结构的处理方式见下文“数据库”。
 
 ### 5. 启动前端
 
@@ -298,6 +329,10 @@ npm run dev
 ```
 
 前端默认地址为 <http://localhost:3000>。开发服务器会把 `/api` 代理到 <http://127.0.0.1:8000>。
+
+### 6. 开始建模
+
+注册并登录后，普通用户先在账户设置中保存 LLM 配置；管理员使用服务器配置。创建项目后建立可写工作分支，在 What 中整理参与者、功能、场景与验收标准，再在 How 中提炼规则、生成或维护流程，最后完成 Scope 决策并预览原型。AI 候选和修改草稿需人工确认；生成失败时保留错误与可重试状态，不作为成功结果应用。
 
 ## 环境变量
 
@@ -319,13 +354,20 @@ npm run dev
 | `LLM_MODEL_NAME` | 管理员 AI 必需 | 管理员使用的模型名 |
 | `LLM_TEMPERATURE` | 否 | LLM 采样温度 |
 | `LLM_LOCALE_VALIDATION_MODE` | 否 | `observe` 仅检测并记录；`enforce` 纠正一次并拒绝持续不匹配。缺省为 `observe` |
-| `REQUIREMENTSPACE_GENERATION_BACKEND` | 否 | `legacy` 或 `skill` |
+| `GENERATION_CHOICE_CANDIDATE_COUNT` | 否 | 候选数量，默认 2 |
+| `GENERATION_CHOICE_MAX_CONCURRENCY` | 否 | 候选生成并发上限，默认 3 |
+| `GENERATION_CHOICE_TIMEOUT_SECONDS` | 否 | 候选生成超时，默认 120 秒 |
+| `KNOWLEDGE_BASE_ENABLED` | 否 | 是否启用项目知识库 |
+| `KNOWLEDGE_MAX_FILE_SIZE_MB` | 否 | 单文件大小上限，默认 25 MB |
+| `KNOWLEDGE_MAX_PROJECT_STORAGE_MB` | 否 | 项目知识库存储上限，默认 200 MB |
 
 普通用户不读取服务器的 `LLM_API_*`。如果普通用户尚未在账户设置中保存完整配置，AI 接口会返回 `409 llm_config_required`。
 
-### 内容语言校验渐进发布与回退
+当前启动装配固定使用 Skill-backed 的项目创建、Feature、Scenario、验收标准、Scope 和原型页面生成；参与者、流程、规则及流程细化使用各自的专用生成服务。模板中的 `REQUIREMENTSPACE_GENERATION_BACKEND` 已不被当前启动代码读取，不能通过设置 `legacy` 切换后端。
 
-staging 首次部署建议在 `.env` 设置 `LLM_LOCALE_VALIDATION_MODE=observe`，执行 `alembic upgrade head` 后核对历史用户 `preferred_locale=zh-CN`、历史项目 `content_locale=NULL`，再验证账户语言保存、项目语言权限和真实 LLM 请求。观察 `llm_locale_validation_completed` 的不匹配率可接受后，将模式切换为 `enforce`。
+### 内容语言校验
+
+可先在 `.env` 设置 `LLM_LOCALE_VALIDATION_MODE=observe`，验证账户语言保存、项目语言权限和真实 LLM 请求。观察 `llm_locale_validation_completed` 的不匹配情况后，再决定是否切换为 `enforce`；配置修改后需重启后端。当前启动流程不提供历史数据回填。
 
 以下日志事件只包含 locale、来源、调用类型、结果、耗时和模型等元数据，不记录完整 Prompt、用户原文或模型回复：
 
@@ -350,32 +392,24 @@ requirement_space.db-shm
 
 这些文件包含用户、项目和加密凭据，已被 Git 忽略。
 
-当前用户鉴权与公开项目 ID 版本不提供旧数据兼容迁移。遇到旧 schema 时：
+当前规则、转移及分支工作区模型不提供旧数据兼容迁移。遇到旧 schema 时：
 
 1. 停止后端。
-2. 备份需要保留的数据。
-3. 删除上述三个 SQLite 文件。
-4. 重新启动后端。
+2. 备份原数据库及其 WAL/SHM 文件，保留需要的数据。
+3. 将 `DATABASE_URL` 指向一个尚未使用的数据库文件。
+4. 重新启动后端，由当前模型初始化新库；旧库不会自动导入。
 
-PowerShell：
+例如在 `.env` 中使用：
 
-```powershell
-Remove-Item requirement_space.db, requirement_space.db-wal, requirement_space.db-shm -ErrorAction SilentlyContinue
+```env
+DATABASE_URL=sqlite+aiosqlite:///./requirement_space_clean.db
 ```
 
 ### PostgreSQL
 
 通过 `DATABASE_URL` 配置连接。全新部署应使用空数据库或空 schema，启动时会创建完整结构并标记 Alembic 版本。
 
-重置生产数据库属于破坏性操作，执行前必须备份，并确认所有应用实例已经停止。在云端 PostgreSQL 数据库（如 Neon）中，可以通过重建 `public` 架构（Schema）来进行快速重置：
-
-```sql
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
-GRANT ALL ON SCHEMA public TO public;
-```
-
-重置完成后重新启动应用，系统检测到空数据库将自动创建最新版本的完整表结构。
+已有数据库同样必须符合当前模型。升级到不兼容结构时，应先备份并停止相关应用实例，再配置新的空数据库或空 schema，保留旧数据供离线处理；不要把 `alembic upgrade head` 当作当前版本的旧数据兼容迁移方案。
 
 ## 安全配置
 
@@ -385,7 +419,7 @@ GRANT ALL ON SCHEMA public TO public;
 - 生产环境 `ALLOWED_ORIGINS` 必须显式配置，不能使用 `*`。
 - 普通用户 LLM API Key 使用 Fernet 加密。
 - 500 响应不会向客户端暴露内部异常详情，服务端日志会进行凭据脱敏。
-- 项目及关联数据通过 `owner_user_id` 和当前 Session 执行归属校验。
+- 项目及关联数据通过当前 Session、项目成员角色和分支工作区执行访问与写入校验。
 
 生产环境示例：
 
@@ -403,7 +437,6 @@ ALLOWED_ORIGINS=https://workbench.example.com
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -432,7 +465,11 @@ npm run clean
 - `/api/projects/{project_id}/configuration`：读取或修改项目内容语言等配置
 - `/api/projects/{project_id}/...`：使用公开 UUID 的项目资源接口
 - `/api/*_generation_drafts`：AI 生成草稿
-- `/api/projects/{project_id}/issues`：问题检测与修复
+- `/api/projects/{project_id}/rules`：领域规则与关联管理
+- `/api/projects/{project_id}/flows`：流程、步骤、转移与派生路径
+- `/api/projects/{project_id}/flows/refine`：流程或局部步骤细化
+- `/api/projects/{project_id}/findings`：质量问题查询与处理
+- `/api/projects/{project_id}/next-suggestion`：下一步建议
 - `/api/projects/{project_id}/prototype-preview`：原型预览
 - `/api/projects/{project_id}/preview-shadow-drafts`：Shadow Draft 生成与提交
 

@@ -10,6 +10,7 @@ from backend.api.dependencies.auth import get_current_user
 from backend.api.dependencies.llm import get_llm_context
 from backend.api.modules.project_lifecycle.application.interview_service import ProjectInterviewService
 from backend.database.database import get_session
+from backend.api.base_schema import CamelModel
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class InterviewChatRequest(BaseModel):
     messages: list[dict] = Field(default_factory=list)
 
 
-class InterviewChatResponse(BaseModel):
+class InterviewChatResponse(CamelModel):
     reply: str
     is_ready: bool = False
     summary: str = ""
@@ -44,7 +45,7 @@ class InterviewCompleteRequest(BaseModel):
     user_requirements: str = Field(..., min_length=1)
 
 
-class InterviewCompleteResponse(BaseModel):
+class InterviewCompleteResponse(CamelModel):
     draft_id: str
     project_preview: dict = Field(default_factory=dict)
     actors: list = Field(default_factory=list)

@@ -56,7 +56,7 @@ async def get_next_suggestion(
         raise map_branch_error(error)
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         async with llm_context_manager(
             user,
             session,
@@ -106,19 +106,14 @@ async def rediagnose_next_suggestion(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    can_write = (
-        perms.get("can_write", perms.get("can_edit", False))
-        if isinstance(perms, dict)
-        else getattr(perms, "can_write", getattr(perms, "can_edit", False))
-    )
-    if not can_write:
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="branch_readonly_or_protected",
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.rediagnose_next_suggestion(
                 project_id=owned_project.id,
@@ -163,7 +158,7 @@ async def get_rediagnose_status(
         raise map_branch_error(error)
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         async with llm_context_manager(user, session, project_id=owned_project.id):
             return await next_suggestion_service.get_next_suggestion(
                 project_id=owned_project.id,

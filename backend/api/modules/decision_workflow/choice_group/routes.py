@@ -33,6 +33,20 @@ choice_service = ChoiceService()
 generation_choice_service = GenerationChoiceService()
 
 
+async def _resolve_choice_workspace(session, project_id, branch, user_id, require_write=False):
+    from backend.api.modules.version_control.public import map_branch_error, resolve_branch_context
+
+    try:
+        _, workspace, permissions = await session.run_sync(
+            lambda db: resolve_branch_context(db, project_id, branch, user_id)
+        )
+    except (ValueError, PermissionError) as error:
+        raise map_branch_error(error)
+    if require_write and not permissions.get("can_write", False):
+        raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
+    return workspace.id
+
+
 @router.get(
     "/api/projects/{project_id}/choice_groups",
     response_model=list[ChoiceGroupResponse],
@@ -46,11 +60,7 @@ async def list_choice_groups(
     commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_project_member(project_id, user, session)
-    from backend.api.modules.version_control.public import resolve_branch_context
-    _branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
-    )
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id)
 
     try:
         return await choice_service.list_choice_groups(
@@ -87,16 +97,13 @@ async def accept_choice(
     body = body or GenerationAcceptRequest()
     owned_project = await require_owned_project(project_id, user, session)
 
-    from backend.api.modules.version_control.public import resolve_branch_context
-    _branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
-    )
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     # Verify the choice exists and belongs to this project
     query = select(ChoiceModel).join(ChoiceGroupModel).where(
         ChoiceModel.id == choice_id,
-        ChoiceGroupModel.project_id == owned_project.id
+        ChoiceGroupModel.project_id == owned_project.id,
+        ChoiceGroupModel.workspace_id == ws_id,
     )
     res = await session.execute(query)
     choice = res.scalar_one_or_none()
@@ -111,6 +118,7 @@ async def accept_choice(
                 session=session,
                 force=body.force,
                 workspace_id=ws_id,
+                expected_workspace_version=body.expected_workspace_version,
             )
             log_event(
                 logger,
@@ -148,16 +156,19 @@ async def accept_choice(
 async def reject_choice(
     project_id: str,
     choice_id: int,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
 ):
     owned_project = await require_owned_project(project_id, user, session)
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     # Verify the choice exists and belongs to this project
     query = select(ChoiceModel).join(ChoiceGroupModel).where(
         ChoiceModel.id == choice_id,
-        ChoiceGroupModel.project_id == owned_project.id
+        ChoiceGroupModel.project_id == owned_project.id,
+        ChoiceGroupModel.workspace_id == ws_id,
     )
     res = await session.execute(query)
     choice = res.scalar_one_or_none()
@@ -193,17 +204,20 @@ async def reject_choice(
 async def discard_choice_group(
     project_id: str,
     group_id: int,
+    branch: str | None = Query(None),
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
 ):
     """丢弃整个 choice group。所有候选标记为 discarded，不写入真实模型。"""
     owned_project = await require_owned_project(project_id, user, session)
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     # Verify the choice group exists and belongs to this project
     query = select(ChoiceGroupModel).where(
         ChoiceGroupModel.id == group_id,
-        ChoiceGroupModel.project_id == owned_project.id
+        ChoiceGroupModel.project_id == owned_project.id,
+        ChoiceGroupModel.workspace_id == ws_id,
     )
     res = await session.execute(query)
     group = res.scalar_one_or_none()
@@ -257,11 +271,7 @@ async def create_generation_choice_group(
     用户稍后可调用 accept、reject、discard 处理。
     """
     owned_project = await require_owned_project(body.project_id, user, session)
-    from backend.api.modules.version_control.public import resolve_branch_context
-    _branch_obj, ws_obj, perms = await session.run_sync(
-        lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
-    )
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
@@ -308,11 +318,13 @@ async def regenerate_choice_group(
 ):
     """重新生成整个 choice group。旧 group 标记为 discarded，新建一个。"""
     owned_project = await require_owned_project(project_id, user, session)
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     # Verify the choice group exists and belongs to this project
     query = select(ChoiceGroupModel).where(
         ChoiceGroupModel.id == group_id,
-        ChoiceGroupModel.project_id == owned_project.id
+        ChoiceGroupModel.project_id == owned_project.id,
+        ChoiceGroupModel.workspace_id == ws_id,
     )
     res = await session.execute(query)
     group = res.scalar_one_or_none()
@@ -359,11 +371,13 @@ async def regenerate_choice(
 ):
     """重新生成单个 choice，替代原候选。"""
     owned_project = await require_owned_project(project_id, user, session)
+    ws_id = await _resolve_choice_workspace(session, owned_project.id, branch, user.id, require_write=True)
 
     # Verify the choice exists and belongs to this project
     query = select(ChoiceModel).join(ChoiceGroupModel).where(
         ChoiceModel.id == choice_id,
-        ChoiceGroupModel.project_id == owned_project.id
+        ChoiceGroupModel.project_id == owned_project.id,
+        ChoiceGroupModel.workspace_id == ws_id,
     )
     res = await session.execute(query)
     choice = res.scalar_one_or_none()

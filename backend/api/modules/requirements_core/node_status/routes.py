@@ -89,7 +89,7 @@ _NODE_KIND_LABEL = {
 
 async def _apply_status_update(
     model_class, project_id: int, node_id: int, new_status: str, session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> dict | None:
     """执行单个节点的状态更新，返回审计日志所需信息；节点不存在时返回 None。"""
     if model_class is ScopeModel:
@@ -101,8 +101,7 @@ async def _apply_status_update(
                 ScopeModel.id == node_id,
             )
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
     elif model_class is ScenarioAcceptanceCriterionModel:
         stmt = (
             select(ScenarioAcceptanceCriterionModel)
@@ -112,8 +111,7 @@ async def _apply_status_update(
                 ScenarioAcceptanceCriterionModel.id == node_id,
             )
         )
-        if workspace_id is not None:
-            stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
+        stmt = stmt.where(ScenarioModel.workspace_id == workspace_id)
     elif model_class is BusinessObjectAttributeModel:
         stmt = (
             select(BusinessObjectAttributeModel)
@@ -126,8 +124,7 @@ async def _apply_status_update(
                 BusinessObjectAttributeModel.id == node_id,
             )
         )
-        if workspace_id is not None:
-            stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
+        stmt = stmt.where(BusinessObjectModel.workspace_id == workspace_id)
     elif model_class is FlowStepModel:
         stmt = (
             select(FlowStepModel)
@@ -137,15 +134,13 @@ async def _apply_status_update(
                 FlowStepModel.id == node_id,
             )
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FlowModel.workspace_id == workspace_id)
+        stmt = stmt.where(FlowModel.workspace_id == workspace_id)
     else:
         stmt = select(model_class).where(
             model_class.project_id == project_id,
             model_class.id == node_id,
         )
-        if workspace_id is not None and hasattr(model_class, "workspace_id"):
-            stmt = stmt.where(model_class.workspace_id == workspace_id)
+        stmt = stmt.where(model_class.workspace_id == workspace_id)
     result = await session.execute(stmt)
     obj = result.scalar_one_or_none()
     if obj is None:
@@ -246,7 +241,7 @@ async def update_node_status(
     except Exception as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
@@ -256,7 +251,7 @@ async def update_node_status(
     if not model_class:
         raise HTTPException(status_code=400, detail=f"Unknown node_kind: {req.node_kind}")
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     result = await _apply_status_update(
         model_class, owned_project.id, req.node_id, req.confirmation_status.value, session,
         workspace_id=ws_id,
@@ -298,13 +293,13 @@ async def batch_update_node_status(
     except Exception as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     results = []
     errors = []
 

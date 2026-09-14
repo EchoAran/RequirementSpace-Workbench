@@ -1,0 +1,125 @@
+你是一名资深系统架构师和业务流程专家。
+请根据提供的目标业务流程及上下文，对指定的流程或步骤进行受控的“深入路径细化”（Flow Refinement）。
+
+【目标流程信息】
+流程名称：{{target_flow_name}}
+流程描述：{{target_flow_description}}
+细化锚点：{{anchor_info}}
+
+【现有步骤列表】
+{{existing_steps}}
+
+【现有转移关系】
+{{existing_transitions}}
+
+【路径拓扑与分析】
+{{path_projection}}
+
+【可引用范围、角色与业务对象】
+{{refinement_scope}}
+已有步骤与转移必须在 allowed_* 范围内引用（null 表示目标流程内不限）。角色 ID 和已有业务对象编号必须从上述清单原样复制；业务对象引用使用 number，不使用名称或数字 ID。不要猜测编号。
+actors 是唯一可选角色目录；目录为空时，所有新增步骤的 actor_ids 必须为 []，不要给系统执行步骤补入流程其他位置的角色。标记 read_only 的步骤仅用于了解外部拓扑，不能作为细化端点或关联目标。
+上下文中的 logical_uuid 字段使用 existing_<类型>_<序号> 短引用。所有已有实体引用都必须原样复制该字段；服务端负责解析，不要生成 UUID、截取前缀或补零。新增实体仍使用自己的 temp_id，不能占用 existing_ 前缀。
+
+【上游需求与场景证据】
+{{linked_requirements}}
+
+【适用业务规则】
+{{applicable_rules}}
+
+【相关诊断问题（如有）】
+{{finding_context}}
+
+【相关领域知识片段】
+{{knowledge_fragments}}
+
+【用户关注重点】
+{{focus_text}}
+
+【细化原则与硬性约束】
+1. 单流程聚焦：严禁修改或引用其他流程，所有新增步骤与转移仅归属于当前目标流程。若指定了细化锚点（flow_step），所有新增转移、规则链接及引用的已有角色/业务对象必须严格局限在该步骤的 1 阶局部半径内。
+2. 规模硬边界：
+   - 新增步骤（steps_added）最多不超过 5 个；
+   - 新增转移（transitions_added）最多不超过 8 条；
+   - 新增/细化规则（rules_added）最多不超过 3 条。
+3. 拓扑与转移：
+   - 转移端点必须是现有步骤位置（例如 1, 2）或新增步骤的临时 ID（例如 "step-new-1"）；
+   - 严禁出现自环（source == target）；
+   - 若修改已有转移条件，请放入 transitions_updated 并指定其 logical_uuid，禁止生成重复或冲突转移。
+4. 业务规则边界：
+   - 优先复用已有规则；
+   - 若新增规则，必须基于已有规则进行细化（parent_rule_ref 原样复制适用规则的 logical_uuid）或基于知识/需求证据。source_links 的每项使用 {"target_kind": "knowledge"、"feature" 或 "scenario", "target_ref": 对应证据的 logical_uuid 短引用, "context_text": "证据说明"}；只从上游需求与场景证据或领域知识片段目录选择，不从文本描述推测引用。没有父规则时 parent_rule_ref 为 null；没有依据则不新增规则；
+   - 严禁修改已确认的已有规则内容。
+5. 业务对象约定：
+   - 仅当新增步骤确实需要输入/输出时才引入业务对象，新增对象属性必须放入 business_object_attributes。
+
+请输出符合以下 JSON 结构的细化方案：
+{
+  "rationale": "方案设计理由，说明发现了什么未覆盖分支及进入条件",
+  "steps_added": [
+    {
+      "temp_id": "step-new-1",
+      "name": "步骤名称",
+      "description": "步骤描述",
+      "step_type": "actorAction" 或 "systemAction",
+      "actor_ids": [],
+      "input_business_object_numbers": [],
+      "output_business_object_numbers": []
+    }
+  ],
+  "transitions_added": [
+    {
+      "temp_id": "trans-new-1",
+      "source_step_ref": 1 或 "step-new-1",
+      "target_step_ref": 2 或 "step-new-1",
+      "label": "转移标签",
+      "condition_text": "转移条件描述",
+      "is_default": false,
+      "semantic_tags": ["exception", "retry"],
+      "rule_refs": []
+    }
+  ],
+  "transitions_updated": [
+    {
+      "logical_uuid": "现有转移的 logical_uuid",
+      "label": "更新后的标签",
+      "condition_text": "更新后的条件",
+      "semantic_tags": ["fallback"],
+      "rule_refs": []
+    }
+  ],
+  "rules_added": [
+    {
+      "temp_id": "rule-new-1",
+      "title": "细化规则标题",
+      "statement": "细化规则陈述",
+      "parent_rule_ref": null,
+      "confirmation_status": "ai_assumption",
+      "source_links": []
+    }
+  ],
+  "rule_links_added": [
+    {
+      "rule_ref": "rule-new-1",
+      "target_kind": "flow_transition",
+      "target_ref": "trans-new-1",
+      "link_purpose": "applies_to"
+    }
+  ],
+  "business_objects_added": [
+    {
+      "business_object_number": "BO-NEW-1",
+      "business_object_name": "业务对象名称",
+      "business_object_description": "业务对象描述",
+      "business_object_attributes": [
+        {
+          "name": "属性名称",
+          "data_type": "string",
+          "description": "属性说明",
+          "example": "示例值"
+        }
+      ]
+    }
+  ]
+}
+规则关联按实际作用范围选择：步骤的执行、校验、计算规则通过 rule_links_added 关联到 flow_step；流转条件和分支选择规则关联到 flow_transition。整体流程细化（refinement_scope.target_kind 为 flow）时，跨步骤、整体约束可关联到 flow，target_ref 必须使用 refinement_scope.target_flow_logical_uuid；步骤级细化不得新增流程级关联。无适用规则时不要强行关联。流程级关联不复制到每个步骤，同一规则可在确实适用的多个位置复用。

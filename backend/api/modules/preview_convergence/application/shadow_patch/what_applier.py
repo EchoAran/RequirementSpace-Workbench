@@ -9,6 +9,7 @@ def _apply_actors(
     for actor in patch.get("actors_added", []):
         snapshot["actors"].append({
             "actor_id": allocator.temp_id_to_negative[actor["temp_id"]],
+            "logical_uuid": actor.get("logical_uuid", actor["temp_id"]),
             "actor_name": actor["name"],
             "actor_description": actor["description"],
         })
@@ -28,6 +29,7 @@ def _apply_features(
         negative_id = allocator.temp_id_to_negative[feature["temp_id"]]
         new_feature = {
             "feature_id": negative_id,
+            "logical_uuid": feature.get("logical_uuid", feature["temp_id"]),
             "feature_name": feature["name"],
             "feature_description": feature["description"],
             "actor_ids": [],
@@ -86,6 +88,7 @@ def _apply_scenarios(
         feature_id = allocator.resolve(scenario["feature_ref"])
         new_scenario = {
             "scenario_id": negative_id,
+            "logical_uuid": scenario.get("logical_uuid", scenario["temp_id"]),
             "scenario_name": scenario["name"],
             "scenario_content": scenario["content"],
             "feature_id": feature_id,
@@ -123,6 +126,7 @@ def _apply_acceptance_criteria(
         if scenario:
             scenario["acceptance_criteria"].append({
                 "criterion_id": allocator.allocate(),
+                "logical_uuid": criterion.get("logical_uuid"),
                 "criterion_content": criterion["content"],
                 "position": criterion["position"],
             })
@@ -170,6 +174,7 @@ def _apply_scopes(
         if feature:
             feature["scope"] = {
                 "scope_id": allocator.allocate(),
+                "logical_uuid": scope.get("logical_uuid"),
                 "scope_status": scope["status"],
                 "reason": scope["reason"],
                 "positive_summary": scope.get("positive_summary"),
@@ -202,21 +207,12 @@ def _resolve_added_feature_children(
             parent["children_ids"].append(negative_id)
 
 
-def _ensure_default_leaf_scopes(
-    snapshot: dict,
-    allocator: NegativeIdAllocator,
-) -> None:
+def _validate_leaf_scopes(snapshot: dict) -> None:
     for feature in snapshot["features"]:
         if not feature.get("children_ids") and not feature.get("scope"):
-            feature["scope"] = {
-                "scope_id": allocator.allocate(),
-                "scope_status": "CURRENT",
-                "reason": "AI影子收敛补充",
-                "positive_picture_base64": None,
-                "negative_picture_base64": None,
-                "kano_category": "M",
-                "kano_category_name": "Must-be",
-            }
+            raise ValueError(
+                f"shadow_scope_missing:{feature.get('logical_uuid')}"
+            )
 
 
 def finalize_what_nodes(
@@ -236,4 +232,4 @@ def finalize_what_nodes(
         existing_features,
         added_features,
     )
-    _ensure_default_leaf_scopes(snapshot, allocator)
+    _validate_leaf_scopes(snapshot)

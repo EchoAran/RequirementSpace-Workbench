@@ -82,11 +82,17 @@ class AIAddSessionService:
         from .session_creator import AIAddSessionCreator
         return await AIAddSessionCreator._load_project_business_objects(project_id, session)
 
+    @staticmethod
+    async def _load_project_rules(project_id: int, session) -> list[dict]:
+        from .session_creator import AIAddSessionCreator
+        return await AIAddSessionCreator._load_project_rules(project_id, session)
+
     _CONTEXT_LOADERS = {
         "actors": _load_project_actors,
         "features": _load_project_feature_tree,
         "flows": _load_project_flows,
         "business_objects": _load_project_business_objects,
+        "rules": _load_project_rules,
     }
 
     # ------------------------------------------------------------------
@@ -153,7 +159,7 @@ class AIAddSessionService:
             session_id=session_id, db_session=db_session, owner_user_id=owner_user_id
         )
 
-    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int | None = None) -> dict:
+    async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int) -> dict:
         """Confirm a draft — dispatches to add or edit path based on target_type."""
         return await self.draft_handler.confirm_draft(
             draft_id=draft_id, db_session=db_session, owner_user_id=owner_user_id, workspace_id=workspace_id

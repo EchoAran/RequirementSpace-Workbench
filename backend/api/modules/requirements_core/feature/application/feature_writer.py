@@ -11,13 +11,6 @@ from backend.database.model import (
 )
 
 
-async def _exec_stmt(session, stmt):
-    res = session.execute(stmt)
-    if hasattr(res, "__await__"):
-        return await res
-    return res
-
-
 async def ensure_parent_feature_exists(
     session,
     project_id: int,
@@ -25,13 +18,10 @@ async def ensure_parent_feature_exists(
 ) -> None:
     if parent_id is None:
         return
-    result = await _exec_stmt(
-        session,
-        select(FeatureModel).where(
+    result = await session.execute(select(FeatureModel).where(
             FeatureModel.project_id == project_id,
             FeatureModel.id == parent_id,
-        )
-    )
+        ))
     if result.scalar_one_or_none() is None:
         raise ValueError("parent_feature_not_found")
 
@@ -43,12 +33,9 @@ async def create_feature_parent_relation(
 ) -> None:
     if parent_id is None:
         return
-    result = await _exec_stmt(
-        session,
-        select(func.max(FeatureRelationModel.position)).where(
+    result = await session.execute(select(func.max(FeatureRelationModel.position)).where(
             FeatureRelationModel.parent_feature_id == parent_id
-        )
-    )
+        ))
     maximum = result.scalar()
     session.add(
         FeatureRelationModel(
@@ -57,9 +44,7 @@ async def create_feature_parent_relation(
             position=0 if maximum is None else maximum + 1,
         )
     )
-    flush_res = session.flush()
-    if hasattr(flush_res, "__await__"):
-        await flush_res
+    await session.flush()
 
 
 async def load_feature_for_update(
@@ -67,9 +52,7 @@ async def load_feature_for_update(
     project_id: int,
     feature_id: int,
 ):
-    result = await _exec_stmt(
-        session,
-        select(FeatureModel)
+    result = await session.execute(select(FeatureModel)
         .where(
             FeatureModel.project_id == project_id,
             FeatureModel.id == feature_id,
@@ -78,8 +61,7 @@ async def load_feature_for_update(
             selectinload(FeatureModel.actors),
             selectinload(FeatureModel.parent_relation),
             selectinload(FeatureModel.child_relations),
-        )
-    )
+        ))
     feature = result.scalar_one_or_none()
     if feature is None:
         raise ValueError("feature_not_found")
@@ -109,13 +91,11 @@ async def apply_feature_updates(
     if not request.actor_ids:
         feature.actors = []
         return
-    result = await _exec_stmt(
-        session,
-        select(ActorModel).where(
+    result = await session.execute(select(ActorModel).where(
             ActorModel.project_id == project_id,
+            ActorModel.workspace_id == feature.workspace_id,
             ActorModel.id.in_(request.actor_ids),
-        )
-    )
+        ))
     actors = result.scalars().all()
     if len(actors) != len(request.actor_ids):
         raise ValueError("invalid_actor_reference")

@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 class PerceptionDraftCreator:
     def __init__(self):
-        # State wrappers for filling slots, kept as private attributes for compatibility
+        # Slot fillers
         self._actors_filler = ActorsFiller()
         self._features_filler = FeaturesFiller()
         self._scenarios_filler = ScenariosFiller()
@@ -40,9 +40,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -61,9 +61,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -82,9 +82,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -103,9 +103,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -124,9 +124,9 @@ class PerceptionDraftCreator:
         owner_user_id: int,
         perception_job_id: int,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         return await self._create_draft(
             project_id=project_id,
@@ -146,9 +146,9 @@ class PerceptionDraftCreator:
         perception_job_id: int,
         filler_kind: str,
         session,
+        workspace_id: int,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         draft_id = uuid4().hex
         draft_payload, response_payload = await self._generate_preview(
@@ -193,10 +193,10 @@ class PerceptionDraftCreator:
         draft_id: str,
         owner_user_id: int,
         session,
+        workspace_id: int,
         user_feedback: str | None = None,
         branch_name: str | None = None,
         head_commit_id: int | None = None,
-        workspace_id: int | None = None,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -253,7 +253,7 @@ class PerceptionDraftCreator:
         filler_kind: str,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         if filler_kind == "actor":
             return await PerceptionPreviewBuilder.generate_actor_preview(

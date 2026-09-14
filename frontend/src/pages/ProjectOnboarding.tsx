@@ -467,7 +467,6 @@ export function ProjectOnboarding() {
         onDefer={handleDeferChoiceGroup}
     />
 
-    {/* Fallback: old single-draft modal (kept for compatibility) */}
       <DraftPreviewModal
         draft={activeDraftType === 'project' ? activeDraft : null}
         draftType={activeDraftType === 'project' ? activeDraftType : null}

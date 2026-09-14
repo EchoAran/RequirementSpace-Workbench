@@ -39,6 +39,41 @@ class ScenarioIssueItem:
 
 
 @dataclass
+class DomainRuleIssueItem:
+    rule_id: int
+    logical_uuid: str
+    title: str
+    statement: str
+    origin: str = "manual"
+    confirmation_status: str = "confirmed"
+    parent_rule_id: int | None = None
+
+
+@dataclass
+class RuleLinkIssueItem:
+    link_id: int
+    logical_uuid: str
+    rule_id: int
+    target_kind: str
+    target_logical_uuid: str
+    link_purpose: str
+
+
+@dataclass
+class FlowTransitionIssueItem:
+    transition_id: int
+    flow_id: int
+    source_step_id: int
+    target_step_id: int
+    condition_text: str = ""
+    label: str = ""
+    is_default: bool = False
+    position: int = 0
+    semantic_tags: list[str] = field(default_factory=list)
+    logical_uuid: str = ""
+
+
+@dataclass
 class FlowStepIssueItem:
     step_id: int
     flow_id: int
@@ -49,7 +84,7 @@ class FlowStepIssueItem:
     actor_ids: list[int] = field(default_factory=list)
     input_business_object_ids: list[int] = field(default_factory=list)
     output_business_object_ids: list[int] = field(default_factory=list)
-    next_step_ids: list[int] = field(default_factory=list)
+    logical_uuid: str = ""
 
 
 @dataclass
@@ -57,8 +92,11 @@ class FlowIssueItem:
     flow_id: int
     name: str
     description: str
+    confirmation_status: str = "ai_assumption"
     feature_ids: list[int] = field(default_factory=list)
     steps: list[FlowStepIssueItem] = field(default_factory=list)
+    transitions: list[FlowTransitionIssueItem] = field(default_factory=list)
+    logical_uuid: str = ""
 
 
 @dataclass
@@ -88,6 +126,8 @@ class IssueProjectContext:
     flows: list[FlowIssueItem]
     business_objects: list[BusinessObjectIssueItem]
     scopes: list[ScopeIssueItem]
+    domain_rules: list[DomainRuleIssueItem] = field(default_factory=list)
+    rule_links: list[RuleLinkIssueItem] = field(default_factory=list)
 
     @property
     def leaf_features(self) -> list[FeatureIssueItem]:

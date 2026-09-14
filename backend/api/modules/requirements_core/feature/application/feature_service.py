@@ -29,7 +29,7 @@ from .feature_writer import (
 
 
 class FeatureService:
-    async def list_features(self, project_id: int, session, workspace_id: int | None = None) -> list[FeatureResponse]:
+    async def list_features(self, project_id: int, session, workspace_id: int) -> list[FeatureResponse]:
         stmt = (
             select(FeatureModel)
             .where(FeatureModel.project_id == project_id)
@@ -39,8 +39,7 @@ class FeatureService:
                 selectinload(FeatureModel.child_relations),
             )
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
         result = await session.execute(stmt)
         features = result.scalars().all()
         return [
@@ -59,7 +58,7 @@ class FeatureService:
             for feature in features
         ]
 
-    async def get_features(self, project_id: int, session, workspace_id: int | None = None) -> list[FeatureResponse]:
+    async def get_features(self, project_id: int, session, workspace_id: int) -> list[FeatureResponse]:
         """Backward-compatible shim for list_features."""
         return await self.list_features(project_id, session, workspace_id)
 
@@ -69,7 +68,8 @@ class FeatureService:
         req: FeatureCreateRequest,
         session,
         confirmation_status: str = ConfirmationStatus.NEEDS_CONFIRMATION.value,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> FeatureResponse:
         await ensure_parent_feature_exists(
             session,
@@ -77,9 +77,9 @@ class FeatureService:
             req.parent_id,
         )
 
-        if workspace_id is not None and req.parent_id:
-            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == req.parent_id))
-            parent_feat = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+        if req.parent_id:
+            exec_res = await session.execute(select(FeatureModel).where(FeatureModel.id == req.parent_id))
+            parent_feat = exec_res.scalar_one_or_none()
             if parent_feat and parent_feat.workspace_id != workspace_id:
                 raise ValueError("Cross-workspace entity reference rejected: parent feature belongs to a different workspace")
 
@@ -91,9 +91,7 @@ class FeatureService:
             confirmation_status=confirmation_status,
         )
         session.add(feature)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         await create_feature_parent_relation(
             session,
@@ -123,6 +121,7 @@ class FeatureService:
             },
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("feature", feature.logical_uuid)],
         )
 
         return serialize_created_feature(feature, req.parent_id)
@@ -133,22 +132,15 @@ class FeatureService:
         feature_id: int,
         req: FeatureUpdateRequest,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> FeatureResponse:
         feature = await load_feature_for_update(
             session,
             project_id,
             feature_id,
         )
-        if workspace_id is not None and feature.workspace_id != workspace_id:
+        if feature.workspace_id != workspace_id:
             raise ValueError("feature_not_found_in_workspace")
-
-        parent_id_val = getattr(req, "parent_id", None)
-        if workspace_id is not None and parent_id_val:
-            exec_res = session.execute(select(FeatureModel).where(FeatureModel.id == parent_id_val))
-            parent_feat = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
-            if parent_feat and parent_feat.workspace_id != workspace_id:
-                raise ValueError("Cross-workspace entity reference rejected: parent feature belongs to a different workspace")
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
         await snapshot_service.check_optimistic_lock(session, "feature", feature, req.last_seen_updated_at)
@@ -161,9 +153,7 @@ class FeatureService:
             req,
         )
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         # 审计日志: 更新功能
         diff = build_feature_update_diff(before, feature)
@@ -189,6 +179,7 @@ class FeatureService:
             },
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("feature", feature.logical_uuid)],
         )
 
         from backend.api.modules.optimistic_lock.public import snapshot_service
@@ -201,24 +192,33 @@ class FeatureService:
         project_id: int,
         feature_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         stmt = select(FeatureModel).where(
             FeatureModel.project_id == project_id,
             FeatureModel.id == feature_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
-        exec_res = session.execute(stmt)
-        feature = (await exec_res if hasattr(exec_res, "__await__") else exec_res).scalar_one_or_none()
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        exec_res = await session.execute(stmt)
+        feature = exec_res.scalar_one_or_none()
 
         if feature is None:
             raise ValueError("feature_not_found_in_workspace")
 
         feature_name = feature.name
+        feature_logical_uuid = feature.logical_uuid
 
         # Recursively delete all children features to maintain logical cascade
         await self._delete_feature_recursive(feature_id, session)
+
+        from backend.api.modules.requirements_core.domain_rule.domain.node_resolver import (
+            RequirementNodeResolver,
+        )
+        await RequirementNodeResolver().sweep_orphaned_links(
+            session=session,
+            project_id=project_id,
+            workspace_id=workspace_id,
+        )
 
         # 审计日志: 删除功能
         await audit_service.record(
@@ -242,6 +242,7 @@ class FeatureService:
             },
             session=session,
             workspace_id=workspace_id,
+            changed_targets=[("feature", feature_logical_uuid)],
         )
 
         return {

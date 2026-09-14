@@ -61,7 +61,7 @@ class ScenarioGenerationSingleDraftCreateRequest(BaseModel):
     feature_id: int = Field(gt=0)
 
 
-class GeneratedScenarioPreview(BaseModel):
+class GeneratedScenarioPreview(CamelModel):
     feature_id: int
     feature_name: str
     actor_id: int
@@ -71,7 +71,7 @@ class GeneratedScenarioPreview(BaseModel):
     acceptance_criteria: list[str] = []
 
 
-class ScenarioGenerationDraftResponse(BaseModel):
+class ScenarioGenerationDraftResponse(CamelModel):
     draft_id: str
     project_id: str
     generation_mode: str
@@ -83,14 +83,14 @@ class ScenarioGenerationConfirmRequest(BaseModel):
     generate_acceptance_criteria: bool = False
 
 
-class ScenarioGenerationConfirmResponse(BaseModel):
+class ScenarioGenerationConfirmResponse(CamelModel):
     project_id: str
     scenario_count: int
     acceptance_criterion_count: int = 0
     message: str = "scenarios_created"
 
 
-class ScenarioGenerationDraftDiscardResponse(BaseModel):
+class ScenarioGenerationDraftDiscardResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"
 
@@ -110,25 +110,25 @@ class AcceptanceCriteriaGenerationBatchDraftCreateRequest(BaseModel):
     scenario_ids: list[int]
 
 
-class GeneratedAcceptanceCriteriaPreview(BaseModel):
+class GeneratedAcceptanceCriteriaPreview(CamelModel):
     scenario_id: int
     scenario_name: str
     acceptance_criteria: list[str]
 
 
-class AcceptanceCriteriaGenerationDraftResponse(BaseModel):
+class AcceptanceCriteriaGenerationDraftResponse(CamelModel):
     draft_id: str
     project_id: str
     scenario_acceptance_criteria: list[GeneratedAcceptanceCriteriaPreview]
 
 
-class AcceptanceCriteriaGenerationConfirmResponse(BaseModel):
+class AcceptanceCriteriaGenerationConfirmResponse(CamelModel):
     project_id: str
     acceptance_criterion_count: int
     message: str = "acceptance_criteria_created"
 
 
-class AcceptanceCriteriaGenerationDraftDiscardResponse(BaseModel):
+class AcceptanceCriteriaGenerationDraftDiscardResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"
 

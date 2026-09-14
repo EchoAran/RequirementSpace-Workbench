@@ -57,11 +57,21 @@ class AIAddSessionCreator:
         bos = result.scalars().all()
         return [{"id": b.id, "name": b.name} for b in bos]
 
+    @staticmethod
+    async def _load_project_rules(project_id: int, session) -> list[dict]:
+        from backend.database.model import DomainRuleModel
+        result = await session.execute(
+            select(DomainRuleModel).where(DomainRuleModel.project_id == project_id)
+        )
+        rules = result.scalars().all()
+        return [{"id": r.id, "title": r.title, "statement": r.statement} for r in rules]
+
     _CONTEXT_LOADERS = {
         "actors": _load_project_actors,
         "features": _load_project_feature_tree,
         "flows": _load_project_flows,
         "business_objects": _load_project_business_objects,
+        "rules": _load_project_rules,
     }
 
     async def create_session(

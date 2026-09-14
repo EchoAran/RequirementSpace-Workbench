@@ -52,7 +52,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
     try {
       const res = await workspaceApi.interviewChat(initialMessages);
       setMessages([{ role: 'assistant', content: res.reply }]);
-      if (res.is_ready) {
+      if (res.isReady) {
         setSummary(res.summary);
         setStep('ready');
       }
@@ -75,7 +75,7 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
     try {
       const res = await workspaceApi.interviewChat(updatedMessages);
       setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
-      if (res.is_ready) {
+      if (res.isReady) {
         setSummary(res.summary);
         setStep('ready');
       }
@@ -97,12 +97,10 @@ export function ProjectInterviewDialog({ isOpen, onClose }: ProjectInterviewDial
       const result = await workspaceApi.completeInterview(finalName, finalDesc, summary);
 
       // Set the draft in the store so DraftPreviewModal in ProjectOnboarding shows it
-      if (result.draftId || result.draft_id) {
+      if (result.draftId) {
         const draft = {
-          draftId: result.draftId ?? result.draft_id,
-          draft_id: result.draftId ?? result.draft_id,
-          projectPreview: result.projectPreview ?? result.project_preview ?? {},
-          project_preview: result.projectPreview ?? result.project_preview ?? {},
+          draftId: result.draftId,
+          projectPreview: result.projectPreview ?? {},
           actors: result.actors ?? [],
           features: result.features ?? [],
         };

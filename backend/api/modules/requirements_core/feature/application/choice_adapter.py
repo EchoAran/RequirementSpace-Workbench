@@ -30,6 +30,7 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             project_id=context.project_id,
             user_feedback=combined,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
 
         features = response_payload.get("features", [])
@@ -56,11 +57,10 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
 
     async def apply_candidate(self, payload: dict, session, **kwargs) -> dict:
         project_id = payload["project_id"]
-        workspace_id = kwargs.get("workspace_id")
+        workspace_id = kwargs["workspace_id"]
 
         stmt = select(FeatureModel).where(FeatureModel.project_id == project_id)
-        if workspace_id is not None:
-            stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
+        stmt = stmt.where(FeatureModel.workspace_id == workspace_id)
         existing = await session.execute(stmt)
         for feature in existing.scalars().all():
             await session.delete(feature)
@@ -78,6 +78,10 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
                 ) from e
             raise
 
+        changed_targets = [
+            ("feature", uid)
+            for uid in result.get("feature_logical_uuids", [])
+        ]
         from backend.api.modules.requirements_core.public import get_notifier
         await get_notifier().mark_stale(
             project_id=payload["project_id"],
@@ -85,7 +89,9 @@ class FeatureGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             perception_kinds={"FEATURE", "SCENARIO", "ACCEPTANCE_CRITERION", "FLOW"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
+        result.pop("feature_logical_uuids", None)
         return result
 
     def is_duplicate(self, candidate: GenerationCandidate, existing: list[GenerationCandidate]) -> bool:

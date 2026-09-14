@@ -51,7 +51,6 @@ KNOWN_ISSUE_CODES: set[str] = {
     "SCENARIO_WITHOUT_ACCEPTANCE_CRITERIA",
     "DUPLICATE_SCENARIO_NAME",
     # How stage
-    "LEAF_FEATURE_WITHOUT_FLOW",
     "FLOW_WITHOUT_FEATURE",
     "FLOW_WITHOUT_STEPS",
     "ACTOR_ACTION_STEP_WITHOUT_ACTOR",
@@ -97,10 +96,6 @@ ISSUE_CAPABILITIES: dict[str, IssueCapabilityDefinition] = {
         action_label="AI 修复",
     ),
     # How
-    "LEAF_FEATURE_WITHOUT_FLOW": IssueCapabilityDefinition(
-        kind=IssueCapabilityKind.AI_REPAIR,
-        action_label="AI 修复",
-    ),
     "FLOW_WITHOUT_FEATURE": IssueCapabilityDefinition(
         kind=IssueCapabilityKind.AI_REPAIR,
         action_label="AI 修复",

@@ -21,7 +21,6 @@ from backend.database.model import (
     AuditLogModel,
     ChoiceGroupModel,
     ChoiceModel,
-    ProjectModel,
 )
 
 
@@ -163,7 +162,7 @@ async def _create_group(
     is_partial_failure: bool,
     issue_fields: dict,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> ChoiceGroupModel:
     group = ChoiceGroupModel(
         project_id=project_id,
@@ -195,6 +194,7 @@ def _create_candidate_choices(
     for candidate in candidates:
         choice = ChoiceModel(
             choice_group_id=group.id,
+            workspace_id=group.workspace_id,
             title=candidate.title,
             rationale=candidate.rationale,
             status="candidate",
@@ -378,7 +378,7 @@ async def _run_candidates(
     session,
     progress_callback,
     run_candidate_generation,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> CandidateRunResult:
     return await run_candidate_generation(
         count=plan.run_count,
@@ -459,7 +459,7 @@ async def _persist_creation(
     issue_fields: dict,
     plan: _GenerationPlan,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> tuple[ChoiceGroupModel, list[ChoiceModel]]:
     context_hash = issue_fields.pop("context_hash")
     if context_hash is None and session:
@@ -545,7 +545,7 @@ async def create_choice_group(
     issue_fields: dict, get_adapter, run_candidate_generation,
     build_choice_group_response, logger, large_batch_threshold: int,
     timeout_feature_batch_size: int,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> dict:
     config = settings.with_overrides(candidate_count)
     _log_creation_requested(

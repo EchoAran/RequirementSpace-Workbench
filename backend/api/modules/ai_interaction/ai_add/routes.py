@@ -231,7 +231,7 @@ async def confirm_ai_add_draft(
         )
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         service = _get_service()
         return await service.confirm_draft(
             draft_id=draft.draft_id,

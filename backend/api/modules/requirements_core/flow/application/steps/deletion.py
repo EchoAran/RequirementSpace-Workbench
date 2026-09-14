@@ -1,20 +1,28 @@
-from sqlalchemy import insert, select
+"""Step deletion application helpers.
 
-from backend.database.model import FlowStepModel, flow_step_next_table
+This module handles step loading, position normalization, and cascading rule link
+cleanup when a flow step is deleted.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import delete, select
+
+from backend.database.model import FlowStepModel, FlowTransitionModel, RuleLinkModel
 
 
 async def load_flow_step_to_delete(
     session,
     flow_id: int,
     step_id: int,
-    workspace_id: int | None = None,
-):
+    workspace_id: int,
+) -> FlowStepModel:
+    """Load flow step model for deletion, verifying boundaries."""
     stmt = select(FlowStepModel).where(
         FlowStepModel.flow_id == flow_id,
         FlowStepModel.id == step_id,
     )
-    if workspace_id is not None:
-        stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
+    stmt = stmt.where(FlowStepModel.workspace_id == workspace_id)
     result = await session.execute(stmt)
     step = result.scalar_one_or_none()
     if step is None:
@@ -22,57 +30,25 @@ async def load_flow_step_to_delete(
     return step
 
 
-async def load_step_neighbors(
-    session,
-    step_id: int,
-) -> tuple[list[int], list[int]]:
-    predecessor_result = await session.execute(
-        select(flow_step_next_table.c.source_step_id).where(
-            flow_step_next_table.c.target_step_id == step_id
+async def cleanup_step_transition_rule_links(session, step_id: int) -> None:
+    """Clean up rule links pointing to transitions connected to the deleted step."""
+    trans_stmt = select(FlowTransitionModel.logical_uuid).where(
+        (FlowTransitionModel.source_step_id == step_id)
+        | (FlowTransitionModel.target_step_id == step_id)
+    )
+    res = await session.execute(trans_stmt)
+    trans_uuids = res.scalars().all()
+    if trans_uuids:
+        await session.execute(
+            delete(RuleLinkModel).where(
+                RuleLinkModel.target_kind == "flow_transition",
+                RuleLinkModel.target_logical_uuid.in_(trans_uuids),
+            )
         )
-    )
-    successor_result = await session.execute(
-        select(flow_step_next_table.c.target_step_id).where(
-            flow_step_next_table.c.source_step_id == step_id
-        )
-    )
-    return (
-        predecessor_result.scalars().all(),
-        successor_result.scalars().all(),
-    )
-
-
-async def bridge_step_neighbors(
-    session,
-    predecessors: list[int],
-    successors: list[int],
-) -> None:
-    if not predecessors or not successors:
-        return
-    result = await session.execute(
-        select(
-            flow_step_next_table.c.source_step_id,
-            flow_step_next_table.c.target_step_id,
-        ).where(
-            flow_step_next_table.c.source_step_id.in_(predecessors),
-            flow_step_next_table.c.target_step_id.in_(successors),
-        )
-    )
-    existing_edges = set(result.all())
-    missing_edges = [
-        {
-            "source_step_id": predecessor_id,
-            "target_step_id": successor_id,
-        }
-        for predecessor_id in predecessors
-        for successor_id in successors
-        if (predecessor_id, successor_id) not in existing_edges
-    ]
-    if missing_edges:
-        await session.execute(insert(flow_step_next_table), missing_edges)
 
 
 async def normalize_flow_step_positions(session, flow_id: int) -> None:
+    """Re-index step positions to maintain contiguous 1-based order."""
     result = await session.execute(
         select(FlowStepModel)
         .where(FlowStepModel.flow_id == flow_id)

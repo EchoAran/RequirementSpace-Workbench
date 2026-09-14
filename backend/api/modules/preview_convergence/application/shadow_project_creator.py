@@ -25,12 +25,13 @@ def calculate_stable_snapshot_hash(snapshot: dict) -> str:
 
 async def build_project_snapshot(
     project_id: int,
+    workspace_id: int,
     session: AsyncSession,
 ) -> dict:
     """
-    Build a stable structural snapshot for a project.
+    Build a stable structural snapshot for a project workspace.
     """
-    data = await load_snapshot_data(project_id, session)
+    data = await load_snapshot_data(project_id, workspace_id, session)
     return serialize_snapshot(data)
 
 

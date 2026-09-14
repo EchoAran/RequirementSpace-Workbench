@@ -5,6 +5,9 @@ import type {
   Finding,
   NodeStatus,
   Stage,
+  FlowNode,
+  FlowTransition,
+  DomainRule,
 } from '@/core/schema';
 import {
   findingProjection,
@@ -205,7 +208,7 @@ export const buildOverviewModel = (
     });
   }
 
-  // 构建 AI 假设账本：扫描所有实体，收集 confirmationStatus === 'ai_assumption' 的节点
+  // 构建 AI 推测账本：扫描所有实体，收集 confirmationStatus === 'ai_assumption' 的节点
   const ledger: any[] = [];
   const pushLedger = (kind: string, id: number, title: string, source: string, status: string) => {
     if (status === 'ai_assumption') {
@@ -265,8 +268,8 @@ export const buildOverviewModel = (
     });
   });
 
-  const choicesCompatible = (space as any).choicesCompatible || [];
-  const recentChoices = choicesCompatible.filter((c: any) => c.status === 'candidate').slice(0, 3);
+  const choices = Object.values(space.choiceGroups || {}).flatMap(group => group.choices || []);
+  const recentChoices = choices.filter((c: any) => c.status === 'candidate').slice(0, 3);
   const openChoiceGroupsCount = Object.values(space.choiceGroups || {}).filter((cg: any) => cg.status === 'open').length;
 
   const openSlotsCount = (stageProgress?.stages || []).filter(
@@ -340,19 +343,136 @@ export const extractWorkspacePage = (
   return null;
 };
 
+export const normalizeFindingTarget = (target: any): { targetType: string; targetId?: number | string; targetLogicalUuid?: string } | null => {
+  if (!target) return null;
+  const targetType = (
+    target.targetType ||
+    target.target_type ||
+    target.targetKind ||
+    target.target_kind ||
+    target.type ||
+    ''
+  ).toString().toLowerCase();
+
+  const rawId = target.targetId !== undefined
+    ? target.targetId
+    : target.target_id !== undefined
+    ? target.target_id
+    : target.id;
+
+  const targetLogicalUuid = (
+    target.targetLogicalUuid ||
+    target.target_logical_uuid ||
+    target.logicalUuid ||
+    target.logical_uuid ||
+    ''
+  ).toString();
+
+  return {
+    targetType,
+    targetId: rawId,
+    targetLogicalUuid: targetLogicalUuid || undefined,
+  };
+};
+
+export const selectFindingsForStep = (
+  step: FlowStepNode | null | undefined,
+  findings: Finding[] = []
+): Finding[] => {
+  if (!step || !Array.isArray(findings)) return [];
+  const stepIdStr = String(step.stepId);
+  const stepUuid = step.logicalUuid;
+
+  return findings.filter((f) => {
+    const meta = normalizeFindingTarget(f.target || f.metadata?.target);
+    if (!meta) return false;
+    const isStepType = meta.targetType === 'flow_step' || meta.targetType === 'step';
+    if (!isStepType) return false;
+
+    if (meta.targetId !== undefined && String(meta.targetId) === stepIdStr) return true;
+    if (stepUuid && meta.targetLogicalUuid === stepUuid) return true;
+    return false;
+  });
+};
+
+export const selectFindingsForTransition = (
+  transition: FlowTransition | null | undefined,
+  findings: Finding[] = []
+): Finding[] => {
+  if (!transition || !Array.isArray(findings)) return [];
+  const transId = transition.transitionId || transition.id;
+  const transIdStr = transId !== undefined ? String(transId) : undefined;
+  const transUuid = transition.logicalUuid;
+
+  return findings.filter((f) => {
+    const meta = normalizeFindingTarget(f.target || f.metadata?.target);
+    if (!meta) return false;
+    const isTransType = meta.targetType === 'flow_transition' || meta.targetType === 'transition';
+    if (!isTransType) return false;
+
+    if (transIdStr !== undefined && meta.targetId !== undefined && String(meta.targetId) === transIdStr) return true;
+    if (transUuid && meta.targetLogicalUuid === transUuid) return true;
+    return false;
+  });
+};
+
+export const selectFindingsForFlow = (
+  flow: FlowNode | null | undefined,
+  findings: Finding[] = []
+): Finding[] => {
+  if (!flow || !Array.isArray(findings)) return [];
+  const flowIdStr = String(flow.flowId);
+  const flowUuid = flow.logicalUuid;
+  const steps = flow.flowSteps || [];
+  const transitions = flow.transitions || [];
+
+  const stepIds = new Set(steps.map((s) => String(s.stepId)));
+  const stepUuids = new Set(steps.map((s) => s.logicalUuid).filter(Boolean));
+
+  const transIds = new Set(transitions.map((t) => String(t.transitionId || t.id)).filter(Boolean));
+  const transUuids = new Set(transitions.map((t) => t.logicalUuid).filter(Boolean));
+
+  return findings.filter((f) => {
+    const meta = normalizeFindingTarget(f.target || f.metadata?.target);
+    if (!meta) return false;
+
+    // Direct Flow match
+    if (meta.targetType === 'flow') {
+      if (meta.targetId !== undefined && String(meta.targetId) === flowIdStr) return true;
+      if (flowUuid && meta.targetLogicalUuid === flowUuid) return true;
+      return false;
+    }
+
+    // Step match
+    if (meta.targetType === 'flow_step' || meta.targetType === 'step') {
+      if (meta.targetId !== undefined && stepIds.has(String(meta.targetId))) return true;
+      if (meta.targetLogicalUuid && stepUuids.has(meta.targetLogicalUuid)) return true;
+      return false;
+    }
+
+    // Transition match
+    if (meta.targetType === 'flow_transition' || meta.targetType === 'transition') {
+      if (meta.targetId !== undefined && transIds.has(String(meta.targetId))) return true;
+      if (meta.targetLogicalUuid && transUuids.has(meta.targetLogicalUuid)) return true;
+      return false;
+    }
+
+    return false;
+  });
+};
+
 // Flow step topology detail
 export type StepDetail = {
   inputs: string[];
   outputs: string[];
   rules: string[];
   stateChanges: string[];
-  relatedPages: string[];
   relatedIssueIds: string[];
   relatedChoiceIds: string[];
 };
 
 export const buildStepDetail = (space: RequirementSpace | null, stepId: string | number): StepDetail => {
-  const emptyDetail = { inputs: [], outputs: [], rules: [], stateChanges: [], relatedPages: [], relatedIssueIds: [], relatedChoiceIds: [] };
+  const emptyDetail: StepDetail = { inputs: [], outputs: [], rules: [], stateChanges: [], relatedIssueIds: [], relatedChoiceIds: [] };
   if (!space) return emptyDetail;
   const numId = typeof stepId === 'string' ? parseInt(stepId, 10) : stepId;
 
@@ -376,13 +496,21 @@ export const buildStepDetail = (space: RequirementSpace | null, stepId: string |
     .map(id => (space.businessObjects || []).find(b => b.businessObjectId === id)?.businessObjectName)
     .filter(Boolean) as string[];
 
+  const stepLogicalUuid = targetStep.logicalUuid;
+  const linkedRules = (space.domainRules || [])
+    .filter(r => (r.links || []).some(l => l.targetKind === 'flow_step' && Boolean(stepLogicalUuid) && l.targetLogicalUuid === stepLogicalUuid))
+    .map(r => r.title);
+
+  // Extract real findings targeting this step
+  const relatedFindings = selectFindingsForStep(targetStep, space.findings || []);
+  const relatedIssueIds = relatedFindings.map(f => f.findingId);
+
   return {
     inputs,
     outputs,
-    rules: [i18n.t('selectors.stepDetail.businessFlowRule'), i18n.t('selectors.stepDetail.flowIntegrityRule')],
+    rules: linkedRules,
     stateChanges: outputs.map(o => i18n.t('selectors.stepDetail.stateChange', { name: o })),
-    relatedPages: [i18n.t('selectors.stepDetail.operationsPage'), i18n.t('selectors.stepDetail.entryPage')],
-    relatedIssueIds: [],
+    relatedIssueIds,
     relatedChoiceIds: [],
   };
 };
@@ -391,7 +519,7 @@ export type SystemProjection = {
   swimlanes: string[];
   abnormalIssues: Finding[];
   getStepsBySwimlane: (lane: string) => FlowStepNode[];
-  getNextStepTitles: (stepId: string) => string[];
+  getOutgoingStepTitles: (stepId: string) => string[];
   getExceptionStepTitles: (stepId: string) => string[];
   getStepSlots: (stepId: string) => any[];
   businessObjects: any[];
@@ -408,7 +536,7 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
     swimlanes,
     abnormalIssues: [],
     getStepsBySwimlane: () => [],
-    getNextStepTitles: () => [],
+    getOutgoingStepTitles: () => [],
     getExceptionStepTitles: () => [],
     getStepSlots: () => [],
     businessObjects: [],
@@ -443,12 +571,25 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
       })) as any[];
   };
 
-  const getNextStepTitles = (stepId: string | number) => {
+  const allTransitions = (space.flows || []).flatMap(f => (f as any).transitions || []);
+
+  const getOutgoingStepTitles = (stepId: string | number) => {
     const numId = typeof stepId === 'string' ? parseInt(stepId, 10) : stepId;
-    const step = allSteps.find(s => s.stepId === numId);
-    if (!step) return [];
-    return (step.nextStepIds || [])
-      .map(nid => allSteps.find(s => s.stepId === nid)?.stepName)
+    return allTransitions
+      .filter(t => t.sourceStepId === numId)
+      .map(t => allSteps.find(s => s.stepId === t.targetStepId)?.stepName)
+      .filter(Boolean) as string[];
+  };
+
+  const getExceptionStepTitles = (stepId: string | number) => {
+    const numId = typeof stepId === 'string' ? parseInt(stepId, 10) : stepId;
+    return allTransitions
+      .filter(t => t.sourceStepId === numId && (
+        (t.semanticTags || []).some((tag: string) => tag.toLowerCase().includes('exception') || tag.toLowerCase().includes('error')) ||
+        (t.label || '').toLowerCase().includes('异常') ||
+        (t.label || '').toLowerCase().includes('失败')
+      ))
+      .map(t => allSteps.find(s => s.stepId === t.targetStepId)?.stepName)
       .filter(Boolean) as string[];
   };
 
@@ -470,8 +611,8 @@ export const buildSystemProjection = (space: RequirementSpace | null): SystemPro
     swimlanes,
     abnormalIssues,
     getStepsBySwimlane,
-    getNextStepTitles,
-    getExceptionStepTitles: () => [],
+    getOutgoingStepTitles,
+    getExceptionStepTitles,
     getStepSlots: () => [],
     businessObjects: (space.businessObjects || []).map(b => ({
       ...b,
@@ -622,4 +763,136 @@ export const buildRolePages = (space: RequirementSpace | null, actorId: string |
       actions: (f.scenarios || []).map(s => s.scenarioName)
     };
   });
+};
+
+export const selectRulesForTarget = (
+  space: RequirementSpace | null,
+  targetKind: 'flow' | 'flow_step' | 'flow_transition',
+  targetLogicalUuid?: string
+): DomainRule[] => {
+  if (!space?.domainRules || !targetLogicalUuid) return [];
+  return space.domainRules.filter(r => {
+    return (r.links || []).some(l => {
+      return l.targetKind === targetKind && l.targetLogicalUuid === targetLogicalUuid;
+    });
+  });
+};
+
+export const selectTransitionLabel = (
+  transition?: Partial<FlowTransition> | null
+): {
+  text: string;
+  isFallback: boolean;
+  isConditionFallback: boolean;
+  isUnspecified: boolean;
+  isDefault: boolean;
+  status: 'specified' | 'condition_fallback' | 'unspecified';
+} => {
+  const isDefault = Boolean(transition?.isDefault);
+  if (!transition) {
+    return {
+      text: i18n.t('how.transitionLabel.unspecified', '未说明流转条件'),
+      isFallback: true,
+      isConditionFallback: false,
+      isUnspecified: true,
+      isDefault: false,
+      status: 'unspecified',
+    };
+  }
+  const label = (transition.label || '').trim();
+  if (label) {
+    return {
+      text: label,
+      isFallback: false,
+      isConditionFallback: false,
+      isUnspecified: false,
+      isDefault,
+      status: 'specified',
+    };
+  }
+    const cond = (transition.conditionText || '').trim();
+  if (cond) {
+    return {
+      text: cond,
+      isFallback: true,
+      isConditionFallback: true,
+      isUnspecified: false,
+      isDefault,
+      status: 'condition_fallback',
+    };
+  }
+  return {
+    text: i18n.t('how.transitionLabel.unspecified', '未说明流转条件'),
+    isFallback: true,
+    isConditionFallback: false,
+    isUnspecified: true,
+    isDefault,
+    status: 'unspecified',
+  };
+};
+
+
+export const selectFlowSummary = (
+  flow: FlowNode | null,
+  domainRules: DomainRule[] = [],
+  findings: Finding[] = []
+): {
+  stepCount: number;
+  transitionCount: number;
+  ruleCount: number;
+  boCount: number;
+  blockingFindingsCount: number;
+  warningFindingsCount: number;
+} => {
+  if (!flow) {
+    return { stepCount: 0, transitionCount: 0, ruleCount: 0, boCount: 0, blockingFindingsCount: 0, warningFindingsCount: 0 };
+  }
+  const steps = flow.flowSteps || [];
+  const transitions = flow.transitions || [];
+  const stepUuids = new Set(steps.map(s => s.logicalUuid).filter(Boolean));
+  const transUuids = new Set(transitions.map(t => t.logicalUuid).filter(Boolean));
+
+  // Linked rules to flow, its steps or transitions
+  const linkedRuleIds = new Set<number>();
+  domainRules.forEach(r => {
+    (r.links || []).forEach(link => {
+      if (
+        (link.targetKind === 'flow' && link.targetLogicalUuid === flow.logicalUuid) ||
+        (link.targetKind === 'flow_step' && link.targetLogicalUuid && stepUuids.has(link.targetLogicalUuid)) ||
+        (link.targetKind === 'flow_transition' && link.targetLogicalUuid && transUuids.has(link.targetLogicalUuid))
+      ) {
+        linkedRuleIds.add(r.id);
+      }
+    });
+  });
+
+  // Involved BOs
+  const boIds = new Set<number>();
+  steps.forEach(s => {
+    (s.inputBusinessObjectIds || []).forEach(id => boIds.add(id));
+    (s.outputBusinessObjectIds || []).forEach(id => boIds.add(id));
+  });
+
+  // Findings targeting this flow or its steps/transitions
+  const relevantFindings = selectFindingsForFlow(flow, findings);
+  let blockingCount = 0;
+  let warningCount = 0;
+
+  relevantFindings.forEach(f => {
+    const isBlocking = (f.severity as string) === 'error' || (f.severity as string) === 'blocking' || (f.blockingScope && f.blockingScope !== 'none');
+    if (isBlocking) {
+      blockingCount++;
+    } else if (f.severity === 'warning') {
+      warningCount++;
+    }
+  });
+
+  return {
+    stepCount: steps.length,
+    transitionCount: transitions.length,
+    ruleCount: linkedRuleIds.size,
+    boCount: boIds.size,
+    blockingFindingsCount: blockingCount,
+    warningFindingsCount: warningCount,
+  };
 };

@@ -15,7 +15,7 @@ from backend.database.model import (
 
 
 class GraphPatchEngine:
-    async def apply_patch(self, project_id: int, patch: dict, session, workspace_id: int | None = None) -> None:
+    async def apply_patch(self, project_id: int, patch: dict, session, workspace_id: int) -> None:
         """
         Applies a Graph Patch JSON dynamically to the SQLite database.
         The operations are executed inside the current transaction block.
@@ -48,6 +48,7 @@ class GraphPatchEngine:
             project_id,
             patch.get("deleteNodes", []),
             session,
+            workspace_id=workspace_id,
         )
 
         await self._add_nodes(
@@ -64,6 +65,7 @@ class GraphPatchEngine:
             patch.get("updateNodes", []),
             resolve_id,
             session,
+            workspace_id=workspace_id,
         )
 
         await self._add_links(
@@ -73,7 +75,7 @@ class GraphPatchEngine:
         )
 
     @staticmethod
-    async def _update_nodes(project_id: int, nodes: list, resolve_id, session) -> None:
+    async def _update_nodes(project_id: int, nodes: list, resolve_id, session, workspace_id: int) -> None:
         for node in nodes:
             kind = node.get("kind")
             node_id_val = node.get("id") or node.get(f"{kind}Id") or node.get(f"{kind}_id")
@@ -83,7 +85,7 @@ class GraphPatchEngine:
             node_id = resolve_id(node_id_val, kind)
 
             if kind == "actor":
-                res = await session.execute(select(ActorModel).where(ActorModel.id == node_id, ActorModel.project_id == project_id))
+                res = await session.execute(select(ActorModel).where(ActorModel.id == node_id, ActorModel.project_id == project_id, ActorModel.workspace_id == workspace_id))
                 actor = res.scalar_one_or_none()
                 if actor:
                     if "name" in node or "actorName" in node:
@@ -92,7 +94,7 @@ class GraphPatchEngine:
                         actor.description = node.get("description") or node.get("actorDescription")
 
             elif kind == "feature":
-                res = await session.execute(select(FeatureModel).where(FeatureModel.id == node_id, FeatureModel.project_id == project_id))
+                res = await session.execute(select(FeatureModel).where(FeatureModel.id == node_id, FeatureModel.project_id == project_id, FeatureModel.workspace_id == workspace_id))
                 feature = res.scalar_one_or_none()
                 if feature:
                     if "name" in node or "featureName" in node:
@@ -101,7 +103,7 @@ class GraphPatchEngine:
                         feature.description = node.get("description") or node.get("featureDescription")
 
             elif kind == "scenario":
-                res = await session.execute(select(ScenarioModel).where(ScenarioModel.id == node_id, ScenarioModel.project_id == project_id))
+                res = await session.execute(select(ScenarioModel).where(ScenarioModel.id == node_id, ScenarioModel.project_id == project_id, ScenarioModel.workspace_id == workspace_id))
                 scenario = res.scalar_one_or_none()
                 if scenario:
                     if "name" in node or "scenarioName" in node:
@@ -116,7 +118,7 @@ class GraphPatchEngine:
                         scenario.actor_id = resolve_id(a_id, "actor")
 
             elif kind == "business_object":
-                res = await session.execute(select(BusinessObjectModel).where(BusinessObjectModel.id == node_id, BusinessObjectModel.project_id == project_id))
+                res = await session.execute(select(BusinessObjectModel).where(BusinessObjectModel.id == node_id, BusinessObjectModel.project_id == project_id, BusinessObjectModel.workspace_id == workspace_id))
                 bo = res.scalar_one_or_none()
                 if bo:
                     if "name" in node or "businessObjectName" in node or "boName" in node:
@@ -125,7 +127,7 @@ class GraphPatchEngine:
                         bo.description = node.get("description") or node.get("businessObjectDescription") or node.get("boDescription")
 
             elif kind == "flow":
-                res = await session.execute(select(FlowModel).where(FlowModel.id == node_id, FlowModel.project_id == project_id))
+                res = await session.execute(select(FlowModel).where(FlowModel.id == node_id, FlowModel.project_id == project_id, FlowModel.workspace_id == workspace_id))
                 flow = res.scalar_one_or_none()
                 if flow:
                     if "name" in node or "flowName" in node:
@@ -136,7 +138,7 @@ class GraphPatchEngine:
             elif kind == "scope":
                 res = await session.execute(
                     select(ScopeModel).join(FeatureModel, ScopeModel.feature_id == FeatureModel.id)
-                    .where(ScopeModel.id == node_id, FeatureModel.project_id == project_id)
+                    .where(ScopeModel.id == node_id, FeatureModel.project_id == project_id, FeatureModel.workspace_id == workspace_id)
                 )
                 scope = res.scalar_one_or_none()
                 if scope:
@@ -154,7 +156,7 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         for node in nodes:
             kind = node.get("kind")
@@ -205,7 +207,7 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         actor = ActorModel(
             project_id=project_id,
@@ -215,9 +217,7 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(actor)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         if temp_id:
             temp_to_real_id[temp_id] = actor.id
 
@@ -229,7 +229,7 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         feature = FeatureModel(
             project_id=project_id,
@@ -239,9 +239,7 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(feature)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         if temp_id:
             temp_to_real_id[temp_id] = feature.id
 
@@ -249,13 +247,11 @@ class GraphPatchEngine:
         if parent_id_val is None:
             return
         parent_id = resolve_id(parent_id_val, "feature")
-        position_result = session.execute(
+        position_result = await session.execute(
             select(func.max(FeatureRelationModel.position)).where(
                 FeatureRelationModel.parent_feature_id == parent_id
             )
         )
-        if hasattr(position_result, "__await__"):
-            position_result = await position_result
         max_position = position_result.scalar()
         relation = FeatureRelationModel(
             parent_feature_id=parent_id,
@@ -263,9 +259,7 @@ class GraphPatchEngine:
             position=0 if max_position is None else max_position + 1,
         )
         session.add(relation)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
     @staticmethod
     async def _add_scenario(
@@ -275,7 +269,7 @@ class GraphPatchEngine:
         temp_to_real_id: dict,
         resolve_id,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         feature_id_val = node.get("feature_id") or node.get("featureId")
         actor_id_val = node.get("actor_id") or node.get("actorId")
@@ -293,9 +287,7 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(scenario)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         if temp_id:
             temp_to_real_id[temp_id] = scenario.id
 
@@ -306,7 +298,7 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         business_object = BusinessObjectModel(
             project_id=project_id,
@@ -326,9 +318,7 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(business_object)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         if temp_id:
             temp_to_real_id[temp_id] = business_object.id
 
@@ -339,7 +329,7 @@ class GraphPatchEngine:
         temp_id,
         temp_to_real_id: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> None:
         flow = FlowModel(
             project_id=project_id,
@@ -349,9 +339,7 @@ class GraphPatchEngine:
             confirmation_status="ai_assumption",
         )
         session.add(flow)
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         if temp_id:
             temp_to_real_id[temp_id] = flow.id
 
@@ -378,7 +366,7 @@ class GraphPatchEngine:
             )
         )
 
-    async def _delete_nodes(self, project_id: int, nodes: list, session) -> None:
+    async def _delete_nodes(self, project_id: int, nodes: list, session, workspace_id: int) -> None:
         for node in nodes:
             kind = node.get("kind")
             node_id_val = (
@@ -395,15 +383,23 @@ class GraphPatchEngine:
                     delete(ActorModel).where(
                         ActorModel.id == node_id,
                         ActorModel.project_id == project_id,
+                        ActorModel.workspace_id == workspace_id,
                     )
                 )
             elif kind == "feature":
-                await self._delete_feature_recursive(node_id, session)
+                feature = await session.scalar(select(FeatureModel).where(
+                    FeatureModel.id == node_id,
+                    FeatureModel.project_id == project_id,
+                    FeatureModel.workspace_id == workspace_id,
+                ))
+                if feature is not None:
+                    await self._delete_feature_recursive(feature.id, session)
             elif kind == "scenario":
                 await session.execute(
                     delete(ScenarioModel).where(
                         ScenarioModel.id == node_id,
                         ScenarioModel.project_id == project_id,
+                        ScenarioModel.workspace_id == workspace_id,
                     )
                 )
             elif kind == "business_object":
@@ -411,6 +407,7 @@ class GraphPatchEngine:
                     delete(BusinessObjectModel).where(
                         BusinessObjectModel.id == node_id,
                         BusinessObjectModel.project_id == project_id,
+                        BusinessObjectModel.workspace_id == workspace_id,
                     )
                 )
             elif kind == "flow":
@@ -418,6 +415,7 @@ class GraphPatchEngine:
                     delete(FlowModel).where(
                         FlowModel.id == node_id,
                         FlowModel.project_id == project_id,
+                        FlowModel.workspace_id == workspace_id,
                     )
                 )
 

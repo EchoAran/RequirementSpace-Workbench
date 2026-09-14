@@ -6,11 +6,14 @@ from backend.database.model import (
     ActorModel,
     BusinessObjectAttributeModel,
     BusinessObjectModel,
+    DomainRuleModel,
     FeatureModel,
     FeatureRelationModel,
     FlowModel,
     FlowStepModel,
+    FlowTransitionModel,
     ProjectModel,
+    RuleLinkModel,
     ScenarioAcceptanceCriterionModel,
     ScenarioModel,
     ScopeModel,
@@ -18,7 +21,6 @@ from backend.database.model import (
     flow_feature_table,
     flow_step_actor_table,
     flow_step_input_business_object_table,
-    flow_step_next_table,
     flow_step_output_business_object_table,
 )
 
@@ -41,8 +43,10 @@ class SnapshotData:
     actors_by_step: dict[int, list[int]]
     inputs_by_step: dict[int, list[int]]
     outputs_by_step: dict[int, list[int]]
-    next_by_step: dict[int, list[int]]
+    transitions_by_flow: dict[int, list]
     attributes_by_object: dict[int, list]
+    domain_rules: list
+    rule_links_by_rule: dict[int, list]
 
 
 def _pairs_to_map(rows) -> dict[int, list[int]]:
@@ -52,25 +56,40 @@ def _pairs_to_map(rows) -> dict[int, list[int]]:
     return mapping
 
 
-async def _load_primary_models(project_id: int, session):
+async def _load_primary_models(project_id: int, workspace_id: int, session):
     project = await session.get(ProjectModel, project_id)
     if not project:
         raise ValueError("project_not_found")
     model_queries = (
         select(ActorModel)
-        .where(ActorModel.project_id == project_id)
+        .where(
+            ActorModel.project_id == project_id,
+            ActorModel.workspace_id == workspace_id,
+        )
         .order_by(ActorModel.id.asc()),
         select(FeatureModel)
-        .where(FeatureModel.project_id == project_id)
+        .where(
+            FeatureModel.project_id == project_id,
+            FeatureModel.workspace_id == workspace_id,
+        )
         .order_by(FeatureModel.id.asc()),
         select(ScenarioModel)
-        .where(ScenarioModel.project_id == project_id)
+        .where(
+            ScenarioModel.project_id == project_id,
+            ScenarioModel.workspace_id == workspace_id,
+        )
         .order_by(ScenarioModel.id.asc()),
         select(FlowModel)
-        .where(FlowModel.project_id == project_id)
+        .where(
+            FlowModel.project_id == project_id,
+            FlowModel.workspace_id == workspace_id,
+        )
         .order_by(FlowModel.id.asc()),
         select(BusinessObjectModel)
-        .where(BusinessObjectModel.project_id == project_id)
+        .where(
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.workspace_id == workspace_id,
+        )
         .order_by(BusinessObjectModel.id.asc()),
     )
     loaded = []
@@ -82,6 +101,7 @@ async def _load_primary_models(project_id: int, session):
 
 async def _load_feature_maps(
     project_id: int,
+    workspace_id: int,
     feature_ids: list[int],
     session,
 ):
@@ -89,7 +109,10 @@ async def _load_feature_maps(
         await session.execute(
             select(ScopeModel)
             .join(FeatureModel)
-            .where(FeatureModel.project_id == project_id)
+            .where(
+                FeatureModel.project_id == project_id,
+                FeatureModel.workspace_id == workspace_id,
+            )
             .order_by(ScopeModel.id.asc())
         )
     ).scalars().all()
@@ -167,7 +190,19 @@ async def _load_flow_maps(flow_ids: list[int], session):
     steps_by_flow = {}
     for step in steps:
         steps_by_flow.setdefault(step.flow_id, []).append(step)
-    return _pairs_to_map(feature_rows), steps, steps_by_flow
+
+    transitions = (
+        await session.execute(
+            select(FlowTransitionModel)
+            .where(FlowTransitionModel.flow_id.in_(flow_ids))
+            .order_by(FlowTransitionModel.position.asc(), FlowTransitionModel.id.asc())
+        )
+    ).scalars().all()
+    transitions_by_flow = {}
+    for transition in transitions:
+        transitions_by_flow.setdefault(transition.flow_id, []).append(transition)
+
+    return _pairs_to_map(feature_rows), steps, steps_by_flow, transitions_by_flow
 
 
 async def _load_step_maps(step_ids: list[int], session):
@@ -184,26 +219,18 @@ async def _load_step_maps(step_ids: list[int], session):
             flow_step_output_business_object_table,
             flow_step_output_business_object_table.c.business_object_id,
         ),
-        (
-            flow_step_next_table,
-            flow_step_next_table.c.target_step_id,
-        ),
     )
     maps = []
     for table, value_column in tables:
-        key_column = (
-            table.c.source_step_id
-            if table is flow_step_next_table
-            else table.c.flow_step_id
-        )
         rows = (
             await session.execute(
-                select(key_column, value_column).where(
-                    key_column.in_(step_ids)
+                select(table.c.flow_step_id, value_column).where(
+                    table.c.flow_step_id.in_(step_ids)
                 )
             )
         ).all()
         maps.append(_pairs_to_map(rows))
+
     return tuple(maps)
 
 
@@ -231,8 +258,32 @@ async def _load_attributes(
     return mapping
 
 
+async def _load_rule_data(project_id: int, workspace_id: int, session):
+    rules = (
+        await session.execute(
+            select(DomainRuleModel).where(
+                DomainRuleModel.project_id == project_id,
+                DomainRuleModel.workspace_id == workspace_id,
+            ).order_by(DomainRuleModel.logical_uuid.asc())
+        )
+    ).scalars().all()
+    links = (
+        await session.execute(
+            select(RuleLinkModel).where(
+                RuleLinkModel.project_id == project_id,
+                RuleLinkModel.workspace_id == workspace_id,
+            ).order_by(RuleLinkModel.logical_uuid.asc())
+        )
+    ).scalars().all()
+    links_by_rule: dict[int, list] = {}
+    for link in links:
+        links_by_rule.setdefault(link.rule_id, []).append(link)
+    return rules, links_by_rule
+
+
 async def load_snapshot_data(
     project_id: int,
+    workspace_id: int,
     session,
 ) -> SnapshotData:
     (
@@ -242,19 +293,19 @@ async def load_snapshot_data(
         scenarios,
         flows,
         business_objects,
-    ) = await _load_primary_models(project_id, session)
+    ) = await _load_primary_models(project_id, workspace_id, session)
     feature_ids = [feature.id for feature in features]
     (
         scopes_by_feature,
         actors_by_feature,
         parent_by_child,
         children_by_parent,
-    ) = await _load_feature_maps(project_id, feature_ids, session)
+    ) = await _load_feature_maps(project_id, workspace_id, feature_ids, session)
     criteria_by_scenario = await _load_scenario_criteria(
         [scenario.id for scenario in scenarios],
         session,
     )
-    features_by_flow, steps, steps_by_flow = await _load_flow_maps(
+    features_by_flow, steps, steps_by_flow, transitions_by_flow = await _load_flow_maps(
         [flow.id for flow in flows],
         session,
     )
@@ -262,11 +313,13 @@ async def load_snapshot_data(
         actors_by_step,
         inputs_by_step,
         outputs_by_step,
-        next_by_step,
     ) = await _load_step_maps([step.id for step in steps], session)
     attributes_by_object = await _load_attributes(
         [item.id for item in business_objects],
         session,
+    )
+    domain_rules, rule_links_by_rule = await _load_rule_data(
+        project_id, workspace_id, session
     )
     return SnapshotData(
         project=project,
@@ -285,6 +338,8 @@ async def load_snapshot_data(
         actors_by_step=actors_by_step,
         inputs_by_step=inputs_by_step,
         outputs_by_step=outputs_by_step,
-        next_by_step=next_by_step,
+        transitions_by_flow=transitions_by_flow,
         attributes_by_object=attributes_by_object,
+        domain_rules=domain_rules,
+        rule_links_by_rule=rule_links_by_rule,
     )

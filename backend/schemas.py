@@ -46,6 +46,7 @@ class PerceptionKindType(StrEnum):
     ACCEPTANCE_CRITERION = "成功标准结点"
     FLOW = "流程主结点"
     FLOW_STEP = "流程步骤结点"
+    RULE = "业务规则结点"
 
 # 角色结点
 @node_dataclass
@@ -144,7 +145,23 @@ class FlowStepNode(BaseNode):
     inputBusinessObjectIds: list[int] = field(default_factory=list)  # 空数组=没有
     outputBusinessObjectIds: list[int] = field(default_factory=list)  # 空数组=没有
 
-    nextStepIds: list[int] = field(default_factory=list)  # 空数组=没有
+
+
+# 流程流转转移边
+@node_dataclass
+class FlowTransitionNode(BaseNode):
+    kind: str = field(default="flow_transition", init=False)
+
+    transitionId: int
+    sourceStepId: int
+    targetStepId: int
+    label: str = ""
+    conditionText: str = ""
+    isDefault: bool = False
+    position: int = 0
+    semanticTags: list[str] = field(default_factory=list)
+    origin: str = "manual"
+    confirmationStatus: str = "confirmed"
 
 # 流程主结点
 @node_dataclass
@@ -158,6 +175,7 @@ class FlowNode(BaseNode):
     featureIds: list[int]  # 非空, 步骤必须关联至少一个功能
 
     flowSteps: list[FlowStepNode] = field(default_factory=list)
+    transitions: list[FlowTransitionNode] = field(default_factory=list)
 
 # 感知槽结点
 @node_dataclass

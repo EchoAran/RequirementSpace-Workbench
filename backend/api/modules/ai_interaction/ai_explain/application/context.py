@@ -236,6 +236,83 @@ async def _load_business_object_context(project_id: int, target_id: int, session
     return "\n\n".join(parts), loaded
 
 
+async def _load_rule_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+    """Load context for a single domain rule: self + parent/children + linked objects."""
+    from backend.database.model import DomainRuleModel, RuleLinkModel
+
+    rule = await session.get(DomainRuleModel, target_id)
+    if rule is None:
+        raise ValueError("target_not_found")
+
+    loaded = [f"rule:{target_id}"]
+    parts = [f"业务规则「{rule.title}」(ID:{rule.id})"]
+    parts.append(f"约束内容：{rule.statement}")
+    status_labels = {"confirmed": "已确认", "needs_confirmation": "待确认", "ai_assumption": "AI 假设"}
+    parts.append(f"状态：{status_labels.get(rule.confirmation_status, rule.confirmation_status)}")
+
+    if rule.parent_rule_id:
+        parent = await session.get(DomainRuleModel, rule.parent_rule_id)
+        if parent:
+            parts.append(f"父规则：{parent.title} (ID:{parent.id})")
+            loaded.append(f"rule:{parent.id}")
+
+    children = (await session.execute(
+        select(DomainRuleModel).where(DomainRuleModel.parent_rule_id == target_id)
+    )).scalars().all()
+    if children:
+        child_text = _format_entity(
+            "子规则",
+            [{"title": c.title, "statement": c.statement} for c in children],
+            "- {title}：{statement}",
+        )
+        parts.append(child_text)
+        for c in children:
+            loaded.append(f"rule:{c.id}")
+
+    links = (await session.execute(
+        select(RuleLinkModel).where(RuleLinkModel.rule_id == target_id)
+    )).scalars().all()
+    link_lines = []
+    for link in links:
+        name = await _resolve_link_target_name(link.target_kind, link.target_logical_uuid, session)
+        label = name or (link.context_text or link.target_kind)
+        loaded.append(f"{link.target_kind}:{link.target_logical_uuid}")
+        link_lines.append(f"- {label}（作用：{link.link_purpose}）")
+    if link_lines:
+        parts.append("=== 关联对象 ===\n" + "\n".join(link_lines))
+
+    return "\n\n".join(parts), loaded
+
+
+async def _resolve_link_target_name(target_kind: str, target_logical_uuid: str, session) -> str:
+    """Resolve a rule link target to its display name; empty string when unresolvable."""
+    from backend.database.model import (
+        FeatureModel,
+        FlowModel,
+        FlowStepModel,
+        ScenarioAcceptanceCriterionModel,
+        ScenarioModel,
+    )
+
+    model_map = {
+        "feature": (FeatureModel, "name"),
+        "scenario": (ScenarioModel, "name"),
+        "acceptance_criterion": (ScenarioAcceptanceCriterionModel, "content"),
+        "flow": (FlowModel, "name"),
+        "flow_step": (FlowStepModel, "name"),
+    }
+    entry = model_map.get(target_kind)
+    if entry is None:
+        return ""
+    model_cls, name_attr = entry
+    obj = (await session.execute(
+        select(model_cls).where(model_cls.logical_uuid == target_logical_uuid)
+    )).scalar_one_or_none()
+    if obj is None:
+        return ""
+    return str(getattr(obj, name_attr, "") or "")
+
+
 # ---------------------------------------------------------------------------
 # Node loader registry
 # ---------------------------------------------------------------------------
@@ -245,6 +322,7 @@ NODE_LOADERS: dict[str, callable] = {
     "feature": _load_feature_context,
     "flow": _load_flow_context,
     "business_object": _load_business_object_context,
+    "rule": _load_rule_context,
 }
 
 # ---------------------------------------------------------------------------

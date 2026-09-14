@@ -51,7 +51,7 @@ class BusinessObjectWithoutUsageSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         target_id = None
         if target:

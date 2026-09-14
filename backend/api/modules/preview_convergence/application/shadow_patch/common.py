@@ -12,6 +12,9 @@ def _create_empty_patch() -> dict[str, list]:
         "business_object_attributes_added": [],
         "flows_added": [],
         "flow_steps_added": [],
+        "flow_transitions_added": [],
+        "domain_rules_added": [],
+        "rule_links_added": [],
         "scopes_added": [],
     }
 
@@ -24,77 +27,59 @@ def _append_generated_business_objects(patch: dict, raw_flows: dict) -> None:
         temporary_business_object_id = f"tmp_bo_{business_object_number}"
         patch["business_objects_added"].append({
             "temp_id": temporary_business_object_id,
-            "name": (
-                business_object.get("business_object_name")
-                or business_object.get("name")
-            ),
-            "description": (
-                business_object.get("business_object_description")
-                or business_object.get("description")
+            "name": business_object.get("business_object_name"),
+            "description": business_object.get(
+                "business_object_description", ""
             ),
         })
+        if not patch["business_objects_added"][-1]["name"]:
+            raise ValueError("generated_business_object_name_missing")
 
         attributes = business_object.get("business_object_attributes", [])
-        if not attributes:
-            attributes = [
-                {
-                    "name": "id",
-                    "description": "唯一标识",
-                    "data_type": "integer",
-                    "example": "1",
-                },
-                {
-                    "name": "name",
-                    "description": "名称",
-                    "data_type": "string",
-                    "example": "示例名称",
-                },
-            ]
         for attribute in attributes:
             if not isinstance(attribute, dict):
-                continue
-            patch["business_object_attributes_added"].append({
+                raise ValueError("generated_business_object_attribute_invalid")
+            attribute_patch = {
                 "business_object_ref": temporary_business_object_id,
-                "name": (
-                    attribute.get("business_object_attribute_name")
-                    or attribute.get("name")
-                    or "未命名属性"
+                "name": attribute.get("business_object_attribute_name"),
+                "description": attribute.get(
+                    "business_object_attribute_description", ""
                 ),
-                "description": (
-                    attribute.get("business_object_attribute_description")
-                    or attribute.get("description")
-                    or ""
+                "data_type": attribute.get("business_object_attribute_type"),
+                "example": attribute.get(
+                    "business_object_attribute_example", ""
                 ),
-                "data_type": (
-                    attribute.get("business_object_attribute_type")
-                    or attribute.get("data_type")
-                    or "string"
-                ),
-                "example": (
-                    attribute.get("business_object_attribute_example")
-                    or attribute.get("example")
-                    or ""
-                ),
-            })
+            }
+            if not attribute_patch["name"] or not attribute_patch["data_type"]:
+                raise ValueError("generated_business_object_attribute_invalid")
+            patch["business_object_attributes_added"].append(attribute_patch)
 
 
-def _resolve_next_step_refs(
-    flow_number: str,
-    step_index_by_number: dict,
-    next_step_numbers: list,
-) -> list[str]:
-    next_step_refs = []
-    for next_step_number in next_step_numbers:
-        if next_step_number in step_index_by_number:
-            mapped_index = step_index_by_number[next_step_number]
-            next_step_refs.append(
-                f"tmp_step_{flow_number}_gen_{mapped_index + 1}"
-            )
-        else:
-            next_step_refs.append(
-                f"tmp_step_{flow_number}_{next_step_number}"
-            )
-    return next_step_refs
+from dataclasses import dataclass
+
+
+@dataclass
+class EdgePatch:
+    temp_id: str
+    flow_ref: str
+    source_step_ref: str
+    target_step_ref: str
+    condition_text: str = ""
+    label: str = ""
+    is_default: bool = False
+    position: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "temp_id": self.temp_id,
+            "flow_ref": self.flow_ref,
+            "source_step_ref": self.source_step_ref,
+            "target_step_ref": self.target_step_ref,
+            "condition_text": self.condition_text,
+            "label": self.label,
+            "is_default": self.is_default,
+            "position": self.position,
+        }
 
 
 def _resolve_preserved_scope_feature_ref(feature_id: Any) -> str:
@@ -111,31 +96,24 @@ def _append_generated_scopes(
     resolve_feature_ref,
 ) -> None:
     for scope in scopes:
-        patch["scopes_added"].append({
+        scope_patch = {
             "feature_ref": resolve_feature_ref(scope.get("feature_id")),
-            "status": (
-                scope.get("scope_status")
-                or scope.get("status")
-                or "CURRENT"
-            ).upper(),
-            "reason": scope.get("reason") or "AI影子收敛补充",
-            "kano_category": scope.get("kano_category") or "M",
-            "kano_category_name": (
-                scope.get("kano_category_name") or "Must-be"
-            ),
-            "positive_summary": (
-                scope.get("positive_summary") or "已支持"
-            ),
-            "negative_summary": (
-                scope.get("negative_summary") or "不满足"
-            ),
+            "status": str(scope.get("scope_status", "")).upper(),
+            "reason": scope.get("reason"),
+            "kano_category": scope.get("kano_category"),
+            "kano_category_name": scope.get("kano_category_name"),
+            "positive_summary": scope.get("positive_summary"),
+            "negative_summary": scope.get("negative_summary"),
             "positive_picture_base64": scope.get(
                 "positive_picture_base64"
             ),
             "negative_picture_base64": scope.get(
                 "negative_picture_base64"
             ),
-        })
+        }
+        if not scope_patch["feature_ref"] or not scope_patch["status"] or not scope_patch["reason"]:
+            raise ValueError("generated_scope_fields_missing")
+        patch["scopes_added"].append(scope_patch)
 
 
 def _build_generated_reference_map(

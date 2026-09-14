@@ -27,7 +27,7 @@ _RISK_MAP: dict[str, str] = {
     "addLinks:flow_feature_relation": "medium",
     "updateNodes:scenario:feature_id": "medium",
     "addLinks:flow_step_actor": "medium",
-    "addLinks:flow_step_next": "high",
+    "addLinks:flow_transition": "high",
     "addLinks:flow_step_input_business_object": "medium",
     "addLinks:flow_step_output_business_object": "medium",
 }
@@ -145,10 +145,10 @@ async def build_impact_preview(
             s_name = await _resolve_node_name(project_id, "flow_step", source_id, session)
             a_name = await _resolve_node_name(project_id, "actor", target_id, session)
             affected_relations.append({"type": link_type, "source": s_name, "target": a_name, "change": "新增步骤执行角色"})
-        elif link_type == "flow_step_next":
+        elif link_type == "flow_transition":
             src_name = await _resolve_node_name(project_id, "flow_step", source_id, session)
             tgt_name = await _resolve_node_name(project_id, "flow_step", target_id, session)
-            affected_relations.append({"type": link_type, "source": src_name, "target": tgt_name, "change": "修改流程步骤连接"})
+            affected_relations.append({"type": link_type, "source": src_name, "target": tgt_name, "change": "修改流程流转转移"})
 
     # Analyze addNodes
     for node in patch.get("addNodes", []):

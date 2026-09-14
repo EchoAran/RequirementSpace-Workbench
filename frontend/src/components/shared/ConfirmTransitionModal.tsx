@@ -46,8 +46,18 @@ export function ConfirmTransitionModal({
     setStatus('diagnosing');
     setLocalError(null);
     try {
+      // Clear stale errors so the post-await check below only sees a fresh
+      // read-only guard signal from the store.
+      useWorkspaceStore.getState().setError(null);
       await onAIDiagnose();
-      
+
+      // Read-only guard fired inside the store: it toasts instead of throwing,
+      // so bail out and let the user stay on the choice screen.
+      if (useWorkspaceStore.getState().error) {
+        setStatus('idle');
+        return;
+      }
+
       // Fetch latest nextSuggestion from store getState
       const latestSug = useWorkspaceStore.getState().nextSuggestions[stage];
       // Diagnosis passed if: no suggestion, or suggestion action is stage_transition (ready to enter next stage)

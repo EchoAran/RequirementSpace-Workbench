@@ -18,9 +18,18 @@ from backend.core.llm_context import (
 )
 from backend.core.logging import get_logger, log_event, sanitize_message
 from backend.core.logging.events import (
+    HOW_PERCEPTION_DONE_EMPTY,
+    HOW_PERCEPTION_DONE_WITH_SLOT,
+    HOW_PERCEPTION_FAILED,
+    HOW_PERCEPTION_STARTED,
     PERCEPTION_JOB_COMPLETED,
     PERCEPTION_JOB_FAILED,
     PERCEPTION_JOB_STARTED,
+)
+from backend.core.model_invariants.rule_invariants import validate_rule_link_purpose, validate_rule_link_target
+from backend.core.observability import emit_how_lifecycle_event
+from backend.core.path_projection import (
+    project_flow_paths,
 )
 from backend.core.perceptrons.acceptance_criteria_perceptron import (
     AcceptanceCriteriaPerceptron,
@@ -38,6 +47,10 @@ from backend.core.perceptrons.flows_perceptron import (
     FlowsPerceptron,
     FlowsPerceptronInput,
 )
+from backend.core.perceptrons.rules_perceptron import (
+    RulePerceptron,
+    RulePerceptronInput,
+)
 from backend.core.perceptrons.scenarios_perceptron import (
     ScenariosPerceptron,
     ScenariosPerceptronInput,
@@ -50,6 +63,7 @@ from backend.schemas import (
     FlowNode,
     FlowStepNode,
     FlowStepType,
+    FlowTransitionNode,
     NextSuggestion,
     PerceptionJobStatus,
     PerceptionKindType,
@@ -79,25 +93,21 @@ class PerceptionJobExecutor:
         project_id: int,
         stage: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ):
         from backend.database.model import PerceptionJobModel
 
         stmt = select(PerceptionJobModel).where(
             PerceptionJobModel.project_id == project_id,
             PerceptionJobModel.stage == stage,
+            PerceptionJobModel.workspace_id == workspace_id,
             PerceptionJobModel.status.in_(
                 [
                     PerceptionJobStatus.NOT_STARTED.value,
                     PerceptionJobStatus.RUNNING.value,
                 ]
             ),
-        )
-        if workspace_id is not None:
-            stmt = stmt.where(PerceptionJobModel.workspace_id == workspace_id)
-        else:
-            stmt = stmt.where(PerceptionJobModel.workspace_id.is_(None))
-        stmt = stmt.order_by(PerceptionJobModel.id.asc())
+        ).order_by(PerceptionJobModel.id.asc())
 
         result = await session.execute(stmt)
         return result.scalars().first()
@@ -133,6 +143,22 @@ class PerceptionJobExecutor:
             status=job.status,
             duration_ms=int((time.perf_counter() - start_time) * 1000),
         )
+        if job.stage == "how":
+            lifecycle_event = (
+                HOW_PERCEPTION_DONE_EMPTY
+                if job.status == PerceptionJobStatus.DONE_EMPTY.value
+                else HOW_PERCEPTION_DONE_WITH_SLOT
+                if job.status == PerceptionJobStatus.DONE_WITH_SLOT.value
+                else None
+            )
+            if lifecycle_event:
+                emit_how_lifecycle_event(
+                    lifecycle_event,
+                    capability="how_perception",
+                    project_id=job.project_id,
+                    workspace_id=job.workspace_id,
+                    perception_kind=job.perception_kind,
+                )
 
     @staticmethod
     async def _mark_job_stale(job, session, start_time: float) -> None:
@@ -167,12 +193,8 @@ class PerceptionJobExecutor:
 
         slot_stmt = select(PerceptionSlotModel).where(
             PerceptionSlotModel.project_id == job.project_id,
+            PerceptionSlotModel.workspace_id == job.workspace_id,
         )
-        ws_id = getattr(job, "workspace_id", None)
-        if ws_id is not None:
-            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id == ws_id)
-        else:
-            slot_stmt = slot_stmt.where(PerceptionSlotModel.workspace_id.is_(None))
 
         existing_slots = (await session.execute(slot_stmt)).scalars().all()
         for slot in existing_slots:
@@ -183,7 +205,7 @@ class PerceptionJobExecutor:
             PerceptionSlotModel(
                 id=job.id,
                 project_id=job.project_id,
-                workspace_id=ws_id,
+                workspace_id=job.workspace_id,
                 perception_kind=result_kind.value,
                 description=description,
             )
@@ -234,6 +256,12 @@ class PerceptionJobExecutor:
             return
         job.status = PerceptionJobStatus.FAILED.value
         job.error_message = f"{type(error).__name__}: {error}"
+        job.result_slot_payload = None
+        await self._delete_slot_for_job(
+            project_id=job.project_id,
+            job_id=job.id,
+            session=session,
+        )
         await session.commit()
         log_event(
             logger,
@@ -251,6 +279,16 @@ class PerceptionJobExecutor:
             error_message=sanitize_message(str(error)),
             duration_ms=int((time.perf_counter() - start_time) * 1000),
         )
+        if job.stage == "how":
+            emit_how_lifecycle_event(
+                HOW_PERCEPTION_FAILED,
+                capability="how_perception",
+                project_id=job.project_id,
+                workspace_id=job.workspace_id,
+                error_code=type(error).__name__,
+                level=logging.ERROR,
+                perception_kind=job.perception_kind,
+            )
 
     async def _run_perception_job(self, job_id: int) -> None:
         async with AsyncSessionLocal() as session:
@@ -275,12 +313,20 @@ class PerceptionJobExecutor:
                 target_id=job.target_id,
                 perception_kind=job.perception_kind,
             )
+            if job.stage == "how":
+                emit_how_lifecycle_event(
+                    HOW_PERCEPTION_STARTED,
+                    capability="how_perception",
+                    project_id=job.project_id,
+                    workspace_id=job.workspace_id,
+                    perception_kind=job.perception_kind,
+                )
 
             try:
                 context = await load_issue_project_context(
                     project_id=job.project_id,
                     session=session,
-                    workspace_id=getattr(job, "workspace_id", None),
+                    workspace_id=job.workspace_id,
                 )
                 current_hash = self._build_context_hash(
                     perception_kind=job.perception_kind,
@@ -401,6 +447,20 @@ class PerceptionJobExecutor:
                     user_requirements=context.user_requirements,
                     features=PerceptionJobExecutor._build_feature_nodes(context),
                     flows=PerceptionJobExecutor._build_flow_nodes(context),
+                    domain_rules=PerceptionJobExecutor._build_domain_rule_payloads(context),
+                    path_summaries=PerceptionJobExecutor._build_path_projection_payloads(context),
+                    scenarios=PerceptionJobExecutor._build_scenario_summary_payloads(context),
+                )
+            )
+        if perception_kind == "RULE":
+            rule_perceptron = RulePerceptron()
+            return await rule_perceptron.perceive(
+                RulePerceptronInput(
+                    user_requirements=context.user_requirements,
+                    domain_rules=PerceptionJobExecutor._build_domain_rule_payloads(context),
+                    rule_links=PerceptionJobExecutor._build_rule_link_payloads(context),
+                    flows=PerceptionJobExecutor._build_flow_summary_payloads(context),
+                    scenarios=PerceptionJobExecutor._build_scenario_summary_payloads(context),
                 )
             )
         raise ValueError("unsupported_perception_kind")
@@ -428,6 +488,9 @@ class PerceptionJobExecutor:
 
         if perception_kind == "FLOW":
             return self._build_flow_context_hash(context)
+
+        if perception_kind == "RULE":
+            return self._build_rule_context_hash(context)
 
         raise ValueError("unsupported_perception_kind")
 
@@ -475,9 +538,23 @@ class PerceptionJobExecutor:
                             else FlowStepType.SYSTEM_ACTION
                         ),
                         actorIds=step.actor_ids,
-                        nextStepIds=step.next_step_ids,
+                        inputBusinessObjectIds=step.input_business_object_ids,
+                        outputBusinessObjectIds=step.output_business_object_ids,
                     )
                     for step in flow.steps
+                ],
+                transitions=[
+                    FlowTransitionNode(
+                        transitionId=t.transition_id,
+                        sourceStepId=t.source_step_id,
+                        targetStepId=t.target_step_id,
+                        label=t.label or "",
+                        conditionText=t.condition_text or "",
+                        isDefault=t.is_default,
+                        position=t.position,
+                        semanticTags=t.semantic_tags,
+                    )
+                    for t in flow.transitions
                 ],
             )
             for flow in context.flows
@@ -671,16 +748,154 @@ class PerceptionJobExecutor:
                             "description": step.description,
                             "step_type": step.step_type,
                             "actor_ids": sorted(step.actor_ids),
-                            "next_step_ids": sorted(step.next_step_ids),
+                            "input_object_ids": sorted(step.input_business_object_ids),
+                            "output_object_ids": sorted(step.output_business_object_ids),
                         }
                         for step in flow.steps
                     ],
+                    "transitions": [
+                        {
+                            "transition_id": t.transition_id,
+                            "source_step_id": t.source_step_id,
+                            "target_step_id": t.target_step_id,
+                            "label": t.label or "",
+                            "condition_text": t.condition_text or "",
+                            "is_default": t.is_default,
+                            "semantic_tags": sorted(t.semantic_tags),
+                        }
+                        for t in sorted(flow.transitions, key=lambda item: item.transition_id)
+                    ],
                 }
-                for flow in context.flows
+                for flow in sorted(context.flows, key=lambda item: item.flow_id)
             ],
+            "domain_rules": self._build_domain_rule_payloads(context),
+            "rule_links": self._build_rule_link_payloads(context),
+            "path_projections": self._build_path_projection_payloads(context),
+            "scenarios": self._build_scenario_summary_payloads(context),
         }
 
         return self._hash_payload(payload)
+
+    def _build_rule_context_hash(self, context: IssueProjectContext) -> str:
+        payload = {
+            "user_requirements": context.user_requirements,
+            "domain_rules": self._build_domain_rule_payloads(context),
+            "rule_links": self._build_rule_link_payloads(context),
+            "flows": self._build_flow_summary_payloads(context),
+            "scenarios": self._build_scenario_summary_payloads(context),
+        }
+
+        return self._hash_payload(payload)
+
+    @staticmethod
+    def _build_domain_rule_payloads(context: IssueProjectContext) -> list[dict]:
+        return [
+            {
+                "rule_id": rule.rule_id,
+                "title": rule.title,
+                "statement": rule.statement,
+                "origin": rule.origin,
+                "confirmation_status": rule.confirmation_status,
+                "parent_rule_id": rule.parent_rule_id,
+            }
+            for rule in context.domain_rules
+        ]
+
+    @staticmethod
+    def _build_rule_link_payloads(context: IssueProjectContext) -> list[dict]:
+        payloads: list[dict] = []
+        for link in context.rule_links:
+            validate_rule_link_purpose(link.link_purpose)
+            # Validate target fields against domain invariants
+            validate_rule_link_target(link.target_kind, link.target_logical_uuid)
+            payloads.append({
+                "link_id": link.link_id,
+                "rule_id": link.rule_id,
+                "target_kind": link.target_kind,
+                "target_logical_uuid": link.target_logical_uuid,
+                "link_purpose": link.link_purpose,
+            })
+        return payloads
+
+    @staticmethod
+    def _build_flow_summary_payloads(context: IssueProjectContext) -> list[dict]:
+        return [
+            {
+                "flow_id": flow.flow_id,
+                "name": flow.name,
+                "description": flow.description,
+                "feature_ids": sorted(flow.feature_ids),
+                "steps": [
+                    {
+                        "step_id": step.step_id,
+                        "name": step.name,
+                        "description": step.description,
+                        "step_type": step.step_type,
+                        "actor_ids": sorted(step.actor_ids),
+                    }
+                    for step in flow.steps
+                ],
+                "transitions": [
+                    {
+                        "transition_id": t.transition_id,
+                        "source_step_id": t.source_step_id,
+                        "target_step_id": t.target_step_id,
+                        "label": t.label or "",
+                        "condition_text": t.condition_text or "",
+                        "is_default": t.is_default,
+                    }
+                    for t in flow.transitions
+                ],
+            }
+            for flow in context.flows
+        ]
+
+    @staticmethod
+    def _build_scenario_summary_payloads(context: IssueProjectContext) -> list[dict]:
+        return [
+            {
+                "scenario_id": scenario.scenario_id,
+                "name": scenario.name,
+                "content": scenario.content,
+                "feature_id": scenario.feature_id,
+                "actor_id": scenario.actor_id,
+                "acceptance_criteria": [
+                    {
+                        "criterion_id": ac.criterion_id,
+                        "content": ac.content,
+                    }
+                    for ac in scenario.acceptance_criteria
+                ],
+            }
+            for scenario in context.scenarios
+        ]
+
+    @staticmethod
+    def _build_path_projection_payloads(context: IssueProjectContext) -> list[dict]:
+        summaries = []
+        for flow in context.flows:
+            summary = project_flow_paths(
+                flow_id=flow.flow_id,
+                steps=flow.steps,
+                transitions=flow.transitions,
+            )
+            summaries.append({
+                "flow_id": summary.flow_id,
+                "total_paths": summary.total_paths,
+                "is_truncated": summary.is_truncated,
+                "cycles_detected": summary.cycles_detected,
+                "paths": [
+                    {
+                        "path_id": p.path_id,
+                        "name": p.name,
+                        "is_main": p.is_main,
+                        "status": p.status,
+                        "summary": p.summary,
+                    }
+                    for p in summary.paths
+                ],
+            })
+        return summaries
 
     @staticmethod
     def _build_feature_hash_payload(context: IssueProjectContext) -> list[dict]:
@@ -713,11 +928,18 @@ class PerceptionJobExecutor:
         if not isinstance(raw, dict):
             raise ValueError("invalid_perception_response")
 
-        description = str(raw.get("perception_description", "")).strip()
-        raw_kind = str(raw.get("perception_kind", "")).strip()
+        if "perception_description" not in raw:
+            raise ValueError("invalid_perception_schema: missing perception_description")
 
+        raw_description = raw["perception_description"]
+        if not isinstance(raw_description, str):
+            raise ValueError("invalid_perception_schema: perception_description must be a string")
+
+        description = raw_description.strip()
         if not description:
-            return None
+            raise ValueError("empty_perception_description: perception_description cannot be blank")
+
+        raw_kind = str(raw.get("perception_kind", "")).strip()
 
         normalized = PerceptionJobExecutor._normalize_no_slot_marker(description)
         normalized_kind = PerceptionJobExecutor._normalize_no_slot_marker(raw_kind)
@@ -732,17 +954,20 @@ class PerceptionJobExecutor:
             "没有需要补充",
             "无需新增",
             "不需要新增",
+            "暂无建议",
+            "无建议",
+            "暂无",
+            "无",
             "no need",
             "none",
             "not needed",
             "not required",
+            "no suggestion",
+            "no suggestions",
+            "[no_suggestion]",
         }
 
-        if (
-            normalized in no_slot_markers
-            or normalized_kind in no_slot_markers
-            or any(normalized.startswith(marker) for marker in no_slot_markers)
-        ):
+        if normalized in no_slot_markers or normalized_kind in no_slot_markers:
             return None
 
         return description
@@ -808,6 +1033,7 @@ class PerceptionJobExecutor:
             "SCENARIO",
             "ACCEPTANCE_CRITERION",
             "FLOW",
+            "RULE",
         }:
             return perception_kind
 
@@ -826,9 +1052,10 @@ class PerceptionJobExecutor:
             "SCENARIO": "正在分析场景",
             "ACCEPTANCE_CRITERION": "正在分析成功标准",
             "FLOW": "正在分析流程",
+            "RULE": "正在分析业务规则",
         }
 
-        started_time = str(job.created_at) if getattr(job, "created_at", None) else ""
+        started_time = str(job.created_at) if job.created_at else ""
         stage_display = "What" if job.stage == "what" else ("How" if job.stage == "how" else "Scope")
 
         return NextSuggestion(

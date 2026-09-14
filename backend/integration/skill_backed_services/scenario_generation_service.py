@@ -150,7 +150,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         generation_mode: str,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -194,7 +194,8 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         generate_acceptance_criteria: bool = False,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -206,21 +207,25 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         if draft_commit and head_commit_id and draft_commit != head_commit_id:
             raise ValueError("branch_drift_detected: Branch head commit has advanced since draft creation")
 
-        ws_id = workspace_id if workspace_id is not None else draft.get("workspace_id")
-
         result = await self._persist_scenario_generation_draft(
             draft=draft,
             session=session,
-            workspace_id=ws_id,
+            workspace_id=workspace_id,
         )
+        changed_targets = [
+            ("scenario", uid)
+            for uid in result.get("scenario_logical_uuids", [])
+        ]
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
-            workspace_id=ws_id,
+            workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
         result.pop("scenario_ids", None)
+        result.pop("scenario_logical_uuids", None)
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -389,7 +394,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
     async def _persist_scenario_generation_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         project_id = draft["project_id"]
         specs_by_target = await SkillBackedScenarioGenerationService._persist_gherkin_specs(
@@ -416,6 +421,10 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             "acceptance_criterion_count": acceptance_criterion_count,
             "scenario_ids": [
                 scenario.id
+                for scenario in scenarios
+            ],
+            "scenario_logical_uuids": [
+                scenario.logical_uuid
                 for scenario in scenarios
             ],
             "message": "scenarios_created",
@@ -452,7 +461,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         specs_by_target: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> list:
         from backend.database.model import ScenarioModel
 
@@ -489,7 +498,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         draft: dict,
         scenarios: list,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> int:
         from backend.database.model import ScenarioAcceptanceCriterionModel
 

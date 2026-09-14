@@ -3,9 +3,9 @@ import { Layout } from './components/layout/Layout';
 import { ScopedAIBar } from './components/shared/ScopedAIBar';
 import { GenerationConflictDialog } from './components/shared/GenerationConflictDialog';
 import GateCheckModal from './components/shared/GateCheckModal';
-import { useWorkspaceStore, WorkspacePage, getFriendlyErrorMessage } from './store/useWorkspaceStore';
+import { useWorkspaceStore, getFriendlyErrorMessage } from './store/useWorkspaceStore';
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { buildProjectRoute, buildProjectRouteWithBranch, extractWorkspacePage } from './core/selectors';
+import { buildProjectRouteWithBranch, extractWorkspacePage } from './core/selectors';
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { GuestGuard } from './components/auth/GuestGuard';
@@ -210,24 +210,6 @@ function WorkspaceShell() {
       />
     </Layout>
   );
-}
-
-function LegacyWorkspaceRedirect({ page }: { page: WorkspacePage }) {
-  const ir = useWorkspaceStore((s) => s.ir);
-
-  if (!ir?.projectId) {
-    return <Navigate to="/home" replace />;
-  }
-
-  return <Navigate to={buildProjectRoute(ir.projectId, page)} replace />;
-}
-
-function LegacyProjectKnowledgeRedirect() {
-  const { projectId } = useParams();
-  if (!projectId) {
-    return <Navigate to="/home" replace />;
-  }
-  return <Navigate to={`/projects/${projectId}/configuration?tab=knowledge`} replace />;
 }
 
 export function GlobalToast() {
@@ -507,17 +489,9 @@ export function App() {
           />
           <Route path="preview" element={<LazyRoute><Preview /></LazyRoute>} />
           <Route path="repo" element={<LazyRoute><Repository /></LazyRoute>} />
-          <Route path="knowledge" element={<LegacyProjectKnowledgeRedirect />} />
           <Route path="configuration" element={<LazyRoute><ProjectConfiguration /></LazyRoute>} />
         </Route>
         
-        {/* Legacy redirects wrapped in AuthGuard */}
-        <Route path="/overview" element={<AuthGuard><LegacyWorkspaceRedirect page="/overview" /></AuthGuard>} />
-        <Route path="/knowledge" element={<AuthGuard><LegacyWorkspaceRedirect page="/knowledge" /></AuthGuard>} />
-        <Route path="/what" element={<AuthGuard><LegacyWorkspaceRedirect page="/what" /></AuthGuard>} />
-        <Route path="/flow" element={<AuthGuard><LegacyWorkspaceRedirect page="/flow" /></AuthGuard>} />
-        <Route path="/scope" element={<AuthGuard><LegacyWorkspaceRedirect page="/scope" /></AuthGuard>} />
-        <Route path="/preview" element={<AuthGuard><LegacyWorkspaceRedirect page="/preview" /></AuthGuard>} />
         
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>

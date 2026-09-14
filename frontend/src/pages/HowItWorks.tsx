@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { RightObjectPanel } from '@/components/shared/RightObjectPanel';
 import { DraftPreviewModal } from '@/components/shared/DraftPreviewModal';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, Database, User, Folder, Maximize2 } from 'lucide-react';
-import { buildProjectRouteWithBranch, buildStepDetail, buildSystemProjection } from '@/core/selectors';
+import { Workflow, GitBranch, Sparkles, Check, X, RefreshCw, ChevronDown, ChevronRight, Plus, Trash2, AlertTriangle, AlertCircle, Database, User, Folder, Maximize2, ShieldCheck } from 'lucide-react';
+import { buildProjectRouteWithBranch, buildStepDetail, selectFlowSummary } from '@/core/selectors';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { StageGuidanceBanner } from '@/components/shared/StageGuidanceBanner';
 import { ConfirmTransitionModal } from '@/components/shared/ConfirmTransitionModal';
 import { AIAddObjectDialog, type AIAddTargetType } from '@/components/shared/AIAddObjectDialog';
@@ -17,11 +18,13 @@ import { GlassSurface } from '@/components/ui/GlassSurface';
 import { EmptyGuidance } from '@/components/ui/EmptyGuidance';
 import { ChoiceGroupPreviewModal } from '@/components/shared/ChoiceGroupPreviewModal';
 import { FocusFlowCanvasModal } from '@/components/shared/FocusFlowCanvasModal';
+import { RuleSection } from '@/components/how/RuleSection';
+import { FlowDraftCanvas } from '@/components/how/flow_canvas/FlowDraftCanvas';
 import type { ActorNode, BusinessObjectNode, FeatureNode } from '@/core/schema';
 
 
 // Cycle-safe dynamic grid positioning algorithm for DAG visualization
-const computeStepPositions = (steps: any[]) => {
+const computeStepPositions = (steps: any[], transitions: any[] = []) => {
   const positions: Record<number, { x: number; y: number }> = {};
   if (steps.length === 0) return positions;
 
@@ -29,9 +32,9 @@ const computeStepPositions = (steps: any[]) => {
   const rowHeight = 180;
   const visited = new Set<number>();
 
-  // Determine starting nodes (nodes that are not listed in any nextStepIds)
-  const allNextIds = new Set(steps.flatMap(s => s.nextStepIds || []));
-  const startNodes = steps.filter(s => !allNextIds.has(s.stepId));
+  // Determine starting nodes (nodes that are not targets of any transition)
+  const allTargetIds = new Set(transitions.map((t: any) => t.targetStepId));
+  const startNodes = steps.filter((s: any) => !allTargetIds.has(s.stepId));
 
   // BFS Queue: { stepId, col, row }
   const queue: { stepId: number; col: number; row: number }[] = [];
@@ -58,15 +61,13 @@ const computeStepPositions = (steps: any[]) => {
       y: 40 + currentRow * rowHeight
     };
 
-    const step = steps.find(s => s.stepId === stepId);
-    if (step && step.nextStepIds) {
-      step.nextStepIds.forEach((nid: number, idx: number) => {
-        if (!visited.has(nid)) {
-          // Spread branches vertically
-          queue.push({ stepId: nid, col: col + 1, row: idx });
-        }
-      });
-    }
+    const outgoing = transitions.filter((t: any) => t.sourceStepId === stepId);
+    outgoing.forEach((tr: any, idx: number) => {
+      if (!visited.has(tr.targetStepId)) {
+        // Spread branches vertically
+        queue.push({ stepId: tr.targetStepId, col: col + 1, row: idx });
+      }
+    });
   }
 
   // Handle orphan steps (fallback)
@@ -107,16 +108,19 @@ export function HowItWorks() {
   const {
     setSelectedObject,
     setHighlightTarget,
-    generateFlowsAndObjects,
-    regenerateFlowsAndObjects,
-    confirmFlowsAndObjects,
+    generateFlows,
+    regenerateFlows,
+    confirmFlowDraft,
+    loadFlowObjectUsage,
+    flowObjectUsages,
+    flowObjectUsageLoading,
+    flowObjectUsageErrors,
     discardDraft,
     activeDraft,
     activeDraftType,
     isGenerating,
     isLoading,
     addBusinessObject,
-    deleteBusinessObject,
     boDeletionError,
     setBoDeletionError,
     addFlow,
@@ -125,6 +129,9 @@ export function HowItWorks() {
     addFlowStep,
     updateFlowStep,
     deleteFlowStep,
+    createFlowTransition,
+    updateFlowTransition,
+    deleteFlowTransition,
     runDiagnosis,
     requestStageTransition,
     confirmRepairDraft,
@@ -135,13 +142,18 @@ export function HowItWorks() {
     choiceGroupGenerationProgress,
     acceptChoice,
     discardChoiceGroup,
+    workspaceCanWrite,
   } = useWorkspaceStore();
+
+  const isReadOnly = typeof workspaceCanWrite === 'function' ? !workspaceCanWrite() : false;
 
   const [flowFeedback, setFlowFeedback] = useState('');
   const [isTransitionModalOpen, setIsTransitionModalOpen] = useState(false);
   const [focusFlowId, setFocusFlowId] = useState<number | null>(null);
+  const [focusStepId, setFocusStepId] = useState<number | null>(null);
+  const [focusTransitionId, setFocusTransitionId] = useState<string | number | null>(null);
 
-  // 从 URL 参数解析高亮目标（来自概览页假设账本点击跳转）
+  // Resolve deep-link targets supplied by the overview and issue panels.
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const highlight = params.get('highlight');
@@ -169,17 +181,72 @@ export function HowItWorks() {
   }, [location.search]);
 
   const ir = useWorkspaceStore(state => state.ir);
-  const hasFlowsOrBusinessObjects = (ir?.flows || []).length > 0 || (ir?.businessObjects || []).length > 0;
+  const highlightTarget = useWorkspaceStore(state => state.highlightTarget);
+
+  useEffect(() => {
+    if (!highlightTarget || !ir) return;
+
+    // Check if highlightTarget matches a DomainRule
+    const rule = (ir.domainRules || []).find(
+      (r: any) => String(r.id || r.ruleId) === highlightTarget || r.logicalUuid === highlightTarget
+    );
+    if (rule) {
+      const el = document.getElementById(`rule-card-${rule.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    // Check if highlightTarget matches a Flow
+    const flow = (ir.flows || []).find(
+      (f: any) => String(f.flowId) === highlightTarget || f.logicalUuid === highlightTarget
+    );
+    if (flow) {
+      const el = document.getElementById(`flow-${flow.flowId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    // Check if highlightTarget matches a Flow Step
+    for (const f of ir.flows || []) {
+      const step = (f.flowSteps || []).find(
+        (s: any) => String(s.stepId) === highlightTarget || s.logicalUuid === highlightTarget
+      );
+      if (step) {
+        setFocusFlowId(f.flowId);
+        setFocusStepId(step.stepId);
+        setFocusTransitionId(null);
+        return;
+      }
+    }
+
+    // Check if highlightTarget matches a Flow Transition
+    for (const f of ir.flows || []) {
+      const tr = (f.transitions || []).find(
+        (t: any) => String(t.transitionId || t.id) === highlightTarget || t.logicalUuid === highlightTarget
+      );
+      if (tr) {
+        setFocusFlowId(f.flowId);
+        setFocusStepId(null);
+        setFocusTransitionId(String(tr.transitionId || tr.id));
+        return;
+      }
+    }
+  }, [highlightTarget, ir]);
   const selectedObject = useWorkspaceStore(selectSelectedObject);
-  const system = buildSystemProjection(ir);
-  const [flowViews, setFlowViews] = useState<Record<number, 'canvas' | 'list'>>({});
   const [panZoomState, setPanZoomState] = useState<Record<number, { scale: number; x: number; y: number }>>({});
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [activeDragFlowId, setActiveDragFlowId] = useState<number | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
 
   // Fold/Collapse state for flows
-  const [collapsedFlows, setCollapsedFlows] = useState<Record<number, boolean>>({});
+  const [collapsedFlows, setCollapsedFlows] = useLocalStorageState<Record<number, boolean>>(`how-collapsed-flows-${ir?.projectId ?? ''}`, {});
+
+  // Fold/Collapse state for per-flow business object sections
+  const [collapsedBoSections, setCollapsedBoSections] = useLocalStorageState<Record<number, boolean>>(`how-collapsed-bo-sections-${ir?.projectId ?? ''}`, {});
 
   // Manual Add Business Object Modal State
   const [isAddBusinessObjectModalOpen, setIsAddBusinessObjectModalOpen] = useState(false);
@@ -204,7 +271,18 @@ export function HowItWorks() {
   const [newStepInputBoIds, setNewStepInputBoIds] = useState<number[]>([]);
   const [newStepOutputBoIds, setNewStepOutputBoIds] = useState<number[]>([]);
 
-  // 任一编辑弹窗打开时标记 editDirty，分支切换前提示保存/放弃。
+  // Load flow object usages for expanded flows
+  useEffect(() => {
+    if (ir?.flows) {
+      ir.flows.forEach((fl) => {
+        if (!collapsedFlows[fl.flowId]) {
+          void loadFlowObjectUsage(fl.flowId).catch(() => {});
+        }
+      });
+    }
+  }, [ir?.flows, collapsedFlows, loadFlowObjectUsage]);
+
+  // Open editors participate in the branch-switch dirty-state contract.
   const setEditDirty = useWorkspaceStore((s) => s.setEditDirty);
   useEffect(() => {
     setEditDirty(
@@ -223,7 +301,7 @@ export function HowItWorks() {
     setEditDirty,
   ]);
 
-  // 分支切换确认"放弃"后，关闭所有编辑弹窗并清理局部编辑状态。
+  // Discarding a branch switch closes editors and clears their local state.
   const editDiscardVersion = useWorkspaceStore((s) => s.editDiscardVersion);
   useEffect(() => {
     if (editDiscardVersion === 0) return;
@@ -414,8 +492,6 @@ export function HowItWorks() {
     );
   }
 
-  const businessObjects = ir?.businessObjects || [];
-
   return (
     <div className="flex-1 flex w-full relative">
       <style>{`
@@ -439,142 +515,70 @@ export function HowItWorks() {
 
             <StageGuidanceBanner stage="how" />
 
-            {/* AI Flow Draft Preview Banner */}
-            {activeDraft && activeDraftType === 'flow' && (
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200/80 shadow-md animate-in slide-in-from-top-4 duration-500 space-y-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2 flex-1 mr-4">
-                    <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
-                      <Sparkles className="w-5 h-5 animate-pulse" />
-                    </span>
-                    <div className="flex-1 space-y-2">
-                      <div>
-            <h3 className="text-base font-bold text-slate-900">{t('how.generatedDraftTitle')}</h3>
-            <p className="text-xs text-slate-500 mt-0.5">{t('how.generatedDraftDescription')}</p>
-                      </div>
-                      <div className="flex gap-2 items-center max-w-md">
-                        <input
-                          type="text"
-                          value={flowFeedback}
-                          onChange={(e) => setFlowFeedback(e.target.value)}
-            placeholder={t('how.generatedDraftFeedbackPlaceholder')}
-                          className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
-                          disabled={isGenerating || isLoading}
-                        />
-                        <button
-                          onClick={async () => {
-                            await regenerateFlowsAndObjects(flowFeedback || undefined);
-                            setFlowFeedback('');
-                          }}
-                          disabled={isGenerating || isLoading}
-                          className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
-                          {t('how.regenerateBtn')}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={confirmFlowsAndObjects}
-                      disabled={isGenerating || isLoading}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      {t('how.aiAdoptBtn')}
-                    </button>
-                    <button
-                      onClick={discardDraft}
-                      disabled={isGenerating || isLoading}
-                      className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      {t('scope.modal.discard')}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Flow preview preview cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
-                  {activeDraft.flows?.map((fl: any, idx: number) => (
-                    <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
-                      <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1">
-                        <Workflow className="w-3.5 h-3.5 text-indigo-500" />
-                        {t('how.flowLabelFormat', { name: fl.flow_name })}
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{fl.flow_description}</p>
-                      <div className="mt-3 space-y-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{t('how.flowStepLabel')}:</span>
-                        {fl.steps?.map((st: any, i: number) => (
-                          <div key={i} className="text-[10px] text-slate-600 bg-slate-50 px-2.5 py-1 rounded border border-slate-100 font-medium">
-                            {t('how.flowStepLabel')} {i + 1}: <span className="font-bold text-slate-700">{st.step_name}</span> ({st.step_type === 'actorAction' ? t('how.stepType.actorAction') : st.step_type === 'systemAction' ? t('how.stepType.systemAction') : t('how.stepType.judgment')})
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {activeDraft.business_objects && activeDraft.business_objects.length > 0 && (
-                    <div className="bg-white/80 p-4 rounded-xl border border-slate-200/50 sm:col-span-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">{t('how.businessObjectsHeader')}</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {activeDraft.business_objects?.map((bo: any, idx: number) => (
-                          <div key={idx} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/50">
-                            <span className="font-bold text-xs text-slate-800 flex items-center gap-1"><Database className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {bo.business_object_name}</span>
-                            <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">{bo.business_object_description}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Domain Rules Space */}
+            <RuleSection readOnly={isReadOnly} />
 
             {/* System Business Flow Models */}
             <GlassSurface className="p-6 relative w-full">
               <div className="flex items-start justify-between gap-4 mb-6 border-b border-slate-200/50 pb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-lg font-bold text-slate-900 tracking-tight">{t('how.title')}</h2>
-                    <div className="relative group">
-                      <button
-                        onClick={() => setIsAddFlowModalOpen(true)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
-                        aria-label={t('how.manualFlowBtn')}
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div className="relative group">
-                      <button
-                        onClick={() => setAiDialogTarget({ targetType: 'flow' })}
-                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg transition-all shadow-2xs cursor-pointer"
-                        aria-label={t('how.aiChatFlowBtn')}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">{t('how.title')}</h3>
+                    {!isReadOnly && (
+                      <>
+                        <div className="relative group">
+                          <button
+                            onClick={() => setIsAddFlowModalOpen(true)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
+                            aria-label={t('how.manualFlowBtn')}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div
+                          className="relative group"
+                          title={(ir?.domainRules || []).length === 0 ? t('how.domainRules.ruleRequiredForFlow') : undefined}
+                        >
+                          <button
+                            onClick={() => setAiDialogTarget({ targetType: 'flow' })}
+                            disabled={(ir?.domainRules || []).length === 0}
+                            className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-lg transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            aria-label={t('how.aiChatFlowBtn')}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => void generateFlowsAndObjects()}
-                    disabled={isGenerating || isLoading}
-                    className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
-                  >
-                    <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isGenerating || isLoading ? 'animate-pulse' : ''}`} />
-                    {hasFlowsOrBusinessObjects ? t('how.regenerateBtn') : t('how.generateBtn')}
-                  </button>
+                  {(() => {
+                    const hasDomainRules = (ir?.domainRules || []).length > 0;
+                    return (
+                      <>
+                        <div className="relative group" title={!hasDomainRules ? t('how.domainRules.ruleRequiredForFlow') : undefined}>
+                          <button
+                            onClick={() => void generateFlows()}
+                            disabled={isGenerating || isLoading || !hasDomainRules || isReadOnly}
+                            className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isGenerating || isLoading ? 'animate-pulse' : ''}`} />
+                            {(ir?.flows || []).length > 0 ? t('how.regenerateBtn') : t('how.generateBtn')}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
               <div className="space-y-6">
-                {(!ir?.flows || ir.flows.length === 0) && (
+                {(!ir?.flows || ir.flows.length === 0) && (ir?.domainRules || []).length > 0 && (
                   <EmptyGuidance
                     title={t('how.emptyTip')}
-                    actionLabel={t('how.manualCreateBtn')}
-                    onAction={() => setIsAddFlowModalOpen(true)}
+                    actionLabel={!isReadOnly ? t('how.generateBtn') : undefined}
+                    onAction={!isReadOnly ? () => void generateFlows() : undefined}
                   />
                 )}
 
@@ -592,7 +596,7 @@ export function HowItWorks() {
                       id={`flow-${flow.flowId}`}
                       onClick={() => setSelectedObject(flow)}
                       className={`rounded-2xl border p-6 bg-slate-50/50 shadow-sm cursor-pointer transition-all ${
-                        selectedObject?.id === flow.flowId.toString() || selectedObject?.flowId === flow.flowId
+                        selectedObject?.id === flow.flowId?.toString() || selectedObject?.flowId === flow.flowId
                           ? 'ring-2 ring-indigo-500 bg-slate-50 border-transparent shadow-md'
                           : 'border-slate-200 hover:border-indigo-200'
                       }`}
@@ -602,11 +606,11 @@ export function HowItWorks() {
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex min-w-0 items-center gap-2">
                               <Workflow className="w-5 h-5 text-indigo-600 shrink-0" />
-                              <h3 className="min-w-0 font-extrabold text-base text-slate-800">
+                              <h3 className="min-w-0 font-bold text-base text-slate-900 tracking-tight">
                                 <span className="block truncate">{flow.flowName}</span>
                               </h3>
                               <StatusBadge status={flowStatus} className="scale-90 origin-left shrink-0" />
-                              {!isCollapsed && (
+                              {!isCollapsed && !isReadOnly && (
                                 <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                                   <div className="relative group">
                                     <button
@@ -615,7 +619,7 @@ export function HowItWorks() {
                                         setActiveFlowIdForNewStep(flow.flowId);
                                         setIsAddStepModalOpen(true);
                                       }}
-                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                                       aria-label={t('how.addStepBtn')}
                                     >
                                       <Plus className="w-3.5 h-3.5" />
@@ -632,7 +636,7 @@ export function HowItWorks() {
                                         if (!ok) return;
                                         await deleteFlow(flow.flowId);
                                       }}
-                                      className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center animate-none"
+                                      className="p-1 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
                                       aria-label={t('how.deleteBtn')}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -646,17 +650,57 @@ export function HowItWorks() {
                             </div>
                             <button
                               type="button"
+                              aria-expanded={!isCollapsed}
+                              aria-controls={`flow-content-${flow.flowId}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setCollapsedFlows(prev => ({ ...prev, [flow.flowId]: !prev[flow.flowId] }));
                               }}
-                              className="p-1 hover:bg-slate-200 rounded text-slate-500 transition-colors shrink-0"
+                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all shrink-0 cursor-pointer"
                               title={isCollapsed ? t('how.expandBtn') : t('how.collapseBtn')}
                             >
-                              {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
                           </div>
                           <p className="text-xs text-slate-500 leading-relaxed">{flow.flowDescription}</p>
+                          {(() => {
+                            const summary = selectFlowSummary(flow, ir?.domainRules || [], (ir?.findings as any) || []);
+                            const totalFindings = summary.blockingFindingsCount + summary.warningFindingsCount;
+                            return (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/70">
+                                  <Workflow className="w-3 h-3 text-indigo-600" />
+                                  {summary.stepCount} {t('how.summary.steps', '步骤')}
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/70">
+                                  <GitBranch className="w-3 h-3 text-indigo-600" />
+                                  {summary.transitionCount} {t('how.summary.transitions', '分支流转')}
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200/70">
+                                  <ShieldCheck className="w-3 h-3 text-amber-600" />
+                                  {summary.ruleCount} {t('how.summary.rules', '关联规则')}
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800 border border-sky-200/70">
+                                  <Database className="w-3 h-3 text-sky-600" />
+                                  {summary.boCount} {t('how.summary.objects', '涉及对象')}
+                                </span>
+                                {totalFindings > 0 && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold border ${
+                                      summary.blockingFindingsCount > 0
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}
+                                  >
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {summary.blockingFindingsCount > 0
+                                      ? `${summary.blockingFindingsCount} ${t('how.summary.blockingIssues', '阻断问题')}`
+                                      : `${summary.warningFindingsCount} ${t('how.summary.warnings', '质量告警')}`}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {featNames.length > 0 && (
                             <div className="flex items-center gap-2 bg-indigo-50/40 border border-indigo-100/50 rounded-xl px-3 py-1.5 text-xs text-indigo-700 font-medium w-full">
                               <span className="shrink-0 flex items-center gap-1 font-extrabold text-indigo-800"><Folder className="w-3.5 h-3.5 text-indigo-500 shrink-0" /> {t('how.flowBindFeaturesLabel')}</span>
@@ -665,60 +709,15 @@ export function HowItWorks() {
                           )}
                         </div>
 
-                        {/* View Mode Toggle Switch & Manual Actions */}
-                        {!isCollapsed && (() => {
-                          const viewMode = flowViews[flow.flowId] || 'canvas';
-                          return (
-                            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-                              <div className="flex items-center gap-2 ml-auto" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => setFocusFlowId(flow.flowId)}
-                                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-lg border border-indigo-200/60 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                                  title={t('how.focusModeTooltip', '放大为独立全屏画布，编辑步骤与连接点')}
-                                >
-                                  <Maximize2 className="w-3 h-3 text-indigo-600" />
-                                  {t('how.focusCanvasBtn', '专注编辑画布')}
-                                </button>
-                                <div className="flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-[10px] font-bold shadow-inner">
-                                  <button
-                                    type="button"
-                                    onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'canvas' }))}
-                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
-                                      viewMode === 'canvas'
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700'
-                                    }`}
-                                  >
-                                    <GitBranch className="w-3 h-3" />
-                                    {t('how.graphView')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setFlowViews(prev => ({ ...prev, [flow.flowId]: 'list' }))}
-                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
-                                      viewMode === 'list'
-                                        ? 'bg-white text-indigo-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700'
-                                    }`}
-                                  >
-                                    <Workflow className="w-3 h-3" />
-                                    {t('how.listView')}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
                       </div>
 
-                      {/* Content rendering based on View Mode */}
-                      {!isCollapsed && (() => {
-                        const viewMode = flowViews[flow.flowId] || 'canvas';
-                        const steps = flow.flowSteps || [];
+                      {/* Canonical flow canvas */}
+                      {!isCollapsed && (
+                        <div id={`flow-content-${flow.flowId}`}>
+                          {(() => {
+                            const steps = flow.flowSteps || [];
 
-                        if (viewMode === 'canvas') {
-                          const positions = computeStepPositions(steps);
+                            const positions = computeStepPositions(steps, flow.transitions || []);
                           const maxX = Object.values(positions).reduce((max, p) => Math.max(max, p.x), 50);
                           const maxY = Object.values(positions).reduce((max, p) => Math.max(max, p.y), 50);
                           const canvasWidth = Math.max(860, maxX + 320);
@@ -833,75 +832,71 @@ export function HowItWorks() {
                                       <polygon points="0 0, 8 3, 0 6" fill="#6366f1" />
                                     </marker>
                                   </defs>
-                                  {steps.flatMap((step) => {
-                                    const fromPos = customStepPositions[step.stepId] || positions[step.stepId];
-                                    if (!fromPos) return [];
+                                  {(flow.transitions || []).map((tr: any) => {
+                                    const fromPos = customStepPositions[tr.sourceStepId] || positions[tr.sourceStepId];
+                                    const toPos = customStepPositions[tr.targetStepId] || positions[tr.targetStepId];
+                                    if (!fromPos || !toPos) return null;
 
-                                    return (step.nextStepIds || []).map((nid) => {
-                                      const toPos = customStepPositions[nid] || positions[nid];
-                                      if (!toPos) return null;
+                                    // Always exit from right port of source, enter left port of target
+                                    const startX = fromPos.x + 260;
+                                    const startY = fromPos.y + 65;
+                                    const endX = toPos.x;
+                                    const endY = toPos.y + 65;
 
-                                      // Always exit from right port of source, enter left port of target
-                                      const startX = fromPos.x + 260;
-                                      const startY = fromPos.y + 65;
-                                      const endX = toPos.x;
-                                      const endY = toPos.y + 65;
+                                    let pathD = '';
+                                    if (endX <= startX) {
+                                      // Loopback / backward curve: exits right, loops above, enters left
+                                      const midX = (startX + endX) / 2;
+                                      const arcOffset = Math.max(75, Math.abs(startX - endX) * 0.2);
+                                      const controlY = Math.min(startY, endY) - arcOffset;
+                                      pathD = `M ${startX} ${startY} C ${startX + 80} ${startY}, ${startX + 40} ${controlY}, ${midX} ${controlY} S ${endX - 80} ${endY}, ${endX} ${endY}`;
+                                    } else {
+                                      // Standard forward curve: exits right, enters left
+                                      const cp1X = startX + Math.min(80, (endX - startX) * 0.5);
+                                      const cp1Y = startY;
+                                      const cp2X = endX - Math.min(80, (endX - startX) * 0.5);
+                                      const cp2Y = endY;
+                                      pathD = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
+                                    }
 
-                                      let pathD = '';
-                                      if (endX <= startX) {
-                                        // Loopback / backward curve: exits right, loops above, enters left
-                                        const midX = (startX + endX) / 2;
-                                        const arcOffset = Math.max(75, Math.abs(startX - endX) * 0.2);
-                                        const controlY = Math.min(startY, endY) - arcOffset;
-                                        pathD = `M ${startX} ${startY} C ${startX + 80} ${startY}, ${startX + 40} ${controlY}, ${midX} ${controlY} S ${endX - 80} ${endY}, ${endX} ${endY}`;
-                                      } else {
-                                        // Standard forward curve: exits right, enters left
-                                        const cp1X = startX + Math.min(80, (endX - startX) * 0.5);
-                                        const cp1Y = startY;
-                                        const cp2X = endX - Math.min(80, (endX - startX) * 0.5);
-                                        const cp2Y = endY;
-                                        pathD = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
-                                      }
+                                    const pathId = `${tr.sourceStepId}-${tr.targetStepId}`;
+                                    const isPathSelected = selectedPathId === pathId;
+                                    const isStepRelated = selectedObject && (
+                                      selectedObject.stepId === tr.sourceStepId ||
+                                      selectedObject.stepId === tr.targetStepId ||
+                                      selectedObject.id === tr.sourceStepId.toString() ||
+                                      selectedObject.id === tr.targetStepId.toString()
+                                    );
+                                    const isActive = isPathSelected || isStepRelated;
 
-                                      const pathId = `${step.stepId}-${nid}`;
-                                      const isPathSelected = selectedPathId === pathId;
-                                      const isStepRelated = selectedObject && (
-                                        selectedObject.stepId === step.stepId ||
-                                        selectedObject.stepId === nid ||
-                                        selectedObject.id === step.stepId.toString() ||
-                                        selectedObject.id === nid.toString()
-                                      );
-                                      const isActive = isPathSelected || isStepRelated;
-
-                                      return (
-                                        <g key={pathId} className="pointer-events-none">
-                                          {/* Wide invisible click assistant path */}
-                                          <path
-                                            d={pathD}
-                                            fill="none"
-                                            stroke="transparent"
-                                            strokeWidth={14}
-                                            style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedPathId(pathId);
-                                              // Clear selected step to avoid conflicting highlights
-                                              setSelectedObject(null);
-                                            }}
-                                          />
-                                          {/* Visual line path */}
-                                          <path
-                                            d={pathD}
-                                            fill="none"
-                                            stroke={isActive ? '#6366f1' : '#c7d2fe'}
-                                            strokeWidth={isActive ? 3.5 : 2}
-                                            markerEnd={isActive ? `url(#arrow-active-${flow.flowId})` : `url(#arrow-default-${flow.flowId})`}
-                                            className={`${activeDragStepId !== null ? '' : 'transition-[stroke,stroke-width] duration-150'} ${isActive ? 'path-flow-active' : ''}`}
-                                            style={{ pointerEvents: 'none' }}
-                                          />
-                                        </g>
-                                      );
-                                    });
+                                    return (
+                                      <g key={pathId} className="pointer-events-none">
+                                        {/* Wide invisible click assistant path */}
+                                        <path
+                                          d={pathD}
+                                          fill="none"
+                                          stroke="transparent"
+                                          strokeWidth={14}
+                                          style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedPathId(pathId);
+                                            // Clear selected step to avoid conflicting highlights
+                                            setSelectedObject(null);
+                                          }}
+                                        />
+                                        {/* Visual line path */}
+                                        <path
+                                          d={pathD}
+                                          fill="none"
+                                          stroke={isActive ? '#6366f1' : '#c7d2fe'}
+                                          strokeWidth={isActive ? 3.5 : 2}
+                                          markerEnd={isActive ? `url(#arrow-active-${flow.flowId})` : `url(#arrow-default-${flow.flowId})`}
+                                          className={`${activeDragStepId !== null ? '' : 'transition-[stroke,stroke-width] duration-150'} ${isActive ? 'path-flow-active' : ''}`}
+                                          style={{ pointerEvents: 'none' }}
+                                        />
+                                      </g>
+                                    );
                                   })}
                                 </svg>
 
@@ -1012,237 +1007,226 @@ export function HowItWorks() {
                               </div>
                             </div>
                           );
-                        } else {
-                          // Traditional Scrollable Sequence List View
-                          return (
-                            <div className="flex items-center overflow-x-auto gap-4 py-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                              {steps.map((step, idx) => {
-                                const stepDetail = buildStepDetail(ir, step.stepId);
-                                const stepActors = (step.actorIds || [])
-                                  .map(aid => (ir?.actors || []).find(a => a.actorId === aid)?.actorName)
-                                  .filter(Boolean);
-                                const stepMeta = getStepTypeMeta(step.stepType);
+                      })()}
 
-                                const isSelected = selectedObject?.id === step.stepId.toString() || selectedObject?.stepId === step.stepId;
+                      {/* Flow Involved Business Objects Projection Section */}
+                      {(() => {
+                        const isLoadingBo = !!flowObjectUsageLoading[flow.flowId];
+                        const boError = flowObjectUsageErrors[flow.flowId];
+                        const boProjections = flowObjectUsages[flow.flowId] ?? [];
+                        const flowSteps = flow.flowSteps || [];
+                        const isBoSectionCollapsed = collapsedBoSections[flow.flowId] === true;
 
-                                return (
-                                  <div key={step.stepId} className="flex items-center shrink-0">
+                        return (
+                          <div id={`flow-bo-${flow.flowId}`} className="mt-6 pt-5 border-t border-slate-200/60 space-y-3" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between">
+                              <button
+                                type="button"
+                                aria-expanded={!isBoSectionCollapsed}
+                                aria-controls={`flow-bo-content-${flow.flowId}`}
+                                onClick={() => setCollapsedBoSections(prev => ({ ...prev, [flow.flowId]: !prev[flow.flowId] }))}
+                                className="flex items-center gap-1.5 text-xs font-bold text-slate-800 hover:text-indigo-700 transition-colors cursor-pointer group/bo"
+                              >
+                                <ChevronRight className={`w-3.5 h-3.5 text-slate-400 group-hover/bo:text-indigo-500 transition-transform duration-200 ${isBoSectionCollapsed ? '' : 'rotate-90'}`} />
+                                <Database className="w-4 h-4 text-indigo-600" />
+                                {t('how.involvedBusinessObjects', '涉及业务对象')}
+                                <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                  ({boProjections.length})
+                                </span>
+                              </button>
+                              {!isReadOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsAddBusinessObjectModalOpen(true)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/60 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  {t('how.createBusinessObjectBtn', '新建业务对象')}
+                                </button>
+                              )}
+                            </div>
+
+                            {!isBoSectionCollapsed && (isLoadingBo ? (
+                              <div
+                                data-testid={`flow-bo-loading-${flow.flowId}`}
+                                className="rounded-xl border border-slate-200 bg-white/60 p-4 flex items-center justify-center gap-2 text-xs text-slate-500 animate-pulse"
+                              >
+                                <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                                <span>{t('how.objectUsageLoading', '正在加载对象投影...')}</span>
+                              </div>
+                            ) : boError ? (
+                              <div
+                                data-testid={`flow-bo-error-${flow.flowId}`}
+                                className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 flex items-center justify-between gap-3 text-xs text-rose-700"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                                  <span className="truncate">{t('how.objectUsageError', '加载业务对象投影失败')}: {boError}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void loadFlowObjectUsage(flow.flowId).catch(() => {})}
+                                  className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition-colors shrink-0 cursor-pointer"
+                                >
+                                  {t('how.retryLoad', '重试')}
+                                </button>
+                              </div>
+                            ) : boProjections.length === 0 ? (
+                              <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-4 text-center text-xs text-slate-400">
+                                {t('how.noInvolvedObjects', '当前流程各步骤暂未关联输入或输出业务对象')}
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {boProjections.map((bo) => {
+                                  const isBoSelected = selectedObject?.businessObjectId === bo.businessObjectId;
+                                  return (
                                     <div
+                                      key={bo.businessObjectId}
+                                      data-testid={`flow-bo-projection-${flow.flowId}-${bo.businessObjectId}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedObject(step);
-                                        setHighlightTarget(step.stepId.toString());
+                                        const fullBo = (ir?.businessObjects || []).find((b: any) => b.businessObjectId === bo.businessObjectId);
+                                        if (fullBo) setSelectedObject(fullBo);
                                       }}
-                                      className={`w-[260px] border p-4 shadow-sm transition-all flex flex-col gap-3 cursor-pointer group ${stepMeta.shapeClass} ${
-                                        isSelected
-                                          ? `${stepMeta.cardClass} ${stepMeta.selectedClass}`
-                                          : stepMeta.cardClass
+                                      className={`group rounded-xl border bg-white p-3.5 transition-all cursor-pointer flex flex-col justify-between gap-2.5 hover:border-indigo-300 hover:shadow-md hover:-translate-y-px ${
+                                        isBoSelected ? 'ring-2 ring-indigo-500 border-transparent shadow-md' : 'border-slate-200 shadow-2xs'
                                       }`}
-                                      style={{ clipPath: stepMeta.clipPath }}
                                     >
-                                      <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${stepMeta.numberClass}`}>
-                                            {idx + 1}
-                                          </span>
-                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 border rounded ${stepMeta.badgeClass}`}>
-                                            {stepMeta.label}
-                                          </span>
-                                        </div>
-
-                                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                          <button
-                                            type="button"
-                                            onClick={async () => {
-                                              const ok = window.confirm(t('how.stepDeleteConfirm', { name: step.stepName }));
-                                              if (!ok) return;
-                                              await deleteFlowStep(flow.flowId, step.stepId);
-                                            }}
-                                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-colors"
-                                            title={t('how.deleteStepBtn')}
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <h4 className={`font-bold text-slate-800 text-sm mb-1 truncate transition-colors ${stepMeta.titleClass}`}>{step.stepName}</h4>
-                                        {stepMeta.showActor && (
-                                          <span className="text-[10px] font-bold text-indigo-600">
-                                            <span className="flex items-center gap-1">
-                                              <User className="w-3 h-3 text-slate-400 shrink-0" />
-                                              {stepActors.length > 0 ? stepActors.join(', ') : t('how.bindActorPlaceholder')}
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                                              <Database className="w-3 h-3 text-indigo-600" />
                                             </span>
-                                          </span>
+                                            <span className="font-bold text-xs text-slate-900 truncate group-hover:text-indigo-700 transition-colors">
+                                              {bo.name}
+                                            </span>
+                                          </div>
+                                          <StatusBadge status={(bo.confirmationStatus as any) || 'confirmed'} className="scale-[0.8] origin-right shrink-0" />
+                                        </div>
+                                        {bo.description && (
+                                          <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed pl-8">
+                                            {bo.description}
+                                          </p>
                                         )}
                                       </div>
 
-                                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                                        {step.stepDescription}
-                                      </p>
+                                      {/* Input / Output Step Badges */}
+                                      <div className="flex flex-wrap gap-1 text-[10px]">
+                                        {bo.inputAtStepIds.length > 0 && (
+                                          <span className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200/60 font-medium">
+                                            {t('how.canvas.inputBoPrefix')}#{bo.inputAtStepIds.map((sid) => flowSteps.findIndex((s: any) => s.stepId === sid) + 1 || sid).join(', #')}
+                                          </span>
+                                        )}
+                                        {bo.outputAtStepIds.length > 0 && (
+                                          <span className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-medium">
+                                            {t('how.canvas.outputBoPrefix')}#{bo.outputAtStepIds.map((sid) => flowSteps.findIndex((s: any) => s.stepId === sid) + 1 || sid).join(', #')}
+                                          </span>
+                                        )}
+                                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 bg-slate-100 text-slate-600 font-medium">
+                                          {t('how.boFieldsFormat', { count: bo.attributes.length })}
+                                        </span>
+                                      </div>
 
-                                      {/* Inputs & Outputs */}
-                                      {(stepDetail.inputs.length > 0 || stepDetail.outputs.length > 0) && (
-                                        <div className="border-t border-slate-100 pt-2 mt-auto space-y-1.5">
-                                          {stepDetail.inputs.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 items-center">
-                                              <span className="text-[10px] text-slate-400 font-bold shrink-0">{t('how.stepInputBoLabel')}:</span>
-                                              {renderIoTokens(stepDetail.inputs, 'input')}
-                                            </div>
-                                          )}
-                                          {stepDetail.outputs.length > 0 && (
-                                            <div className="flex flex-wrap gap-1 items-center">
-                                              <span className="text-[10px] text-slate-500 font-bold shrink-0">{t('how.stepOutputBoLabel')}:</span>
-                                              {renderIoTokens(stepDetail.outputs, 'output')}
-                                            </div>
-                                          )}
+                                      {/* Multi-flow shared notice */}
+                                      {bo.otherFlowsCount > 0 && (
+                                        <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200/80 px-2 py-1 text-[10px] text-amber-800">
+                                          <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                          <span className="truncate" title={bo.otherFlowNames.join(', ')}>
+                                            {t('how.multiFlowSharedNotice', {
+                                              count: bo.otherFlowsCount,
+                                              flows: bo.otherFlowNames.join(', ')
+                                            })}
+                                          </span>
                                         </div>
                                       )}
                                     </div>
-
-                                    {/* Arrow between steps */}
-                                    {idx < (steps.length - 1) && (
-                                      <ArrowRight className="w-5 h-5 text-slate-400 mx-2 shrink-0 animate-pulse" />
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        }
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        );
                       })()}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </GlassSurface>
 
-            {/* NEW/PORTED: Manual Business Object list management */}
-            <GlassSurface className="p-6 relative w-full">
-              <div className="flex justify-between items-center mb-6 border-b border-slate-200/50 pb-3">
-                <div className="flex-1">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    <span className="flex items-center gap-2"><Database className="w-5 h-5 text-indigo-600 shrink-0" /> {t('how.businessObjectsTitle')}</span>
-                    <button
-                      onClick={() => setIsAddBusinessObjectModalOpen(true)}
-                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
-                      title={t('how.manualBoBtn')}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setAiDialogTarget({ targetType: 'business_object' })}
-                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-md transition-all shadow-sm"
-                      title={t('how.aiChatBoBtn')}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                    </button>
-                  </h3>
-                </div>
-              </div>
-              {businessObjects.length === 0 ? (
-                <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-500 shadow-sm select-none">
-                  {t('how.boEmptyText')}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {businessObjects.map((object) => {
-                    const relatedSteps = system.getRelatedStepsForObject(object.id || object.businessObjectId) as any[];
-                    const stateChanges = relatedSteps
-                      .flatMap((step: any) => buildStepDetail(ir, step.stepId).stateChanges)
-                      .filter((value, index, array) => array.indexOf(value) === index);
-                    const objectStatus = object.confirmationStatus || object.status || 'ai_assumption';
-
-                    const isSelected = selectedObject?.businessObjectId === object.businessObjectId || selectedObject?.id === object.id?.toString();
-
-                    return (
-                      <div
-                        key={object.businessObjectId || object.id}
-                        id={`business_object-${object.businessObjectId || object.id}`}
-                        onClick={() => setSelectedObject(object)}
-                        className={`bg-white rounded-xl p-5 border transition-all cursor-pointer flex flex-col gap-4 group relative ${
-                          isSelected
-                            ? 'border-l-4 border-l-indigo-600 border-slate-200 shadow-md shadow-indigo-600/5'
-                            : 'border-slate-200 hover:border-indigo-300 shadow-sm'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h4 className="font-extrabold text-slate-800 text-sm truncate">{object.businessObjectName || object.title}</h4>
-                            <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
-                              {t('how.boFieldsFormat', { count: (object.businessObjectAttributes || []).length })}
-                            </span>
-                          </div>
-                          <StatusBadge status={objectStatus} className="scale-90 origin-right shrink-0" />
-                        </div>
-                        <div className="text-xs text-slate-500 leading-relaxed line-clamp-3">
-                          {object.businessObjectDescription || object.description || t('how.boNoDesc')}
-                        </div>
-
-                        {/* Merged Related Steps and State Transitions */}
-                        {(relatedSteps.length > 0 || stateChanges.length > 0) && (
-                          <div className="mt-2 pt-3 border-t border-slate-100 space-y-3 shrink-0">
-                            {relatedSteps.length > 0 && (
-                              <div className="space-y-1.5">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.boRelatedStepsLabel')}</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {relatedSteps.map((s) => (
-                                    <button
-                                      key={s.id}
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedObject(s);
-                                        setHighlightTarget(s.id);
-                                      }}
-                                      className="text-[10px] bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:text-indigo-700 rounded-md px-2 py-0.5 font-medium transition-all"
-                                    >
-          {s.title}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {stateChanges.length > 0 && (
-                              <div className="space-y-1.5">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">{t('how.boStateTransitionsLabel')}</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {stateChanges.map((item) => (
-                                    <span
-                                      key={item}
-                                      className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded-md shadow-sm"
-                                    >
-                                      {item}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Delete Business Object Manual Control */}
+            {/* AI Flow Draft Preview Banner (Rendered after FlowSection) */}
+            {activeDraft && activeDraftType === 'flow' && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200/80 shadow-md animate-in slide-in-from-top-4 duration-500 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2 flex-1 mr-4">
+                    <span className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
+                      <Sparkles className="w-5 h-5 animate-pulse" />
+                    </span>
+                    <div className="flex-1 space-y-2">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">{t('how.generatedDraftTitle')}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{t('how.generatedDraftDescription')}</p>
+                      </div>
+                      <div className="flex gap-2 items-center max-w-md">
+                        <input
+                          type="text"
+                          value={flowFeedback}
+                          onChange={(e) => setFlowFeedback(e.target.value)}
+                          placeholder={t('how.generatedDraftFeedbackPlaceholder')}
+                          className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-slate-800"
+                          disabled={isGenerating || isLoading}
+                        />
                         <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-    const ok = window.confirm(t('how.deleteBusinessObjectConfirm', { name: object.businessObjectName || object.title }));
-                            if (!ok) return;
-                            await deleteBusinessObject(object.businessObjectId || Number(object.id));
+                          onClick={async () => {
+                            await regenerateFlows(flowFeedback || undefined);
+                            setFlowFeedback('');
                           }}
-                          className="absolute right-4 bottom-4 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                          title={t('how.boDeleteBtn')}
+                          disabled={isGenerating || isLoading}
+                          className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <RefreshCw className={`w-3 h-3 text-indigo-500 ${isGenerating || isLoading ? 'animate-spin' : ''}`} />
+                          {t('how.regenerateBtn')}
                         </button>
                       </div>
-                    );
-                  })}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={confirmFlowDraft}
+                      disabled={isGenerating || isLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {t('how.aiAdoptBtn')}
+                    </button>
+                    <button
+                      onClick={discardDraft}
+                      disabled={isGenerating || isLoading}
+                      className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      {t('scope.modal.discard')}
+                    </button>
+                  </div>
                 </div>
-              )}
-            </GlassSurface>
+
+                {/* Flow preview cards */}
+                <div className="space-y-4 pt-2 border-t border-slate-200/60">
+                  {activeDraft.flows?.map((fl: any, idx: number) => (
+                    <div key={idx} className="bg-white/80 p-4 rounded-xl border border-slate-200/50">
+                      <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1">
+                        <Workflow className="w-3.5 h-3.5 text-indigo-500" />
+                        {t('how.flowLabelFormat', { name: fl.flow_name })}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{fl.flow_description}</p>
+                      <FlowDraftCanvas flow={fl} className="mt-3" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </div>
         </div>
@@ -1411,7 +1395,7 @@ export function HowItWorks() {
         </div>
       )}
 
-      {/* 手动添加步骤 Modal */}
+        {/* Manual step editor */}
       {isAddStepModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200 shadow-2xl max-w-lg w-full flex flex-col rounded-3xl animate-in scale-in-95 duration-200 overflow-hidden">
@@ -1596,7 +1580,7 @@ export function HowItWorks() {
         isWorking={isGenerating || isLoading}
         onDiscard={() => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) discardRepairDraft(dId);
           } else {
             discardDraft();
@@ -1604,18 +1588,18 @@ export function HowItWorks() {
         }}
         onRegenerate={(feedback) => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) regenerateRepairDraft(dId);
           } else {
-            regenerateFlowsAndObjects(feedback)
-          };
+            regenerateFlows(feedback);
+          }
         }}
         onConfirm={async () => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) await confirmRepairDraft(dId);
           } else {
-            await confirmFlowsAndObjects();
+            await confirmFlowDraft();
           }
         }}
       />
@@ -1635,7 +1619,7 @@ export function HowItWorks() {
             </div>
             <div className="p-6 space-y-4">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-600 leading-relaxed font-medium">
-                {boDeletionError}
+                {t(boDeletionError)}
               </div>
             </div>
             <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-end">
@@ -1684,8 +1668,8 @@ export function HowItWorks() {
         isWorking={isGeneratingChoices || isLoading}
         isGeneratingChoices={isGeneratingChoices}
         generationProgress={choiceGroupGenerationProgress}
-        onAccept={async (choiceId) => {
-          await acceptChoice(choiceId);
+        onAccept={async (choiceId, expectedVersion) => {
+          await acceptChoice(choiceId, false, expectedVersion);
         }}
         onDiscard={async () => {
           if (activeChoiceGroup) {
@@ -1698,7 +1682,11 @@ export function HowItWorks() {
       <FocusFlowCanvasModal
         flow={(ir?.flows || []).find((f: any) => f.flowId === focusFlowId) || null}
         isOpen={focusFlowId !== null}
-        onClose={() => setFocusFlowId(null)}
+        onClose={() => {
+          setFocusFlowId(null);
+          setFocusStepId(null);
+          setFocusTransitionId(null);
+        }}
         actors={ir?.actors || []}
         businessObjects={ir?.businessObjects || []}
         onUpdateStep={updateFlowStep}
@@ -1711,6 +1699,12 @@ export function HowItWorks() {
         onUpdateFlow={async (flowId, data) => {
           await updateFlow(flowId, data);
         }}
+        onCreateTransition={createFlowTransition}
+        onUpdateTransition={updateFlowTransition}
+        onDeleteTransition={deleteFlowTransition}
+        readOnly={isReadOnly}
+        initialSelectedStepId={focusStepId}
+        initialSelectedTransitionId={focusTransitionId}
       />
 
       <RightObjectPanel />

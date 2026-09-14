@@ -454,6 +454,40 @@ class StubEditBusinessObjectInterviewStrategy(BaseInterviewStrategy):
         )
 
 
+class StubEditRuleInterviewStrategy(BaseInterviewStrategy):
+    target_type = "edit_rule"
+    required_context = ["rules"]
+
+    async def interview(
+        self, project_context, anchor, current_summary, latest_user_message, llm_call_chat,
+        knowledge_context: str | None = None,
+    ) -> dict:
+        target_id = anchor.get("target_id")
+        original_rule = None
+        for r in project_context.get("rules", []):
+            if str(r.get("id")) == str(target_id):
+                original_rule = r
+                break
+
+        original_str = json.dumps(
+            original_rule or {"id": target_id},
+            ensure_ascii=False,
+            indent=2,
+        )
+        system_prompt = _localized_prompt(
+            "ai_add_edit_rule_interview",
+            original_object=original_str,
+            target_id=target_id,
+        )
+        return await self._execute_llm_slot_filling(
+            system_prompt=system_prompt,
+            current_summary=current_summary,
+            latest_user_message=latest_user_message,
+            llm_call_chat=llm_call_chat,
+            knowledge_context=knowledge_context,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Registry: maps target_type -> strategy instance
 # ---------------------------------------------------------------------------
@@ -491,4 +525,5 @@ def create_default_registry() -> InterviewStrategyRegistry:
     registry.register(StubEditFeatureInterviewStrategy())
     registry.register(StubEditFlowInterviewStrategy())
     registry.register(StubEditBusinessObjectInterviewStrategy())
+    registry.register(StubEditRuleInterviewStrategy())
     return registry

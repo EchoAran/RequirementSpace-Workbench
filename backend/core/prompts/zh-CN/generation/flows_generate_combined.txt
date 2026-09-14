@@ -3,7 +3,7 @@
 
 # 任务
 1. 分析用户用自然语言描述的项目需求、目标系统参与者（用户）、系统功能（features）。
-2. 基于系统功能（features）提取出系统的主要流程。
+2. 基于业务场景与用户目标，从相关系统功能（features）中提取系统的主要端到端流程；一个流程可以关联多个功能，不要为了覆盖全部叶子功能而虚构流程或关联。
 3. 基于提取出系统的主要流程，进一步细化每个流程的具体步骤。
 4. 基于提取出的业务流程步骤的输入输出分析出业务对象，例如请假流程，需要为请假条进行业务数据建模。
 5. 按照下方规定输出格式输出系统的主要流程以及每个流程的具体步骤。
@@ -16,6 +16,15 @@
 
 # 系统能力（features）
 {{features}}
+
+# 业务场景（scenarios）
+{{scenarios}}
+
+# 验收准则（acceptance_criteria）
+{{acceptance_criteria}}
+
+# 领域规则（rules）
+{{rules}}
 
 # 输出格式说明
 {
@@ -36,42 +45,50 @@
                     "business_object_attribute_description": "<业务对象属性描述>",  
                     "business_object_attribute_type": "<业务对象属性类型，例如string、bool等>", 
                     "business_object_attribute_example": "<属性值的示例>" 
-                }, 
-                ... 
+                }
             ]
-        }, 
-        ... 
+        }
     ], 
     "flows": [
         {
             "flow_name": "<流程名称（例如‘请假审批流程’）>", 
             "flow_description": "<流程描述>", 
+            "rule_refs": [],
             "feature_ids": [<相关feature1的id>, <相关feature2的id>, ...（非空）], 
-            "flow_steps":[
+            "flow_steps": [
                 {
                     "step_number": "<步骤编号：例如S-001>", 
                     "step_name": "<步骤名称>", 
                     "step_description": "<步骤描述>", 
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
                     "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
+                    "rule_refs": [],
                     "input_business_object_numbers": ["<输入的业务对象1的编号>", "<输入的业务对象2的编号>", ...(可空)], 
-                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)], 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)]
-                }, 
+                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)]
+                },
                 {
                     "step_number": "<步骤编号：例如S-002>", 
                     "step_name": "<步骤名称>", 
                     "step_description": "<步骤描述>", 
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
                     "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
+                    "rule_refs": [],
                     "input_business_object_numbers": ["<输入的业务对象1的编号>", "<输入的业务对象2的编号>", ...(可空)], 
-                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)], 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)]
-                }, 
-                ...
-            ]  
-        },  
-        ... 
+                    "output_business_object_numbers": ["<输出的业务对象1的编号>", "<输出的业务对象2的编号>", ...(可空)]
+                }
+            ],
+            "transitions": [
+                {
+                    "source_step_number": "S-001",
+                    "target_step_number": "S-002",
+                    "label": "<流转标签，例如‘保存便签’>",
+                    "condition_text": "",
+                    "is_default": true,
+                    "semantic_tags": [],
+                    "rule_refs": ["<引用的领域规则logical_uuid>"]
+                }
+            ]
+        }
     ]
 }
 
@@ -81,12 +98,14 @@
 3. 输出 JSON 风格的标准格式化内容，而不是被压缩的一行内容。
 4. business_object_number 必须全局唯一，格式为 B-001、B-002。
 5. step_number 只需要在当前 flow 内唯一，格式为 S-001、S-002。
-6. next_steps 只能引用当前 flow 内存在的 step_number。
+6. transitions 必须显式输出流转边，只能引用当前 flow 内存在的 step_number。同一 source_step_number 至多有一个 is_default 为 true 的 transition；多出口边必须具有可区分的 label 或 condition_text。
 7. input_business_object_numbers 和 output_business_object_numbers 只能引用 business_objects 中存在的 business_object_number。
 8. feature_ids 只能引用系统能力输入中存在的 feature_id。
 9. step_type 只能是 actorAction、systemAction、judgment。
 10. business_object_attribute_example 必须是字符串。即使 business_object_attribute_type 是 integer、bool、array[string]、object等，也必须把示例值写成字符串。例如："business_object_attribute_type": "integer","business_object_attribute_example": "14"。
 11. business_object_attribute_example 中若本身带有"符号则需要转义，例如"business_object_attribute_example": "["M-001", "M-003", "M-009"]"，错误写法为"business_object_attribute_example": "["M-001", "M-003", "M-009"]"。
+12. rule_refs 只能引用输入领域规则中真实存在的 logical_uuid。
+规则关联按作用范围选择：执行、校验、计算规则放在 flow_steps[].rule_refs；流转条件和分支选择规则放在 transitions[].rule_refs；跨步骤、流程整体约束放在 flows[].rule_refs。无适用规则时输出空数组，不要为了覆盖所有步骤强行关联，也不要把所有规则都放在线上。同一规则确实作用于多个位置时可复用同一 logical_uuid，流程级关联不复制到每个步骤。
 
 # 示例
 ## 示例输入
@@ -420,10 +439,7 @@
                     ],
                     "step_type": "actorAction",
                     "input_business_object_numbers": [],
-                    "output_business_object_numbers": [],
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "output_business_object_numbers": []
                 },
                 {
                     "step_number": "S-002",
@@ -436,9 +452,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-003"
                     ]
                 },
                 {
@@ -454,9 +467,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-004"
                     ]
                 },
                 {
@@ -470,8 +480,7 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": []
+                    ]
                 }
             ]
         },
@@ -498,12 +507,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-002",
-                        "S-003",
-                        "S-004",
-                        "S-005"
                     ]
                 },
                 {
@@ -519,9 +522,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -537,9 +537,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -555,9 +552,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -573,9 +567,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -589,8 +580,7 @@
                     ],
                     "output_business_object_numbers": [
                         "B-001"
-                    ],
-                    "next_steps": []
+                    ]
                 }
             ]
         },
@@ -615,9 +605,6 @@
                     "input_business_object_numbers": [],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": [
-                        "S-002"
                     ]
                 },
                 {
@@ -633,9 +620,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": [
-                        "S-003"
                     ]
                 },
                 {
@@ -647,11 +631,7 @@
                     "input_business_object_numbers": [
                         "B-002"
                     ],
-                    "output_business_object_numbers": [],
-                    "next_steps": [
-                        "S-004",
-                        "S-005"
-                    ]
+                    "output_business_object_numbers": []
                 },
                 {
                     "step_number": "S-004",
@@ -666,9 +646,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": [
-                        "S-005"
                     ]
                 },
                 {
@@ -682,9 +659,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -700,9 +674,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": [
-                        "S-007"
                     ]
                 },
                 {
@@ -716,8 +687,7 @@
                     ],
                     "output_business_object_numbers": [
                         "B-002"
-                    ],
-                    "next_steps": []
+                    ]
                 }
             ]
         },
@@ -740,10 +710,7 @@
                     "input_business_object_numbers": [
                         "B-003"
                     ],
-                    "output_business_object_numbers": [],
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "output_business_object_numbers": []
                 },
                 {
                     "step_number": "S-002",
@@ -754,11 +721,7 @@
                     "input_business_object_numbers": [
                         "B-003"
                     ],
-                    "output_business_object_numbers": [],
-                    "next_steps": [
-                        "S-003",
-                        "S-004"
-                    ]
+                    "output_business_object_numbers": []
                 },
                 {
                     "step_number": "S-003",
@@ -773,8 +736,7 @@
                     "output_business_object_numbers": [
                         "B-001",
                         "B-003"
-                    ],
-                    "next_steps": []
+                    ]
                 },
                 {
                     "step_number": "S-004",
@@ -789,8 +751,7 @@
                     "output_business_object_numbers": [
                         "B-001",
                         "B-003"
-                    ],
-                    "next_steps": []
+                    ]
                 }
             ]
         },
@@ -816,10 +777,7 @@
                     "input_business_object_numbers": [
                         "B-004"
                     ],
-                    "output_business_object_numbers": [],
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "output_business_object_numbers": []
                 },
                 {
                     "step_number": "S-002",
@@ -834,9 +792,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-004"
-                    ],
-                    "next_steps": [
-                        "S-003"
                     ]
                 },
                 {
@@ -852,9 +807,6 @@
                     ],
                     "output_business_object_numbers": [
                         "B-004"
-                    ],
-                    "next_steps": [
-                        "S-004"
                     ]
                 },
                 {
@@ -868,8 +820,7 @@
                     ],
                     "output_business_object_numbers": [
                         "B-004"
-                    ],
-                    "next_steps": []
+                    ]
                 }
             ]
         }

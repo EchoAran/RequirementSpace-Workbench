@@ -51,9 +51,9 @@ class FindingService:
         view: str,
         action: str | None,
         session,
+        workspace_id: int,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> list[Finding]:
         stage_clean, view_clean = normalize_finding_filters(
             stage,
@@ -91,7 +91,6 @@ class FindingService:
 
         elif view_clean == "next_action":
             stages_to_suggest = await suggestion_stages(
-                project_id,
                 stage_clean,
                 session,
                 workspace_id=workspace_id,
@@ -124,11 +123,11 @@ class FindingService:
         self,
         project_id: int,
         session,
+        workspace_id: int,
         stage: str = "all",
         action: str | None = None,
         background_tasks: BackgroundTasks | None = None,
         public_project_id: str | None = None,
-        workspace_id: int | None = None,
     ) -> dict[str, list[Finding]]:
         """Collect and partition findings into all 4 views (issues, health, gate, next_action) in a single pass."""
         stage_clean, _ = normalize_finding_filters(stage, "issues")
@@ -155,7 +154,6 @@ class FindingService:
         gate_filtered = filter_gates_by_action(gate, action)
 
         stages_to_suggest = await suggestion_stages(
-            project_id,
             stage_clean,
             session,
             workspace_id=workspace_id,
@@ -191,7 +189,7 @@ class FindingService:
         stage: str,
         view: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> list[Finding]:
         findings: list[Finding] = []
         for current_stage in policy_stages(stage, self._policies):
@@ -208,17 +206,11 @@ class FindingService:
                 view=view,
             )
             try:
-                if hasattr(policy, "get_findings") and "workspace_id" in policy.get_findings.__code__.co_varnames:
-                    stage_findings = await policy.get_findings(
-                        project_id,
-                        session,
-                        workspace_id=workspace_id,
-                    )
-                else:
-                    stage_findings = await policy.get_findings(
-                        project_id,
-                        session,
-                    )
+                stage_findings = await policy.get_findings(
+                    project_id,
+                    session,
+                    workspace_id=workspace_id,
+                )
                 findings.extend(stage_findings)
             except Exception as error:
                 log_event(
@@ -264,7 +256,7 @@ class FindingService:
         finding_id: str,
         status: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import FindingOverrideModel, ProjectModel
 
@@ -274,9 +266,7 @@ class FindingService:
 
         # Verify project exists
         stmt_p = select(ProjectModel.id).where(ProjectModel.id == project_id)
-        project_result = session.execute(stmt_p)
-        if hasattr(project_result, "__await__"):
-            project_result = await project_result
+        project_result = await session.execute(stmt_p)
         if project_result.scalar_one_or_none() is None:
             raise ValueError("project_not_found")
 
@@ -289,6 +279,7 @@ class FindingService:
             finding_id=finding_id,
             stage_val=stage_val,
             session=session,
+            workspace_id=workspace_id,
         )
 
         # Restrict ignored/resolved based on finding type
@@ -303,15 +294,10 @@ class FindingService:
         stmt_e = select(FindingOverrideModel).where(
             FindingOverrideModel.project_id == project_id,
             FindingOverrideModel.finding_id == finding_id,
+            FindingOverrideModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            stmt_e = stmt_e.where(FindingOverrideModel.workspace_id == workspace_id)
-        else:
-            stmt_e = stmt_e.where(FindingOverrideModel.workspace_id.is_(None))
 
-        existing_result = session.execute(stmt_e)
-        if hasattr(existing_result, "__await__"):
-            existing_result = await existing_result
+        existing_result = await session.execute(stmt_e)
         existing = existing_result.scalar_one_or_none()
 
         if status_clean == "open":
@@ -336,9 +322,7 @@ class FindingService:
                 existing.status = status_clean
                 existing.finding_type = finding_type_val
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
         return {
             "project_id": project_id,
             "finding_id": finding_id,
@@ -351,7 +335,7 @@ class FindingService:
         finding_id: str,
         stage_val: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> str:
         """通过 finding_id 前缀与重新检测确定 finding 的真实类型。
 
@@ -375,10 +359,7 @@ class FindingService:
         for s in stages_to_run:
             policy = self._policies[s]
             try:
-                if hasattr(policy, "get_findings") and "workspace_id" in policy.get_findings.__code__.co_varnames:
-                    s_findings = await policy.get_findings(project_id, session, workspace_id=workspace_id)
-                else:
-                    s_findings = await policy.get_findings(project_id, session)
+                s_findings = await policy.get_findings(project_id, session, workspace_id=workspace_id)
                 findings.extend(s_findings)
             except Exception as e:
                 logger.warning(f"Error re-detecting findings for stage {s}: {e}")
@@ -423,18 +404,13 @@ class FindingService:
                 "enabled": cap.enabled,
             }
 
-    async def _load_overrides(self, project_id: int, session, workspace_id: int | None = None) -> set[str]:
+    async def _load_overrides(self, project_id: int, session, workspace_id: int) -> set[str]:
         from backend.database.model import FindingOverrideModel
         stmt = select(FindingOverrideModel.finding_id).where(
             FindingOverrideModel.project_id == project_id,
             FindingOverrideModel.status.in_({"ignored", "resolved"}),
+            FindingOverrideModel.workspace_id == workspace_id,
         )
-        if workspace_id is not None:
-            stmt = stmt.where(FindingOverrideModel.workspace_id == workspace_id)
-        else:
-            stmt = stmt.where(FindingOverrideModel.workspace_id.is_(None))
 
-        res = session.execute(stmt)
-        if hasattr(res, "__await__"):
-            res = await res
+        res = await session.execute(stmt)
         return {finding_id for finding_id in res.scalars().all() if finding_id}

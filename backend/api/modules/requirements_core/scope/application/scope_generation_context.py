@@ -82,20 +82,13 @@ def build_scoped_feature_nodes(
     ]
 
 
-async def load_scope_generation_context(project_id: int, session, workspace_id: int | None = None):
-    project = await load_generation_project(session, project_id)
-    user_reqs = project.user_requirements
-    if workspace_id is not None:
-        from backend.database.model import BranchWorkspaceModel
-        async def _exec(stmt):
-            res = session.execute(stmt)
-            if hasattr(res, "__await__"):
-                return await res
-            return res
-        ws_res = await _exec(select(BranchWorkspaceModel.user_requirements).where(BranchWorkspaceModel.id == workspace_id))
-        ws_user_reqs = ws_res.scalar_one_or_none()
-        if ws_user_reqs is not None:
-            user_reqs = ws_user_reqs
+async def load_scope_generation_context(project_id: int, session, workspace_id: int):
+    from backend.database.model import BranchWorkspaceModel
+
+    workspace = await session.get(BranchWorkspaceModel, workspace_id)
+    if workspace is None or workspace.project_id != project_id:
+        raise ValueError("project_not_found")
+    user_reqs = workspace.user_requirements
 
     feature_models = await load_generation_features(session, project_id, workspace_id=workspace_id)
     feature_ids = {feature.id for feature in feature_models}

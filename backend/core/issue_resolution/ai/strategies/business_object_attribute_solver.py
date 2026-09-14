@@ -44,7 +44,7 @@ class BusinessObjectAttributeSolver(BaseIssueAISolver):
         issue_code: str,
         target: dict | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         target_id = int(target.get("target_id") or target.get("targetId") or 0) if target else 0
 

@@ -208,6 +208,28 @@ class ConfirmationStatus(enum.StrEnum):
 # 显式映射供 Alembic 和 schema 层引用
 CONFIRMATION_STATUS_VALUES = [s.value for s in ConfirmationStatus]
 
+
+class RuleOrigin(enum.StrEnum):
+    """Origin of a domain rule indicating how it was introduced."""
+
+    MANUAL = "manual"
+    AI_GENERATED = "ai_generated"
+    FLOW_REFINEMENT = "flow_refinement"
+
+
+RULE_ORIGIN_VALUES = [s.value for s in RuleOrigin]
+
+
+class RuleLinkPurpose(enum.StrEnum):
+    """Purpose of linking a domain rule to another entity."""
+
+    SOURCE = "source"
+    APPLIES_TO = "applies_to"
+
+
+RULE_LINK_PURPOSE_VALUES = [s.value for s in RuleLinkPurpose]
+
+
 feature_actor_table = Table(
     "feature_actor",
     Base.metadata,
@@ -279,21 +301,6 @@ flow_step_output_business_object_table = Table(
     Column(
         "business_object_id",
         ForeignKey("business_objects.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-)
-
-flow_step_next_table = Table(
-    "flow_step_next",
-    Base.metadata,
-    Column(
-        "source_step_id",
-        ForeignKey("flow_steps.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "target_step_id",
-        ForeignKey("flow_steps.id", ondelete="CASCADE"),
         primary_key=True,
     ),
 )
@@ -376,6 +383,14 @@ class ProjectModel(TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     flows: Mapped[list[FlowModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    domain_rules: Mapped[list[DomainRuleModel]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    rule_links: Mapped[list[RuleLinkModel]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -630,7 +645,7 @@ class RequirementCommitModel(TimestampMixin, Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     state_json: Mapped[str] = mapped_column(Text, nullable=False)
     state_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    schema_version: Mapped[str] = mapped_column(String(32), default="1.0", nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(32), default="2.0", nullable=False)
     author_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -1296,6 +1311,111 @@ class BusinessObjectAttributeModel(TimestampMixin, Base):
     business_object: Mapped[BusinessObjectModel] = relationship(back_populates="attributes")
 
 
+class DomainRuleModel(TimestampMixin, Base):
+    """Domain rule entity expressing business statements and constraints."""
+
+    __tablename__ = "domain_rules"
+    __table_args__ = (
+        Index("ix_domain_rules_project_id", "project_id"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_domain_rules_workspace_logical_uuid"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("domain_rules.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(32),
+        default=RuleOrigin.MANUAL.value,
+        nullable=False,
+        server_default=RuleOrigin.MANUAL.value,
+    )
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.NEEDS_CONFIRMATION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.NEEDS_CONFIRMATION.value,
+    )
+
+    project: Mapped[ProjectModel] = relationship(back_populates="domain_rules")
+    parent_rule: Mapped[DomainRuleModel | None] = relationship(
+        remote_side=[id],
+        back_populates="child_rules",
+    )
+    child_rules: Mapped[list[DomainRuleModel]] = relationship(
+        back_populates="parent_rule",
+    )
+    links: Mapped[list[RuleLinkModel]] = relationship(
+        back_populates="rule",
+        cascade="all, delete-orphan",
+    )
+
+
+class RuleLinkModel(TimestampMixin, Base):
+    """Link expressing relationship between a domain rule and another specification node."""
+
+    __tablename__ = "rule_links"
+    __table_args__ = (
+        Index("ix_rule_links_project_id", "project_id"),
+        Index("ix_rule_links_rule_id", "rule_id"),
+        Index("ix_rule_links_target", "target_kind", "target_logical_uuid"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_rule_links_workspace_logical_uuid"),
+        UniqueConstraint("rule_id", "target_kind", "target_logical_uuid", "link_purpose", name="uq_rule_links_rule_target_purpose"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("domain_rules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_logical_uuid: Mapped[str] = mapped_column(String(36), nullable=False)
+    link_purpose: Mapped[str] = mapped_column(
+        String(20),
+        default=RuleLinkPurpose.APPLIES_TO.value,
+        nullable=False,
+        server_default=RuleLinkPurpose.APPLIES_TO.value,
+    )
+    context_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+    project: Mapped[ProjectModel] = relationship(back_populates="rule_links")
+    rule: Mapped[DomainRuleModel] = relationship(back_populates="links")
+
+
 class FlowModel(TimestampMixin, Base):
     __tablename__ = "flows"
     __table_args__ = (
@@ -1338,6 +1458,12 @@ class FlowModel(TimestampMixin, Base):
         back_populates="flow",
         cascade="all, delete-orphan",
         order_by="FlowStepModel.position",
+    )
+    transitions: Mapped[list[FlowTransitionModel]] = relationship(
+        "FlowTransitionModel",
+        back_populates="flow",
+        cascade="all, delete-orphan",
+        order_by="FlowTransitionModel.position",
     )
 
 
@@ -1390,19 +1516,90 @@ class FlowStepModel(TimestampMixin, Base):
         secondary=flow_step_output_business_object_table,
         back_populates="output_flow_steps",
     )
-    next_steps: Mapped[list[FlowStepModel]] = relationship(
-        "FlowStepModel",
-        secondary=flow_step_next_table,
-        primaryjoin=lambda: FlowStepModel.id == flow_step_next_table.c.source_step_id,
-        secondaryjoin=lambda: FlowStepModel.id == flow_step_next_table.c.target_step_id,
-        back_populates="previous_steps",
+    outgoing_transitions: Mapped[list[FlowTransitionModel]] = relationship(
+        "FlowTransitionModel",
+        foreign_keys="[FlowTransitionModel.source_step_id]",
+        back_populates="source_step",
+        cascade="all, delete-orphan",
     )
-    previous_steps: Mapped[list[FlowStepModel]] = relationship(
+    incoming_transitions: Mapped[list[FlowTransitionModel]] = relationship(
+        "FlowTransitionModel",
+        foreign_keys="[FlowTransitionModel.target_step_id]",
+        back_populates="target_step",
+        cascade="all, delete-orphan",
+    )
+
+
+class FlowTransitionModel(TimestampMixin, Base):
+    __tablename__ = "flow_transitions"
+    __table_args__ = (
+        Index("ix_flow_transitions_flow_id", "flow_id"),
+        Index("ix_flow_transitions_source_step_id", "source_step_id"),
+        Index("ix_flow_transitions_target_step_id", "target_step_id"),
+        Index(
+            "uq_flow_transition_source_default",
+            "source_step_id",
+            unique=True,
+            sqlite_where=text("is_default = 1"),
+            postgresql_where=text("is_default IS TRUE"),
+        ),
+        UniqueConstraint("source_step_id", "target_step_id", name="uq_flow_transition_source_target"),
+        UniqueConstraint("source_step_id", "position", name="uq_flow_transition_source_position"),
+        UniqueConstraint("workspace_id", "logical_uuid", name="uq_flow_transitions_workspace_logical_uuid"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    logical_uuid: Mapped[str] = mapped_column(
+        String(36),
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    flow_id: Mapped[int] = mapped_column(
+        ForeignKey("flows.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_step_id: Mapped[int] = mapped_column(
+        ForeignKey("flow_steps.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_step_id: Mapped[int] = mapped_column(
+        ForeignKey("flow_steps.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    label: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    condition_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    semantic_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    origin: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
+    confirmation_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ConfirmationStatus.AI_ASSUMPTION.value,
+        nullable=False,
+        server_default=ConfirmationStatus.AI_ASSUMPTION.value,
+    )
+
+    flow: Mapped[FlowModel] = relationship(back_populates="transitions")
+    source_step: Mapped[FlowStepModel] = relationship(
         "FlowStepModel",
-        secondary=flow_step_next_table,
-        primaryjoin=lambda: FlowStepModel.id == flow_step_next_table.c.target_step_id,
-        secondaryjoin=lambda: FlowStepModel.id == flow_step_next_table.c.source_step_id,
-        back_populates="next_steps",
+        foreign_keys=[source_step_id],
+        back_populates="outgoing_transitions",
+    )
+    target_step: Mapped[FlowStepModel] = relationship(
+        "FlowStepModel",
+        foreign_keys=[target_step_id],
+        back_populates="incoming_transitions",
     )
 
 
@@ -1595,6 +1792,11 @@ class PreviewShadowDraftModel(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branch_workspaces.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     draft_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)

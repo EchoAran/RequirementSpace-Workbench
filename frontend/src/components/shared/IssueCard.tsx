@@ -26,7 +26,7 @@ export const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick, onCreateSl
   const severity = findingSeverityLabel(issue);
   const localizedIssue = getFindingText(issue, t);
   const relatedNodeTitles = findingTargetIds(issue)
-    .map((nodeId) => ir?.nodes[nodeId]?.title)
+    .map((nodeId) => ir?.nodes?.[nodeId]?.title)
     .filter((title): title is string => Boolean(title));
 
   const { actionLabel, enabled } = getFindingCapability(issue);

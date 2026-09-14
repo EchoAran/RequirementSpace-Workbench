@@ -109,6 +109,7 @@ async def _generate_preserved_how_patch(
     patch: dict,
     flow_generation_service,
     project_id: int,
+    workspace_id: int,
     feedback: str,
     session: AsyncSession,
 ) -> None:
@@ -117,6 +118,7 @@ async def _generate_preserved_how_patch(
         user_feedback=feedback,
         session=session,
         validate_result=False,
+        workspace_id=workspace_id,
     )
     _append_generated_business_objects(patch, raw_flows)
     _append_preserved_flows(patch, raw_flows)
@@ -126,6 +128,7 @@ async def _generate_preserved_scope_patch(
     service,
     scope_generation_service,
     project_id: int,
+    workspace_id: int,
     feedback: str,
     session: AsyncSession,
 ) -> None:
@@ -136,6 +139,7 @@ async def _generate_preserved_scope_patch(
     ) = await scope_generation_service._load_project_context(
         project_id=project_id,
         session=session,
+        workspace_id=workspace_id,
     )
     scopes = await service._generate_scopes_for_features(
         scope_service=scope_generation_service,
@@ -375,6 +379,7 @@ async def _generate_preserved_assets_patch(
     flow_generation_service,
     scope_generation_service,
     project_id: int,
+    workspace_id: int,
     base_snapshot: dict,
     session: AsyncSession | None,
     feedback: str,
@@ -399,6 +404,7 @@ async def _generate_preserved_assets_patch(
                 patch,
                 flow_generation_service,
                 project_id,
+                workspace_id,
                 feedback,
                 active_session,
             )
@@ -414,6 +420,7 @@ async def _generate_preserved_assets_patch(
                 service,
                 scope_generation_service,
                 project_id,
+                workspace_id,
                 feedback,
                 active_session,
             )
@@ -423,6 +430,7 @@ class PreviewShadowPatchGenerator:
     async def generate_shadow_patch(
         service,
         project_id: int,
+        workspace_id: int,
         base_snapshot: dict,
         session: AsyncSession = None,
         feedback: str = "",
@@ -444,7 +452,9 @@ class PreviewShadowPatchGenerator:
         feature_generation_service = get_feature_generation_service()
 
         async with _use_session(session) as active_session:
-            gates = await service.gate_evaluator.evaluate_gates(project_id, active_session)
+            gates = await service.gate_evaluator.evaluate_gates(
+                project_id, active_session, workspace_id=workspace_id
+            )
         what_passed = gates["what"]
         how_passed = gates["how"]
         scope_passed = gates["scope"]
@@ -469,6 +479,7 @@ class PreviewShadowPatchGenerator:
             flow_generation_service,
             scope_generation_service,
             project_id,
+            workspace_id,
             base_snapshot,
             session,
             feedback,

@@ -5,14 +5,14 @@ from sqlalchemy import select
 from backend.database.model import (
     FlowModel,
     FlowStepModel,
+    FlowTransitionModel,
     flow_feature_table,
     flow_step_actor_table,
     flow_step_input_business_object_table,
-    flow_step_next_table,
     flow_step_output_business_object_table,
 )
 
-from .types import FlowIssueItem, FlowStepIssueItem
+from .types import FlowIssueItem, FlowStepIssueItem, FlowTransitionIssueItem
 
 
 def _append_value(mapping: dict[int, list[int]], key: int, value: int) -> None:
@@ -40,7 +40,6 @@ class _StepAssociations:
     actor_ids: dict[int, list[int]] = field(default_factory=dict)
     input_object_ids: dict[int, list[int]] = field(default_factory=dict)
     output_object_ids: dict[int, list[int]] = field(default_factory=dict)
-    next_step_ids: dict[int, list[int]] = field(default_factory=dict)
 
 
 async def _load_step_associations(
@@ -85,18 +84,6 @@ async def _load_step_associations(
     for step_id, object_id in output_result.all():
         _append_value(associations.output_object_ids, step_id, object_id)
 
-    next_result = await session.execute(
-        select(
-            flow_step_next_table.c.source_step_id,
-            flow_step_next_table.c.target_step_id,
-        ).where(flow_step_next_table.c.source_step_id.in_(step_ids))
-    )
-    for source_step_id, target_step_id in next_result.all():
-        _append_value(
-            associations.next_step_ids,
-            source_step_id,
-            target_step_id,
-        )
     return associations
 
 
@@ -129,7 +116,7 @@ async def _load_flow_steps(
                 output_business_object_ids=(
                     associations.output_object_ids.get(step.id, [])
                 ),
-                next_step_ids=associations.next_step_ids.get(step.id, []),
+                logical_uuid=step.logical_uuid,
             )
         )
     return steps_map
@@ -138,7 +125,7 @@ async def _load_flow_steps(
 async def load_issue_flows(
     project_id: int,
     session,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ) -> list[FlowIssueItem]:
     stmt = select(FlowModel).where(
         FlowModel.project_id == project_id,
@@ -151,16 +138,50 @@ async def load_issue_flows(
         return []
     feature_ids_map = await _load_flow_feature_map(flow_ids, session)
     steps_map = await _load_flow_steps(flow_ids, session)
+    transitions_map = await _load_flow_transitions(flow_ids, session)
     return [
         FlowIssueItem(
             flow_id=flow.id,
             name=flow.name,
             description=flow.description,
+            confirmation_status=flow.confirmation_status,
             feature_ids=feature_ids_map.get(flow.id, []),
             steps=sorted(
                 steps_map.get(flow.id, []),
                 key=lambda item: item.position,
             ),
+            transitions=sorted(
+                transitions_map.get(flow.id, []),
+                key=lambda item: item.position,
+            ),
+            logical_uuid=flow.logical_uuid,
         )
         for flow in flow_models
     ]
+
+
+async def _load_flow_transitions(
+    flow_ids: list[int],
+    session,
+) -> dict[int, list[FlowTransitionIssueItem]]:
+    result = await session.execute(
+        select(FlowTransitionModel).where(FlowTransitionModel.flow_id.in_(flow_ids))
+    )
+    transitions = result.scalars().all()
+    trans_map: dict[int, list[FlowTransitionIssueItem]] = {}
+    for trans in transitions:
+        trans_map.setdefault(trans.flow_id, []).append(
+            FlowTransitionIssueItem(
+                transition_id=trans.id,
+                flow_id=trans.flow_id,
+                source_step_id=trans.source_step_id,
+                target_step_id=trans.target_step_id,
+                condition_text=trans.condition_text or "",
+                label=trans.label or "",
+                is_default=trans.is_default,
+                position=trans.position,
+                semantic_tags=trans.semantic_tags or [],
+                logical_uuid=trans.logical_uuid,
+            )
+        )
+    return trans_map

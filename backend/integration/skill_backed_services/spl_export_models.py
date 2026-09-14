@@ -26,6 +26,8 @@ class SplExportInput(CamelModel):
     features: list[Any] = []
     business_objects: list[Any] = []
     flows: list[Any] = []
+    domain_rules: list[Any] = []
+    rule_links: list[Any] = []
     unresolved_gates: list[Any] = []
     export_options: ExportOptionsModel
 

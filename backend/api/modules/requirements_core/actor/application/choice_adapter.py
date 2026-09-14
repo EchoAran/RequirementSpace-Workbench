@@ -33,6 +33,7 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             project_id=context.project_id,
             user_feedback=combined,
             session=context.session,
+            workspace_id=context.workspace_id,
         )
 
         # Re-read project_id from the generated payload
@@ -61,11 +62,10 @@ class ActorGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
     async def apply_candidate(self, payload: dict, session: AsyncSession, **kwargs) -> dict:
         """Persist actor payload to ActorModel, clearing existing actors first (overwrite)."""
         project_id = payload.get("project_id")
-        workspace_id = kwargs.get("workspace_id")
+        workspace_id = kwargs["workspace_id"]
 
         stmt = select(ActorModel).where(ActorModel.project_id == project_id)
-        if workspace_id is not None:
-            stmt = stmt.where(ActorModel.workspace_id == workspace_id)
+        stmt = stmt.where(ActorModel.workspace_id == workspace_id)
         existing = await session.execute(stmt)
         existing_actors = existing.scalars().all()
 

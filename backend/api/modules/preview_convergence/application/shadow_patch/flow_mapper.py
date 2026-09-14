@@ -1,7 +1,6 @@
 
 from .common import (
     _resolve_generated_reference,
-    _resolve_next_step_refs,
 )
 
 
@@ -50,19 +49,25 @@ def _append_preserved_flow_steps(
     business_object_index_by_id: dict,
 ) -> None:
     flow_steps = flow.get("flow_steps", [])
-    step_index_by_number = {}
+    step_temp_id_by_number = {}
+    step_temp_ids = []
     for step_index, step in enumerate(flow_steps):
         step_number = (
             step.get("step_number")
             or step.get("id")
             or f"gen_{step_index + 1}"
         )
-        step_index_by_number.setdefault(step_number, step_index)
+        temp_id = f"tmp_step_{flow_number}_gen_{step_index + 1}"
+        step_temp_id_by_number[str(step_number)] = temp_id
+        if step.get("id"):
+            step_temp_id_by_number[str(step["id"])] = temp_id
+            step_temp_id_by_number[f"step:{step['id']}"] = temp_id
+        step_temp_ids.append(temp_id)
 
     for step_index, step in enumerate(flow_steps):
-        step_number = f"gen_{step_index + 1}"
+        temp_id = step_temp_ids[step_index]
         patch["flow_steps_added"].append({
-            "temp_id": f"tmp_step_{flow_number}_{step_number}",
+            "temp_id": temp_id,
             "flow_ref": f"tmp_flow_{flow_number}",
             "name": step.get("step_name") or step.get("name"),
             "description": (
@@ -81,10 +86,53 @@ def _append_preserved_flow_steps(
                 step.get("output_business_object_numbers", []),
                 business_object_index_by_id,
             ),
-            "next_step_refs": _resolve_next_step_refs(
-                flow_number,
-                step_index_by_number,
-                step.get("next_steps", []),
+        })
+
+    _append_flow_transitions(
+        patch,
+        flow,
+        flow_number,
+        step_temp_id_by_number,
+        step_temp_ids,
+    )
+
+def _append_flow_transitions(
+    patch: dict,
+    flow: dict,
+    flow_number: str,
+    step_temp_id_by_number: dict,
+    step_temp_ids: list[str],
+) -> None:
+    transitions = flow.get("transitions", [])
+    if not transitions and len(step_temp_ids) > 1:
+        raise ValueError("flow_generation_missing_transitions")
+
+    for trans_index, trans in enumerate(transitions):
+        source_val = (
+            trans.get("source_step_number")
+            or trans.get("source_step_id")
+            or trans.get("source_step_ref")
+        )
+        target_val = (
+            trans.get("target_step_number")
+            or trans.get("target_step_id")
+            or trans.get("target_step_ref")
+        )
+        source_ref = step_temp_id_by_number.get(str(source_val), str(source_val))
+        target_ref = step_temp_id_by_number.get(str(target_val), str(target_val))
+        patch.setdefault("flow_transitions_added", []).append({
+            "temp_id": f"tmp_trans_{flow_number}_gen_{trans_index + 1}",
+            "flow_ref": f"tmp_flow_{flow_number}",
+            "source_step_ref": source_ref,
+            "target_step_ref": target_ref,
+            "condition_text": trans.get("condition_text", ""),
+            "label": trans.get("label") or "",
+            "is_default": bool(trans.get("is_default", False)),
+            "position": trans.get("position", trans_index),
+            "semantic_tags": trans.get("semantic_tags", []),
+            "origin": trans.get("origin", "ai_generated"),
+            "confirmation_status": trans.get(
+                "confirmation_status", "ai_assumption"
             ),
         })
 
@@ -142,19 +190,25 @@ def _append_generated_flow_steps(
     business_object_ref_by_id: dict,
 ) -> None:
     flow_steps = flow.get("flow_steps", [])
-    step_index_by_number = {}
+    step_temp_id_by_number = {}
+    step_temp_ids = []
     for step_index, step in enumerate(flow_steps):
         step_number = (
             step.get("step_number")
             or step.get("id")
             or f"gen_{step_index + 1}"
         )
-        step_index_by_number.setdefault(step_number, step_index)
+        temp_id = f"tmp_step_{flow_number}_gen_{step_index + 1}"
+        step_temp_id_by_number[str(step_number)] = temp_id
+        if step.get("id"):
+            step_temp_id_by_number[str(step["id"])] = temp_id
+            step_temp_id_by_number[f"step:{step['id']}"] = temp_id
+        step_temp_ids.append(temp_id)
 
     for step_index, step in enumerate(flow_steps):
-        step_number = f"gen_{step_index + 1}"
+        temp_id = step_temp_ids[step_index]
         patch["flow_steps_added"].append({
-            "temp_id": f"tmp_step_{flow_number}_{step_number}",
+            "temp_id": temp_id,
             "flow_ref": f"tmp_flow_{flow_number}",
             "name": step.get("step_name") or step.get("name"),
             "description": (
@@ -195,12 +249,15 @@ def _append_generated_flow_steps(
                     [],
                 )
             ],
-            "next_step_refs": _resolve_next_step_refs(
-                flow_number,
-                step_index_by_number,
-                step.get("next_steps", []),
-            ),
         })
+
+    _append_flow_transitions(
+        patch,
+        flow,
+        flow_number,
+        step_temp_id_by_number,
+        step_temp_ids,
+    )
 
 def _append_generated_flows(
     patch: dict,

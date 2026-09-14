@@ -23,6 +23,7 @@ class PrototypeGenerationServicePort(Protocol):
         self,
         project_id: int,
         force_regenerate: bool = False,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse:
         ...
 
@@ -33,6 +34,7 @@ class PrototypeGenerationServicePort(Protocol):
         self,
         project_id: int,
         force_regenerate: bool = False,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse:
         ...
 
@@ -41,6 +43,7 @@ class PrototypeGenerationServicePort(Protocol):
         project_id: int,
         session,
         raise_if_missing: bool = True,
+        branch_ref: str | None = None,
     ) -> PrototypePreviewResponse | None:
         ...
 

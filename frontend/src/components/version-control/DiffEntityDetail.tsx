@@ -19,7 +19,6 @@ import {
   ArrowDownUp,
   ExternalLink,
   Sparkles,
-  ShieldCheck,
   ArrowRight,
 } from 'lucide-react';
 import { DiffChangeType, DiffEntry, TextDiffBlock } from '@/core/versionControl';
@@ -65,6 +64,8 @@ const CHANGE_TYPE_ICONS: Record<DiffChangeType, typeof FilePlus2> = {
   relation_removed: Link2Off,
   ordered_item_moved: ArrowDownUp,
 };
+
+type TFunc = (k: string, opts?: any) => string;
 
 function changeColor(type: DiffChangeType): string {
   switch (type) {
@@ -122,12 +123,19 @@ function typeLabelKey(entityType: string): string {
   return `versionControl.diff.entityType.${entityType}`;
 }
 
-export function formatFieldLabel(key: string, t: (k: string, opts?: any) => string): string {
+export function formatFieldLabel(key: string, t: TFunc): string {
   const custom = t(`versionControl.diff.fields.${key}`);
   if (custom && custom !== `versionControl.diff.fields.${key}`) {
     return custom;
   }
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** 实体在树/详情中的展示名；project_metadata 没有名字，回退到「项目设定」。 */
+export function entityDisplayName(entry: Pick<DiffEntry, 'entity_type' | 'entity_name' | 'entity_uuid'>, t: TFunc): string {
+  if (entry.entity_name) return entry.entity_name;
+  if (entry.entity_type === 'project_metadata') return t('versionControl.diff.projectNode');
+  return entry.entity_uuid;
 }
 
 /**
@@ -164,10 +172,67 @@ export function KanoBadge({ category }: { category: unknown }) {
   );
 }
 
+/** 确认状态徽章：原始枚举值翻译为用户可读文案。 */
+export function ConfirmationStatusBadge({ value, t }: { value: unknown; t: TFunc }) {
+  const str = String(value || '');
+  const key = `versionControl.diff.confirmationStatus.${str}`;
+  const label = t(key);
+  const translated = label !== key;
+  let color = 'border-slate-200 bg-slate-100 text-slate-700';
+  let dot = 'bg-slate-400';
+  if (str === 'confirmed') {
+    color = 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    dot = 'bg-emerald-500';
+  } else if (str === 'needs_confirmation') {
+    color = 'border-amber-200 bg-amber-50 text-amber-700';
+    dot = 'bg-amber-500';
+  } else if (str === 'ai_assumption') {
+    color = 'border-violet-200 bg-violet-50 text-violet-700';
+    dot = 'bg-violet-500';
+  }
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-xs', color)}>
+      <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
+      {translated ? label : str}
+    </span>
+  );
+}
+
+/** Kano 生成状态徽章。 */
+export function KanoStatusBadge({ value, t }: { value: unknown; t: TFunc }) {
+  const str = String(value || '');
+  const key = `versionControl.diff.kanoStatus.${str}`;
+  const label = t(key);
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 shadow-xs">
+      {label !== key ? label : str}
+    </span>
+  );
+}
+
+/** 已解锁阶段值：逗号分隔的阶段键翻译为阶段名徽章。 */
+function UnlockedStagesValue({ value, t }: { value: unknown; t: TFunc }) {
+  const stages = String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (stages.length === 0) return <span className="italic text-slate-400">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {stages.map((stage) => {
+        const key = `versionControl.diff.stageName.${stage}`;
+        const label = t(key);
+        return (
+          <span key={stage} className="inline-block rounded-md border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">
+            {label !== key ? label : stage}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Clean value formatter for individual properties
  */
-export function FormattedValue({ field, value, t }: { field?: string; value: unknown; t: (k: string, opts?: any) => string }) {
+export function FormattedValue({ field, value, t }: { field?: string; value: unknown; t: TFunc }) {
   if (value === null || value === undefined || value === '') {
     return <span className="italic text-slate-400">—</span>;
   }
@@ -181,10 +246,24 @@ export function FormattedValue({ field, value, t }: { field?: string; value: unk
   }
 
   if (field === 'confirmation_status') {
+    return <ConfirmationStatusBadge value={value} t={t} />;
+  }
+
+  if (field === 'kano_status') {
+    return <KanoStatusBadge value={value} t={t} />;
+  }
+
+  if (field === 'unlocked_stages') {
+    return <UnlockedStagesValue value={value} t={t} />;
+  }
+
+  if (field === 'step_type') {
+    const str = String(value);
+    const key = `versionControl.diff.stepTypeValue.${str}`;
+    const label = t(key);
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-        <ShieldCheck className="h-3 w-3 text-slate-500" />
-        {String(value)}
+      <span className="inline-block rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">
+        {label !== key ? label : str}
       </span>
     );
   }
@@ -220,7 +299,7 @@ export function FormattedValue({ field, value, t }: { field?: string; value: unk
                   .map(([k, v]) => (
                     <div key={k} className="flex gap-2">
                       <span className="text-[10px] font-bold text-slate-500">{formatFieldLabel(k, t)}:</span>
-                      <span className="text-slate-800">{String(v ?? '—')}</span>
+                      <span className="text-slate-800"><FormattedValue field={k} value={v} t={t} /></span>
                     </div>
                   ))}
               </div>
@@ -245,7 +324,7 @@ export function FormattedValue({ field, value, t }: { field?: string; value: unk
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide min-w-[80px] shrink-0 mt-0.5">
               {formatFieldLabel(k, t)}:
             </span>
-            <span className="text-slate-700 leading-relaxed break-words">{String(v ?? '—')}</span>
+            <span className="text-slate-700 leading-relaxed break-words"><FormattedValue field={k} value={v} t={t} /></span>
           </div>
         ))}
       </div>
@@ -255,7 +334,7 @@ export function FormattedValue({ field, value, t }: { field?: string; value: unk
   if (typeof value === 'boolean') {
     return (
       <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-bold', value ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600')}>
-        {value ? 'True' : 'False'}
+        {value ? t('versionControl.diff.booleanTrue') : t('versionControl.diff.booleanFalse')}
       </span>
     );
   }
@@ -301,11 +380,7 @@ export function StructuredEntityCard({
         <div className="flex flex-wrap items-center gap-1.5 shrink-0">
           {(data.status || data.scope_status) && <ScopeStatusBadge status={data.status || data.scope_status} />}
           {(data.kano_category || data.kano_category_name) && <KanoBadge category={data.kano_category || data.kano_category_name} />}
-          {data.confirmation_status && (
-            <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-              {String(data.confirmation_status)}
-            </span>
-          )}
+          {data.confirmation_status && <ConfirmationStatusBadge value={data.confirmation_status} t={t} />}
         </div>
       </div>
 
@@ -313,7 +388,7 @@ export function StructuredEntityCard({
       {desc && desc !== title && (
         <div className="space-y-1">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            {t('versionControl.diff.fields.description', '描述说明')}
+            {t('versionControl.diff.fields.description')}
           </div>
           <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap rounded-xl bg-slate-50/70 p-3 border border-slate-100/80">
             {desc}
@@ -324,7 +399,7 @@ export function StructuredEntityCard({
       {/* Actor specifics */}
       {entityType === 'actor' && data.duties && (
         <div className="space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">职责范围</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('versionControl.diff.fields.duties')}</div>
           <p className="text-xs text-slate-700 leading-relaxed bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
             {String(data.duties)}
           </p>
@@ -336,13 +411,13 @@ export function StructuredEntityCard({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
           {data.parent_name && (
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">上级功能</span>
+              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.parent_name')}</span>
               <span className="font-semibold text-slate-800">{data.parent_name}</span>
             </div>
           )}
           {data.actors && Array.isArray(data.actors) && data.actors.length > 0 && (
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 md:col-span-2">
-              <span className="text-[10px] font-bold text-slate-400 block mb-1">关联参与者</span>
+              <span className="text-[10px] font-bold text-slate-400 block mb-1">{t('versionControl.diff.fields.actors')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {data.actors.map((actor: any, i: number) => (
                   <span key={i} className="inline-flex items-center gap-1 rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
@@ -362,13 +437,13 @@ export function StructuredEntityCard({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
             {data.feature_name && (
               <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-                <span className="text-[10px] font-bold text-slate-400 block mb-0.5">所属功能</span>
+                <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.feature_name')}</span>
                 <span className="font-semibold text-slate-800">{data.feature_name}</span>
               </div>
             )}
             {data.actor_name && (
               <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-                <span className="text-[10px] font-bold text-slate-400 block mb-0.5">执行角色</span>
+                <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.actor_name')}</span>
                 <span className="font-semibold text-slate-800">{data.actor_name}</span>
               </div>
             )}
@@ -397,7 +472,7 @@ export function StructuredEntityCard({
       {/* Acceptance Criterion specifics */}
       {entityType === 'acceptance_criterion' && data.scenario_name && (
         <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 text-xs">
-          <span className="text-[10px] font-bold text-slate-400 block mb-0.5">所属场景</span>
+          <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.scenario_name')}</span>
           <span className="font-semibold text-slate-800">{data.scenario_name}</span>
         </div>
       )}
@@ -415,10 +490,10 @@ export function StructuredEntityCard({
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50/90 border-b border-slate-150 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
                   <tr>
-                    <th className="px-3 py-2">属性名称</th>
-                    <th className="px-3 py-2">数据类型</th>
-                    <th className="px-3 py-2">业务说明</th>
-                    <th className="px-3 py-2">示例值</th>
+                    <th className="px-3 py-2">{t('versionControl.diff.fields.name')}</th>
+                    <th className="px-3 py-2">{t('versionControl.diff.fields.data_type')}</th>
+                    <th className="px-3 py-2">{t('versionControl.diff.fields.description')}</th>
+                    <th className="px-3 py-2">{t('versionControl.diff.fields.example')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -445,13 +520,13 @@ export function StructuredEntityCard({
       {entityType === 'business_object_attribute' && (
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">数据类型</span>
+            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.data_type')}</span>
             <span className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 inline-block">
               {data.data_type || 'String'}
             </span>
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">示例值</span>
+            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.example')}</span>
             <span className="font-mono text-xs text-slate-700">{data.example ? String(data.example) : '—'}</span>
           </div>
         </div>
@@ -474,13 +549,9 @@ export function StructuredEntityCard({
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white shrink-0">
                         {st.position ?? i + 1}
                       </span>
-                      <span className="font-bold text-slate-800 text-xs">{st.name || `步骤 ${i + 1}`}</span>
+                      <span className="font-bold text-slate-800 text-xs">{st.name || t('versionControl.diff.stepNumber', { num: i + 1 })}</span>
                     </div>
-                    {st.step_type && (
-                      <span className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                        {st.step_type}
-                      </span>
-                    )}
+                    {st.step_type && <StepTypeChip value={st.step_type} t={t} />}
                   </div>
                   {st.description && <p className="text-xs text-slate-600 leading-relaxed pl-7">{st.description}</p>}
                 </div>
@@ -494,12 +565,12 @@ export function StructuredEntityCard({
       {entityType === 'flow_step' && (
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">步骤顺序</span>
-            <span className="font-bold text-indigo-600">第 {data.position ?? 1} 步</span>
+            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.position')}</span>
+            <span className="font-bold text-indigo-600">{t('versionControl.diff.stepNumber', { num: data.position ?? 1 })}</span>
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
-            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">步骤类型</span>
-            <span className="font-semibold text-slate-700">{data.step_type || '常规步骤'}</span>
+            <span className="text-[10px] font-bold text-slate-400 block mb-0.5">{t('versionControl.diff.fields.step_type')}</span>
+            {data.step_type ? <StepTypeChip value={data.step_type} t={t} /> : <span className="font-semibold text-slate-700">{t('versionControl.diff.commonStep')}</span>}
           </div>
         </div>
       )}
@@ -548,7 +619,7 @@ export function StructuredEntityCard({
       {(() => {
         const standardKeys = new Set([
           'name', 'title', 'description', 'content', 'duties', 'status', 'scope_status',
-          'kano_category', 'kano_category_name', 'confirmation_status', 'parent_name',
+          'kano_category', 'kano_category_name', 'kano_status', 'confirmation_status', 'parent_name',
           'actors', 'actor_name', 'feature_name', 'scenario_name', 'acceptance_criteria',
           'attributes', 'steps', 'position', 'step_type', 'positive_summary', 'negative_summary',
           'reason', 'user_requirements', 'data_type', 'example', ...IGNORED_SYSTEM_KEYS,
@@ -557,7 +628,7 @@ export function StructuredEntityCard({
         if (extras.length === 0) return null;
         return (
           <div className="pt-2 border-t border-slate-100 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">其他属性</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('versionControl.diff.otherProperties')}</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
               {extras.map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
@@ -573,14 +644,66 @@ export function StructuredEntityCard({
   );
 }
 
+function StepTypeChip({ value, t }: { value: unknown; t: TFunc }) {
+  const str = String(value);
+  const key = `versionControl.diff.stepTypeValue.${str}`;
+  const label = t(key);
+  return (
+    <span className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+      {label !== key ? label : str}
+    </span>
+  );
+}
+
+interface PathSnapshot {
+  is_main?: boolean;
+  status?: string;
+  step_logical_uuids?: string[];
+  transition_logical_uuids?: string[];
+}
+
+/** 路径投影变化：展示主路径/分支路径数量与路径状态的前后对比，而非底层 UUID 序列。 */
+function PathProjectionChange({ entry, t }: { entry: DiffEntry; t: TFunc }) {
+  const before = (Array.isArray(entry.before) ? entry.before : []) as PathSnapshot[];
+  const after = (Array.isArray(entry.after) ? entry.after : []) as PathSnapshot[];
+  const mainCount = (paths: PathSnapshot[]) => paths.filter((p) => p.is_main).length;
+  const beforeMain = mainCount(before);
+  const afterMain = mainCount(after);
+  const beforeBranch = before.length - beforeMain;
+  const afterBranch = after.length - afterMain;
+
+  return (
+    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 text-xs text-indigo-900 space-y-2.5">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+        {t('versionControl.diff.entityType.path_projection')}
+      </div>
+      <p className="leading-relaxed">{t('versionControl.diff.pathProjectionNote')}</p>
+      <div className="flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-2.5 py-1.5 font-bold shadow-2xs">
+          {t('versionControl.diff.pathMainCount', { before: beforeMain, after: afterMain })}
+          {beforeMain !== afterMain && <ArrowRight className="h-3 w-3 text-indigo-400" />}
+        </span>
+        {(beforeBranch > 0 || afterBranch > 0) && (
+          <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 font-bold text-slate-700 shadow-2xs">
+            {t('versionControl.diff.pathBranchCount', { before: beforeBranch, after: afterBranch })}
+            {beforeBranch !== afterBranch && <ArrowRight className="h-3 w-3 text-slate-400" />}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Main DiffEntityDetail Component for Version Control Diff view
  */
 export function DiffEntityDetail({
   entry,
+  relatedEntries,
   onJump,
 }: {
   entry: DiffEntry;
+  relatedEntries?: DiffEntry[];
   onJump?: (entry: DiffEntry) => void;
 }) {
   const { t } = useTranslation();
@@ -594,24 +717,16 @@ export function DiffEntityDetail({
   const isBeforeObject = before !== null && typeof before === 'object';
   const isAfterObject = after !== null && typeof after === 'object';
 
-  // Compute changed keys when both before and after are objects in an entity_updated
-  const changedKeyDiffs = (() => {
-    if (!isBeforeObject || !isAfterObject) return [];
-    const b = before as Record<string, any>;
-    const a = after as Record<string, any>;
-    const allKeys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)])).filter(
-      (k) => !IGNORED_SYSTEM_KEYS.has(k)
-    );
-    const diffs: { key: string; beforeVal: any; afterVal: any }[] = [];
-    for (const key of allKeys) {
-      const bv = b[key];
-      const av = a[key];
-      if (JSON.stringify(bv) !== JSON.stringify(av)) {
-        diffs.push({ key, beforeVal: bv, afterVal: av });
-      }
-    }
-    return diffs;
-  })();
+  // 同一对象的细节条目（field/relation/order），由树侧传入，用于对象修改的聚合展示。
+  const related = (relatedEntries ?? []).filter(
+    (e) => e.entity_uuid === entry.entity_uuid
+      && e.entity_type === entry.entity_type
+      && e.change_type !== 'entity_updated'
+  );
+  const relatedFieldDiffs = related.filter((e) => e.change_type === 'field_changed');
+  const relatedRelationDiffs = related.filter((e) => e.change_type === 'relation_added' || e.change_type === 'relation_removed');
+  const relatedMoveDiffs = related.filter((e) => e.change_type === 'ordered_item_moved');
+  const relatedTotal = relatedFieldDiffs.length + relatedRelationDiffs.length + relatedMoveDiffs.length;
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
@@ -632,7 +747,7 @@ export function DiffEntityDetail({
               </span>
             </div>
             <h3 className="mt-1 text-base font-black text-slate-900 tracking-tight">
-              {entry.entity_name || entry.entity_uuid}
+              {entityDisplayName(entry, t)}
             </h3>
           </div>
         </div>
@@ -661,7 +776,7 @@ export function DiffEntityDetail({
             </div>
             <div className="flex items-center gap-1 text-indigo-600 font-bold">
               <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-1 text-[11px]">
-                {entry.relation_type || entry.path || '关联'}
+                {entry.relation_type ? formatFieldLabel(entry.relation_type, t) : t('versionControl.diff.relation', '关联')}
               </span>
               <ArrowRight className="h-4 w-4" />
             </div>
@@ -681,11 +796,11 @@ export function DiffEntityDetail({
           {entry.before_position !== undefined && entry.after_position !== undefined ? (
             <div className="flex items-center gap-3">
               <span className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 font-black text-amber-800 text-sm shadow-2xs">
-                第 #{entry.before_position} 位
+                {t('versionControl.diff.positionOrdinal', { pos: entry.before_position })}
               </span>
               <ArrowRight className="h-4 w-4 text-amber-600" />
               <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 text-sm shadow-2xs">
-                第 #{entry.after_position} 位
+                {t('versionControl.diff.positionOrdinal', { pos: entry.after_position })}
               </span>
             </div>
           ) : (
@@ -701,7 +816,7 @@ export function DiffEntityDetail({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-500">{t('versionControl.diff.fieldName', '字段')}:</span>
               <span className="rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs">
-                {formatFieldLabel(entry.field, t)} ({entry.field})
+                {formatFieldLabel(entry.field, t)}
               </span>
             </div>
           )}
@@ -741,7 +856,7 @@ export function DiffEntityDetail({
         <div className="space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
             <Sparkles className="h-4 w-4" />
-            <span>新增完整对象详情</span>
+            <span>{t('versionControl.diff.addedEntityDetail')}</span>
           </div>
           {isAfterObject ? (
             <StructuredEntityCard entityType={entry.entity_type} data={after as Record<string, any>} theme="emerald" />
@@ -758,7 +873,7 @@ export function DiffEntityDetail({
         <div className="space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700">
             <FileMinus2 className="h-4 w-4" />
-            <span>已删除对象详情快照</span>
+            <span>{t('versionControl.diff.removedEntityDetail')}</span>
           </div>
           {isBeforeObject ? (
             <StructuredEntityCard entityType={entry.entity_type} data={before as Record<string, any>} theme="rose" />
@@ -770,45 +885,73 @@ export function DiffEntityDetail({
         </div>
       )}
 
-      {/* Entity Updated with Changed Fields Breakdown */}
+      {/* Entity Updated: 聚合同一对象的字段/关系/顺序细节 */}
       {entry.change_type === 'entity_updated' && (
-        <div className="space-y-4">
-          {changedKeyDiffs.length > 0 && (
-            <div className="space-y-2.5">
-              <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>{t('versionControl.diff.changedFieldsSummary', '变更字段对比')}</span>
-                <span className="text-[11px] font-medium text-slate-400">{changedKeyDiffs.length} 项属性修改</span>
-              </div>
-              <div className="space-y-2">
-                {changedKeyDiffs.map((cd) => (
-                  <div key={cd.key} className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2">
+        entry.entity_type === 'path_projection' ? (
+          <PathProjectionChange entry={entry} t={t} />
+        ) : (
+          <div className="space-y-2.5">
+            <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <span>{t('versionControl.diff.changedFieldsSummary', '变更字段对比')}</span>
+              <span className="text-[11px] font-medium text-slate-400">{t('versionControl.diff.changedFieldCount', { count: relatedTotal })}</span>
+            </div>
+            <div className="space-y-2">
+              {relatedFieldDiffs.map((cd) => (
+                <div key={`${cd.change_type}-${cd.path}`} className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2">
+                  {cd.field && (
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-1.5">
-                      <span className="text-xs font-black text-slate-800">{formatFieldLabel(cd.key, t)}</span>
-                      <span className="text-[10px] font-mono text-slate-400">({cd.key})</span>
+                      <span className="text-xs font-black text-slate-800">{formatFieldLabel(cd.field, t)}</span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-2.5">
-                        <span className="text-[10px] font-bold uppercase text-rose-500 block mb-0.5">修改前</span>
-                        <FormattedValue field={cd.key} value={cd.beforeVal} t={t} />
-                      </div>
-                      <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-2.5">
-                        <span className="text-[10px] font-bold uppercase text-emerald-600 block mb-0.5">修改后</span>
-                        <FormattedValue field={cd.key} value={cd.afterVal} t={t} />
-                      </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-2.5">
+                      <span className="text-[10px] font-bold uppercase text-rose-500 block mb-0.5">{t('versionControl.diff.fieldBefore', '修改前')}</span>
+                      <FormattedValue field={cd.field ?? undefined} value={cd.before} t={t} />
+                    </div>
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-2.5">
+                      <span className="text-[10px] font-bold uppercase text-emerald-600 block mb-0.5">{t('versionControl.diff.fieldAfter', '修改后')}</span>
+                      <FormattedValue field={cd.field ?? undefined} value={cd.after} t={t} />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
+              ))}
 
-          {isAfterObject && (
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="text-xs font-bold text-slate-700">最新对象完整形态</div>
-              <StructuredEntityCard entityType={entry.entity_type} data={after as Record<string, any>} theme="neutral" />
+              {relatedRelationDiffs.map((rd) => (
+                <div key={`${rd.change_type}-${rd.path}-${rd.related_entity_uuid}`} className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-2xs text-xs">
+                  {rd.change_type === 'relation_added' ? (
+                    <Link2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  ) : (
+                    <Link2Off className="h-4 w-4 shrink-0 text-rose-600" />
+                  )}
+                  <span className={cn('font-bold', rd.change_type === 'relation_added' ? 'text-emerald-700' : 'text-rose-700')}>
+                    {t(changeLabelKey(rd.change_type))}
+                  </span>
+                  {rd.relation_type && <span className="text-slate-500">· {formatFieldLabel(rd.relation_type, t)}</span>}
+                  {rd.related_entity_name && <span className="ml-auto font-semibold text-slate-800 truncate">{rd.related_entity_name}</span>}
+                </div>
+              ))}
+
+              {relatedMoveDiffs.map((md) => (
+                <div key={`${md.change_type}-${md.path}`} className="flex items-center gap-2.5 rounded-2xl border border-amber-200/70 bg-amber-50/40 p-3 shadow-2xs text-xs text-amber-900">
+                  <ArrowDownUp className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span className="font-bold">{t('versionControl.diff.orderedMoved')}</span>
+                  {md.before_position !== undefined && md.after_position !== undefined && (
+                    <span className="ml-auto flex items-center gap-1.5 font-mono font-bold">
+                      #{md.before_position} <ArrowRight className="h-3 w-3" /> #{md.after_position}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+
+            {isAfterObject && (
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="text-xs font-bold text-slate-700">{t('versionControl.diff.latestEntityState')}</div>
+                <StructuredEntityCard entityType={entry.entity_type} data={after as Record<string, any>} theme="neutral" />
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* Text Blocks Diff Highlight */}

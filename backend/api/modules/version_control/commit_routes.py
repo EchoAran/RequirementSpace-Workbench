@@ -46,7 +46,7 @@ async def create_commit(
             lambda s: commit_service.create_commit(
                 db=s,
                 project_id=owned_project.id,
-                branch_ref=branch or "main",
+                branch_ref=branch,
                 req=request,
                 user_id=user.id,
             )
@@ -68,7 +68,7 @@ async def create_commit(
             sync_mrs_on_branch_commit,
         )
         branch_obj, _, _ = await session.run_sync(
-            lambda s: resolve_branch_context(s, owned_project.id, branch or "main", user.id)
+            lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
         if branch_obj and branch_obj.id:
             await session.run_sync(

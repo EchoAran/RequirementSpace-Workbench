@@ -54,6 +54,12 @@ Description: {flow_description}
 Flow Steps:
 {flow_steps}
 
+Flow Transitions:
+{flow_transitions}
+
+Applicable Business Rules:
+{flow_rules}
+
 [Data Mapping Context]
 The business objects and actors are normalized to the following SPL Type and Audience identifiers. You MUST reference these exact identifiers:
 Types Mapping: {types_mapping}
@@ -64,14 +70,15 @@ Actors Mapping: {actors_mapping}
 
 [Instructions]
 1. Generate a PascalCase English name for the worker as `worker_name` (e.g., 'MaintainDeviceArchiveFlow').
-2. Translate each flow step in order (sorted by position) into a structured step list.
+2. Translate the flow graph using the supplied transitions. Preserve every branch, merge, default path, label, condition, and semantic tag.
 3. For step types:
    - `systemAction`: The system performs an action. Map to `systemAction`.
    - `actorAction`: An actor performs an action. Map to `actorAction`.
    - `judgment`: A decision point. Map to `judgment`.
-4. If step type is `judgment`, analyze the positive and negative paths in the flow description. Represent them as nested `sub_steps` with `branch_kind: "if"` and `branch_kind: "else"`. For sequential steps, `branch_kind` should be `sequential`.
-5. Identify which normalized Type names are used as input variables (`inputs`) and output variables (`outputs`) of this worker.
-6. Write all natural-language values in the requested output language. Keep all keys and type references in English.
+4. Derive branch conditions only from the supplied transitions. Never invent a condition or flatten a branch into an arbitrary sequential order.
+5. Preserve the supplied business-rule statements and use them only where their `applies_to` links identify this flow, its steps, or its transitions.
+6. Identify which normalized Type names are used as input variables (`inputs`) and output variables (`outputs`) of this worker.
+7. Write all natural-language values in the requested output language. Keep all keys and type references in English.
 
 [Output Format]
 Your response must be a valid JSON object matching this schema:

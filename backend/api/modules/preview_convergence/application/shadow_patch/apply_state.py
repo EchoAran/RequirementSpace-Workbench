@@ -7,6 +7,8 @@ TEMP_ID_COLLECTIONS = (
     "business_objects_added",
     "flows_added",
     "flow_steps_added",
+    "flow_transitions_added",
+    "domain_rules_added",
 )
 
 

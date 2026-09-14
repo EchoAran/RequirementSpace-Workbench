@@ -54,8 +54,7 @@
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
                     "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
                     "input_business_object_ids": [<输入的业务对象1的id>, <输入的业务对象2的id>, ...(可空)], 
-                    "output_business_object_ids": [<输出的业务对象1的id>, <输出的业务对象2的id>, ...(可空)], 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)，原样输出]
+                    "output_business_object_ids": [<输出的业务对象1的id>, <输出的业务对象2的id>, ...(可空)]
                 }, 
                 {
                     "step_number": "<步骤编号：例如S-002，原样输出>", 
@@ -64,8 +63,7 @@
                     "actor_ids": [<相关参与者1的id>, <相关参与者2的id>, ...(可空)], 
                     "step_type": "<步骤类型：actorAction|systemAction|judgment>（例如用户输入即为actorAction类型）", 
                     "input_business_object_ids": [<输入的业务对象1的id>, <输入的业务对象2的id>, ...(可空)], 
-                    "output_business_object_ids": [<输出的业务对象1的id>, <输出的业务对象2的id>, ...(可空)], 
-                    "next_steps": ["<下一步走向1的编号>", "<下一步走向2的编号>", ...(可空，空表示流程结束；多个值表示该点为分岔点，存在多种可能的路径)，原样输出]
+                    "output_business_object_ids": [<输出的业务对象1的id>, <输出的业务对象2的id>, ...(可空)]
                 }, 
                 ...
             ]  
@@ -301,65 +299,42 @@
                 {
                     "step_number": "S-001",
                     "step_name": "触发软件启动",
-                    "step_description": "系统因开机自动运行配置生效或用户手动打开软件而触发启动流程。",
-                    "next_steps": [
-                        "S-002"
-                    ]
+                    "step_description": "系统因开机自动运行配置生效或用户手动打开软件而触发启动流程。"
                 },
                 {
                     "step_number": "S-002",
                     "step_name": "读取启动与默认配置",
-                    "step_description": "系统读取已保存的开机常驻配置、默认便签颜色、默认字体、默认字号、默认透明度和默认显示样式。",
-                    "next_steps": [
-                        "S-003"
-                    ]
+                    "step_description": "系统读取已保存的开机常驻配置、默认便签颜色、默认字体、默认字号、默认透明度和默认显示样式。"
                 },
                 {
                     "step_number": "S-003",
                     "step_name": "判断是否允许常驻运行",
-                    "step_description": "系统根据已保存的开机常驻配置和当前启动方式，判断软件是否需要进入常驻运行状态。",
-                    "next_steps": [
-                        "S-004",
-                        "S-008"
-                    ]
+                    "step_description": "系统根据已保存的开机常驻配置和当前启动方式，判断软件是否需要进入常驻运行状态。"
                 },
                 {
                     "step_number": "S-004",
                     "step_name": "启动软件主进程",
-                    "step_description": "系统启动桌面便签软件主进程，初始化便签管理、待办清单管理和桌面显示控制模块。",
-                    "next_steps": [
-                        "S-005"
-                    ]
+                    "step_description": "系统启动桌面便签软件主进程，初始化便签管理、待办清单管理和桌面显示控制模块。"
                 },
                 {
                     "step_number": "S-005",
                     "step_name": "加载已保存数据",
-                    "step_description": "系统加载已保存的便签内容、便签位置、颜色分类、字体样式、透明度设置、待办事项、截止时间、完成状态和置顶状态。",
-                    "next_steps": [
-                        "S-006"
-                    ]
+                    "step_description": "系统加载已保存的便签内容、便签位置、颜色分类、字体样式、透明度设置、待办事项、截止时间、完成状态和置顶状态。"
                 },
                 {
                     "step_number": "S-006",
                     "step_name": "恢复桌面显示状态",
-                    "step_description": "系统根据上次保存的显示状态，恢复便签在桌面上的位置、样式和可见状态；若上次为隐藏状态，则保持隐藏并保留恢复显示能力。",
-                    "next_steps": [
-                        "S-007"
-                    ]
+                    "step_description": "系统根据上次保存的显示状态，恢复便签在桌面上的位置、样式和可见状态；若上次为隐藏状态，则保持隐藏并保留恢复显示能力。"
                 },
                 {
                     "step_number": "S-007",
                     "step_name": "进入常驻运行状态",
-                    "step_description": "系统保持后台常驻运行，使用户可随时新建便签、编辑内容、查看待办事项、隐藏或恢复桌面便签。",
-                    "next_steps": []
+                    "step_description": "系统保持后台常驻运行，使用户可随时新建便签、编辑内容、查看待办事项、隐藏或恢复桌面便签。"
                 },
                 {
                     "step_number": "S-008",
                     "step_name": "按普通启动方式运行",
-                    "step_description": "系统不启用常驻运行能力，仅按照用户本次手动启动行为打开软件，并在用户退出后结束运行。",
-                    "next_steps": [
-                        "S-004"
-                    ]
+                    "step_description": "系统不启用常驻运行能力，仅按照用户本次手动启动行为打开软件，并在用户退出后结束运行。"
                 }
             ]
         }
@@ -445,9 +420,6 @@
                     ],
                     "output_business_object_ids": [
                         5
-                    ],
-                    "next_steps": [
-                        "S-002"
                     ]
                 },
                 {
@@ -461,9 +433,6 @@
                     ],
                     "output_business_object_ids": [
                         4
-                    ],
-                    "next_steps": [
-                        "S-003"
                     ]
                 },
                 {
@@ -478,10 +447,6 @@
                     ],
                     "output_business_object_ids": [
                         5
-                    ],
-                    "next_steps": [
-                        "S-004",
-                        "S-008"
                     ]
                 },
                 {
@@ -495,9 +460,6 @@
                     ],
                     "output_business_object_ids": [
                         5
-                    ],
-                    "next_steps": [
-                        "S-005"
                     ]
                 },
                 {
@@ -515,9 +477,6 @@
                     "output_business_object_ids": [
                         1,
                         2
-                    ],
-                    "next_steps": [
-                        "S-006"
                     ]
                 },
                 {
@@ -535,9 +494,6 @@
                     "output_business_object_ids": [
                         1,
                         3
-                    ],
-                    "next_steps": [
-                        "S-007"
                     ]
                 },
                 {
@@ -554,8 +510,7 @@
                     ],
                     "output_business_object_ids": [
                         5
-                    ],
-                    "next_steps": []
+                    ]
                 },
                 {
                     "step_number": "S-008",
@@ -569,9 +524,6 @@
                     ],
                     "output_business_object_ids": [
                         5
-                    ],
-                    "next_steps": [
-                        "S-004"
                     ]
                 }
             ]

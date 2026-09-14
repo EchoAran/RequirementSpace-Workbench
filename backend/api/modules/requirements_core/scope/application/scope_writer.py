@@ -9,29 +9,20 @@ async def load_existing_scope(
     session,
     project_id: int,
     feature_id: int,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ):
     feature_stmt = select(FeatureModel).where(
         FeatureModel.project_id == project_id,
         FeatureModel.id == feature_id,
     )
-    if workspace_id is not None:
-        feature_stmt = feature_stmt.where(
-            (FeatureModel.workspace_id == workspace_id) | (FeatureModel.workspace_id.is_(None))
-        )
+    feature_stmt = feature_stmt.where(
+        FeatureModel.workspace_id == workspace_id
+    )
     feature_result = await session.execute(feature_stmt)
     if feature_result.scalar_one_or_none() is None:
-        # Fallback without workspace constraint if feature belongs to the project
-        fallback_res = await session.execute(
-            select(FeatureModel).where(
-                FeatureModel.project_id == project_id,
-                FeatureModel.id == feature_id,
-            )
-        )
-        if fallback_res.scalar_one_or_none() is None:
-            raise ValueError("feature_not_found")
+        raise ValueError("feature_not_found")
     scope_result = await session.execute(
-        select(ScopeModel).where(ScopeModel.feature_id == feature_id)
+        select(ScopeModel).where(ScopeModel.feature_id == feature_id, ScopeModel.workspace_id == workspace_id)
     )
     return scope_result.scalar_one_or_none()
 
@@ -64,7 +55,7 @@ def upsert_scope(
     scope,
     request,
     confirmation_status: str,
-    workspace_id: int | None = None,
+    workspace_id: int,
 ):
     normalized_status = normalize_scope_status(request.status)
     if scope is None:

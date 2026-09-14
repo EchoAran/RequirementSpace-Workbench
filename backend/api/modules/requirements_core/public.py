@@ -19,6 +19,21 @@ from backend.api.modules.requirements_core.business_object.schemas import (
     BusinessObjectResponse,
     BusinessObjectUpdateRequest,
 )
+from backend.api.modules.requirements_core.domain_rule.public import (
+    DomainRuleCreateRequest,
+    DomainRuleListResponse,
+    DomainRuleModel,
+    DomainRuleResponse,
+    DomainRuleService,
+    DomainRuleUpdateRequest,
+    RuleGenerationChoiceAdapter,
+    RuleGenerationService,
+    RuleLinkCreateRequest,
+    RuleLinkModel,
+    RuleLinkPurpose,
+    RuleLinkResponse,
+    RuleOrigin,
+)
 from backend.api.modules.requirements_core.feature.application.choice_adapter import FeatureGenerationChoiceAdapter
 from backend.api.modules.requirements_core.feature.application.feature_generation_service import (
     FeatureGenerationService,
@@ -29,6 +44,10 @@ from backend.api.modules.requirements_core.flow.application.choice_adapter impor
 from backend.api.modules.requirements_core.flow.application.flow_generation_service import FlowGenerationService
 from backend.api.modules.requirements_core.flow.application.flow_service import FlowService
 from backend.api.modules.requirements_core.flow.schemas import FlowCreateRequest, FlowUpdateRequest
+from backend.api.modules.requirements_core.flow_refinement.public import (
+    FlowRefinementChoiceAdapter,
+    FlowRefinementService,
+)
 from backend.api.modules.requirements_core.ports import (
     get_notifier,
 )
@@ -81,6 +100,12 @@ __all__ = [
     "BusinessObjectResponse",
     "BusinessObjectService",
     "BusinessObjectUpdateRequest",
+    "DomainRuleCreateRequest",
+    "DomainRuleListResponse",
+    "DomainRuleModel",
+    "DomainRuleResponse",
+    "DomainRuleService",
+    "DomainRuleUpdateRequest",
     "FeatureCreateRequest",
     "FeatureGenerationChoiceAdapter",
     "FeatureGenerationService",
@@ -89,8 +114,17 @@ __all__ = [
     "FlowCreateRequest",
     "FlowGenerationChoiceAdapter",
     "FlowGenerationService",
+    "FlowRefinementChoiceAdapter",
+    "FlowRefinementService",
     "FlowService",
     "FlowUpdateRequest",
+    "RuleGenerationChoiceAdapter",
+    "RuleGenerationService",
+    "RuleLinkCreateRequest",
+    "RuleLinkModel",
+    "RuleLinkPurpose",
+    "RuleLinkResponse",
+    "RuleOrigin",
     "ScenarioGenerationChoiceAdapter",
     "ScenarioGenerationService",
     "ScenarioService",
@@ -98,4 +132,3 @@ __all__ = [
     "ScopeGenerationService",
     "get_notifier",
 ]
-

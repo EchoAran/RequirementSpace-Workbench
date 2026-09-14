@@ -20,7 +20,8 @@ class ActorGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -63,6 +64,7 @@ class ActorGenerationService:
             project_id=draft["project_id"],
             user_feedback=user_feedback,
             session=session,
+                                                    workspace_id=draft["workspace_id"],
         )
 
         draft_payload["draft_id"] = draft_id
@@ -91,7 +93,8 @@ class ActorGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -148,7 +151,7 @@ class ActorGenerationService:
         project_id: int,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         user_requirements = await self._load_user_requirements(
             project_id=project_id,
@@ -181,33 +184,14 @@ class ActorGenerationService:
     async def _load_user_requirements(
         project_id: int,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> str:
-        from backend.database.model import BranchWorkspaceModel, ProjectModel
+        from backend.database.model import BranchWorkspaceModel
 
-        async def _exec(stmt):
-            res = session.execute(stmt)
-            if hasattr(res, "__await__"):
-                return await res
-            return res
-
-        if workspace_id is not None:
-            ws_res = await _exec(select(BranchWorkspaceModel.user_requirements).where(BranchWorkspaceModel.id == workspace_id))
-            ws_reqs = ws_res.scalar_one_or_none()
-            if ws_reqs is not None:
-                return ws_reqs
-
-        project_result = await _exec(
-            select(ProjectModel).where(
-                ProjectModel.id == project_id,
-            )
-        )
-        project = project_result.scalar_one_or_none()
-
-        if project is None:
+        workspace = await session.get(BranchWorkspaceModel, workspace_id)
+        if workspace is None or workspace.project_id != project_id:
             raise ValueError("project_not_found")
-
-        return project.user_requirements
+        return workspace.user_requirements
 
     @staticmethod
     def _normalize_generated_actors(raw: dict) -> list[dict]:
@@ -238,7 +222,7 @@ class ActorGenerationService:
     async def _persist_actor_generation_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import ActorModel
 
@@ -255,9 +239,7 @@ class ActorGenerationService:
                 )
             )
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         return {
             "project_id": project_id,

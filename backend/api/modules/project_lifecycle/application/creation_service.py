@@ -532,14 +532,28 @@ class ProjectCreationService:
 
         session.add(project)
         await session.flush()
+        from backend.api.modules.version_control.public import (
+            create_initial_workspace,
+            finalize_initial_commit,
+        )
+        branch, workspace = await session.run_sync(
+            lambda sync_session: create_initial_workspace(sync_session, project)
+        )
         await self._apply_project_creation_draft_to_project(
             project=project,
             draft=draft,
             session=session,
             replace_existing=False,
+            workspace_id=workspace.id,
         )
-        from backend.api.modules.version_control.public import migrate_project_to_version_control
-        await session.run_sync(lambda s: migrate_project_to_version_control(s, project))
+        await session.run_sync(
+            lambda sync_session: finalize_initial_commit(
+                sync_session,
+                project,
+                branch,
+                workspace,
+            )
+        )
         return project
 
     async def _apply_project_creation_draft_to_existing_project(
@@ -554,12 +568,29 @@ class ProjectCreationService:
         if project is None:
             raise ValueError("project_not_found")
 
+        from sqlalchemy import select
+
+        from backend.database.model import BranchWorkspaceModel, RequirementBranchModel
+        workspace_result = await session.execute(
+            select(BranchWorkspaceModel)
+            .join(RequirementBranchModel, RequirementBranchModel.id == BranchWorkspaceModel.branch_id)
+            .where(
+                BranchWorkspaceModel.project_id == project_id,
+                RequirementBranchModel.is_default.is_(True),
+            )
+        )
+        workspace = workspace_result.scalar_one_or_none()
+        if workspace is None:
+            raise ValueError("project_workspace_not_found")
+
         await self._apply_project_creation_draft_to_project(
             project=project,
             draft=draft,
             session=session,
             replace_existing=True,
+            workspace_id=workspace.id,
         )
+        workspace.user_requirements = project.user_requirements or ""
         return project
 
     async def _apply_project_creation_draft_to_project(
@@ -568,6 +599,7 @@ class ProjectCreationService:
         draft: dict,
         session,
         replace_existing: bool,
+        workspace_id: int,
     ) -> None:
         project_preview = draft["project_preview"]
         project.name = project_preview["project_name"]
@@ -576,15 +608,17 @@ class ProjectCreationService:
         await session.flush()
 
         if replace_existing:
-            await self._clear_existing_project_graph(project.id, session)
+            await self._clear_existing_project_graph(project.id, workspace_id, session)
 
         actor_number_to_model = await self._add_draft_actors(
             project.id,
+            workspace_id,
             draft["actors"],
             session,
         )
         feature_number_to_model = await self._add_draft_features(
             project.id,
+            workspace_id,
             draft["features"],
             session,
         )
@@ -601,7 +635,11 @@ class ProjectCreationService:
         )
 
     @staticmethod
-    async def _clear_existing_project_graph(project_id: int, session) -> None:
+    async def _clear_existing_project_graph(
+        project_id: int,
+        workspace_id: int,
+        session,
+    ) -> None:
         from backend.database.model import (
             ActorModel,
             BusinessObjectModel,
@@ -612,21 +650,33 @@ class ProjectCreationService:
             ScenarioModel,
         )
 
+        await session.execute(
+            delete(PrototypePreviewModel).where(
+                PrototypePreviewModel.project_id == project_id
+            )
+        )
+        await session.execute(
+            delete(GherkinSpecModel).where(GherkinSpecModel.project_id == project_id)
+        )
         for model in (
-            PrototypePreviewModel,
             FlowModel,
             BusinessObjectModel,
             ScenarioModel,
-            GherkinSpecModel,
             FeatureModel,
             ActorModel,
         ):
-            await session.execute(delete(model).where(model.project_id == project_id))
+            await session.execute(
+                delete(model).where(
+                    model.project_id == project_id,
+                    model.workspace_id == workspace_id,
+                )
+            )
         await session.flush()
 
     @staticmethod
     async def _add_draft_actors(
         project_id: int,
+        workspace_id: int,
         actors: list[dict],
         session,
     ) -> dict:
@@ -636,6 +686,7 @@ class ProjectCreationService:
         for actor in actors:
             model = ActorModel(
                 project_id=project_id,
+                workspace_id=workspace_id,
                 name=actor["actor_name"],
                 description=actor["actor_description"],
                 confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
@@ -649,6 +700,7 @@ class ProjectCreationService:
     @staticmethod
     async def _add_draft_features(
         project_id: int,
+        workspace_id: int,
         features: list[dict],
         session,
     ) -> dict:
@@ -658,6 +710,7 @@ class ProjectCreationService:
         for feature in features:
             model = FeatureModel(
                 project_id=project_id,
+                workspace_id=workspace_id,
                 name=feature["feature_name"],
                 description=feature["feature_description"],
                 confirmation_status=ConfirmationStatus.AI_ASSUMPTION.value,
@@ -708,6 +761,7 @@ class ProjectCreationService:
 
             session.add(
                 FeatureRelationModel(
+                    workspace_id=next(iter(feature_number_to_model.values())).workspace_id,
                     parent_feature_id=feature_number_to_model[parent_number].id,
                     child_feature_id=feature_number_to_model[feature_number].id,
                     position=_get_feature_position(feature_number),

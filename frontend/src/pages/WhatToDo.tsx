@@ -23,6 +23,7 @@ import {
 } from '@/core/selectors';
 import type { ActorNode, FeatureNode } from '@/core/schema';
 import { useTranslation } from 'react-i18next';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 
 interface AcInlineEditorProps {
   initialContent: string;
@@ -372,8 +373,8 @@ export function WhatToDo() {
   const [editingScenarioContent, setEditingScenarioContent] = useState('');
   const [editingScenarioActorId, setEditingScenarioActorId] = useState<number>(0);
   const [editingAcId, setEditingAcId] = useState<number | null>(null);
-  const [collapsedScenarioIds, setCollapsedScenarioIds] = useState<Record<number, boolean>>({});
-  const [collapsedAcScenarioIds, setCollapsedAcScenarioIds] = useState<Record<number, boolean>>({});
+  const [collapsedScenarioIds, setCollapsedScenarioIds] = useLocalStorageState<Record<number, boolean>>(`what-collapsed-scenarios-${ir?.projectId ?? ''}`, {});
+  const [collapsedAcScenarioIds, setCollapsedAcScenarioIds] = useLocalStorageState<Record<number, boolean>>(`what-collapsed-ac-scenarios-${ir?.projectId ?? ''}`, {});
 
   const toggleCap = (e: MouseEvent, id: string) => {
     e.stopPropagation();
@@ -424,8 +425,7 @@ export function WhatToDo() {
           setScenarioManagerFeature({ featureId: targetId });
         } else {
           // Open right drawer
-          const childNode = ir?.capabilitiesCompatible?.find((c: any) => c.featureId === targetId || c.id === featIdStr);
-          setSelectedObject(childNode || featObj);
+          setSelectedObject(featObj);
         }
       }
     }
@@ -837,7 +837,7 @@ export function WhatToDo() {
               {/* Roles Section (RE-ENABLED) */}
               <GlassSurface className="p-6">
                 <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-200/50">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                     {t('what.actors.title')}
                     <button
                       onClick={() => setIsAddActorModalOpen(true)}
@@ -874,14 +874,14 @@ export function WhatToDo() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {actors.map((actor: ActorNode) => {
-                      const actorTitle = actor.title || actor.actorName;
+                      const actorTitle = actor.actorName;
                       const actorStatus = actor.status || 'needs_confirmation';
 
                       return (
                       <InteractiveCard
-                        key={actor.id}
+                        key={actor.actorId}
                         id={`actor-${actor.actorId}`}
-                        selected={selectedObject?.id === actor.id}
+                        selected={selectedObject?.kind === 'actor' && selectedObject.actorId === actor.actorId}
                         onClick={() => setSelectedObject(actor)}
                         className="flex flex-col gap-3"
                       >
@@ -891,7 +891,7 @@ export function WhatToDo() {
                               {actorTitle.charAt(0)}
                             </div>
                             <div>
-                              <h4 className="font-bold text-slate-800 text-sm tracking-tight">{actorTitle}</h4>
+                              <h4 className="font-bold text-slate-900 text-sm tracking-tight">{actorTitle}</h4>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -913,8 +913,8 @@ export function WhatToDo() {
                             <StatusBadge status={actorStatus} className="scale-90 origin-right" />
                           </div>
                         </div>
-                        <div className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                          {actor.description || t('what.actors.noDesc')}
+                        <div className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                          {actor.actorDescription || t('what.actors.noDesc')}
                         </div>
                       </InteractiveCard>
                     )})}
@@ -925,7 +925,7 @@ export function WhatToDo() {
               {/* Tree Section */}
               <GlassSurface className="p-6">
                 <div className="flex justify-between items-center px-1 mb-4 pb-3 border-b border-slate-200/50">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                     {t('what.features.title')}
                     <button
                       onClick={() => {
@@ -943,7 +943,7 @@ export function WhatToDo() {
                       <button
                         onClick={() => void generateFeatures()}
                         disabled={isGenerating || isLoading}
-                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
                         {rootCapabilities.length > 0 ? t('what.features.regenerateBtn') : t('what.features.generateBtn')}
@@ -951,7 +951,7 @@ export function WhatToDo() {
                       <button
                         onClick={() => setIsScenarioModalOpen(true)}
                         disabled={isGenerating || isLoading}
-                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-100/80 transition-colors shadow-sm disabled:opacity-50"
+                        className="flex items-center gap-1.5 text-[10px] bg-indigo-50/80 hover:bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1.5 rounded-xl border border-indigo-200/60 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
                         title={t('what.features.scenarioGenerateBtn')}
                       >
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
@@ -970,7 +970,7 @@ export function WhatToDo() {
                     }`}
                   >
                     <div className="min-w-0">
-                      <h4 className="font-extrabold text-base text-slate-900 tracking-wide flex items-center gap-2">
+                      <h4 className="font-bold text-base text-slate-900 tracking-tight flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
                         {ir?.projectName || t('what.features.defaultRootName')}
                       </h4>
@@ -984,7 +984,7 @@ export function WhatToDo() {
                           setIsParentFixed(true);
                           setIsAddFeatureModalOpen(true);
                         }}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-md transition-all shadow-sm"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all shadow-2xs cursor-pointer"
                         title={t('what.features.addRootBtn')}
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -1885,7 +1885,7 @@ export function WhatToDo() {
         isWorking={isGenerating || isLoading}
         onDiscard={() => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) discardRepairDraft(dId);
           } else {
             discardDraft();
@@ -1893,7 +1893,7 @@ export function WhatToDo() {
         }}
         onRegenerate={(feedback) => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) regenerateRepairDraft(dId);
             return;
           }
@@ -1905,7 +1905,7 @@ export function WhatToDo() {
         }}
         onConfirm={async () => {
           if (activeDraftType === 'repair') {
-            const dId = activeDraft?.draftId || activeDraft?.draft_id;
+            const dId = activeDraft?.draftId;
             if (dId) await confirmRepairDraft(dId);
             return;
           }
@@ -1923,8 +1923,8 @@ export function WhatToDo() {
         isWorking={isGeneratingChoices || isLoading}
         isGeneratingChoices={isGeneratingChoices}
         generationProgress={choiceGroupGenerationProgress}
-        onAccept={async (choiceId) => {
-          await acceptChoice(choiceId);
+        onAccept={async (choiceId, expectedVersion) => {
+          await acceptChoice(choiceId, false, expectedVersion);
         }}
         onDiscard={async () => {
           if (activeChoiceGroup) {

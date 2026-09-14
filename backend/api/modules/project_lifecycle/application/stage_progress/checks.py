@@ -314,7 +314,7 @@ def stage_analysis_status(latest_job, running):
         }
     started_at = (
         latest_job.created_at.isoformat()
-        if getattr(latest_job, "created_at", None)
+        if latest_job.created_at
         else None
     )
     if running:

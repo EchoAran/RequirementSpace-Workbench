@@ -80,58 +80,32 @@ class SplSemanticExportSkill:
     def export(self, payload: SplExportInputDict) -> SplExportOutputDict:
         ir = SplSemanticIR(payload)
 
-        # If LLM handler is not provided, fall back to pure placeholder shell and warn
         if not self._ask_json:
-            ir.warnings.append(SplExportWarningIR(
-                code="llm_unavailable",
-                message="LLM client handler is not available. Using syntax-shell default rendering.",
-                source=WarningSourceIR(kind="project", id=ir.project_id)
-            ))
-            return self._fallback_export(payload, ir)
+            raise ValueError("spl_semantic_llm_unavailable")
 
-        try:
-            # Run the asynchronous compiling pipeline using run_async
-            run_async(self._export_async(payload, ir))
-
-            # Run validators and Coverage review
-            val_report = self._validator.validate(ir)
-
-            # Stage 4: Coverage review using LLM
-            run_async(self._run_llm_coverage_review_async(payload, ir, val_report))
-
-            # Render final SPL document
-            spl_text = self._renderer.render(ir)
-
-            # Quality grade determination
-            has_major_warnings = any(
-                w.code in (
-                    "missing_type_ref",
-                    "unmapped_flow",
-                    "uncovered_feature",
-                    "judgment_branch_unresolved",
-                    "duplicate_semantic_identifier",
-                    "uncovered_acceptance_criterion"
-                )
-                for w in ir.warnings
+        run_async(self._export_async(payload, ir))
+        val_report = self._validator.validate(ir)
+        run_async(self._run_llm_coverage_review_async(payload, ir, val_report))
+        spl_text = self._renderer.render(ir)
+        has_major_warnings = any(
+            w.code in (
+                "missing_type_ref",
+                "unmapped_flow",
+                "uncovered_feature",
+                "judgment_branch_unresolved",
+                "duplicate_semantic_identifier",
+                "uncovered_acceptance_criterion"
             )
-            quality = "semantic_with_warnings" if (has_major_warnings or not val_report.get("coverage_passed", False)) else "semantic_verified"
-
-            return {
-                "spl_text": spl_text,
-                "quality": quality,
-                "warnings": [w.to_dict() for w in ir.warnings],
-                "trace_links": [t.to_dict() for t in ir.trace_links],
-                "coverage_report": val_report
-            }
-
-        except Exception as exc:
-            logger.exception(f"Semantic compiler encountered critical error: {exc}")
-            ir.warnings.append(SplExportWarningIR(
-                code="semantic_compiler_error",
-                message=f"Semantic compilation failed due to: {exc}. Falling back to syntax shell.",
-                source=WarningSourceIR(kind="project", id=ir.project_id)
-            ))
-            return self._fallback_export(payload, ir)
+            for w in ir.warnings
+        )
+        quality = "semantic_with_warnings" if (has_major_warnings or not val_report.get("coverage_passed", False)) else "semantic_verified"
+        return {
+            "spl_text": spl_text,
+            "quality": quality,
+            "warnings": [w.to_dict() for w in ir.warnings],
+            "trace_links": [t.to_dict() for t in ir.trace_links],
+            "coverage_report": val_report
+        }
 
     async def _export_async(self, payload: SplExportInputDict, ir: SplSemanticIR) -> None:
         # Read concurrency limit from environment variables (default 5)
@@ -198,63 +172,31 @@ class SplSemanticExportSkill:
             output_language=_output_language(ir.raw),
         )
 
-        try:
-            res = await ask_fn(prompt)
-            type_name = res.get("type_name", f"BusinessObject_{bo_id}")
+        res = await ask_fn(prompt)
+        if not isinstance(res, dict) or not res.get("type_name") or not isinstance(res.get("fields"), list):
+            raise ValueError("spl_semantic_invalid_type_output")
+        type_name = re.sub(r'[^a-zA-Z0-9]', '', res["type_name"])
+        if not type_name:
+            raise ValueError("spl_semantic_invalid_type_identifier")
 
-            # Sanitize PascalCase name
-            type_name = re.sub(r'[^a-zA-Z0-9]', '', type_name)
-            if not type_name:
-                type_name = f"BusinessObject_{bo_id}"
-
-            fields_ir = []
-            for f in res.get("fields", []):
-                f_name = f.get("normalized_name", "")
-                f_name = re.sub(r'[^a-zA-Z0-9_]', '', f_name)
-                if not f_name:
-                    continue
-
-                fields_ir.append(TypeFieldIR(
-                    name=f_name,
-                    spl_type=f.get("spl_type", "text"),
-                    description=f.get("description", ""),
-                    example=f.get("example", ""),
-                    enum_candidates=f.get("enum_candidates", []) if f.get("is_enum") else []
-                ))
-
-            type_ir = TypeIR(type_name=type_name, source_bo_id=bo_id, fields=fields_ir)
-            ir.types[str(bo_id)] = type_ir
-            ir.bo_id_to_type_name[str(bo_id)] = type_name
-            ir.semantic_identifier_map[f"business_object:{bo_id}"] = type_name
-            ir.trace_links.append(TraceLinkIR(spl_ref=type_name, source_kind="business_object", source_id=str(bo_id)))
-
-        except Exception as e:
-            logger.warning(f"Failed to normalize Business Object {bo_id} via LLM, falling back: {e}")
-            safe_type_name = f"BusinessObject_{bo_id}"
-            fields_ir = []
-            for attr in bo.get("business_object_attributes", []):
-                attr_name = attr.get("business_object_attribute_name", "")
-                safe_attr_name = re.sub(r'[^a-zA-Z0-9_]', '', attr_name) or f"field_{attr.get('business_object_attribute_id')}"
-                fields_ir.append(TypeFieldIR(
-                    name=safe_attr_name,
-                    spl_type="text",
-                    description=attr.get("business_object_attribute_description", ""),
-                    example=attr.get("business_object_attribute_example", "")
-                ))
-            type_ir = TypeIR(type_name=safe_type_name, source_bo_id=bo_id, fields=fields_ir)
-            ir.types[str(bo_id)] = type_ir
-            ir.bo_id_to_type_name[str(bo_id)] = safe_type_name
-            ir.semantic_identifier_map[f"business_object:{bo_id}"] = safe_type_name
-            ir.trace_links.append(TraceLinkIR(spl_ref=safe_type_name, source_kind="business_object", source_id=str(bo_id)))
-            ir.warnings.append(SplExportWarningIR(
-                code="type_normalization_fallback",
-                message=_localized(
-                    ir.raw,
-                    f"业务对象 BO_{bo_id} '{bo_name}' 语义类型转换失败，降级为普通属性映射。",
-                    f"Business object BO_{bo_id} '{bo_name}' could not be normalized and was mapped as plain attributes.",
-                ),
-                source=WarningSourceIR(kind="business_object", id=str(bo_id))
+        fields_ir = []
+        for field in res["fields"]:
+            field_name = re.sub(r'[^a-zA-Z0-9_]', '', field.get("normalized_name", ""))
+            if not field_name or not field.get("spl_type"):
+                raise ValueError("spl_semantic_invalid_type_field")
+            fields_ir.append(TypeFieldIR(
+                name=field_name,
+                spl_type=field["spl_type"],
+                description=field.get("description", ""),
+                example=field.get("example", ""),
+                enum_candidates=field.get("enum_candidates", []) if field.get("is_enum") else []
             ))
+
+        type_ir = TypeIR(type_name=type_name, source_bo_id=bo_id, fields=fields_ir)
+        ir.types[str(bo_id)] = type_ir
+        ir.bo_id_to_type_name[str(bo_id)] = type_name
+        ir.semantic_identifier_map[f"business_object:{bo_id}"] = type_name
+        ir.trace_links.append(TraceLinkIR(spl_ref=type_name, source_kind="business_object", source_id=str(bo_id)))
 
     async def _convert_flows_async(self, payload: SplExportInputDict, ir: SplSemanticIR, ask_fn: Callable[[str], Any]) -> None:
         actors_mapping = {}
@@ -267,6 +209,7 @@ class SplSemanticExportSkill:
 
         ir.concepts["ProjectDescription"] = ir.project_desc
         ir.concepts["UserRequirements"] = ir.user_reqs
+        self._register_domain_rules(payload, ir)
 
         # Map Constraints (Scope statuses)
         for feat in payload.get("features", []):
@@ -294,30 +237,19 @@ class SplSemanticExportSkill:
 
     async def _convert_single_flow(self, flow: dict, actors_mapping: dict, ir: SplSemanticIR, ask_fn: Callable[[str], Any]) -> None:
         flow_id = flow.get("flow_id")
-        flow_name = flow.get("flow_name", "")
         flow_desc = flow.get("flow_description", "")
         covered_features = flow.get("feature_ids", [])
         prompt = self._build_flow_worker_prompt(flow, actors_mapping, ir)
 
-        try:
-            res = await ask_fn(prompt)
-            worker = self._build_worker_from_response(
-                flow_id,
-                flow_desc,
-                covered_features,
-                res,
-            )
-            self._register_flow_worker(ir, flow_id, worker)
-        except Exception as e:
-            logger.warning(f"Failed to map Flow {flow_id} via LLM, falling back: {e}")
-            worker = self._build_fallback_worker(
-                flow,
-                flow_id,
-                flow_desc,
-                covered_features,
-            )
-            self._register_flow_worker(ir, flow_id, worker)
-            self._append_flow_fallback_warning(ir, flow_id, flow_name)
+        res = await ask_fn(prompt)
+        worker = self._build_worker_from_response(
+            flow_id,
+            flow_desc,
+            covered_features,
+            res,
+        )
+        self._register_flow_worker(ir, flow_id, worker)
+        self._register_flow_transition_traces(flow, ir)
 
     @staticmethod
     def _build_flow_worker_prompt(flow: dict, actors_mapping: dict, ir: SplSemanticIR) -> str:
@@ -330,14 +262,113 @@ class SplSemanticExportSkill:
                 f"Step {step.get('position')}: {step.get('step_name')} (desc: {step.get('step_description')}, "
                 f"type: {step.get('step_type')}, actors: {actor_names}, inputs: {input_names}, outputs: {output_names})"
             )
+        transitions = []
+        if len(flow.get("flow_steps", [])) > 1 and not flow.get("transitions", []):
+            raise ValueError("spl_export_flow_transitions_missing")
+        outgoing_counts: dict[int, int] = {}
+        for transition in flow.get("transitions", []):
+            source_id = transition.get("source_step_id")
+            outgoing_counts[source_id] = outgoing_counts.get(source_id, 0) + 1
+        for transition in sorted(
+            flow.get("transitions", []),
+            key=lambda value: (
+                value.get("source_step_id"),
+                value.get("position", 0),
+                value.get("target_step_id"),
+            ),
+        ):
+            label = transition.get("label", "")
+            condition = transition.get("condition_text", "")
+            is_default = bool(transition.get("is_default"))
+            if outgoing_counts.get(transition.get("source_step_id"), 0) > 1 and not (
+                label or condition or is_default
+            ):
+                raise ValueError(
+                    "spl_export_transition_semantics_missing:"
+                    f"{transition.get('transition_id')}"
+                )
+            transitions.append(
+                f"Transition {transition.get('transition_id')}: "
+                f"{transition.get('source_step_id')} -> {transition.get('target_step_id')}; "
+                f"label={label}; condition={condition}; default={is_default}; "
+                f"tags={transition.get('semantic_tags', [])}"
+            )
+        target_uuids = {
+            value
+            for value in [flow.get("logical_uuid")]
+            if value
+        }
+        target_uuids.update(
+            step.get("logical_uuid")
+            for step in flow.get("flow_steps", [])
+            if step.get("logical_uuid")
+        )
+        target_uuids.update(
+            transition.get("logical_uuid")
+            for transition in flow.get("transitions", [])
+            if transition.get("logical_uuid")
+        )
+        linked_rule_ids = {
+            link.get("rule_id")
+            for link in ir.raw.get("rule_links", [])
+            if link.get("link_purpose") == "applies_to"
+            and link.get("target_logical_uuid") in target_uuids
+        }
+        flow_rules = [
+            f"BusinessRule_{rule.get('rule_id') or rule.get('id')}: {rule.get('statement')}"
+            for rule in ir.raw.get("domain_rules", [])
+            if (rule.get("rule_id") or rule.get("id")) in linked_rule_ids
+        ]
         return FLOW_TO_WORKER_PROMPT.format(
             flow_name=flow.get("flow_name", ""),
             flow_description=flow.get("flow_description", ""),
             flow_steps="\n".join(steps),
+            flow_transitions="\n".join(transitions),
+            flow_rules="\n".join(flow_rules),
             types_mapping=ir.bo_id_to_type_name,
             actors_mapping=actors_mapping,
             output_language=_output_language(ir.raw),
         )
+
+    @staticmethod
+    def _register_domain_rules(payload: SplExportInputDict, ir: SplSemanticIR) -> None:
+        rules = payload.get("domain_rules", [])
+        links = payload.get("rule_links", [])
+        for rule in rules:
+            rule_id = rule.get("rule_id") or rule.get("id")
+            statement = rule.get("statement")
+            if rule_id is None or not statement:
+                raise ValueError("spl_export_invalid_domain_rule")
+            ir.constraints.append(f"BusinessRule_{rule_id}: {statement}")
+            ir.trace_links.append(TraceLinkIR(
+                spl_ref=f"BusinessRule_{rule_id}",
+                source_kind="domain_rule",
+                source_id=str(rule_id),
+            ))
+        for link in links:
+            purpose = link.get("link_purpose")
+            target_kind = link.get("target_kind")
+            target_uuid = link.get("target_logical_uuid")
+            if purpose not in {"source", "applies_to"} or not target_kind or not target_uuid:
+                raise ValueError("spl_export_invalid_rule_link")
+            ir.trace_links.append(TraceLinkIR(
+                spl_ref=(
+                    f"BusinessRule_{link.get('rule_id')}->"
+                    f"{target_kind}:{target_uuid}"
+                ),
+                source_kind="rule_link",
+                source_id=str(link.get("logical_uuid") or link.get("id")),
+            ))
+
+    @staticmethod
+    def _register_flow_transition_traces(flow: dict, ir: SplSemanticIR) -> None:
+        for transition in flow.get("transitions", []):
+            transition_id = transition.get("transition_id")
+            ir.trace_links.append(TraceLinkIR(
+                spl_ref=f"FlowTransition_{transition_id}",
+                source_kind="flow_transition",
+                source_id=str(transition.get("logical_uuid") or transition_id),
+            ))
 
     @staticmethod
     def _parse_worker_step(step: dict) -> WorkerStepIR:
@@ -357,11 +388,17 @@ class SplSemanticExportSkill:
 
     @classmethod
     def _build_worker_from_response(cls, flow_id, flow_desc, covered_features, response) -> WorkerIR:
+        if not isinstance(response, dict) or not response.get("worker_name"):
+            raise ValueError("spl_semantic_invalid_worker_output")
+        if not isinstance(response.get("main_flow_steps"), list):
+            raise ValueError("spl_semantic_invalid_worker_steps")
         worker_name = re.sub(
             r"[^a-zA-Z0-9]",
             "",
-            response.get("worker_name", f"Flow_{flow_id}"),
-        ) or f"Flow_{flow_id}"
+            response["worker_name"],
+        )
+        if not worker_name:
+            raise ValueError("spl_semantic_invalid_worker_identifier")
         return WorkerIR(
             worker_id=flow_id,
             worker_name=worker_name,
@@ -378,26 +415,6 @@ class SplSemanticExportSkill:
         )
 
     @staticmethod
-    def _build_fallback_worker(flow, flow_id, flow_desc, covered_features) -> WorkerIR:
-        steps = []
-        for step in sorted(flow.get("flow_steps", []), key=lambda s: s.get("position", 0)):
-            suffix = " (judgment)" if step.get("step_type", "systemAction") == "judgment" else ""
-            steps.append(WorkerStepIR(
-                source_step_id=step.get("step_id"),
-                step_type="systemAction",
-                command_text=f"SystemAction: {step.get('step_name')}{suffix} ({step.get('step_description')})",
-                branch_kind="sequential",
-            ))
-        return WorkerIR(
-            worker_id=flow_id,
-            worker_name=f"Worker_Flow_{flow_id}",
-            description=flow_desc,
-            source_flow_id=flow_id,
-            covered_feature_ids=covered_features,
-            main_flow=steps,
-        )
-
-    @staticmethod
     def _register_flow_worker(ir, flow_id, worker) -> None:
         ir.workers[str(flow_id)] = worker
         ir.semantic_identifier_map[f"flow:{flow_id}"] = worker.worker_name
@@ -405,18 +422,6 @@ class SplSemanticExportSkill:
             spl_ref=worker.worker_name,
             source_kind="flow",
             source_id=str(flow_id),
-        ))
-
-    @staticmethod
-    def _append_flow_fallback_warning(ir, flow_id, flow_name) -> None:
-        ir.warnings.append(SplExportWarningIR(
-            code="flow_worker_fallback",
-            message=_localized(
-                ir.raw,
-                f"业务流 Flow_{flow_id} '{flow_name}' 语义 Worker 转换失败，降级为普通顺序结构。",
-                f"Flow Flow_{flow_id} '{flow_name}' could not be converted to a semantic worker and was reduced to a sequential structure.",
-            ),
-            source=WarningSourceIR(kind="flow", id=str(flow_id)),
         ))
 
     async def _extract_scenarios_async(self, payload: SplExportInputDict, ir: SplSemanticIR, ask_fn: Callable[[str], Any]) -> None:
@@ -470,7 +475,6 @@ class SplSemanticExportSkill:
         ask_fn: Callable[[str], Any],
         output_language: str,
     ) -> list[ScenarioIR]:
-        feat_id = feat.get("feature_id")
         scenarios = feat.get("scenarios", [])
         if not scenarios:
             return []
@@ -494,37 +498,23 @@ class SplSemanticExportSkill:
             output_language=output_language,
         )
 
-        try:
-            res = await ask_fn(prompt)
-            parsed_scens = []
-            for s in res.get("scenarios", []):
-                scen_ir = ScenarioIR(
-                    source_scenario_id=s.get("source_scenario_id"),
-                    source_acceptance_criterion_ids=s.get("source_acceptance_criterion_ids", []),
-                    scenario_name=s.get("scenario_name", "Scenario"),
-                    flow_type=s.get("flow_type", "normal"),
-                    given=s.get("given", []),
-                    when=s.get("when", []),
-                    then=s.get("then", [])
-                )
-                parsed_scens.append(scen_ir)
-            return parsed_scens
-        except Exception as e:
-            logger.warning(f"Failed to parse scenarios for Feature {feat_id} via LLM, falling back: {e}")
-            fallback_scens = []
-            for s in scenarios:
-                given = [s.get("scenario_content", "")]
-                ac_ids = [ac.get("criterion_id") for ac in s.get("acceptance_criteria", [])]
-                then_steps = [ac.get("criterion_content", "") for ac in s.get("acceptance_criteria", [])]
-                fallback_scens.append(ScenarioIR(
-                    source_scenario_id=s.get("scenario_id"),
-                    source_acceptance_criterion_ids=ac_ids,
-                    scenario_name=s.get("scenario_name", ""),
-                    given=given,
-                    when=["Perform the related action" if output_language == "en-US" else "执行相关操作"],
-                    then=then_steps
-                ))
-            return fallback_scens
+        res = await ask_fn(prompt)
+        if not isinstance(res, dict) or not isinstance(res.get("scenarios"), list):
+            raise ValueError("spl_semantic_invalid_scenario_output")
+        parsed_scenarios = []
+        for scenario in res["scenarios"]:
+            if not scenario.get("source_scenario_id") or not scenario.get("scenario_name"):
+                raise ValueError("spl_semantic_invalid_scenario")
+            parsed_scenarios.append(ScenarioIR(
+                source_scenario_id=scenario["source_scenario_id"],
+                source_acceptance_criterion_ids=scenario.get("source_acceptance_criterion_ids", []),
+                scenario_name=scenario["scenario_name"],
+                flow_type=scenario.get("flow_type", "normal"),
+                given=scenario.get("given", []),
+                when=scenario.get("when", []),
+                then=scenario.get("then", [])
+            ))
+        return parsed_scenarios
 
     def _find_feature_id_for_scenario(self, payload: SplExportInputDict, scenario_id: int) -> int | None:
         for feat in payload.get("features", []):
@@ -550,51 +540,24 @@ class SplSemanticExportSkill:
             output_language=_output_language(payload),
         )
 
-        try:
-            res = await asyncio.wait_for(
-                asyncio.to_thread(self._ask_json, prompt),
-                timeout=20.0
-            )
-            for risk in res.get("semantic_risks", []):
-                ir.warnings.append(SplExportWarningIR(
-                    code="llm_coverage_warning",
-                    message=_localized(
-                        payload,
-                        f"大模型审查指出设计风险: {risk}",
-                        f"The LLM review identified a design risk: {risk}",
-                    ),
-                    source=WarningSourceIR(kind="project", id=ir.project_id)
-                ))
-                val_report["semantic_risks"].append(_localized(
+        res = await asyncio.wait_for(
+            asyncio.to_thread(self._ask_json, prompt),
+            timeout=20.0
+        )
+        for risk in res.get("semantic_risks", []):
+            ir.warnings.append(SplExportWarningIR(
+                code="llm_coverage_warning",
+                message=_localized(
                     payload,
-                    f"大模型审查: {risk}",
-                    f"LLM review: {risk}",
-                ))
-            if not res.get("coverage_passed", True):
-                val_report["coverage_passed"] = False
-        except Exception as e:
-            logger.warning(f"LLM Coverage Review step failed: {e}")
-
-    def _fallback_export(self, payload: SplExportInputDict, ir: SplSemanticIR) -> SplExportOutputDict:
-        from spl_syntax_export_skill.renderer import SplSyntaxRenderer
-        renderer = SplSyntaxRenderer()
-        spl_text, warnings, trace_links = renderer.render(payload)
-
-        return {
-            "spl_text": spl_text,
-            "quality": "semantic_with_warnings",
-            "warnings": [w.to_dict() for w in ir.warnings] + warnings,
-            "trace_links": trace_links,
-            "coverage_report": {
-                "coverage_passed": False,
-                "covered_current_feature_ids": [],
-                "missing_current_feature_ids": [],
-                "unmapped_flow_ids": [],
-                "unmapped_acceptance_criterion_ids": [],
-                "semantic_risks": [_localized(
-                    payload,
-                    "因为编译异常降级为语法壳导出",
-                    "The export fell back to a syntax shell because semantic compilation failed.",
-                )]
-            }
-        }
+                    f"大模型审查指出设计风险: {risk}",
+                    f"The LLM review identified a design risk: {risk}",
+                ),
+                source=WarningSourceIR(kind="project", id=ir.project_id)
+            ))
+            val_report["semantic_risks"].append(_localized(
+                payload,
+                f"大模型审查: {risk}",
+                f"LLM review: {risk}",
+            ))
+        if not res.get("coverage_passed", True):
+            val_report["coverage_passed"] = False

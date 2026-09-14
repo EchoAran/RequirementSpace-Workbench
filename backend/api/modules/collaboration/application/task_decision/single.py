@@ -79,11 +79,21 @@ async def decide_single_task(
     snapshot_service,
     now,
 ):
-    snapshot = await snapshot_service.get_snapshot_and_hash(
-        session,
-        task.target_type,
-        int(task.target_id),
-    )
+    try:
+        snapshot = await snapshot_service.get_snapshot_and_hash(
+            session,
+            task.target_type,
+            int(task.target_id),
+        )
+    except ValueError:
+        await _supersede_changed_single_task(
+            session,
+            task,
+            project_id,
+            note,
+            audit_service,
+            now,
+        )
     node = snapshot["node"]
     if snapshot["hash"] != task.content_hash:
         await _supersede_changed_single_task(

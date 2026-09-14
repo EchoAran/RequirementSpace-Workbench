@@ -13,7 +13,7 @@ Business objects:
 
 # Rules
 - Return one JSON object only, without Markdown or commentary.
-- Preserve every flow name, step number, and `next_steps` value exactly.
+- Preserve every flow name and step number exactly.
 - Reference only business-object numbers supplied in the input.
 - Use empty arrays when a step has no business-object input or output.
 
@@ -24,8 +24,7 @@ Business objects:
     "flow_steps": [{
       "step_number": "S-001",
       "input_business_object_numbers": [],
-      "output_business_object_numbers": ["B-001"],
-      "next_steps": ["S-002"]
+      "output_business_object_numbers": ["B-001"]
     }]
   }]
 }

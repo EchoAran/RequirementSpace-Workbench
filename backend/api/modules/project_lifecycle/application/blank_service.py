@@ -62,9 +62,9 @@ class BlankProjectService:
                 owner_user_id=owner_user_id,
             )
 
-        # Initialize version control baseline, protected main branch, and workspace
-        from backend.api.modules.version_control.public import migrate_project_to_version_control
-        await session.run_sync(lambda s: migrate_project_to_version_control(s, project))
+        # The project is still empty here, so version control starts directly on the current schema.
+        from backend.api.modules.version_control.public import initialize_project_version_control
+        await session.run_sync(lambda s: initialize_project_version_control(s, project))
 
         # Commit before returning so the follow-up GET /projects/{id}
         # in the frontend can always observe the newly created project.

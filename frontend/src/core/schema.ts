@@ -16,7 +16,42 @@ export type NodeKind =
   | 'state_machine'
   | 'screen'
   | 'goal'
-  | 'capability';
+  | 'capability'
+  | 'domain_rule'
+  | 'rule_link';
+
+export type RuleOrigin = 'manual' | 'ai_generated' | 'flow_refinement';
+export type RuleLinkPurpose = 'source' | 'applies_to';
+
+export interface RuleLink {
+  id: number;
+  logicalUuid: string;
+  projectId: number;
+  workspaceId?: number | null;
+  ruleId: number;
+  targetKind: string;
+  targetLogicalUuid: string;
+  linkPurpose: RuleLinkPurpose;
+  contextText: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DomainRule {
+  id: number;
+  logicalUuid: string;
+  projectId: number;
+  workspaceId?: number | null;
+  parentRuleId?: number | null;
+  title: string;
+  statement: string;
+  origin: RuleOrigin;
+  confirmationStatus: string;
+  links: RuleLink[];
+  childRuleIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type ScopeStatus = 'current' | 'postponed' | 'exclude';
 
@@ -29,7 +64,8 @@ type PerceptionKindType =
   | '场景结点'
   | '成功标准结点'
   | '流程主结点'
-  | '流程步骤结点';
+  | '流程步骤结点'
+  | '业务规则结点';
 
 // 角色结点
 export interface ActorNode {
@@ -172,7 +208,6 @@ export interface FlowStepNode {
   actorIds: number[];
   inputBusinessObjectIds: number[];
   outputBusinessObjectIds: number[];
-  nextStepIds: number[];
   confirmationStatus?: NodeStatus;
   
   // Compatibility properties for legacy components
@@ -184,6 +219,24 @@ export interface FlowStepNode {
   logicalUuid?: string;
 }
 
+// 流程语义化转移边
+export interface FlowTransition {
+  id?: number;
+  transitionId?: number;
+  flowId?: number;
+  sourceStepId: number;
+  targetStepId: number;
+  conditionText?: string;
+  label?: string;
+  isDefault?: boolean;
+  position?: number;
+  semanticTags?: string[];
+  ruleIds?: number[];
+  logicalUuid?: string;
+  confirmationStatus?: NodeStatus;
+  status?: NodeStatus;
+}
+
 // 流程主结点
 export interface FlowNode {
   kind: 'flow';
@@ -193,6 +246,7 @@ export interface FlowNode {
   confirmationStatus?: NodeStatus;
   featureIds: number[];
   flowSteps: FlowStepNode[];
+  transitions?: FlowTransition[];
 
   // Compatibility properties for legacy components
   id?: string;
@@ -201,6 +255,52 @@ export interface FlowNode {
   status?: NodeStatus;
   updatedAt?: string;
   logicalUuid?: string;
+}
+
+// 路径投影项
+export interface PathProjectionItem {
+  pathId: string;
+  name: string;
+  isMain: boolean;
+  status: 'valid' | 'cycle' | 'ambiguous' | 'truncated';
+  stepIds: number[];
+  stepLogicalUuids: string[];
+  transitionIds: number[];
+  transitionLogicalUuids: string[];
+  summary: string;
+}
+
+export interface PathProjectionResponse {
+  flowId: number;
+  paths: PathProjectionItem[];
+}
+
+// 业务对象使用投影项
+export interface ObjectUsageAttributeItem {
+  id: number;
+  name: string;
+  dataType: string;
+  description: string;
+  example: string;
+}
+
+export interface ObjectUsageProjectionItem {
+  businessObjectId: number;
+  logicalUuid: string;
+  name: string;
+  description: string;
+  confirmationStatus: NodeStatus;
+  attributes: ObjectUsageAttributeItem[];
+  usedByStepIds: number[];
+  inputAtStepIds: number[];
+  outputAtStepIds: number[];
+  otherFlowsCount: number;
+  otherFlowNames: string[];
+}
+
+export interface FlowObjectUsageResponse {
+  flowId: number;
+  objects: ObjectUsageProjectionItem[];
 }
 
 export type Stage = 'what' | 'how' | 'scope';
@@ -230,7 +330,6 @@ export interface PerceptionSlot {
   };
 
   // 兼容老版本的字段，避免底层代码或网络请求映射报错
-  kind_legacy?: 'perception_slot';
   perceptionSlotId?: number;
   perceptionKind?: PerceptionKindType;
   perceptionDescription?: string;
@@ -257,6 +356,7 @@ export interface RequirementSpace {
   features: FeatureNode[];
   businessObjects: BusinessObjectNode[];
   flows: FlowNode[];
+  domainRules?: DomainRule[];
   kanoStatus?: 'missing' | 'generating' | 'draft_ready' | 'generated' | 'skipped' | 'failed';
   unlockedStages?: string[];
   statusCode?: 'not_started' | 'needs_attention' | 'has_issues' | 'scope_pending' | 'in_progress' | 'converged';
@@ -273,15 +373,6 @@ export interface RequirementSpace {
   choiceGroups?: Record<string, any>;
   findings?: Finding[];
 
-  // Compatible properties for selector caching
-  actorsCompatible?: any[];
-  flowStepsCompatible?: any[];
-  linksCompatible?: any[];
-  goalsCompatible?: any[];
-  capabilitiesCompatible?: any[];
-  /** @deprecated Use capabilitiesCompatible instead */
-  tasksCompatible?: any[];
-  scopeItemsCompatible?: any[];
 }
 
 // -------------------------------------------------------------

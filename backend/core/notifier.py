@@ -12,9 +12,10 @@ class RequirementsChangedNotifier(Protocol):
         project_id: int,
         stages: set[str],
         session,
+        workspace_id: int,
         perception_kinds: set[str] | None = None,
         clear_active_slot: bool = True,
-        workspace_id: int | None = None,
+        changed_targets: list[tuple[str, str]] | None = None,
     ) -> None:
         """Mark affected perception jobs as stale when requirement elements change."""
         ...

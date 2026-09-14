@@ -16,10 +16,12 @@ from backend.database.model import (
     ActorModel,
     BranchWorkspaceModel,
     BusinessObjectModel,
+    DomainRuleModel,
     FeatureModel,
     FeatureRelationModel,
     FlowModel,
     FlowStepModel,
+    RuleLinkModel,
     ScenarioModel,
     ScopeModel,
 )
@@ -185,13 +187,14 @@ def _read_flows(
             selectinload(FlowModel.steps).selectinload(FlowStepModel.actors),
             selectinload(FlowModel.steps).selectinload(FlowStepModel.input_business_objects),
             selectinload(FlowModel.steps).selectinload(FlowStepModel.output_business_objects),
-            selectinload(FlowModel.steps).selectinload(FlowStepModel.next_steps),
+            selectinload(FlowModel.transitions),
         )
     )
     flows = db.scalars(stmt).all()
     dicts: list[dict[str, Any]] = []
     for flow in flows:
         step_dicts = []
+        step_uuid_by_id = {step.id: step.logical_uuid for step in flow.steps}
         for step in flow.steps:
             step_dicts.append(
                 {
@@ -208,9 +211,33 @@ def _read_flows(
                     "output_business_object_logical_uuids": sorted(
                         {b.logical_uuid for b in step.output_business_objects}
                     ),
-                    "next_step_logical_uuids": sorted({s.logical_uuid for s in step.next_steps}),
                 }
             )
+
+        trans_dicts = []
+        for trans in flow.transitions:
+            source_uuid = step_uuid_by_id.get(trans.source_step_id)
+            target_uuid = step_uuid_by_id.get(trans.target_step_id)
+            if source_uuid is None or target_uuid is None:
+                raise ValueError(
+                    f"Flow transition '{trans.logical_uuid}' has an endpoint "
+                    "outside its workspace flow."
+                )
+            trans_dicts.append(
+                {
+                    "logical_uuid": trans.logical_uuid,
+                    "source_step_logical_uuid": source_uuid,
+                    "target_step_logical_uuid": target_uuid,
+                    "label": trans.label,
+                    "condition_text": trans.condition_text,
+                    "is_default": trans.is_default,
+                    "position": trans.position,
+                    "semantic_tags": trans.semantic_tags,
+                    "origin": trans.origin,
+                    "confirmation_status": trans.confirmation_status,
+                }
+            )
+
         dicts.append(
             {
                 "logical_uuid": flow.logical_uuid,
@@ -219,6 +246,7 @@ def _read_flows(
                 "confirmation_status": flow.confirmation_status,
                 "feature_logical_uuids": sorted({f.logical_uuid for f in flow.features}),
                 "steps": step_dicts,
+                "transitions": trans_dicts,
             }
         )
     return dicts
@@ -254,6 +282,55 @@ def _read_scopes(
     return dicts
 
 
+def _read_domain_rules(db: Session, ws_id: int) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    """读取工作区内的领域规则，返回 (原始字典列表, id→logical_uuid 映射)。"""
+    rules = db.scalars(
+        select(DomainRuleModel).where(DomainRuleModel.workspace_id == ws_id)
+    ).all()
+    uuid_by_id = {r.id: r.logical_uuid for r in rules}
+    dicts = [
+        {
+            "logical_uuid": r.logical_uuid,
+            "parent_rule_logical_uuid": uuid_by_id.get(r.parent_rule_id) if r.parent_rule_id else None,
+            "title": r.title,
+            "statement": r.statement,
+            "origin": r.origin,
+            "confirmation_status": r.confirmation_status,
+        }
+        for r in rules
+    ]
+    return dicts, uuid_by_id
+
+
+def _read_rule_links(
+    db: Session,
+    ws_id: int,
+    rule_uuid_by_id: dict[int, str],
+) -> list[dict[str, Any]]:
+    """读取工作区内的规则关联。"""
+    links = db.scalars(
+        select(RuleLinkModel).where(RuleLinkModel.workspace_id == ws_id)
+    ).all()
+    dicts: list[dict[str, Any]] = []
+    for link in links:
+        rule_uuid = rule_uuid_by_id.get(link.rule_id)
+        if not rule_uuid:
+            raise ValueError(
+                f"Rule link '{link.logical_uuid}' refers to a rule outside the workspace"
+            )
+        dicts.append(
+            {
+                "logical_uuid": link.logical_uuid,
+                "rule_logical_uuid": rule_uuid,
+                "target_kind": link.target_kind,
+                "target_logical_uuid": link.target_logical_uuid,
+                "link_purpose": link.link_purpose,
+                "context_text": link.context_text,
+            }
+        )
+    return dicts
+
+
 def build_workspace_state_dict(
     db: Session,
     workspace: BranchWorkspaceModel,
@@ -273,6 +350,8 @@ def build_workspace_state_dict(
     bo_dicts, bo_uuid_by_id = _read_business_objects(db, ws_id)
     flow_dicts = _read_flows(db, ws_id, feat_uuid_by_id, actor_uuid_by_id, bo_uuid_by_id)
     scope_dicts = _read_scopes(db, ws_id, feat_uuid_by_id)
+    rule_dicts, rule_uuid_by_id = _read_domain_rules(db, ws_id)
+    rule_link_dicts = _read_rule_links(db, ws_id, rule_uuid_by_id)
 
     return {
         "project_metadata": {
@@ -287,6 +366,8 @@ def build_workspace_state_dict(
         "business_objects": bo_dicts,
         "flows": flow_dicts,
         "scopes": scope_dicts,
+        "domain_rules": rule_dicts,
+        "rule_links": rule_link_dicts,
     }
 
 

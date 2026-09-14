@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+from backend.api.base_schema import CamelModel
 
 
 class AIAddSessionCreateRequest(BaseModel):
@@ -15,14 +16,14 @@ class AIAddMessageRequest(BaseModel):
     content: str = Field(..., min_length=1)
 
 
-class AIAddMessageResponse(BaseModel):
+class AIAddMessageResponse(CamelModel):
     session_id: int
     assistant_message: str
     is_ready_to_generate: bool
     summary: dict = Field(default_factory=dict)
 
 
-class AIAddSessionResponse(BaseModel):
+class AIAddSessionResponse(CamelModel):
     model_config = ConfigDict(from_attributes=True)
 
     session_id: int
@@ -36,7 +37,7 @@ class AIAddSessionResponse(BaseModel):
     updated_at: datetime | None = None
 
 
-class AIAddMessageItem(BaseModel):
+class AIAddMessageItem(CamelModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -46,12 +47,12 @@ class AIAddMessageItem(BaseModel):
     created_at: datetime | None = None
 
 
-class AIAddSessionMessagesResponse(BaseModel):
+class AIAddSessionMessagesResponse(CamelModel):
     session_id: int
     messages: list[AIAddMessageItem]
 
 
-class AIAddGenerateDraftResponse(BaseModel):
+class AIAddGenerateDraftResponse(CamelModel):
     draft_id: str
     project_id: str
     target_type: str
@@ -59,12 +60,12 @@ class AIAddGenerateDraftResponse(BaseModel):
     message: str = "draft_created"
 
 
-class AIAddConfirmDraftResponse(BaseModel):
+class AIAddConfirmDraftResponse(CamelModel):
     draft_id: str
     message: str = "confirmed"
     created_object_id: int | None = None
 
 
-class AIAddDiscardDraftResponse(BaseModel):
+class AIAddDiscardDraftResponse(CamelModel):
     draft_id: str
     message: str = "draft_discarded"

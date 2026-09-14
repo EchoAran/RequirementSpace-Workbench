@@ -50,7 +50,7 @@ async def list_actors(
         raise map_branch_error(error)
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await actor_service.list_actors(
             project_id=owned_project.id,
             session=session,
@@ -82,11 +82,11 @@ async def create_actor(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await actor_service.create_actor(
             project_id=owned_project.id,
             req=request,
@@ -125,11 +125,11 @@ async def update_actor(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await actor_service.update_actor(
             project_id=owned_project.id,
             actor_id=actor_id,
@@ -172,11 +172,11 @@ async def delete_actor(
     except (ValueError, PermissionError) as error:
         raise map_branch_error(error)
 
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(status_code=403, detail="Branch is read-only or protected for current user")
 
     try:
-        ws_id = ws_obj.id if ws_obj else None
+        ws_id = ws_obj.id
         return await actor_service.delete_actor(
             project_id=owned_project.id,
             actor_id=actor_id,
@@ -228,21 +228,21 @@ async def create_actor_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     async with llm_context_manager(user, session, project_id=owned_project.id):
         try:
             return await actor_generation_service.create_draft(
                 project_id=owned_project.id,
                 owner_user_id=user.id,
                 session=session,
-                branch_name=branch_obj.name if branch_obj else None,
-                head_commit_id=branch_obj.head_commit_id if branch_obj else None,
+                branch_name=branch_obj.name,
+                head_commit_id=branch_obj.head_commit_id,
                 workspace_id=ws_id,
             )
         except ValueError as error:
@@ -302,13 +302,13 @@ async def confirm_actor_generation_draft(
     branch_obj, ws_obj, perms = await session.run_sync(
         lambda s: resolve_branch_context(s, draft.project_id, branch, user.id)
     )
-    if not perms.get("can_write", True):
+    if not perms["can_write"]:
         raise HTTPException(
             status_code=403,
             detail="Branch is read-only or protected; main branch can only be evolved via Merge Requests"
         )
 
-    ws_id = ws_obj.id if ws_obj else None
+    ws_id = ws_obj.id
     try:
         return await actor_generation_service.confirm_draft(
             draft_id=draft.draft_id,

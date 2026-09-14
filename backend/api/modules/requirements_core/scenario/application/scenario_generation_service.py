@@ -52,7 +52,8 @@ class ScenarioGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -93,7 +94,8 @@ class ScenarioGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -135,7 +137,8 @@ class ScenarioGenerationService:
         session,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft_id = uuid4().hex
 
@@ -184,6 +187,7 @@ class ScenarioGenerationService:
             generation_mode=draft["generation_mode"],
             user_feedback=user_feedback,
             session=session,
+                                                    workspace_id=draft["workspace_id"],
         )
 
         draft_payload["draft_id"] = draft_id
@@ -213,7 +217,8 @@ class ScenarioGenerationService:
         generate_acceptance_criteria: bool = False,
         branch_name: str | None = None,
         head_commit_id: str | None = None,
-        workspace_id: int | None = None,
+        *,
+        workspace_id: int,
     ) -> dict:
         draft = await self._get_draft(draft_id, owner_user_id, session)
 
@@ -230,14 +235,20 @@ class ScenarioGenerationService:
             session=session,
             workspace_id=workspace_id,
         )
+        changed_targets = [
+            ("scenario", uid)
+            for uid in result.get("scenario_logical_uuids", [])
+        ]
         await get_notifier().mark_stale(
             project_id=draft["project_id"],
             stages={"what"},
             perception_kinds={"SCENARIO", "ACCEPTANCE_CRITERION"},
             session=session,
             workspace_id=workspace_id,
+            changed_targets=changed_targets,
         )
         result.pop("scenario_ids", None)
+        result.pop("scenario_logical_uuids", None)
 
         from backend.api.modules.decision_workflow.public import GenerativeDraftStore
         await GenerativeDraftStore.delete_draft(draft_id, owner_user_id, session)
@@ -274,7 +285,7 @@ class ScenarioGenerationService:
         generation_mode: str,
         user_feedback: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -334,7 +345,7 @@ class ScenarioGenerationService:
         actor_id: int | None,
         generation_mode: str,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ):
         return await load_scenario_generation_context(
             project_id,
@@ -480,7 +491,7 @@ class ScenarioGenerationService:
     async def _persist_scenario_generation_draft(
         draft: dict,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> dict:
         from backend.database.model import ScenarioAcceptanceCriterionModel, ScenarioModel
 
@@ -506,9 +517,7 @@ class ScenarioGenerationService:
             session.add(scenario)
             scenarios.append(scenario)
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         for scenario, item in zip(scenarios, draft["scenarios"], strict=True):
             for position, criterion in enumerate(item["acceptance_criteria"], start=1):
@@ -522,9 +531,7 @@ class ScenarioGenerationService:
                 )
                 acceptance_criterion_count += 1
 
-        flush_res = session.flush()
-        if hasattr(flush_res, "__await__"):
-            await flush_res
+        await session.flush()
 
         return {
             "project_id": project_id,
@@ -532,6 +539,10 @@ class ScenarioGenerationService:
             "acceptance_criterion_count": acceptance_criterion_count,
             "scenario_ids": [
                 scenario.id
+                for scenario in scenarios
+            ],
+            "scenario_logical_uuids": [
+                scenario.logical_uuid
                 for scenario in scenarios
             ],
             "message": "scenarios_created",

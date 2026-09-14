@@ -20,6 +20,8 @@ class _CommitIdMaps:
     business_objects: dict[str, int] = field(default_factory=dict)
     flows: dict[str, int] = field(default_factory=dict)
     steps: dict[str, int] = field(default_factory=dict)
+    transitions: dict[str, int] = field(default_factory=dict)
+    domain_rules: dict[str, int] = field(default_factory=dict)
 
     def resolve_actor(self, reference: Any) -> int:
         return _resolve_id(reference, self.actors)
@@ -38,3 +40,9 @@ class _CommitIdMaps:
 
     def resolve_step(self, reference: Any) -> int:
         return _resolve_id(reference, self.steps)
+
+    def resolve_transition(self, reference: Any) -> int:
+        return _resolve_id(reference, self.transitions)
+
+    def resolve_domain_rule(self, reference: Any) -> int:
+        return _resolve_id(reference, self.domain_rules)

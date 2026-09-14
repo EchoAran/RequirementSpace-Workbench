@@ -22,6 +22,10 @@ from backend.api.modules.version_control.application.errors import (
     HeadChangedError,
     ProtectedBranchError,
 )
+from backend.api.modules.version_control.application.workspace_restoration import (
+    restore_workspace_from_state,
+    scrub_workspace,
+)
 from backend.api.modules.version_control.application.workspace_serializer import (
     serialize_workspace,
 )
@@ -30,15 +34,10 @@ from backend.api.modules.version_control.domain.serializer import (
     compute_state_hash,
     to_deterministic_json,
 )
-from backend.api.modules.version_control.application.workspace_restoration import (
-    restore_workspace_from_state,
-    scrub_workspace,
-)
 from backend.api.modules.version_control.schemas import (
     CommitCreateRequest,
     CommitDetailResponse,
     CommitListResponse,
-    CommitRevertRequest,
     CommitSummaryResponse,
 )
 from backend.database.model import (
@@ -503,12 +502,12 @@ def revert_commit(
 
     state_dict = json.loads(target_commit.state_json)
 
-    # 1. 恢复工作区（清除旧实体并从目标快照重建）
+    # The target snapshot replaces the current workspace aggregate.
     scrub_workspace(db, workspace.id)
     restore_workspace_from_state(db, workspace, state_dict)
     db.flush()
 
-    # 2. 重新序列化工作区状态生成提交快照
+    # Re-serialization produces the canonical rollback state.
     normalized_state = serialize_workspace(db, workspace)
     state_json = to_deterministic_json(normalized_state)
     state_hash = compute_state_hash(state_json)
@@ -516,7 +515,7 @@ def revert_commit(
     short_target_id = target_commit.public_id[:8]
     message = custom_message.strip() if custom_message and custom_message.strip() else f"回滚至提交: [{short_target_id}] {target_commit.message}"
 
-    # 3. 创建回滚提交（父提交指向当前 branch head）
+    # The rollback commit retains the current head as its parent.
     commit = RequirementCommitModel(
         project_id=project_id,
         message=message,
@@ -539,7 +538,7 @@ def revert_commit(
         )
         db.flush()
 
-    # 4. 推进分支 head
+    # The branch head advances only after the rollback commit is complete.
     branch.head_commit_id = commit.id
     db.flush()
 

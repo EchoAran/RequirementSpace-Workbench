@@ -15,7 +15,9 @@ from backend.api.modules.decision_workflow.choice_group.schemas import (
 )
 from backend.core.engines.patch_engine import GraphPatchEngine
 from backend.core.issue_resolution.ai.base_ai_solver import RepairProposal
+from backend.core.logging.events import FLOW_REFINEMENT_REJECTED
 from backend.core.notifier import get_notifier
+from backend.core.observability import emit_how_lifecycle_event
 from backend.database.model import AuditLogModel, ChoiceGroupModel, ChoiceModel
 
 _NODE_INVALIDATION = {
@@ -71,6 +73,7 @@ class ChoiceService:
         context_hash: str | None,
         candidates: list[RepairProposal],
         session,
+        workspace_id: int,
     ) -> dict:
         """Create a ChoiceGroup from AI solver candidates (issue repair path)."""
         if not candidates:
@@ -81,6 +84,7 @@ class ChoiceService:
 
         group = ChoiceGroupModel(
             project_id=project_id,
+            workspace_id=workspace_id,
             status="open",
             selection_mode="single",
             source_type=source_type,
@@ -97,6 +101,7 @@ class ChoiceService:
         created_choices = await self._create_repair_choices(
             valid,
             group_id=group.id,
+            workspace_id=workspace_id,
             project_id=project_id,
             issue_code=issue_code,
             session=session,
@@ -117,6 +122,7 @@ class ChoiceService:
         candidates,
         *,
         group_id: int,
+        workspace_id: int,
         project_id: int,
         issue_code: str | None,
         session,
@@ -125,6 +131,7 @@ class ChoiceService:
         for candidate in candidates:
             choice = ChoiceModel(
                 choice_group_id=group_id,
+                workspace_id=workspace_id,
                 title=candidate.title,
                 rationale=candidate.rationale,
                 status="candidate",
@@ -182,9 +189,9 @@ class ChoiceService:
         project_id: int,
         status: str | None,
         session,
-        workspace_id: int | None = None,
+        workspace_id: int,
     ) -> list[ChoiceGroupResponse]:
-        """List all choice groups for a project, optionally filtered by status and workspace."""
+        """List choice groups in a project workspace, optionally filtered by status."""
         query = (
             select(ChoiceGroupModel)
             .where(ChoiceGroupModel.project_id == project_id)
@@ -193,14 +200,7 @@ class ChoiceService:
                 selectinload(ChoiceGroupModel.project)
             )
         )
-        if workspace_id is not None:
-            from sqlalchemy import or_
-            query = query.where(
-                or_(
-                    ChoiceGroupModel.workspace_id == workspace_id,
-                    ChoiceGroupModel.workspace_id.is_(None),
-                )
-            )
+        query = query.where(ChoiceGroupModel.workspace_id == workspace_id)
         if status:
             query = query.where(ChoiceGroupModel.status == status)
 
@@ -260,8 +260,9 @@ class ChoiceService:
         project_id: int,
         choice_id: int,
         session,
+        workspace_id: int,
         force: bool = False,
-        workspace_id: int | None = None,
+        expected_workspace_version: str | int | None = None,
     ) -> ChoiceActionResponse:
         """
         Accepts a choice. Dispatches based on choice.apply_mode:
@@ -273,6 +274,7 @@ class ChoiceService:
             project_id,
             choice_id,
             session,
+            workspace_id=workspace_id,
         )
         if choice.apply_mode == "patch":
             return await self._accept_patch_mode_choice(
@@ -281,6 +283,7 @@ class ChoiceService:
                 project_id=project_id,
                 choice_id=choice_id,
                 session=session,
+                workspace_id=workspace_id,
             )
         if choice.apply_mode == "draft_payload":
             return await self._accept_draft_payload_choice(
@@ -291,11 +294,12 @@ class ChoiceService:
                 session=session,
                 force=force,
                 workspace_id=workspace_id,
+                expected_workspace_version=expected_workspace_version,
             )
         raise ValueError(f"unsupported_choice_apply_mode: {choice.apply_mode}")
 
     @staticmethod
-    async def _load_choice_for_acceptance(project_id, choice_id, session):
+    async def _load_choice_for_acceptance(project_id, choice_id, session, workspace_id: int):
         choice_res = await session.execute(
             select(ChoiceModel)
             .where(ChoiceModel.id == choice_id)
@@ -307,7 +311,9 @@ class ChoiceService:
 
         # 2. Fetch choice group
         group = choice.choice_group
-        if not group or group.project_id != project_id:
+        if not group or group.project_id != project_id or (
+            group.workspace_id != workspace_id
+        ):
             raise ValueError("choice_group_not_found")
 
         if group.status == "resolved":
@@ -322,6 +328,7 @@ class ChoiceService:
         project_id: int,
         choice_id: int,
         session,
+        workspace_id: int,
     ) -> ChoiceActionResponse:
         async with session.begin_nested():
             result = await self._accept_patch_choice(
@@ -329,6 +336,7 @@ class ChoiceService:
                 group,
                 project_id,
                 session,
+                workspace_id=workspace_id,
             )
         return ChoiceActionResponse(
             message=_accept_message(result),
@@ -352,7 +360,8 @@ class ChoiceService:
         choice_id: int,
         session,
         force: bool,
-        workspace_id: int | None = None,
+        workspace_id: int,
+        expected_workspace_version: str | int | None = None,
     ) -> ChoiceActionResponse:
         stale_response = await self._check_generation_choice_staleness(
             choice,
@@ -365,9 +374,10 @@ class ChoiceService:
         if stale_response:
             return stale_response
 
-        ws_id = workspace_id or getattr(group, "workspace_id", None)
-        if ws_id is None and isinstance(choice.payload, dict):
-            ws_id = choice.payload.get("workspace_id")
+        if choice.status == "failed" or not isinstance(choice.payload, dict):
+            raise ValueError(
+                f"cannot_accept_failed_choice: choice {choice.id} status is {choice.status}"
+            )
 
         applier = get_generation_choice_applier()
         draft_type = choice.draft_type or group.generation_type or ""
@@ -377,7 +387,8 @@ class ChoiceService:
                 choice.payload,
                 session,
                 project_id=project_id,
-                workspace_id=ws_id,
+                workspace_id=workspace_id,
+                expected_workspace_version=expected_workspace_version,
             )
         except Exception as exc:
             raise ValueError(f"choice_apply_failed: {exc}") from exc
@@ -415,7 +426,10 @@ class ChoiceService:
         session,
         force: bool,
     ) -> ChoiceActionResponse | None:
-        if force or not group.generation_type:
+        if not group.generation_type:
+            return None
+        # P3 contract: for "flow" and "rule", force=True cannot bypass stale validation
+        if force and group.generation_type not in ("flow", "rule"):
             return None
         adapter = get_adapter(group.generation_type)
         is_stale, stale_reason = await adapter.is_context_stale(choice, session)
@@ -475,9 +489,18 @@ class ChoiceService:
             },
         ))
 
-    async def _accept_patch_choice(self, choice, group, project_id, session) -> dict:
+    async def _accept_patch_choice(
+        self,
+        choice,
+        group,
+        project_id,
+        session,
+        workspace_id: int,
+    ) -> dict:
         """Apply a patch-type choice (existing issue repair logic)."""
-        await self.patch_engine.apply_patch(project_id, choice.patch, session)
+        await self.patch_engine.apply_patch(
+            project_id, choice.patch, session, workspace_id=workspace_id
+        )
         choice.status = "accepted"
         await self._reject_siblings(choice, group, session)
         group.status = "resolved"
@@ -490,13 +513,14 @@ class ChoiceService:
                 stages=stages,
                 perception_kinds=kinds or None,
                 session=session,
-                workspace_id=getattr(group, "workspace_id", None),
+                workspace_id=workspace_id,
             )
 
         issue_diff = await self._verify_patch_choice_resolution(
             group,
             project_id,
             session,
+            workspace_id=workspace_id,
         )
         self._record_choice_acceptance_audit(
             choice,
@@ -542,7 +566,7 @@ class ChoiceService:
         return stages, kinds
 
     @staticmethod
-    async def _verify_patch_choice_resolution(group, project_id, session) -> dict:
+    async def _verify_patch_choice_resolution(group, project_id, session, workspace_id: int) -> dict:
         resolved_ids, remaining_ids, new_ids = [], [], []
         is_partial = False
         if group.source_type == "issue_repair" and group.stage and group.issue_id and group.issue_code:
@@ -559,7 +583,11 @@ class ChoiceService:
             _det = _det_map.get(group.stage)
             before_ids = set()
             if _det:
-                before = await _det.detect(project_id=project_id, session=session)
+                before = await _det.detect(
+                    project_id=project_id,
+                    session=session,
+                    workspace_id=workspace_id,
+                )
                 before_ids = {i.issueId for i in before}
             try:
                 resolved_ids, remaining_ids = await verify_issue_resolved(
@@ -568,11 +596,16 @@ class ChoiceService:
                     issue_id=group.issue_id,
                     stage=group.stage,
                     session=session,
+                    workspace_id=workspace_id,
                 )
             except Exception:
                 pass
             if _det:
-                after = await _det.detect(project_id=project_id, session=session)
+                after = await _det.detect(
+                    project_id=project_id,
+                    session=session,
+                    workspace_id=workspace_id,
+                )
                 after_ids = {i.issueId for i in after}
                 new_ids = list(after_ids - before_ids)
                 target_remaining = [
@@ -649,6 +682,16 @@ class ChoiceService:
 
         # Phase 6: audit log with generation type if applicable
         gen_type = group.generation_type if group else None
+        if gen_type == "flow_refinement":
+            payload = choice.payload or {}
+            emit_how_lifecycle_event(
+                FLOW_REFINEMENT_REJECTED,
+                capability="flow_refinement",
+                project_id=project_id,
+                workspace_id=group.workspace_id,
+                flow_logical_uuid=payload.get("target_flow_logical_uuid"),
+                correlation_id=payload.get("context_hash"),
+            )
         action = "generation_choice_rejected" if gen_type else "reject_choice"
         session.add(AuditLogModel(
             project_id=project_id,

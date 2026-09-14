@@ -57,7 +57,7 @@ from backend.api.modules.decision_workflow.choice_group.routes import (
 from backend.api.modules.diagnosis_quality.finding.routes import (
     router as finding_router,
 )
-from backend.api.modules.diagnosis_quality.issue_compat.routes import (
+from backend.api.modules.diagnosis_quality.issue_repair.resolution_routes import (
     router as issue_router,
 )
 from backend.api.modules.diagnosis_quality.issue_repair.routes import (
@@ -116,6 +116,9 @@ from backend.api.modules.requirements_core.actor.routes import (
 from backend.api.modules.requirements_core.business_object.routes import (
     router as business_object_router,
 )
+from backend.api.modules.requirements_core.domain_rule.routes import (
+    router as domain_rule_router,
+)
 from backend.api.modules.requirements_core.feature.routes import (
     generation_router as feature_generation_router,
     router as feature_router,
@@ -123,6 +126,9 @@ from backend.api.modules.requirements_core.feature.routes import (
 from backend.api.modules.requirements_core.flow.routes import (
     generation_router as flow_generation_router,
     router as flow_router,
+)
+from backend.api.modules.requirements_core.flow_refinement.public import (
+    flow_refinement_router,
 )
 from backend.api.modules.requirements_core.node_status.routes import (
     router as node_status_router,
@@ -159,9 +165,10 @@ class PerceptionStaleNotifier:
         project_id: int,
         stages: set[str],
         session,
+        workspace_id: int,
         perception_kinds: set[str] | None = None,
         clear_active_slot: bool = True,
-        workspace_id: int | None = None,
+        changed_targets: list[tuple[str, str]] | None = None,
     ) -> None:
         from backend.api.modules.diagnosis_quality.public import (
             mark_perception_jobs_stale,
@@ -170,9 +177,9 @@ class PerceptionStaleNotifier:
             project_id=project_id,
             stages=stages,
             session=session,
+            workspace_id=workspace_id,
             perception_kinds=perception_kinds,
             clear_active_slot=clear_active_slot,
-            workspace_id=workspace_id,
         )
 
 
@@ -564,8 +571,10 @@ app.include_router(perception_slot_filling_router)
 app.include_router(actor_router, dependencies=[Depends(require_project_member)])
 app.include_router(feature_router, dependencies=[Depends(require_project_member)])
 app.include_router(scenario_router, dependencies=[Depends(require_project_member)])
+app.include_router(domain_rule_router, dependencies=[Depends(require_project_member)])
 app.include_router(business_object_router, dependencies=[Depends(require_project_member)])
 app.include_router(flow_router, dependencies=[Depends(require_project_member)])
+app.include_router(flow_refinement_router, dependencies=[Depends(require_project_member)])
 app.include_router(scope_router, dependencies=[Depends(require_project_member)])
 app.include_router(project_scope_router, dependencies=[Depends(require_project_member)])
 app.include_router(choice_router)

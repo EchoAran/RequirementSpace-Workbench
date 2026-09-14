@@ -13,6 +13,8 @@ import difflib
 from collections import defaultdict
 from typing import Any
 
+from backend.api.modules.version_control.domain.path_diff import diff_path_projections
+
 # 规范化状态顶层集合 → 对象类型
 COLLECTION_KEYS: list[str] = [
     "actors",
@@ -22,6 +24,8 @@ COLLECTION_KEYS: list[str] = [
     "business_objects",
     "flows",
     "scopes",
+    "domain_rules",
+    "rule_links",
 ]
 
 ENTITY_TYPE_BY_COLLECTION: dict[str, str] = {
@@ -32,6 +36,8 @@ ENTITY_TYPE_BY_COLLECTION: dict[str, str] = {
     "business_objects": "business_object",
     "flows": "flow",
     "scopes": "scope",
+    "domain_rules": "domain_rule",
+    "rule_links": "rule_link",
 }
 
 # 各对象类型的标量字段（不含 position：有序集合的位置差异由 ordered_item_moved 表达）
@@ -51,6 +57,16 @@ SCALAR_FIELDS: dict[str, list[str]] = {
     ],
     "flow": ["name", "description", "confirmation_status"],
     "flow_step": ["name", "description", "step_type", "confirmation_status"],
+    "flow_transition": [
+        "label",
+        "condition_text",
+        "is_default",
+        "semantic_tags",
+        "origin",
+        "confirmation_status",
+    ],
+    "domain_rule": ["title", "statement", "origin", "confirmation_status"],
+    "rule_link": ["target_kind", "link_purpose", "context_text"],
     "scope": [
         "status",
         "positive_summary",
@@ -72,6 +88,9 @@ TEXT_FIELDS: dict[str, set[str]] = {
     "business_object_attribute": {"description", "example"},
     "flow": {"description"},
     "flow_step": {"name", "description"},
+    "flow_transition": {"label", "condition_text"},
+    "domain_rule": {"statement"},
+    "rule_link": {"context_text"},
     "scope": {"positive_summary", "negative_summary", "reason"},
 }
 
@@ -87,7 +106,15 @@ RELATION_FIELDS: dict[str, dict[str, str]] = {
         "actor_logical_uuids": "actor",
         "input_business_object_logical_uuids": "business_object",
         "output_business_object_logical_uuids": "business_object",
-        "next_step_logical_uuids": "flow_step",
+    },
+    "flow_transition": {
+        "source_step_logical_uuid": "flow_step",
+        "target_step_logical_uuid": "flow_step",
+    },
+    "domain_rule": {"parent_rule_logical_uuid": "domain_rule"},
+    "rule_link": {
+        "rule_logical_uuid": "domain_rule",
+        "target_logical_uuid": "requirement_node",
     },
     "scope": {"feature_logical_uuid": "feature"},
     "feature_relation": {
@@ -107,6 +134,7 @@ METADATA_FIELDS: dict[str, str] = {
 ORDERED_CHILD_PARENTS: dict[str, tuple[str, str]] = {
     "acceptance_criterion": ("scenario", "acceptance_criteria"),
     "flow_step": ("flow", "steps"),
+    "flow_transition": ("flow", "transitions"),
 }
 
 _CHANGE_RANK: dict[str, int] = {
@@ -122,7 +150,7 @@ _CHANGE_RANK: dict[str, int] = {
 
 def _display_name(entity: dict[str, Any]) -> str:
     """从对象字典中取一个适合树节点展示的名字。"""
-    for key in ("name", "content", "title"):
+    for key in ("name", "content", "title", "label"):
         value = entity.get(key)
         if value:
             return value
@@ -162,6 +190,8 @@ def _build_name_index(
         for flow in state.get("flows", []):
             for step in flow.get("steps", []):
                 _index_entity(index, step, "flow_step")
+            for transition in flow.get("transitions", []):
+                _index_entity(index, transition, "flow_transition")
     index["project"] = {"entity_type": "project_metadata", "name": ""}
     return index
 
@@ -221,6 +251,7 @@ def _order_moves(
     target_list: list[dict[str, Any]],
     parent_uuid: str,
     parent_type: str,
+    name_index: dict[str, dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """检测有序集合内的相对顺序变化，仅把真正调整位置的项标为 ordered_item_moved。
 
@@ -248,12 +279,16 @@ def _order_moves(
     for entity_uuid in moved_uuids:
         before = base_map[entity_uuid]
         after = target_map[entity_uuid]
+        entity_name = _display_name(after)
+        if entity_type == "feature_relation" and name_index:
+            child_uuid = after.get("child_feature_logical_uuid")
+            entity_name = name_index.get(child_uuid, {}).get("name") or entity_name
         moves.append(
             {
                 "change_type": "ordered_item_moved",
                 "entity_type": entity_type,
                 "entity_uuid": entity_uuid,
-                "entity_name": _display_name(after),
+                "entity_name": entity_name,
                 "parent_uuid": parent_uuid,
                 "parent_type": parent_type,
                 "path": "position",
@@ -351,6 +386,10 @@ def _diff_entity(
         return
     entity_uuid = target["logical_uuid"]
     entity_name = _display_name(target)
+    if entity_type == "feature_relation":
+        # 功能关系对象没有自身名称，用子功能名表达（功能树节点即子功能）
+        child_uuid = target.get("child_feature_logical_uuid")
+        entity_name = name_index.get(child_uuid, {}).get("name") or entity_name
     detail: list[dict[str, Any]] = []
 
     for field in SCALAR_FIELDS.get(entity_type, []):
@@ -459,6 +498,24 @@ def _diff_entity(
                 "flow",
             )
         )
+        _diff_children(
+            "flow_transition",
+            base.get("transitions", []),
+            target.get("transitions", []),
+            entity_uuid,
+            "flow",
+            detail,
+            name_index,
+        )
+        detail.extend(
+            _order_moves(
+                "flow_transition",
+                base.get("transitions", []),
+                target.get("transitions", []),
+                entity_uuid,
+                "flow",
+            )
+        )
 
     if detail:
         out.append(
@@ -508,6 +565,7 @@ def _diff_metadata(
 def _diff_feature_relation_ordering(
     base_state: dict[str, Any],
     target_state: dict[str, Any],
+    name_index: dict[str, dict[str, str]],
 ) -> list[dict[str, Any]]:
     """按父功能分组检测功能树子节点顺序变化（功能树位置调整）。"""
     base_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -525,6 +583,7 @@ def _diff_feature_relation_ordering(
                 target_by_parent[parent_uuid],
                 parent_uuid,
                 "feature",
+                name_index,
             )
         )
     return moves
@@ -610,7 +669,6 @@ def compute_semantic_diff(
     entries: list[dict[str, Any]] = []
 
     _diff_metadata(base_state.get("project_metadata", {}), target_state.get("project_metadata", {}), entries)
-
     for key in COLLECTION_KEYS:
         entity_type = ENTITY_TYPE_BY_COLLECTION[key]
         base_list = base_state.get(key, [])
@@ -646,7 +704,8 @@ def compute_semantic_diff(
         for entity_uuid in sorted(set(base_map) & set(target_map)):
             _diff_entity(entity_type, base_map[entity_uuid], target_map[entity_uuid], entries, None, None, name_index)
 
-    entries.extend(_diff_feature_relation_ordering(base_state, target_state))
+    entries.extend(_diff_feature_relation_ordering(base_state, target_state, name_index))
+    entries.extend(diff_path_projections(base_state, target_state))
     _ensure_updated_nodes(entries, name_index)
 
     # 稳定的全局排序：同一对象的节点在前，细节随后；对象间按类型与 UUID 排序。

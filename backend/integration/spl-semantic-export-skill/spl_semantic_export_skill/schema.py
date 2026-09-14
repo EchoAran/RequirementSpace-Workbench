@@ -25,6 +25,8 @@ class SplExportInputDict(TypedDict):
     features: list[dict[str, Any]]
     business_objects: list[dict[str, Any]]
     flows: list[dict[str, Any]]
+    domain_rules: list[dict[str, Any]]
+    rule_links: list[dict[str, Any]]
     unresolved_gates: list[dict[str, Any]]
     export_options: ExportOptionsDict
 

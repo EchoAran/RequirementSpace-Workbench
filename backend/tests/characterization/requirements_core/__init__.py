@@ -1,0 +1,1 @@
+"""Requirements core characterization tests."""

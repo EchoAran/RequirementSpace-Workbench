@@ -90,5 +90,3 @@ plugin/
 
 # 个人开发或测试文档，ignore掉，避免上传到远程仓库
 docs/
-backend/tests/
-frontend/src/tests/

@@ -115,7 +115,7 @@ async def _generate_preserved_how_patch(
 ) -> None:
     from sqlalchemy import select
     from backend.database.model import DomainRuleModel
-    from backend.api.modules.requirements_core.domain_rule.application.rule_generation_service import RuleGenerationService
+    from backend.api.modules.requirements_core.public import RuleGenerationService
 
     rule_stmt = select(DomainRuleModel).where(
         DomainRuleModel.project_id == project_id,

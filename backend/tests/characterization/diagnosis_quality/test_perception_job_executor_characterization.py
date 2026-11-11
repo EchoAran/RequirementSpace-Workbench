@@ -1,0 +1,152 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from backend.api.modules.diagnosis_quality.perception.application import (
+    job_executor as job_executor_module,
+)
+from backend.api.modules.diagnosis_quality.perception.application.job_executor import (
+    PerceptionJobExecutor,
+)
+from backend.schemas import PerceptionJobStatus
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+def _job():
+    return SimpleNamespace(
+        id=1,
+        project_id=10,
+        workspace_id=20,
+        stage="what",
+        target_type="project",
+        target_id="",
+        perception_kind="ACTOR",
+        context_hash="expected",
+        status=PerceptionJobStatus.RUNNING.value,
+        result_slot_payload={"old": True},
+        error_message=None,
+    )
+
+
+def _patch_executor_dependencies(monkeypatch, session, context):
+    monkeypatch.setattr(
+        job_executor_module,
+        "AsyncSessionLocal",
+        lambda: _SessionContext(session),
+    )
+    monkeypatch.setattr(
+        job_executor_module,
+        "load_issue_project_context",
+        AsyncMock(return_value=context),
+    )
+    monkeypatch.setattr(job_executor_module, "log_event", MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_run_perception_job_marks_changed_context_stale(monkeypatch):
+    session = SimpleNamespace(
+        commit=AsyncMock(),
+        rollback=AsyncMock(),
+    )
+    context = SimpleNamespace()
+    _patch_executor_dependencies(monkeypatch, session, context)
+    executor = PerceptionJobExecutor()
+    job = _job()
+    executor._load_job_with_retry = AsyncMock(return_value=job)
+    executor._build_context_hash = MagicMock(return_value="changed")
+    executor._run_perceptron = AsyncMock()
+
+    await executor._run_perception_job(job.id)
+
+    assert job.status == PerceptionJobStatus.STALE.value
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+    executor._run_perceptron.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_perception_job_marks_empty_result_and_deletes_slot(
+    monkeypatch,
+):
+    session = SimpleNamespace(
+        commit=AsyncMock(),
+        rollback=AsyncMock(),
+    )
+    context = SimpleNamespace()
+    _patch_executor_dependencies(monkeypatch, session, context)
+    executor = PerceptionJobExecutor()
+    job = _job()
+    executor._load_job_with_retry = AsyncMock(return_value=job)
+    executor._build_context_hash = MagicMock(return_value="expected")
+    executor._run_perceptron = AsyncMock(return_value={})
+    executor._normalize_perception_description = MagicMock(
+        return_value=None
+    )
+    executor._delete_slot_for_job = AsyncMock()
+
+    await executor._run_perception_job(job.id)
+
+    assert job.status == PerceptionJobStatus.DONE_EMPTY.value
+    assert job.result_slot_payload is None
+    executor._delete_slot_for_job.assert_awaited_once_with(
+        project_id=job.project_id,
+        job_id=job.id,
+        session=session,
+    )
+    session.commit.assert_awaited_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_perception_job_records_failure_after_rollback(monkeypatch):
+    job = _job()
+    mock_slot = SimpleNamespace(id=job.id, project_id=job.project_id)
+    mock_slot_result = MagicMock()
+    mock_slot_result.scalar_one_or_none.return_value = mock_slot
+
+    mock_group = SimpleNamespace(
+        id=101,
+        project_id=job.project_id,
+        slot_id=job.id,
+        status="open",
+    )
+    mock_group_result = MagicMock()
+    mock_group_result.scalars.return_value.all.return_value = [mock_group]
+
+    session = SimpleNamespace(
+        commit=AsyncMock(),
+        rollback=AsyncMock(),
+        execute=AsyncMock(side_effect=[mock_slot_result, mock_group_result]),
+        delete=AsyncMock(),
+    )
+    context = SimpleNamespace()
+    _patch_executor_dependencies(monkeypatch, session, context)
+    executor = PerceptionJobExecutor()
+    executor._load_job_with_retry = AsyncMock(
+        side_effect=[job, job]
+    )
+    executor._build_context_hash = MagicMock(return_value="expected")
+    executor._run_perceptron = AsyncMock(
+        side_effect=RuntimeError("generation failed")
+    )
+
+    await executor._run_perception_job(job.id)
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_awaited_once()
+    assert job.status == PerceptionJobStatus.FAILED.value
+    assert job.error_message == "RuntimeError: generation failed"
+    session.delete.assert_awaited_once_with(mock_slot)
+    assert mock_group.status == "resolved"
+    assert mock_group.slot_id is None

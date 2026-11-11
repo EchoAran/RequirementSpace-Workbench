@@ -1069,79 +1069,46 @@ export const withWorkspaceId = (state: WorkspaceState): string => {
 type WorkspaceHydrationData = Awaited<ReturnType<typeof loadBackendFindingsAndViews>> & {
   backendChoiceGroups: Record<string, ChoiceGroup>;
   projectDetail?: RequirementSpace;
+  stageProgress?: WorkspaceState['stageProgress'];
 };
 
 const loadWorkspaceHydration = async (
   projectId: string,
   expectedVersion: number,
   getState: () => WorkspaceState,
+  branchRef = getState().branchRef,
 ): Promise<WorkspaceHydrationData | null> => {
-  const branchRef = getState().branchRef;
-  try {
-    // 1. Try unified single-roundtrip hydration API first (7x network speedup)
-    const [hydrationRes] = await Promise.all([
-      workspaceApi.getWorkspaceHydration(projectId, branchRef),
-      getState().loadAuditLogs(projectId).catch((err) => {
-        console.warn('Failed to load audit logs:', err);
-      }),
-    ]);
+  // Load all branch data together before changing the active workspace.
+  const [hydrationRes] = await Promise.all([
+    workspaceApi.getWorkspaceHydration(projectId, branchRef),
+    getState().loadAuditLogs(projectId).catch((err) => {
+      console.warn('Failed to load audit logs:', err);
+    }),
+  ]);
 
-    if (getState().sessionVersion !== expectedVersion) return null;
+  if (getState().sessionVersion !== expectedVersion) return null;
 
-    if (hydrationRes?.stageProgress) {
-      useWorkspaceStore.setState({ stageProgress: hydrationRes.stageProgress });
+  const backendChoiceGroups: Record<string, ChoiceGroup> = {};
+  if (Array.isArray(hydrationRes?.choiceGroups)) {
+    for (const group of hydrationRes.choiceGroups) {
+      const choiceGroup = mapChoiceGroupResponse(group);
+      backendChoiceGroups[choiceGroup.id] = choiceGroup;
     }
-
-    const backendChoiceGroups: Record<string, ChoiceGroup> = {};
-    if (Array.isArray(hydrationRes?.choiceGroups)) {
-      for (const group of hydrationRes.choiceGroups) {
-        const choiceGroup = mapChoiceGroupResponse(group);
-        backendChoiceGroups[choiceGroup.id] = choiceGroup;
-      }
-    }
-
-    const rawFindingsByView = hydrationRes.findingsByView as any;
-    return {
-      projectDetail: hydrationRes.projectDetail,
-      backendFindings: hydrationRes.backendFindings || [],
-      findingsByView: {
-        issues: rawFindingsByView?.issues || [],
-        next_action: rawFindingsByView?.nextAction || [],
-        gate: rawFindingsByView?.gate || [],
-        health: rawFindingsByView?.health || [],
-      },
-      backendChoiceGroups,
-    };
-  } catch (hydrationErr) {
-    console.warn('Unified hydration failed, falling back to parallel requests:', hydrationErr);
-
-    // 2. Resilient fallback to concurrent parallel requests
-    const [findingsResult, choiceGroupsResult] = await Promise.all([
-      loadBackendFindingsAndViews(projectId, branchRef),
-      workspaceApi.listChoiceGroups(projectId, 'open', branchRef).catch((error) => {
-        console.warn('Failed to load choice groups:', error);
-        return [];
-      }),
-      getState().loadAuditLogs(projectId).catch((err) => {
-        console.warn('Failed to load audit logs:', err);
-      }),
-      getState().loadStageProgress(projectId).catch((err) => {
-        console.warn('Failed to load stage progress:', err);
-      }),
-    ]);
-
-    if (getState().sessionVersion !== expectedVersion) return null;
-
-    const backendChoiceGroups: Record<string, ChoiceGroup> = {};
-    if (Array.isArray(choiceGroupsResult)) {
-      for (const group of choiceGroupsResult) {
-        const choiceGroup = mapChoiceGroupResponse(group);
-        backendChoiceGroups[choiceGroup.id] = choiceGroup;
-      }
-    }
-
-    return { ...findingsResult, backendChoiceGroups };
   }
+
+  const rawFindingsByView = hydrationRes.findingsByView as any;
+  return {
+    projectDetail: hydrationRes.projectDetail,
+    stageProgress: hydrationRes.stageProgress ?? null,
+    backendFindings: hydrationRes.backendFindings || [],
+    findingsByView: {
+      issues: rawFindingsByView?.issues || [],
+      next_action: rawFindingsByView?.nextAction || [],
+      gate: rawFindingsByView?.gate || [],
+      health: rawFindingsByView?.health || [],
+    },
+    backendChoiceGroups,
+  };
 };
 
 const buildOpenedWorkspaceState = (
@@ -1949,12 +1916,15 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
 
   openWorkspace: async (workspaceId, branchRef) => {
     const version = get().sessionVersion + 1;
-    // 把 URL 分支写入请求上下文，使后续所有项目读写在缺省时自动携带该分支。
-    setRequestBranch(branchRef);
     set({
       sessionVersion: version,
-      branchRef: branchRef,
       stageProgress: null,
+      activeDraft: null,
+      activeDraftType: null,
+      activeShadowDraft: null,
+      activeGateCheck: null,
+      isGenerating: false,
+      isDiagnosing: false,
       backendChoiceGroups: {},
       activeChoiceGroup: null,
       activeStaleChoice: null,
@@ -1962,8 +1932,6 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       isGeneratingChoices: false,
       generatingChoiceGroupType: null,
       choiceGroupGenerationProgress: null,
-      branches: [],
-      currentBranch: null,
       branchLoading: true,
       isLoading: true,
       error: null,
@@ -1972,10 +1940,10 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       const space = await workspaceApi.getById(workspaceId, branchRef);
       if (get().sessionVersion !== version) return false;
       const projectId = space.projectId;
-      const hydration = await loadWorkspaceHydration(projectId, version, get);
+      const hydration = await loadWorkspaceHydration(projectId, version, get, branchRef);
       if (!hydration) return false;
-      set(buildOpenedWorkspaceState(space, hydration));
-      set({ branchRef: branchRef, isLoading: false });
+      setRequestBranch(branchRef);
+      set({ ...buildOpenedWorkspaceState(space, hydration), branchRef, currentBranch: null });
       await get().loadBranches();
       if (get().sessionVersion !== version) return false;
       await get().loadCommits();
@@ -1983,7 +1951,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return true;
     } catch (err) {
       if (get().sessionVersion !== version) return false;
-      set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false });
+      set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false, branchLoading: false });
       return false;
     }
   },
@@ -2002,6 +1970,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set((s: WorkspaceState) => ({
         ...hydration,
         backendFindingsLoaded: true,
+        currentBranch: null,
         ir: space,
         selectedObject: findSelectedObjectInIr(space, s.selectedObjectId, s.selectedObject)
       }));
@@ -2058,35 +2027,39 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     const version = get().sessionVersion + 1;
     const id = get().ir?.projectId;
     if (!id) return false;
-    // 分支切换是全局操作：更新请求上下文并使后续加载失效。
-    setRequestBranch(branchRef);
+    // 使旧请求失效；目标数据完整加载后再切换请求上下文。
     set({
       sessionVersion: version,
-      branchRef,
-      backendChoiceGroups: {},
       activeChoiceGroup: null,
       activeStaleChoice: null,
       pendingGenerationConflict: null,
       isGeneratingChoices: false,
       generatingChoiceGroupType: null,
       choiceGroupGenerationProgress: null,
-      branches: [],
-      currentBranch: null,
       branchLoading: true,
       isLoading: true,
       error: null,
       commitError: null,
       activeShadowDraft: null,
+      activeDraft: null,
+      activeDraftType: null,
+      activeGateCheck: null,
+      isGenerating: false,
+      isDiagnosing: false,
+      editDirty: false,
+      pendingBranchRef: null,
     });
     try {
-      let space = await workspaceApi.getById(id, get().branchRef);
+      let space = await workspaceApi.getById(id, branchRef);
       if (get().sessionVersion !== version) return false;
-      const hydration = await loadWorkspaceHydration(id, version, get);
+      const hydration = await loadWorkspaceHydration(id, version, get, branchRef);
       if (!hydration) return false;
       space = hydration.projectDetail || space;
+      setRequestBranch(branchRef);
       set({
         ...hydration,
         backendFindingsLoaded: true,
+        currentBranch: null,
         ir: space,
         selectedObject: null,
         selectedObjectId: null,
@@ -2104,7 +2077,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       return true;
     } catch (err) {
       if (get().sessionVersion !== version) return false;
-      set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false });
+      set({ error: err instanceof Error ? err.message : 'store.errors.openWorkspaceFailed', isLoading: false, branchLoading: false });
       return false;
     }
   },

@@ -14,6 +14,7 @@ import json
 import logging
 import time
 
+from backend.core.ai_user_text import AI_USER_TEXT_INSTRUCTION, format_ai_user_text
 from backend.core.generators.prompts import PROJECT_INTERVIEW_SYSTEM_PROMPT
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.localized_messages import localized_message
@@ -46,7 +47,7 @@ class ProjectInterviewService:
             }
 
         llm = self._get_llm_handler()
-        full_messages = [{"role": "system", "content": PROJECT_INTERVIEW_SYSTEM_PROMPT}, *messages]
+        full_messages = [{"role": "system", "content": str(PROJECT_INTERVIEW_SYSTEM_PROMPT) + "\n\n" + AI_USER_TEXT_INSTRUCTION}, *messages]
 
         response = await llm.call_chat(
             messages=full_messages,
@@ -97,7 +98,7 @@ class ProjectInterviewService:
                 message_count=message_count,
             )
             return {
-                "reply": response or localized_message("project_interview_continue"),
+                "reply": format_ai_user_text(response) or localized_message("project_interview_continue"),
                 "is_ready": False,
                 "summary": "",
             }
@@ -114,9 +115,9 @@ class ProjectInterviewService:
             is_ready=is_ready,
         )
         return {
-            "reply": parsed.get("assistant_message", ""),
+            "reply": format_ai_user_text(parsed.get("assistant_message", "")),
             "is_ready": is_ready,
-            "summary": parsed.get("summary", ""),
+            "summary": format_ai_user_text(parsed.get("summary", "")),
         }
 
     @staticmethod

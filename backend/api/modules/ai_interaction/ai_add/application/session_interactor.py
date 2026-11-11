@@ -2,6 +2,7 @@
 
 from sqlalchemy import select
 
+from backend.core.ai_user_text import format_ai_user_text
 from backend.core.llm_protected_inputs import collect_protected_texts
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class AIAddSessionInteractor:
             {
                 "id": m.id,
                 "role": m.role,
-                "content": m.content,
+                "content": format_ai_user_text(m.content) if m.role == "assistant" else m.content,
                 "extra": m.extra,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
@@ -80,6 +81,15 @@ class AIAddSessionInteractor:
         if ai_session.status != "active":
             raise ValueError(f"session_not_active: status={ai_session.status}")
 
+        from backend.api.modules.version_control.public import resolve_branch_context
+
+        from .session_creator import AIAddSessionCreator
+        _, workspace, _ = await db_session.run_sync(
+            lambda s: resolve_branch_context(s, ai_session.project_id, branch_name)
+        )
+        await AIAddSessionCreator._validate_anchor_references(
+            ai_session.project_id, ai_session.target_type, ai_session.anchor_payload, db_session, workspace.id,
+        )
         await self._save_user_message(session_id, content, db_session)
         strategy = self._strategy_registry.get(ai_session.target_type)
         project_context = await self._load_context(
@@ -193,7 +203,7 @@ class AIAddSessionInteractor:
     ) -> dict:
         from backend.database.model import AIAddMessageModel
 
-        assistant_message = result.get("assistant_message", "")
+        assistant_message = format_ai_user_text(result.get("assistant_message", ""))
         is_ready = bool(result.get("is_ready_to_generate", False))
         summary = result.get("summary", {})
         db_session.add(

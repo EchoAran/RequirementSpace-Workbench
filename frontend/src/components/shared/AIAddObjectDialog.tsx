@@ -117,7 +117,7 @@ export function AIAddObjectDialog({
         setStep('ready');
       }
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: err?.detail || t('addObjectDialog.sendMessageFailed') }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: t('addObjectDialog.sendMessageFailed') }]);
     } finally {
       setIsSending(false);
     }

@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.api.modules.ai_interaction.ai_add.application.session import AIAddSessionService
 from backend.api.modules.version_control.application.clean_initialization import create_initial_workspace
+from backend.api.modules.version_control.public import resolve_branch_context
 from backend.core.issue_resolution.fingerprint import compute_context_hash
 from backend.database.database import get_session
 from backend.database.model import (
@@ -80,10 +81,24 @@ async def test_ai_conflict_resolution_and_task_spawning(test_db):
         _, workspace = await session.run_sync(lambda sync_session: create_initial_workspace(sync_session, project))
         project_public_id = project.public_id
         project_id = project.id
+        await session.commit()
+
+        client.cookies.set("auth_session", owner_cookie)
+
+        # Owner creates a writable feature branch for the draft confirmation.
+        branch_resp = client.post(
+            f"/api/projects/{project_public_id}/branches",
+            json={"name": "feature/conflict", "from_ref": "main"}
+        )
+        assert branch_resp.status_code == 201
+
+        _, workspace, _ = await session.run_sync(
+            lambda sync_session: resolve_branch_context(sync_session, project_id, "feature/conflict", owner_id)
+        )
 
         # Compute initial context hash for target_type = "actor"
         ai_service = AIAddSessionService()
-        project_context = await ai_service._load_context(project_id, ["actors"], session)
+        project_context = await ai_service._load_context(project_id, ["actors"], session, branch_name="feature/conflict")
         initial_hash = compute_context_hash(project_context)
 
         # Seed the draft with this context_hash
@@ -94,6 +109,7 @@ async def test_ai_conflict_resolution_and_task_spawning(test_db):
             draft_type="single_actor",
             payload={
                 "project_id": project_id,
+                "workspace_id": workspace.id,
                 "target_type": "actor",
                 "generated_object": {
                     "name": "New AI Actor",
@@ -113,15 +129,6 @@ async def test_ai_conflict_resolution_and_task_spawning(test_db):
         )
         session.add(other_actor)
         await session.commit()
-
-    client.cookies.set("auth_session", owner_cookie)
-
-    # Owner creates a writable feature branch for the draft confirmation.
-    branch_resp = client.post(
-        f"/api/projects/{project_public_id}/branches",
-        json={"name": "feature/conflict", "from_ref": "main"}
-    )
-    assert branch_resp.status_code == 201
 
     # Now, attempt to confirm the draft -> Should raise 409 and detect conflict
     res_confirm = client.post("/api/ai_object_generation_drafts/ai_draft_conflict_test/confirm?branch=feature/conflict")

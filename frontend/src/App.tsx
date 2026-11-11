@@ -4,7 +4,7 @@ import { ScopedAIBar } from './components/shared/ScopedAIBar';
 import { GenerationConflictDialog } from './components/shared/GenerationConflictDialog';
 import GateCheckModal from './components/shared/GateCheckModal';
 import { useWorkspaceStore, getFriendlyErrorMessage } from './store/useWorkspaceStore';
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { buildProjectRouteWithBranch, extractWorkspacePage } from './core/selectors';
 import { useAuthStore } from './store/useAuthStore';
 import { AuthGuard } from './components/auth/AuthGuard';
@@ -112,6 +112,7 @@ function ProjectRouteBootstrap() {
   const setActivePage = useWorkspaceStore((s) => s.setActivePage);
   const workspacePage = extractWorkspacePage(location.pathname);
   const urlBranch = new URLSearchParams(location.search).get('branch') || 'main';
+  const loadingBranch = useRef<string | null>(null);
 
   // 初始加载：项目尚未打开时以 URL 分支打开工作区。
   useEffect(() => {
@@ -127,18 +128,27 @@ function ProjectRouteBootstrap() {
   const pendingBranchRef = useWorkspaceStore((s) => s.pendingBranchRef);
   const setPendingBranchRef = useWorkspaceStore((s) => s.setPendingBranchRef);
   useEffect(() => {
-    if (ir?.projectId !== projectId) return;
-    if (urlBranch === branchRef) return;
+    if (ir?.projectId !== projectId) {
+      loadingBranch.current = null;
+      return;
+    }
+    if (urlBranch === branchRef && loadingBranch.current === null) return;
+    if (loadingBranch.current === urlBranch) return;
     if (editDirty && pendingBranchRef !== urlBranch) {
       // 未保存编辑 + 未经确认的 URL 变化：回退到当前分支并等待确认。
       setPendingBranchRef(urlBranch);
       navigate(`?branch=${encodeURIComponent(branchRef)}`, { replace: true });
       return;
     }
-    if (pendingBranchRef === urlBranch) {
-      setPendingBranchRef(null);
-    }
-    void switchBranch(urlBranch);
+    loadingBranch.current = urlBranch;
+    void switchBranch(urlBranch).then((switched) => {
+      if (loadingBranch.current !== urlBranch) return;
+      loadingBranch.current = null;
+      const state = useWorkspaceStore.getState();
+      if (!switched && state.ir?.projectId === projectId && state.branchRef === branchRef) {
+        navigate(`?branch=${encodeURIComponent(branchRef)}`, { replace: true });
+      }
+    });
   }, [urlBranch, branchRef, pendingBranchRef, editDirty, projectId, ir?.projectId, switchBranch, setPendingBranchRef, navigate]);
 
   useEffect(() => {

@@ -11,14 +11,16 @@ No sessions, no drafts, no persistence.
 from __future__ import annotations
 
 import logging
-import re
 import time
+
+from sqlalchemy import select
 
 from backend.api.modules.ai_interaction.ai_explain.application.context import (
     NODE_LOADERS,
     _load_projection_context,
     _load_workspace_context,
 )
+from backend.core.ai_user_text import AI_USER_TEXT_INSTRUCTION, format_ai_user_text
 from backend.core.llm_protected_inputs import collect_protected_texts
 from backend.core.localized_messages import localized_message
 from backend.core.logging import get_logger, log_event, sanitize_message
@@ -27,20 +29,6 @@ from backend.core.logging.events import AI_EXPLAIN_COMPLETED, AI_EXPLAIN_FAILED
 from .context_locale import localize_ai_explain_context
 
 logger = get_logger(__name__)
-
-# Internal DB identifiers that must never be shown to end users,
-# e.g. "(ID:3)", "（ID：12）", "(rule:5)", "（feature:8）".
-_INTERNAL_ID_PATTERN = re.compile(
-    r"[（(]\s*(?:ID|id)\s*[:：]\s*\d+\s*[）)]\s?"
-    r"|[（(]\s*(?:actor|feature|flow|business_object|business_object_attribute|rule"
-    r"|flow_step|scenario|acceptance_criterion|perception_slot|scope)\s*[:：]\s*\d+\s*[）)]\s?"
-)
-
-
-def _strip_internal_ids(text: str) -> str:
-    """Remove internal identifiers from a user-facing answer (safety net)."""
-    return _INTERNAL_ID_PATTERN.sub("", text or "")
-
 
 class AIExplainService:
     """Stateless Q&A explanation service. One call per question."""
@@ -51,6 +39,7 @@ class AIExplainService:
         scope: dict,
         question: str,
         db_session,
+        branch_name: str | None = None,
     ) -> dict:
         """Answer a question within the given scope context."""
         start_time = time.perf_counter()
@@ -63,20 +52,26 @@ class AIExplainService:
         if project is None:
             raise ValueError("project_not_found")
 
+        from backend.api.modules.version_control.public import resolve_branch_context
+        _, workspace, _ = await db_session.run_sync(
+            lambda s: resolve_branch_context(s, project_id, branch_name)
+        )
+
         from backend.core.prompt_resolver import get_content_locale, resolve_prompt
         locale = get_content_locale()
         scope_kind, context_text, scope_label, objects_loaded = (
-            await self._load_scope_context(project_id, scope, db_session)
+            await self._load_scope_context(project_id, scope, db_session, workspace.id)
         )
         context_text = localize_ai_explain_context(context_text, locale)
         raw_prompt = resolve_prompt("explain", locale)
         default_reqs = localized_message("ai_explain_no_requirements")
         system_prompt = raw_prompt.format(
             project_name=project.name,
-            user_requirements=project.user_requirements or default_reqs,
+            user_requirements=workspace.user_requirements or default_reqs,
             scope_label=scope_label,
             context_text=context_text
         )
+        system_prompt += "\n\n" + AI_USER_TEXT_INSTRUCTION
         answer = await self._call_explain_llm(
             project,
             scope,
@@ -84,6 +79,7 @@ class AIExplainService:
             system_prompt=system_prompt,
             context_text=context_text,
             project_id=project_id,
+            user_requirements=workspace.user_requirements,
             started=start_time,
         )
 
@@ -102,7 +98,7 @@ class AIExplainService:
         )
 
         return {
-            "answer": _strip_internal_ids(answer) or "抱歉，我暂时无法回答这个问题。",
+            "answer": format_ai_user_text(answer or "") or "抱歉，我暂时无法回答这个问题。",
             "context_summary": {
                 "scope_label": scope_label,
                 "objects_loaded": objects_loaded,
@@ -114,6 +110,7 @@ class AIExplainService:
         project_id: int,
         scope: dict,
         db_session,
+        workspace_id: int,
     ) -> tuple[str, str, str, list[str]]:
         scope_kind = scope.get("kind", "")
         if scope_kind == "node":
@@ -128,11 +125,14 @@ class AIExplainService:
                 project_id,
                 target_id,
                 db_session,
+                workspace_id,
             )
             scope_label = await self._get_node_label(
                 target_type,
                 target_id,
                 db_session,
+                project_id,
+                workspace_id,
             )
         elif scope_kind == "projection":
             stage = scope.get("stage", "what")
@@ -140,12 +140,14 @@ class AIExplainService:
                 project_id,
                 stage,
                 db_session,
+                workspace_id,
             )
             scope_label = localized_message("ai_explain_stage", stage=stage)
         elif scope_kind == "workspace":
             context_text, objects_loaded = await _load_workspace_context(
                 project_id,
                 db_session,
+                workspace_id,
             )
             scope_label = localized_message("ai_explain_workspace")
         else:
@@ -161,6 +163,7 @@ class AIExplainService:
         system_prompt: str,
         context_text: str,
         project_id: int,
+        user_requirements: str,
         started: float,
     ):
         llm = self._get_llm_handler()
@@ -172,7 +175,7 @@ class AIExplainService:
                 ],
                 protected_inputs=collect_protected_texts(
                     project.name,
-                    project.user_requirements,
+                    user_requirements,
                     context_text,
                     question,
                 ),
@@ -198,7 +201,7 @@ class AIExplainService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _get_node_label(target_type: str, target_id: int, db_session) -> str:
+    async def _get_node_label(target_type: str, target_id: int, db_session, project_id: int, workspace_id: int) -> str:
         """Get a human-readable label for a node scope."""
         from backend.database.model import ActorModel, BusinessObjectModel, DomainRuleModel, FeatureModel, FlowModel
 
@@ -209,18 +212,16 @@ class AIExplainService:
             "business_object": BusinessObjectModel,
             "rule": DomainRuleModel,
         }
-        model_cls = model_map.get(target_type)
-        if model_cls is None:
-            return f"{target_type}:{target_id}"
-
-        obj = await db_session.get(model_cls, target_id)
+        model_cls = model_map[target_type]
+        obj = (await db_session.execute(select(model_cls).where(
+            model_cls.id == target_id,
+            model_cls.project_id == project_id,
+            model_cls.workspace_id == workspace_id,
+        ))).scalar_one_or_none()
         if obj is None:
-            return localized_message(
-                "ai_explain_deleted_node",
-                label=f"{target_type}:{target_id}",
-            )
+            raise ValueError("target_not_found")
         name = obj.title if target_type == "rule" else obj.name
-        return f"{name} ({target_type}:{target_id})"
+        return name
 
     @staticmethod
     def _get_llm_handler():

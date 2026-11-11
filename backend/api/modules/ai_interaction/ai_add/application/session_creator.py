@@ -95,6 +95,7 @@ class AIAddSessionCreator:
         anchor: dict,
         session,
         owner_user_id: int,
+        branch_name: str | None = None,
     ) -> dict:
         """Create a new AI add session. Validates target_type and anchor references."""
         # Validate target_type
@@ -124,7 +125,11 @@ class AIAddSessionCreator:
         project = project_res.scalar_one()
 
         # Validate anchor references exist
-        await self._validate_anchor_references(project.id, target_type, anchor, session)
+        from backend.api.modules.version_control.public import resolve_branch_context
+        _, workspace, _ = await session.run_sync(
+            lambda s: resolve_branch_context(s, project.id, branch_name, owner_user_id)
+        )
+        await self._validate_anchor_references(project.id, target_type, anchor, session, workspace.id)
 
         # Create session
         db_session = AIAddSessionModel(
@@ -158,15 +163,22 @@ class AIAddSessionCreator:
             "created_at": db_session.created_at.isoformat() if db_session.created_at else None,
         }
 
+    @staticmethod
     async def _validate_anchor_references(
-        self,
         project_id: int,
         target_type: str,
         anchor: dict,
         session,
+        workspace_id: int,
     ) -> None:
         """Check that objects referenced in anchor still exist."""
         from backend.database.model import FeatureModel, FlowModel
+
+        if target_type.startswith("edit_"):
+            from .session_draft_handler import AIAddDraftHandler
+            await AIAddDraftHandler._load_original_object(
+                target_type.removeprefix("edit_"), anchor, project_id, session, workspace_id,
+            )
 
         parent_feature_id = anchor.get("parent_feature_id")
         related_flow_id = anchor.get("related_flow_id")
@@ -177,6 +189,7 @@ class AIAddSessionCreator:
                 select(FeatureModel).where(
                     FeatureModel.id == parent_feature_id,
                     FeatureModel.project_id == project_id,
+                    FeatureModel.workspace_id == workspace_id,
                 )
             )
             if result.scalar_one_or_none() is None:
@@ -187,6 +200,7 @@ class AIAddSessionCreator:
                 select(FlowModel).where(
                     FlowModel.id == related_flow_id,
                     FlowModel.project_id == project_id,
+                    FlowModel.workspace_id == workspace_id,
                 )
             )
             if result.scalar_one_or_none() is None:
@@ -197,6 +211,7 @@ class AIAddSessionCreator:
                 select(FeatureModel).where(
                     FeatureModel.id.in_(feature_ids),
                     FeatureModel.project_id == project_id,
+                    FeatureModel.workspace_id == workspace_id,
                 )
             )
             existing = {r.id for r in result.scalars().all()}

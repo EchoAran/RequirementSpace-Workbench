@@ -53,6 +53,7 @@ AI_ADD_SESSION_ERRORS = {
     "edit_diff_empty",
     "edit_diff_validation_failed",
     "invalid_edit_anchor",
+    "draft_workspace_mismatch",
 }
 
 _service: AIAddSessionService | None = None
@@ -80,6 +81,7 @@ async def create_ai_add_session(
     user: UserModel = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
+    branch: str | None = Query(None),
 ):
     """Create a new AI add session for a given target_type (actor, feature_leaf, etc.)."""
     try:
@@ -88,6 +90,7 @@ async def create_ai_add_session(
             project_id=request.project_id,
             target_type=request.target_type,
             anchor=request.anchor,
+            branch_name=branch,
             owner_user_id=user.id,
             session=db_session,
         )
@@ -97,6 +100,9 @@ async def create_ai_add_session(
             raise HTTPException(status_code=404, detail="project_not_found")
         if error_str == "insufficient_project_role":
             raise HTTPException(status_code=403, detail="insufficient_project_role")
+        if error_str.startswith(("Branch ", "BranchWorkspace ")):
+            from backend.api.modules.version_control.public import map_branch_error
+            raise map_branch_error(error)
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise
@@ -166,6 +172,9 @@ async def send_ai_add_message(
         error_str = str(error)
         if error_str == "session_not_found":
             raise HTTPException(status_code=404, detail="session_not_found")
+        if error_str.startswith(("Branch ", "BranchWorkspace ")):
+            from backend.api.modules.version_control.public import map_branch_error
+            raise map_branch_error(error)
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise
@@ -197,6 +206,9 @@ async def generate_ai_add_draft(
         error_str = str(error)
         if error_str.startswith("session_not_found"):
             raise HTTPException(status_code=404, detail=error_str)
+        if error_str.startswith(("Branch ", "BranchWorkspace ")):
+            from backend.api.modules.version_control.public import map_branch_error
+            raise map_branch_error(error)
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise
@@ -247,6 +259,9 @@ async def confirm_ai_add_draft(
         error_str = str(error)
         if error_str == "draft_not_found":
             raise HTTPException(status_code=404, detail="draft_not_found")
+        if error_str.startswith(("Branch ", "BranchWorkspace ")):
+            from backend.api.modules.version_control.public import map_branch_error
+            raise map_branch_error(error)
         if _is_known_error(error_str):
             raise HTTPException(status_code=400, detail=error_str)
         raise

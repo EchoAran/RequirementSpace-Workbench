@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from backend.core.ai_user_text import AI_USER_TEXT_INSTRUCTION, format_ai_user_text
 from backend.core.localized_messages import localized_message
 from backend.core.prompt_resolver import resolve_prompt
 
@@ -104,7 +105,7 @@ class BaseInterviewStrategy(ABC):
         injected_system_prompt = self._inject_knowledge_context(system_prompt, knowledge_context)
 
         # 3. Format message history for LLM
-        messages = [{"role": "system", "content": injected_system_prompt}, *chat_history]
+        messages = [{"role": "system", "content": injected_system_prompt + "\n\n" + AI_USER_TEXT_INSTRUCTION}, *chat_history]
 
         # 4. Call LLM
         response = await llm_call_chat(
@@ -129,6 +130,8 @@ class BaseInterviewStrategy(ABC):
                 logger.exception("Failed to parse LLM interview response")
                 # Fallback in case of parse error: use the raw response as message
                 assistant_message = response
+
+        assistant_message = format_ai_user_text(assistant_message)
 
         # 5. Append assistant reply to history
         chat_history.append({"role": "assistant", "content": assistant_message})

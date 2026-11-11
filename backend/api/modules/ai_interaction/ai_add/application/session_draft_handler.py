@@ -53,9 +53,13 @@ class AIAddDraftHandler:
         if not ai_session.summary_payload:
             raise ValueError("empty_summary_payload")
 
+        from backend.api.modules.version_control.public import resolve_branch_context
+        _, workspace, _ = await db_session.run_sync(
+            lambda s: resolve_branch_context(s, ai_session.project_id, branch_name, owner_user_id)
+        )
         await self._validate_anchor_references(
             ai_session.project_id, ai_session.target_type,
-            ai_session.anchor_payload, db_session,
+            ai_session.anchor_payload, db_session, workspace.id,
         )
 
         project_result = await db_session.execute(
@@ -67,13 +71,13 @@ class AIAddDraftHandler:
 
         if ai_session.target_type.startswith("edit_"):
             return await self._generate_edit_draft(
-                ai_session, project, owner_user_id, db_session, branch_name,
+                ai_session, project, owner_user_id, db_session, branch_name, workspace,
             )
         return await self._generate_add_draft(
-            ai_session, project, owner_user_id, db_session, branch_name,
+            ai_session, project, owner_user_id, db_session, branch_name, workspace,
         )
 
-    async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None) -> dict:
+    async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None, workspace) -> dict:
         """Generate an add-mode draft (original Phase 2 logic)."""
         generator_ctx_keys = self._generator_ctx_keys(ai_session.target_type)
         project_context = await self._service._load_context(
@@ -83,7 +87,7 @@ class AIAddDraftHandler:
 
         from backend.core.generators.single_object import SingleObjectGeneratorInput
         gen_input = SingleObjectGeneratorInput(
-            user_requirements=project.user_requirements,
+            user_requirements=workspace.user_requirements,
             project_context=project_context,
             conversation_summary=ai_session.summary_payload or {},
             knowledge_context=knowledge_context,
@@ -104,6 +108,7 @@ class AIAddDraftHandler:
             owner_user_id,
             {
                 "project_id": ai_session.project_id,
+                "workspace_id": workspace.id,
                 "session_id": ai_session.id,
                 "target_type": ai_session.target_type,
                 "summary": ai_session.summary_payload or {},
@@ -118,7 +123,7 @@ class AIAddDraftHandler:
             db_session,
         )
 
-    async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None) -> dict:
+    async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None, workspace) -> dict:
         """Generate an edit-mode draft: load original object, call EditGenerator, validate diff."""
         from backend.core.generators.single_object.base_edit_generator import EditGeneratorInput
         from backend.core.rules import EDITABLE_FIELDS
@@ -128,7 +133,7 @@ class AIAddDraftHandler:
 
         # Load the original object from DB
         original_obj = await self._load_original_object(
-            base_type, ai_session.anchor_payload, ai_session.project_id, db_session,
+            base_type, ai_session.anchor_payload, ai_session.project_id, db_session, workspace.id,
         )
 
         generator_ctx_keys = self._generator_ctx_keys(ai_session.target_type)
@@ -140,7 +145,7 @@ class AIAddDraftHandler:
         knowledge_context = await self._build_knowledge_context(ai_session, db_session)
 
         gen_input = EditGeneratorInput(
-            user_requirements=project.user_requirements,
+            user_requirements=workspace.user_requirements,
             project_context=project_context,
             conversation_summary=ai_session.summary_payload or {},
             target_type=base_type,
@@ -172,6 +177,7 @@ class AIAddDraftHandler:
             owner_user_id,
             {
                 "project_id": ai_session.project_id,
+                "workspace_id": workspace.id,
                 "session_id": ai_session.id,
                 "target_type": ai_session.target_type,
                 "summary": ai_session.summary_payload or {},
@@ -298,6 +304,9 @@ class AIAddDraftHandler:
 
         if not project_id:
             raise ValueError("invalid_draft_payload")
+
+        if draft.get("workspace_id") != workspace_id:
+            raise ValueError("draft_workspace_mismatch")
 
         await self._raise_if_draft_context_conflicts(
             draft_id,
@@ -777,7 +786,7 @@ class AIAddDraftHandler:
 
     @staticmethod
     async def _load_original_object(
-        base_type: str, anchor: dict, project_id: int, db_session,
+        base_type: str, anchor: dict, project_id: int, db_session, workspace_id: int,
     ) -> dict:
         """Load the current state of the object being edited from the database."""
         target_id = anchor.get("target_id")
@@ -792,16 +801,22 @@ class AIAddDraftHandler:
             FlowModel,
         )
 
+        model = {
+            "actor": ActorModel, "feature": FeatureModel, "flow": FlowModel,
+            "business_object": BusinessObjectModel, "rule": DomainRuleModel,
+        }.get(base_type)
+        if model is None:
+            raise ValueError(f"unsupported_target_type: {base_type}")
+        obj = (await db_session.execute(select(model).where(
+            model.id == target_id, model.project_id == project_id, model.workspace_id == workspace_id,
+        ))).scalar_one_or_none()
+        if obj is None:
+            raise ValueError("target_not_found")
+
         if base_type == "actor":
-            obj = await db_session.get(ActorModel, target_id)
-            if obj is None:
-                raise ValueError("target_not_found")
             return {"id": obj.id, "name": obj.name, "description": obj.description}
 
         elif base_type == "feature":
-            obj = await db_session.get(FeatureModel, target_id)
-            if obj is None:
-                raise ValueError("target_not_found")
             from backend.database.model import feature_actor_table
             actor_result = await db_session.execute(
                 select(feature_actor_table.c.actor_id).where(
@@ -815,9 +830,6 @@ class AIAddDraftHandler:
             }
 
         elif base_type == "flow":
-            obj = await db_session.get(FlowModel, target_id)
-            if obj is None:
-                raise ValueError("target_not_found")
             from backend.database.model import flow_feature_table
             feat_result = await db_session.execute(
                 select(flow_feature_table.c.feature_id).where(
@@ -831,15 +843,9 @@ class AIAddDraftHandler:
             }
 
         elif base_type == "business_object":
-            obj = await db_session.get(BusinessObjectModel, target_id)
-            if obj is None:
-                raise ValueError("target_not_found")
             return {"id": obj.id, "name": obj.name, "description": obj.description}
 
         elif base_type == "rule":
-            obj = await db_session.get(DomainRuleModel, target_id)
-            if obj is None:
-                raise ValueError("target_not_found")
             return {"id": obj.id, "title": obj.title, "statement": obj.statement}
 
         raise ValueError(f"unsupported_target_type: {base_type}")
@@ -882,7 +888,7 @@ class AIAddDraftHandler:
                 ai_session = await self._get_session_or_raise(session_id, db_session)
                 anchor = ai_session.anchor_payload
 
-        original = await self._load_original_object(base_type, anchor, project_id, db_session)
+        original = await self._load_original_object(base_type, anchor, project_id, db_session, workspace_id)
 
         update_payload = {}
         for field, change in diff.items():
@@ -1028,47 +1034,8 @@ class AIAddDraftHandler:
         return db_session
 
     @staticmethod
-    async def _validate_anchor_references(
-        project_id: int,
-        target_type: str,
-        anchor: dict,
-        session,
-    ) -> None:
-        """Check that objects referenced in anchor still exist."""
-        from backend.database.model import FeatureModel, FlowModel
-
-        parent_feature_id = anchor.get("parent_feature_id")
-        related_flow_id = anchor.get("related_flow_id")
-        feature_ids = anchor.get("feature_ids", [])
-
-        if parent_feature_id is not None:
-            result = await session.execute(
-                select(FeatureModel).where(
-                    FeatureModel.id == parent_feature_id,
-                    FeatureModel.project_id == project_id,
-                )
-            )
-            if result.scalar_one_or_none() is None:
-                raise ValueError("anchor_reference_not_found: parent_feature_id")
-
-        if related_flow_id is not None:
-            result = await session.execute(
-                select(FlowModel).where(
-                    FlowModel.id == related_flow_id,
-                    FlowModel.project_id == project_id,
-                )
-            )
-            if result.scalar_one_or_none() is None:
-                raise ValueError("anchor_reference_not_found: related_flow_id")
-
-        if feature_ids:
-            result = await session.execute(
-                select(FeatureModel).where(
-                    FeatureModel.id.in_(feature_ids),
-                    FeatureModel.project_id == project_id,
-                )
-            )
-            existing = {r.id for r in result.scalars().all()}
-            missing = [fid for fid in feature_ids if fid not in existing]
-            if missing:
-                raise ValueError(f"anchor_reference_not_found: feature_ids={missing}")
+    async def _validate_anchor_references(project_id, target_type, anchor, session, workspace_id) -> None:
+        from .session_creator import AIAddSessionCreator
+        await AIAddSessionCreator._validate_anchor_references(
+            project_id, target_type, anchor, session, workspace_id,
+        )

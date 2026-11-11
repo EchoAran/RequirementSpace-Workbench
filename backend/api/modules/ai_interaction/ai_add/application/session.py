@@ -106,6 +106,7 @@ class AIAddSessionService:
         anchor: dict,
         session,
         owner_user_id: int,
+        branch_name: str | None = None,
     ) -> dict:
         """Create a new AI add session. Validates target_type and anchor references."""
         return await self.creator.create_session(
@@ -114,6 +115,7 @@ class AIAddSessionService:
             anchor=anchor,
             session=session,
             owner_user_id=owner_user_id,
+            branch_name=branch_name,
         )
 
     async def get_session(self, session_id: int, session) -> dict:
@@ -225,9 +227,9 @@ class AIAddSessionService:
         return await AIAddDraftHandler._load_original_object(base_type, anchor, project_id, db_session)
 
     @staticmethod
-    async def _validate_anchor_references(project_id: int, target_type: str, anchor: dict, session) -> None:
+    async def _validate_anchor_references(project_id: int, target_type: str, anchor: dict, session, workspace_id: int) -> None:
         from .session_draft_handler import AIAddDraftHandler
-        await AIAddDraftHandler._validate_anchor_references(project_id, target_type, anchor, session)
+        await AIAddDraftHandler._validate_anchor_references(project_id, target_type, anchor, session, workspace_id)
 
     @staticmethod
     async def _get_session_or_raise(session_id: int, session):

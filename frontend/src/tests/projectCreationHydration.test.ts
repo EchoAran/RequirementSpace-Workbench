@@ -35,7 +35,12 @@ describe('project creation hydration', () => {
     vi.mocked(workspaceApi.listChoiceGroups).mockResolvedValue([] as any);
     vi.mocked(workspaceApi.listAuditLogs).mockResolvedValue([] as any);
     vi.mocked(workspaceApi.getStageProgress).mockResolvedValue({ stages: [] } as any);
-    vi.mocked(workspaceApi.getWorkspaceHydration).mockRejectedValue(new Error('use fallback'));
+    vi.mocked(workspaceApi.getWorkspaceHydration).mockImplementation(async (projectId) => ({
+      projectId,
+      backendFindings: [nextAction(String(projectId))],
+      findingsByView: { issues: [], nextAction: [nextAction(String(projectId))], gate: [], health: [] },
+      choiceGroups: [], stageProgress: { stages: [] },
+    } as any));
     vi.mocked(workspaceApi.getById).mockImplementation(async (projectId) => ({
       projectId,
       projectName: projectId,

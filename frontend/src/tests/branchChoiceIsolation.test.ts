@@ -41,11 +41,12 @@ describe('Branch isolation during loading and generation', () => {
     expect(useWorkspaceStore.getState().ir?.userRequirements).toBe('hydrated');
   });
 
-  it('keeps the fallback choice and finding reads in the requested branch', async () => {
+  it('reports failed hydration without assembling partial workspace data', async () => {
     vi.mocked(workspaceApi.getWorkspaceHydration).mockRejectedValueOnce(new Error('hydrate unavailable'));
-    expect(await useWorkspaceStore.getState().openWorkspace('p', 'main')).toBe(true);
-    expect(workspaceApi.listChoiceGroups).toHaveBeenCalledWith('p', 'open', 'main');
-    expect(workspaceApi.listFindings).toHaveBeenCalledWith('p', { view: 'issues', stage: 'all', branch: 'main' });
+    expect(await useWorkspaceStore.getState().openWorkspace('p', 'main')).toBe(false);
+    expect(useWorkspaceStore.getState().error).toBe('hydrate unavailable');
+    expect(workspaceApi.listChoiceGroups).not.toHaveBeenCalled();
+    expect(workspaceApi.listFindings).not.toHaveBeenCalled();
   });
 
   it('does not send generation after a branch switch while loading defaults', async () => {

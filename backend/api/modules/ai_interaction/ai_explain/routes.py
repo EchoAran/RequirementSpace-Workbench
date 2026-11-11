@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ async def explain(
     request: ExplainRequest,
     user: UserModel = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_session),
+    branch: str | None = Query(None),
 ):
     """Answer a question about the project within the given scope."""
     from backend.api.dependencies.project_access import require_project_member
@@ -56,6 +57,7 @@ async def explain(
                 scope=request.scope.model_dump(),
                 question=request.question,
                 db_session=db_session,
+                branch_name=branch,
             )
         except ValueError as error:
             error_str = str(error)
@@ -65,6 +67,9 @@ async def explain(
                 raise HTTPException(status_code=404, detail=error_str)
             if error_str in EXPLAIN_ERRORS or error_str.startswith("unsupported_target_type"):
                 raise HTTPException(status_code=400, detail=error_str)
+            from backend.api.modules.version_control.public import map_branch_error
+            if "branch" in error_str.lower() or "workspace" in error_str.lower():
+                raise map_branch_error(error)
             logger.exception("Unexpected ValueError in explain: %s", error_str)
             raise HTTPException(status_code=500, detail="internal_error")
         except HTTPException:

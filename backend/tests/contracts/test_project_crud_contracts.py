@@ -114,8 +114,12 @@ def test_project_crud_contract_flow(crud_test_db):
     response = client.post(f"/api/projects/{project_id}/unlock-stage", json=unlock_payload)
     assert response.status_code == 404
 
-    # 6. Delete perception slot
+    # 6. Perception slots obey the same branch permissions as other workspace objects.
     response = client.delete(f"/api/projects/{project_id}/perception-slot")
+    assert response.status_code == 403
+    branch = client.post(f"/api/projects/{project_id}/branches", json={"name": "work/slots", "from_ref": "main"})
+    assert branch.status_code == 201
+    response = client.delete(f"/api/projects/{project_id}/perception-slot?branch=work/slots")
     assert response.status_code == 200
     slot = response.json()
     assert slot["projectId"] == project_id

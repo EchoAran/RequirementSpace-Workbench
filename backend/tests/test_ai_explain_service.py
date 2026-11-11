@@ -13,7 +13,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.api.modules.ai_interaction.ai_explain.application.explain import AIExplainService
-from backend.database.model import ActorModel, Base, FeatureModel, FeatureRelationModel, ProjectModel
+from backend.database.model import (
+    ActorModel,
+    Base,
+    BranchWorkspaceModel,
+    FeatureModel,
+    FeatureRelationModel,
+    ProjectModel,
+    RequirementBranchModel,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures – async in-memory SQLite database
@@ -37,20 +45,26 @@ async def seeded_project(db_session) -> int:
     db_session.add(project)
     await db_session.flush()
     pid = project.id
+    branch = RequirementBranchModel(project_id=pid, name="main")
+    db_session.add(branch)
+    await db_session.flush()
+    workspace = BranchWorkspaceModel(project_id=pid, branch_id=branch.id, user_requirements=project.user_requirements)
+    db_session.add(workspace)
+    await db_session.flush()
 
     # Actors
     for name in ["用户A", "用户B"]:
-        db_session.add(ActorModel(project_id=pid, name=name))
+        db_session.add(ActorModel(project_id=pid, workspace_id=workspace.id, name=name))
     await db_session.flush()
 
     # Root feature
-    root = FeatureModel(project_id=pid, name="根模块")
+    root = FeatureModel(project_id=pid, workspace_id=workspace.id, name="根模块")
     db_session.add(root)
     await db_session.flush()
 
     # Leaf features
     for pos, name in enumerate(["功能1", "功能2"]):
-        f = FeatureModel(project_id=pid, name=name)
+        f = FeatureModel(project_id=pid, workspace_id=workspace.id, name=name)
         db_session.add(f)
         await db_session.flush()
         db_session.add(FeatureRelationModel(parent_feature_id=root.id, child_feature_id=f.id, position=pos))

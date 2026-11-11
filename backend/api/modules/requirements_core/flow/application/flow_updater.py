@@ -57,6 +57,7 @@ async def apply_flow_updates(
     result = await session.execute(
         select(FeatureModel).where(
             FeatureModel.project_id == project_id,
+            FeatureModel.workspace_id == flow.workspace_id,
             FeatureModel.id.in_(request.feature_ids),
         )
     )

@@ -26,6 +26,7 @@ from backend.api.modules.project_lifecycle.schemas.project import (
     StageTransitionResponse,
     WorkspaceHydrationResponse,
 )
+from backend.api.modules.version_control.dependencies import reject_commit_write
 from backend.core.locale import resolve_effective_locale
 from backend.database.model import ProjectModel, UserModel
 
@@ -156,12 +157,15 @@ async def delete_perception_slot(
     user: UserModel = Depends(get_current_user),
     owned_project: ProjectModel = Depends(require_owned_project),
     session: AsyncSession = Depends(get_session),
+    commit_guard: None = Depends(reject_commit_write),
 ):
     try:
         from backend.api.modules.version_control.public import resolve_branch_context
-        _branch, ws_obj, _perms = await session.run_sync(
+        _branch, ws_obj, perms = await session.run_sync(
             lambda s: resolve_branch_context(s, owned_project.id, branch, user.id)
         )
+        if not perms["can_write"]:
+            raise PermissionError("cannot_write")
         return await project_service.delete_perception_slot(
             project_id=owned_project.id,
             session=session,

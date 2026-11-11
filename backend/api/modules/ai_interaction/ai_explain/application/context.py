@@ -1,7 +1,7 @@
 """
 Context loaders for the AI Explain (Q&A) service.
 
-Each loader receives (project_id, target_id, session) and returns a
+Each loader receives (project_id, target_id, session, workspace_id) and returns a
 formatted plain-text block describing the target object and its relations.
 
 Loaders do NOT call LLMs. They only query the database and format text.
@@ -37,7 +37,7 @@ def _append_named_entities(
     text = _format_entity(
         label,
         [{"name": entity.name, "id": entity.id} for entity in entities],
-        "- {name} (ID:{id})",
+        "- {name}",
     )
     if text:
         parts.append(text)
@@ -49,21 +49,27 @@ def _append_named_entities(
 # Node-level loaders
 # ---------------------------------------------------------------------------
 
-async def _load_actor_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+async def _load_actor_context(project_id: int, target_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load context for a single actor: self + features + scenarios."""
     from backend.database.model import ActorModel, FeatureModel, ScenarioModel, feature_actor_table
 
-    actor = await session.get(ActorModel, target_id)
+    actor = (await session.execute(
+        select(ActorModel).where(
+            ActorModel.id == target_id,
+            ActorModel.project_id == project_id,
+            ActorModel.workspace_id == workspace_id,
+        )
+    )).scalar_one_or_none()
     if actor is None:
         raise ValueError("target_not_found")
 
     loaded = [f"actor:{target_id}"]
-    parts = [f"参与者「{actor.name}」(ID:{actor.id})"]
+    parts = [f"参与者「{actor.name}」"]
     parts.append(f"描述：{actor.description or '（无描述）'}")
 
     # Associated features (via feature_actor_table)
     stmt = (
-        select(FeatureModel)
+        select(FeatureModel).where(FeatureModel.workspace_id == workspace_id)
         .join(feature_actor_table, FeatureModel.id == feature_actor_table.c.feature_id)
         .where(feature_actor_table.c.actor_id == target_id)
     )
@@ -71,7 +77,7 @@ async def _load_actor_context(project_id: int, target_id: int, session) -> tuple
     feat_text = _format_entity(
         "关联功能",
         [{"id": f.id, "name": f.name} for f in features],
-        "- {name} (ID:{id})",
+        "- {name}",
     )
     if feat_text:
         parts.append(feat_text)
@@ -79,12 +85,12 @@ async def _load_actor_context(project_id: int, target_id: int, session) -> tuple
         loaded.append(f"feature:{f.id}")
 
     # Associated scenarios
-    stmt = select(ScenarioModel).where(ScenarioModel.actor_id == target_id)
+    stmt = select(ScenarioModel).where(ScenarioModel.actor_id == target_id, ScenarioModel.workspace_id == workspace_id)
     scenarios = (await session.execute(stmt)).scalars().all()
     sc_text = _format_entity(
         "关联场景",
         [{"id": s.id, "name": s.name} for s in scenarios],
-        "- {name} (ID:{id})",
+        "- {name}",
     )
     if sc_text:
         parts.append(sc_text)
@@ -94,7 +100,7 @@ async def _load_actor_context(project_id: int, target_id: int, session) -> tuple
     return "\n\n".join(parts), loaded
 
 
-async def _load_feature_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+async def _load_feature_context(project_id: int, target_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load context for a single feature: self + parent + children + actors."""
     from backend.database.model import (
         ActorModel,
@@ -105,7 +111,13 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
         flow_feature_table,
     )
 
-    feature = await session.get(FeatureModel, target_id)
+    feature = (await session.execute(
+        select(FeatureModel).where(
+            FeatureModel.id == target_id,
+            FeatureModel.project_id == project_id,
+            FeatureModel.workspace_id == workspace_id,
+        )
+    )).scalar_one_or_none()
     if feature is None:
         raise ValueError("target_not_found")
 
@@ -118,7 +130,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
     )
     is_branch = child_rel.first() is not None
     kind_label = "功能模块" if is_branch else "功能点"
-    parts = [f"{kind_label}「{feature.name}」(ID:{feature.id})"]
+    parts = [f"{kind_label}「{feature.name}」"]
     parts.append(f"描述：{feature.description or '（无描述）'}")
 
     # Parent feature (via FeatureRelationModel)
@@ -126,13 +138,15 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
         select(FeatureRelationModel).where(FeatureRelationModel.child_feature_id == target_id)
     )).scalar_one_or_none()
     if rel:
-        parent = await session.get(FeatureModel, rel.parent_feature_id)
+        parent = (await session.execute(select(FeatureModel).where(
+            FeatureModel.id == rel.parent_feature_id, FeatureModel.workspace_id == workspace_id,
+        ))).scalar_one_or_none()
         if parent:
-            parts.append(f"所属父功能：{parent.name} (ID:{parent.id})")
+            parts.append(f"所属父功能：{parent.name}")
 
     # Children (if branch)
     children = (await session.execute(
-        select(FeatureModel)
+        select(FeatureModel).where(FeatureModel.workspace_id == workspace_id)
         .join(FeatureRelationModel, FeatureModel.id == FeatureRelationModel.child_feature_id)
         .where(FeatureRelationModel.parent_feature_id == target_id)
     )).scalars().all()
@@ -140,7 +154,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
 
     # Associated actors
     stmt = (
-        select(ActorModel)
+        select(ActorModel).where(ActorModel.workspace_id == workspace_id)
         .join(feature_actor_table, ActorModel.id == feature_actor_table.c.actor_id)
         .where(feature_actor_table.c.feature_id == target_id)
     )
@@ -149,7 +163,7 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
 
     # Associated flows
     stmt = (
-        select(FlowModel)
+        select(FlowModel).where(FlowModel.workspace_id == workspace_id)
         .join(flow_feature_table, FlowModel.id == flow_feature_table.c.flow_id)
         .where(flow_feature_table.c.feature_id == target_id)
     )
@@ -159,21 +173,27 @@ async def _load_feature_context(project_id: int, target_id: int, session) -> tup
     return "\n\n".join(parts), loaded
 
 
-async def _load_flow_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+async def _load_flow_context(project_id: int, target_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load context for a single flow: self + features + steps."""
     from backend.database.model import FeatureModel, FlowModel, FlowStepModel, flow_feature_table
 
-    flow = await session.get(FlowModel, target_id)
+    flow = (await session.execute(
+        select(FlowModel).where(
+            FlowModel.id == target_id,
+            FlowModel.project_id == project_id,
+            FlowModel.workspace_id == workspace_id,
+        )
+    )).scalar_one_or_none()
     if flow is None:
         raise ValueError("target_not_found")
 
     loaded = [f"flow:{target_id}"]
-    parts = [f"流程「{flow.name}」(ID:{flow.id})"]
+    parts = [f"流程「{flow.name}」"]
     parts.append(f"描述：{flow.description or '（无描述）'}")
 
     # Associated features
     stmt = (
-        select(FeatureModel)
+        select(FeatureModel).where(FeatureModel.workspace_id == workspace_id)
         .join(flow_feature_table, FeatureModel.id == flow_feature_table.c.feature_id)
         .where(flow_feature_table.c.flow_id == target_id)
     )
@@ -181,7 +201,7 @@ async def _load_flow_context(project_id: int, target_id: int, session) -> tuple[
     feat_text = _format_entity(
         "关联功能",
         [{"name": f.name, "id": f.id} for f in features],
-        "- {name} (ID:{id})",
+        "- {name}",
     )
     if feat_text:
         parts.append(feat_text)
@@ -205,16 +225,22 @@ async def _load_flow_context(project_id: int, target_id: int, session) -> tuple[
     return "\n\n".join(parts), loaded
 
 
-async def _load_business_object_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+async def _load_business_object_context(project_id: int, target_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load context for a single business object: self + attributes."""
     from backend.database.model import BusinessObjectAttributeModel, BusinessObjectModel
 
-    bo = await session.get(BusinessObjectModel, target_id)
+    bo = (await session.execute(
+        select(BusinessObjectModel).where(
+            BusinessObjectModel.id == target_id,
+            BusinessObjectModel.project_id == project_id,
+            BusinessObjectModel.workspace_id == workspace_id,
+        )
+    )).scalar_one_or_none()
     if bo is None:
         raise ValueError("target_not_found")
 
     loaded = [f"business_object:{target_id}"]
-    parts = [f"业务数据对象「{bo.name}」(ID:{bo.id})"]
+    parts = [f"业务数据对象「{bo.name}」"]
     parts.append(f"描述：{bo.description or '（无描述）'}")
 
     # Attributes
@@ -236,28 +262,36 @@ async def _load_business_object_context(project_id: int, target_id: int, session
     return "\n\n".join(parts), loaded
 
 
-async def _load_rule_context(project_id: int, target_id: int, session) -> tuple[str, list[str]]:
+async def _load_rule_context(project_id: int, target_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load context for a single domain rule: self + parent/children + linked objects."""
     from backend.database.model import DomainRuleModel, RuleLinkModel
 
-    rule = await session.get(DomainRuleModel, target_id)
+    rule = (await session.execute(
+        select(DomainRuleModel).where(
+            DomainRuleModel.id == target_id,
+            DomainRuleModel.project_id == project_id,
+            DomainRuleModel.workspace_id == workspace_id,
+        )
+    )).scalar_one_or_none()
     if rule is None:
         raise ValueError("target_not_found")
 
     loaded = [f"rule:{target_id}"]
-    parts = [f"业务规则「{rule.title}」(ID:{rule.id})"]
+    parts = [f"业务规则「{rule.title}」"]
     parts.append(f"约束内容：{rule.statement}")
     status_labels = {"confirmed": "已确认", "needs_confirmation": "待确认", "ai_assumption": "AI 假设"}
     parts.append(f"状态：{status_labels.get(rule.confirmation_status, rule.confirmation_status)}")
 
     if rule.parent_rule_id:
-        parent = await session.get(DomainRuleModel, rule.parent_rule_id)
+        parent = (await session.execute(select(DomainRuleModel).where(
+            DomainRuleModel.id == rule.parent_rule_id, DomainRuleModel.workspace_id == workspace_id,
+        ))).scalar_one_or_none()
         if parent:
-            parts.append(f"父规则：{parent.title} (ID:{parent.id})")
+            parts.append(f"父规则：{parent.title}")
             loaded.append(f"rule:{parent.id}")
 
     children = (await session.execute(
-        select(DomainRuleModel).where(DomainRuleModel.parent_rule_id == target_id)
+        select(DomainRuleModel).where(DomainRuleModel.parent_rule_id == target_id, DomainRuleModel.workspace_id == workspace_id)
     )).scalars().all()
     if children:
         child_text = _format_entity(
@@ -274,7 +308,7 @@ async def _load_rule_context(project_id: int, target_id: int, session) -> tuple[
     )).scalars().all()
     link_lines = []
     for link in links:
-        name = await _resolve_link_target_name(link.target_kind, link.target_logical_uuid, session)
+        name = await _resolve_link_target_name(link.target_kind, link.target_logical_uuid, session, workspace_id)
         label = name or (link.context_text or link.target_kind)
         loaded.append(f"{link.target_kind}:{link.target_logical_uuid}")
         link_lines.append(f"- {label}（作用：{link.link_purpose}）")
@@ -284,7 +318,7 @@ async def _load_rule_context(project_id: int, target_id: int, session) -> tuple[
     return "\n\n".join(parts), loaded
 
 
-async def _resolve_link_target_name(target_kind: str, target_logical_uuid: str, session) -> str:
+async def _resolve_link_target_name(target_kind: str, target_logical_uuid: str, session, workspace_id: int) -> str:
     """Resolve a rule link target to its display name; empty string when unresolvable."""
     from backend.database.model import (
         FeatureModel,
@@ -306,7 +340,7 @@ async def _resolve_link_target_name(target_kind: str, target_logical_uuid: str, 
         return ""
     model_cls, name_attr = entry
     obj = (await session.execute(
-        select(model_cls).where(model_cls.logical_uuid == target_logical_uuid)
+        select(model_cls).where(model_cls.logical_uuid == target_logical_uuid, model_cls.workspace_id == workspace_id)
     )).scalar_one_or_none()
     if obj is None:
         return ""
@@ -331,6 +365,7 @@ NODE_LOADERS: dict[str, callable] = {
 
 async def _append_project_entities(
     project_id: int,
+    workspace_id: int,
     session,
     *,
     model,
@@ -340,7 +375,7 @@ async def _append_project_entities(
     loaded: list[str],
 ) -> list:
     result = await session.execute(
-        select(model).where(model.project_id == project_id)
+        select(model).where(model.project_id == project_id, model.workspace_id == workspace_id)
     )
     entities = result.scalars().all()
     _append_named_entities(
@@ -375,7 +410,7 @@ async def _append_scope_projection_details(
     scope_lines = ["=== Kano 分析与范围决策（每个功能的分类与理由） ==="]
     for scope in scopes:
         feature = features_by_id.get(scope.feature_id)
-        feature_name = feature.name if feature else f"ID:{scope.feature_id}"
+        feature_name = feature.name
         line = f"- {feature_name}: 状态={scope.status}"
         if scope.kano_category_name:
             line += f", Kano={scope.kano_category_name}"
@@ -391,7 +426,7 @@ async def _append_scope_projection_details(
 
 
 async def _load_projection_context(
-    project_id: int, stage: str, session,
+    project_id: int, stage: str, session, workspace_id: int,
 ) -> tuple[str, list[str]]:
     """Load context for a whole stage/projection: actors/features for 'what', etc."""
     loaders_map = {
@@ -414,6 +449,7 @@ async def _load_projection_context(
     if "actors" in required:
         await _append_project_entities(
             project_id,
+            workspace_id,
             session,
             model=ActorModel,
             label="参与者",
@@ -426,6 +462,7 @@ async def _load_projection_context(
     if "features" in required:
         features = await _append_project_entities(
             project_id,
+            workspace_id,
             session,
             model=FeatureModel,
             label="功能",
@@ -444,6 +481,7 @@ async def _load_projection_context(
     if "flows" in required:
         await _append_project_entities(
             project_id,
+            workspace_id,
             session,
             model=FlowModel,
             label="流程",
@@ -455,6 +493,7 @@ async def _load_projection_context(
     if "business_objects" in required:
         await _append_project_entities(
             project_id,
+            workspace_id,
             session,
             model=BusinessObjectModel,
             label="业务数据对象",
@@ -466,7 +505,7 @@ async def _load_projection_context(
     return "\n\n".join(parts), loaded
 
 
-async def _load_workspace_context(project_id: int, session) -> tuple[str, list[str]]:
+async def _load_workspace_context(project_id: int, session, workspace_id: int) -> tuple[str, list[str]]:
     """Load full workspace context with threshold-based summary for large projects."""
     from backend.database.model import (
         ActorModel,
@@ -481,16 +520,16 @@ async def _load_workspace_context(project_id: int, session) -> tuple[str, list[s
 
     # Count objects
     actor_count = (await session.execute(
-        select(ActorModel).where(ActorModel.project_id == project_id)
+        select(ActorModel).where(ActorModel.project_id == project_id, ActorModel.workspace_id == workspace_id)
     )).scalars().all()
     feature_count = (await session.execute(
-        select(FeatureModel).where(FeatureModel.project_id == project_id)
+        select(FeatureModel).where(FeatureModel.project_id == project_id, FeatureModel.workspace_id == workspace_id)
     )).scalars().all()
     flow_count = (await session.execute(
-        select(FlowModel).where(FlowModel.project_id == project_id)
+        select(FlowModel).where(FlowModel.project_id == project_id, FlowModel.workspace_id == workspace_id)
     )).scalars().all()
     bo_count = (await session.execute(
-        select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
+        select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id, BusinessObjectModel.workspace_id == workspace_id)
     )).scalars().all()
 
     total = len(actor_count) + len(feature_count) + len(flow_count) + len(bo_count)

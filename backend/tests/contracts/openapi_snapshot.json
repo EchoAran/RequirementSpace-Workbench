@@ -13429,6 +13429,22 @@
         "operationId": "explain_api_ai_explain_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
             "in": "cookie",
             "name": "auth_session",
             "required": false,
@@ -13488,6 +13504,22 @@
         "description": "Create a new AI add session for a given target_type (actor, feature_leaf, etc.).",
         "operationId": "create_ai_add_session_api_ai_add_sessions_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
           {
             "in": "cookie",
             "name": "auth_session",

@@ -55,7 +55,7 @@ const getObjectId = (obj: any): string => {
 const getObjectTitle = (obj: any, t: any): string => {
   const title = obj?.title ?? obj?.name ?? obj?.actorName ?? obj?.featureName ??
     obj?.scenarioName ?? obj?.criterionContent ?? obj?.businessObjectName ??
-    obj?.businessObjectAttributeName ?? obj?.flowName ?? obj?.stepName ?? getObjectId(obj);
+    obj?.businessObjectAttributeName ?? obj?.flowName ?? obj?.stepName;
   return title !== undefined && null !== title && String(title).trim() ? String(title) : t('aiBar.unnamedObj');
 };
 
@@ -272,7 +272,7 @@ export function ScopedAIBar() {
       const res = await workspaceApi.explainAI(projectId, toExplainScope(scope), q);
       setMessages(prev => [...prev, { role: 'assistant', content: res.answer || t('aiBar.emptyAnswer') }]);
     } catch (err: any) {
-      const m = err?.detail || t('aiBar.explainFailed');
+      const m = t('aiBar.explainFailed');
       setError(m);
       setMessages(prev => [...prev, { role: 'assistant', content: m }]);
     } finally { setIsLoading(false); }
@@ -313,7 +313,7 @@ export function ScopedAIBar() {
       setEditMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       if (res.isReadyToGenerate) setEditStep('ready');
     } catch (err: any) {
-      setEditMessages(prev => [...prev, { role: 'assistant', content: err?.detail || t('aiBar.chatFailed') }]);
+      setEditMessages(prev => [...prev, { role: 'assistant', content: t('aiBar.chatFailed') }]);
     } finally { setEditIsSending(false); }
   }, [editInput, editSessionId, editIsSending]);
 

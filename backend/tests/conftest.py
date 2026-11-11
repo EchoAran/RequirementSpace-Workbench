@@ -8,6 +8,12 @@ if "LLM_CONFIG_ENCRYPTION_KEY" not in os.environ:
     os.environ["LLM_CONFIG_ENCRYPTION_KEY"] = "rK9PjN_wO2v5gVjHqX8zL1_pT5yW3xM8mU7bC4tN2zI="
 
 os.environ["LLM_LOCALE_VALIDATION_MODE"] = "enforce"
+os.environ.update(
+    LLM_API_URL="https://llm.example.test",
+    LLM_API_KEY="test-api-key",
+    LLM_MODEL_NAME="test-model",
+    LLM_TEMPERATURE="0.7",
+)
 
 # Sanitize NO_PROXY for httpx compatibility (httpx has a bug parsing unbracketed ipv6 in NO_PROXY)
 if "NO_PROXY" in os.environ:

@@ -17,6 +17,7 @@ from backend.api.modules.optimistic_lock.superseder import (
 )
 from backend.database.model import (
     ActorModel,
+    BEIJING_TZ,
     BusinessObjectAttributeModel,
     BusinessObjectModel,
     ChoiceModel,
@@ -96,22 +97,25 @@ class NodeSnapshotService:
         if not last_seen_updated_at:
             return
 
-        from datetime import datetime
+        from datetime import UTC, datetime
         if isinstance(last_seen_updated_at, str):
-            val = last_seen_updated_at.replace("Z", "")
-            if "+" in val:
-                val = val.split("+")[0]
+            val = last_seen_updated_at.replace("Z", "+00:00")
             try:
                 dt = datetime.fromisoformat(val)
             except ValueError:
                 try:
-                    dt = datetime.utcfromtimestamp(float(val))
+                    dt = datetime.fromtimestamp(float(val), UTC)
                 except ValueError:
                     return
         else:
             dt = last_seen_updated_at
 
-        node_ts = node.updated_at.timestamp() if node.updated_at else 0
+        node_time = node.updated_at
+        if node_time is not None and node_time.tzinfo is None:
+            node_time = node_time.replace(tzinfo=BEIJING_TZ)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=BEIJING_TZ)
+        node_ts = node_time.timestamp() if node_time else 0
         dt_ts = dt.timestamp()
 
         if abs(node_ts - dt_ts) > 0.001:

@@ -23,7 +23,8 @@ npm run build
   `owner_user_id` explicitly. Production service methods are not wrapped to
   accommodate old signatures.
 - Shared fixtures register the real application services and reset LLM request
-  context for each test. Mock LLM calls at the external-call boundary.
+  context for each test. Fixed dummy LLM settings keep the tests independent of
+  a developer's `.env` and credentials. Mock LLM calls at the external-call boundary.
 - UI tests that render components with asynchronous effects use
   `frontend/src/tests/renderWithEffects.tsx`. Await rendering, rerendering and
   asynchronous actions before checking their results. Use virtual timers for

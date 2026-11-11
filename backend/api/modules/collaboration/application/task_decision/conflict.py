@@ -41,6 +41,7 @@ async def _persist_approved_conflict_payload(
         stale_result,
         project_id,
         session,
+        workspace_id=workspace_id,
     )
     await handler._persist_generated_object(
         target_type,

@@ -105,7 +105,7 @@
     },
     "GENERATE_SCENARIOS": {
       "title": "Generate Scenarios",
-      "description": "Generate scenarios for the project features and actors."
+      "description": "There are no scenarios in the project yet. It is recommended to generate scenarios for features and actors."
     },
     "GENERATE_ACCEPTANCE_CRITERIA": {
       "title": "Generate Acceptance Criteria",
@@ -2326,7 +2326,10 @@
       "scopes": "Scope {{count}}",
       "businessObjects": "Objects {{count}}",
       "rules": "Rules {{count}}",
-      "title": "Stats"
+      "title": "Stats",
+      "rulesAdded": "+{{count}} rules",
+      "steps": "+{{count}} steps",
+      "transitions": "+{{count}} transitions"
     },
     "actorsDiffTitle": "Actor Differences",
     "actorsDiffUnique": "Plan-unique Role",
@@ -2981,6 +2984,7 @@
       "plansGeneratedCount": "{{count}} project plan(s) generated",
       "createdSuccess": "Project created successfully. Happy modeling!",
       "candidateClosed": "Closed candidates and returned to creation page",
+      "discardFailed": "Failed to discard project plan",
       "blankProjectCreated": "Blank project created, pending draft plans preserved.",
       "existingCandidatesOpened": "Existing candidates opened, you can select or regenerate.",
       "generatingCandidates": "Generating candidates...",
@@ -3161,7 +3165,14 @@
       "nextActionText": "Next action suggestion",
       "missingActionText": "missing executable action",
       "reDiagnose": "Re-diagnose: {{desc}}",
-      "viewSuggestion": "Generate suggestion"
+      "viewSuggestion": "Generate suggestion",
+      "actions": {
+        "ai_repair": "AI Repair",
+        "generation_draft": "Generate Draft",
+        "open_panel": "Open Panel",
+        "manual_action": "Generate Suggestion",
+        "unsupported": "Auto-fix Unsupported"
+      }
     },
     "errors": {
       "timeout": "AI service request timeout, please try again; check connection if this persists.",
@@ -3285,7 +3296,11 @@
       "revertCommitTarget": "Snapshot Commit",
       "revertMessageLabel": "Commit Message",
       "revertConfirmButton": "Confirm Revert",
-      "reverting": "Reverting..."
+      "reverting": "Reverting...",
+      "revertDefaultMessage": "Revert to commit: [@{{shortId}}] {{message}}",
+      "revertFailed": "Failed to revert commit",
+      "currentBranch": "Current Branch",
+      "revertMessagePlaceholder": "Enter reason or explanation for reverting..."
     },
     "protectedBranchBanner": "You are viewing the protected main branch (read-only mode). To make structural changes or edit the model, please create a new branch from this version.",
     "viewerReadOnlyBanner": "You have read-only permissions for this project and cannot make changes or commits.",
@@ -3566,7 +3581,8 @@
         "commentFailed": "Failed to post comment",
         "resolveFailed": "Failed to resolve comment",
         "reopenFailed": "Failed to reopen comment"
-      }
+      },
+      "noComparableCommit": "No comparable baseline commit available"
     },
     "createMr": {
       "ariaLabel": "Create Merge Request",
@@ -3636,7 +3652,39 @@
         "title": "Git features not yet supported",
         "body": "This version control does not offer rebase, cherry-pick, tags, remote repository sync, or command-line compatibility. Organize changes through branches and merge requests instead."
       },
-      "protectedAction": "Create branch / Open Merge Request"
+      "protectedAction": "Create branch / Open Merge Request",
+      "knowledgeBase": "Collaboration Knowledge Base",
+      "collapsedHint": "Click to expand core operations such as baseline snapshots, branch policies, MR reviews, and rollbacks...",
+      "expand": "Expand Guide",
+      "collapse": "Collapse",
+      "tabs": {
+        "rules": "📖 Core Collaboration Rules",
+        "tips": "🚀 Tips & Rollback"
+      },
+      "badges": {
+        "snapshot": "Baseline Snapshot",
+        "branchPolicy": "Branch Strategy",
+        "security": "Security",
+        "mrReview": "Merge Review",
+        "differences": "Feature Differences",
+        "newFeature": "New Feature",
+        "lifecycle": "Lifecycle",
+        "conflictResolution": "Smart Conflict Resolution"
+      },
+      "tips": {
+        "revert": {
+          "title": "Version Rollback Tips",
+          "body": "Select any historical commit and click 'Rollback to this commit'. The system will generate a revert commit on the current branch and restore all specification entities with full auditability."
+        },
+        "stages": {
+          "title": "Stage Progression",
+          "body": "Each branch independently advances What (Actors/Features) → Flow (Workflows) → Scope (Scope acceptance). Interactive prototypes can be compiled once all prerequisite stages are met."
+        },
+        "merge": {
+          "title": "Semantic 3-Way Merge",
+          "body": "Merge runs diff and merge at the semantic entity and attribute level. When conflicts occur, select options per entity without manual code edits."
+        }
+      }
     }
   },
   "systemGuide": {
@@ -4230,6 +4278,11 @@
           }
         ]
       }
+    },
+    "tabs": {
+      "all": "All",
+      "workflow": "Specs",
+      "versionControl": "Version"
     }
   }
 }

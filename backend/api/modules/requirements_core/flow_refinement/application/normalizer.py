@@ -69,6 +69,7 @@ def normalize_and_validate_refinement(
     context_feature_uuids: set[str] | None = None,
     context_scenario_uuids: set[str] | None = None,
     context_knowledge_uuids: set[str] | None = None,
+    existing_transitions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Validate candidate output against domain bounds, reference integrity, and confirmed rules."""
     steps_added = raw_output.get("steps_added", [])
@@ -78,6 +79,27 @@ def normalize_and_validate_refinement(
     rules_added = rule_changes["rules_added"]
     rule_links_added = rule_changes["rule_links_added"]
     business_objects_added = raw_output.get("business_objects_added", [])
+
+    # Ensure at most one default outgoing transition per source step
+    existing_default_sources: set[Any] = set()
+    if existing_transitions:
+        for t in existing_transitions:
+            if t.get("is_default"):
+                if t.get("source_step_position") is not None:
+                    existing_default_sources.add(t["source_step_position"])
+                if t.get("source_step_id") is not None:
+                    existing_default_sources.add(t["source_step_id"])
+                if t.get("source_step_uuid") is not None:
+                    existing_default_sources.add(t["source_step_uuid"])
+
+    sources_with_default = set(existing_default_sources)
+    for t in transitions_added:
+        src = t.get("source_step_ref") or t.get("source_step_position")
+        if t.get("is_default"):
+            if src in sources_with_default:
+                t["is_default"] = False
+            else:
+                sources_with_default.add(src)
 
     # Normalize business object attributes (strictly single official field)
     for bo in business_objects_added:

@@ -47,6 +47,7 @@ def _update_scope(
         scope.negative_picture = negative_picture
 
 async def _upsert_scopes(
+    workspace_id: int,
     patch: dict,
     id_maps: _CommitIdMaps,
     session: AsyncSession,
@@ -70,6 +71,7 @@ async def _upsert_scopes(
             continue
         session.add(
             ScopeModel(
+                workspace_id=workspace_id,
                 feature_id=feature_id,
                 status=scope_data["status"],
                 reason=scope_data["reason"],

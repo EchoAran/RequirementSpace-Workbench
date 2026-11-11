@@ -105,7 +105,7 @@
     },
     "GENERATE_SCENARIOS": {
       "title": "生成场景",
-      "description": "请为项目功能和参与者生成场景。"
+      "description": "当前项目还没有场景，建议为功能与参与者生成场景。"
     },
     "GENERATE_ACCEPTANCE_CRITERIA": {
       "title": "生成验收标准",
@@ -2326,7 +2326,10 @@
       "scopes": "范围决策 {{count}}",
       "businessObjects": "对象 {{count}}",
       "rules": "规则 {{count}}",
-      "title": "对象统计"
+      "title": "对象统计",
+      "rulesAdded": "规则 +{{count}}",
+      "steps": "步骤 +{{count}}",
+      "transitions": "转移 +{{count}}"
     },
     "actorsDiffTitle": "参与者设置差异",
     "actorsDiffUnique": "方案独有角色",
@@ -2983,6 +2986,7 @@
       "generatingPlans": "AI 正在为您生成多套项目方案...",
       "createdSuccess": "项目已创建，祝您建模愉快！",
       "candidateClosed": "已关闭候选方案并返回创建页面",
+      "discardFailed": "丢弃候选方案失败",
       "blankProjectCreated": "已创建空白项目，并保留待采纳的项目草稿方案。",
       "existingCandidatesOpened": "已打开现有候选方案，可继续选择或重新生成。",
       "generatingCandidates": "正在生成候选方案...",
@@ -3163,7 +3167,14 @@
       "nextActionText": "下一步建议",
       "missingActionText": "缺少可执行 action",
       "reDiagnose": "重新诊断：{{desc}}",
-      "viewSuggestion": "生成处理建议"
+      "viewSuggestion": "生成处理建议",
+      "actions": {
+        "ai_repair": "AI 修复",
+        "generation_draft": "生成草稿",
+        "open_panel": "定位处理",
+        "manual_action": "查看处理建议",
+        "unsupported": "暂不支持自动处理"
+      }
     },
     "errors": {
       "timeout": "AI 服务响应超时，请稍后重试；如果持续出现，请检查模型服务连接状态。",
@@ -3287,7 +3298,11 @@
       "revertCommitTarget": "回滚快照",
       "revertMessageLabel": "回滚提交信息",
       "revertConfirmButton": "确认回滚",
-      "reverting": "正在回滚..."
+      "reverting": "正在回滚...",
+      "revertDefaultMessage": "回滚至提交: [@{{shortId}}] {{message}}",
+      "revertFailed": "版本回滚失败",
+      "currentBranch": "当前分支",
+      "revertMessagePlaceholder": "请输入回滚提交的说明..."
     },
     "protectedBranchBanner": "您正在查看受保护的 main 分支（只读模式）。如需进行结构变更或编辑模型，请从此版本创建新分支。",
     "viewerReadOnlyBanner": "您当前对本项目仅具备只读权限，无法执行修改或提交操作。",
@@ -3568,7 +3583,8 @@
         "commentFailed": "发表评论失败",
         "resolveFailed": "解决评论失败",
         "reopenFailed": "重新打开评论失败"
-      }
+      },
+      "noComparableCommit": "暂无可比对的基线提交"
     },
     "createMr": {
       "ariaLabel": "创建合并请求",
@@ -3638,7 +3654,39 @@
         "title": "暂不支持的 Git 功能",
         "body": "当前版本管理不提供 rebase、cherry-pick、tag、远程仓库同步或命令行兼容。请通过分支 + 合并请求的方式组织变更。"
       },
-      "protectedAction": "创建分支 / 发起合并请求"
+      "protectedAction": "创建分支 / 发起合并请求",
+      "knowledgeBase": "协作知识库",
+      "collapsedHint": "点击展开基线快照、分支策略、MR 评审及版本回滚等核心操作秘籍...",
+      "expand": "展开指南",
+      "collapse": "收起",
+      "tabs": {
+        "rules": "📖 核心协同规则",
+        "tips": "🚀 实用技巧与回滚"
+      },
+      "badges": {
+        "snapshot": "基线快照",
+        "branchPolicy": "分支策略",
+        "security": "安全保护",
+        "mrReview": "合并评审",
+        "differences": "特性差异",
+        "newFeature": "新功能",
+        "lifecycle": "生命周期",
+        "conflictResolution": "智能冲突处理"
+      },
+      "tips": {
+        "revert": {
+          "title": "版本回滚技巧",
+          "body": "在提交历史中选中任意历史节点，点击“回滚到此提交”，系统将在当前分支生成反向提交并精准还原所有规约实体，历史记录完整可溯。"
+        },
+        "stages": {
+          "title": "规约阶段流转",
+          "body": "各分支独立推进 What (参与者/功能) → Flow (流程编排) → Scope (范围验收)。完成全部前置阶段后即可编译交互原型。"
+        },
+        "merge": {
+          "title": "语义三方合并",
+          "body": "合并基于语义实体属性级别进行 Diff 与 Merge；发生冲突时可逐项选择保留源分支或目标分支，无需手写代码解决冲突。"
+        }
+      }
     }
   },
   "systemGuide": {
@@ -4232,6 +4280,11 @@
           }
         ]
       }
+    },
+    "tabs": {
+      "all": "全部",
+      "workflow": "规约",
+      "versionControl": "版本"
     }
   }
 }

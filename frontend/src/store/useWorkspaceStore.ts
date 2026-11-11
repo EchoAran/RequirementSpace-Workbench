@@ -111,11 +111,23 @@ export function getFindingCapability(finding: { code: string; capability?: any; 
   actionLabel: string;
   enabled: boolean;
 } {
+  const kind = finding.capability?.kind || 'manual_action';
+  const labelKey = `store.finding.actions.${kind}`;
+  const translated = i18n.t(labelKey);
+  const hasTranslated = Boolean(translated && translated !== labelKey);
+
+  const isEnglish = (i18n.resolvedLanguage || i18n.language || '').toLowerCase().startsWith('en')
+    || (typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('en'));
+
   // 1. 优先使用后端返回的 capability
   if (finding.capability) {
+    const actionLabel = isEnglish
+      ? (hasTranslated ? translated : (finding.capability.action_label || i18n.t('store.finding.viewSuggestion')))
+      : (finding.capability.action_label || (hasTranslated ? translated : i18n.t('store.finding.viewSuggestion')));
+
     return {
-      kind: finding.capability.kind || 'manual_action',
-      actionLabel: finding.capability.action_label || i18n.t('store.finding.viewSuggestion'),
+      kind,
+      actionLabel,
       enabled: finding.capability.enabled !== false,
     };
   }
@@ -2678,22 +2690,23 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
       set({ activeChoiceGroup: null });
       return;
     }
+    set({ isLoading: true, error: null });
     try {
       await workspaceApi.discardProjectCreationChoiceGroup(group.id);
       if (get().sessionVersion !== version) return;
+      set({
+        activeChoiceGroup: null,
+        isLoading: false,
+        currentSystemView: 'onboarding',
+        lastActionMessageToken: 'store.project.candidateClosed',
+      });
+      void get().loadOpenOnboardingChoiceGroups();
     } catch (err) {
-      console.warn('Failed to discard onboarding choice group on backend:', err);
-    } finally {
-      if (get().sessionVersion === version) {
-        set({
-          activeChoiceGroup: null,
-          isGeneratingChoices: false,
-          generatingChoiceGroupType: null,
-          currentSystemView: 'onboarding',
-          lastActionMessageToken: 'store.project.candidateClosed',
-        });
-        void get().loadOpenOnboardingChoiceGroups();
-      }
+      if (get().sessionVersion !== version) return;
+      set({
+        error: err instanceof Error ? err.message : 'store.project.discardFailed',
+        isLoading: false,
+      });
     }
   },
 
@@ -4725,7 +4738,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (isNaN(choiceIdNum)) return;
     set({ isLoading: true, error: null });
     try {
-      const result = await workspaceApi.acceptChoice(projectId, choiceIdNum, force || false, expectedWorkspaceVersion);
+      const result = await workspaceApi.acceptChoice(
+        projectId,
+        choiceIdNum,
+        force || false,
+        expectedWorkspaceVersion,
+        get().branchRef,
+      );
       if (get().sessionVersion !== version) return;
       if (result?.is_stale) {
         set({ activeStaleChoice: { projectId, choiceId: choiceIdNum, staleReason: result.stale_reason }, isLoading: false });
@@ -4796,7 +4815,7 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     if (isNaN(choiceIdNum)) return;
     set({ isLoading: true, error: null });
     try {
-      await workspaceApi.rejectChoice(projectId, choiceIdNum);
+      await workspaceApi.rejectChoice(projectId, choiceIdNum, get().branchRef);
       if (get().sessionVersion !== version) return;
       await get().refreshWorkspace();
       if (get().sessionVersion !== version) return;
@@ -4820,15 +4839,13 @@ export const useWorkspaceStore = create<WorkspaceState>((rawSet, get) => {
     }
     set({ isLoading: true, error: null });
     try {
-      await workspaceApi.discardChoiceGroup(projectId, groupId);
+      await workspaceApi.discardChoiceGroup(projectId, groupId, get().branchRef);
       if (get().sessionVersion !== version) return;
+      set({ activeChoiceGroup: null, isLoading: false, lastActionMessageToken: 'store.finding.discardSuccess' });
+      await get().refreshWorkspace();
     } catch (err) {
-      console.warn('Failed to discard choice group on backend:', err);
-    } finally {
-      if (get().sessionVersion === version) {
-        set({ activeChoiceGroup: null, isLoading: false, lastActionMessageToken: 'store.finding.discardSuccess' });
-        await get().refreshWorkspace();
-      }
+      if (get().sessionVersion !== version) return;
+      set({ error: err instanceof Error ? err.message : 'store.finding.discardFailed', isLoading: false });
     }
   },
 

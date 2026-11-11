@@ -540,7 +540,7 @@ export function Preview() {
         setPrototypeState('loading');
         setPrototypeError(null);
       } else if (status === 'ready') {
-        if (activeShadowDraft.prototypePreview?.prototypeId) {
+        if (activeShadowDraft.prototypePreview) {
           setPrototype(activeShadowDraft.prototypePreview);
           setPrototypeState('ready');
           setPrototypeError(null);
@@ -646,7 +646,7 @@ export function Preview() {
   );
 
   const hasCompiledPrototype = useMemo(() => {
-    if (!prototype || !prototype.prototypeId) return false;
+    if (!prototype) return false;
     if (prototype.status === 'failed' || (prototype as any).message === 'prototype_preview_not_found') return false;
     if (prototype.status === 'generating') return true;
     const hasHtml = Boolean(prototype.html && prototype.html.trim().length > 0);
@@ -1822,13 +1822,13 @@ function composePrototypeSrcDoc(prototype: PrototypePreview | PrototypePage) {
 
   if (css) {
     html = html.includes('</head>')
-      ? html.replace('</head>', `${css}</head>`)
+      ? html.replace('</head>', () => `${css}</head>`)
       : `${css}${html}`;
   }
 
   if (javascript) {
     html = html.includes('</body>')
-      ? html.replace('</body>', `${javascript}</body>`)
+      ? html.replace('</body>', () => `${javascript}</body>`)
       : `${html}${javascript}`;
   }
 
@@ -1838,7 +1838,7 @@ function composePrototypeSrcDoc(prototype: PrototypePreview | PrototypePage) {
 function sanitizePrototypeHtml(html: string) {
   return html
     .replace(/<script[^>]+src=["'](?:\.\/)?script\.js["'][^>]*>\s*<\/script>/gi, '')
-    .replace(/<link[^>]+rel=["']stylesheet["'][^>]+href=["'](?:\.\/)?style\.css["'][^>]*>/gi, '');
+    .replace(/<link\b(?=[^>]*\brel=["'](?:stylesheet|preconnect|dns-prefetch)["'])[^>]*>/gi, '');
 }
 
 function downloadFile(filename: string, content: string, type: string) {

@@ -59,7 +59,7 @@
                     "condition_text": "",
                     "is_default": true,
                     "semantic_tags": [],
-                    "rule_refs": ["<引用的领域规则logical_uuid>"]
+                    "rule_refs": ["<引用的领域规则编号，例如R-001>"]
                 }
             ]
         }
@@ -75,8 +75,8 @@
 6. feature_ids 只能引用系统能力输入中存在的 feature_id。
 7. step_type 只能是 actorAction、systemAction、judgment。
 8. 同一 source_step_number 至多有一个 is_default 为 true 的 transition；多出口边必须具有可区分的 label 或 condition_text。
-9. rule_refs 只能引用输入领域规则中真实存在的 logical_uuid。
-规则关联按作用范围选择：执行、校验、计算规则放在 flow_steps[].rule_refs；流转条件和分支选择规则放在 transitions[].rule_refs；跨步骤、流程整体约束放在 flows[].rule_refs。无适用规则时输出空数组，不要为了覆盖所有步骤强行关联，也不要把所有规则都放在线上。同一规则确实作用于多个位置时可复用同一 logical_uuid，流程级关联不复制到每个步骤。
+9. rule_refs 只能引用输入领域规则列表中真实存在的 rule_number（如 R-001、R-002）。无适用规则时输出空数组 []，严禁自行伪造规则编号。
+规则关联按作用范围选择：执行、校验、计算规则放在 flow_steps[].rule_refs；流转条件和分支选择规则放在 transitions[].rule_refs；跨步骤、流程整体约束放在 flows[].rule_refs。无适用规则时输出空数组，不要为了覆盖所有步骤强行关联，也不要把所有规则都放在线上。同一规则确实作用于多个位置时可复用同一 rule_number，流程级关联不复制到每个步骤。
 
 # 示例
 ## 示例输入

@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/plume-white.svg" />
     <title>需求空间工作台</title>
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('ui_locale');
+          var lang = stored || (navigator.languages && navigator.languages[0]) || navigator.language || '';
+          if (lang.toLowerCase().startsWith('en')) {
+            document.title = 'Requirement Workspace';
+            document.documentElement.lang = 'en-US';
+          } else {
+            document.title = '需求空间工作台';
+            document.documentElement.lang = 'zh-CN';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

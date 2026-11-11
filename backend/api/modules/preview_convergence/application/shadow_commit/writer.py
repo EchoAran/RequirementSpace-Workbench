@@ -124,7 +124,7 @@ async def commit_shadow_draft(
     savepoint = await session.begin_nested()
     try:
         await _write_patch_entities(project_id, workspace_id, patch, id_maps, session)
-        await _upsert_scopes(patch, id_maps, session)
+        await _upsert_scopes(workspace_id, patch, id_maps, session)
         await _finalize_project(project_id, workspace_id, session)
         await _clear_perception_cache(project_id, session)
         await session.flush()

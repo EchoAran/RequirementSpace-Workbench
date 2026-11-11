@@ -97,6 +97,7 @@ class FeatureService:
             session,
             req.parent_id,
             feature.id,
+            workspace_id,
         )
 
         # 审计日志: 新增功能

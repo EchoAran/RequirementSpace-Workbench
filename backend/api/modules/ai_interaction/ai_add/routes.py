@@ -146,6 +146,7 @@ async def send_ai_add_message(
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
+    branch: str | None = Query(None),
 ):
     """Send a user message in an AI add session and get the assistant's reply."""
     try:
@@ -159,6 +160,7 @@ async def send_ai_add_message(
                 session_id=ai_session.id,
                 content=request.content,
                 db_session=db_session,
+                branch_name=branch,
             )
     except ValueError as error:
         error_str = str(error)
@@ -175,6 +177,7 @@ async def generate_ai_add_draft(
     ai_session: AIAddSessionModel = Depends(require_owned_ai_add_session),
     db_session: AsyncSession = Depends(get_session),
     commit_guard: None = Depends(reject_commit_write),
+    branch: str | None = Query(None),
 ):
     """Generate a draft from the interview summary (when session is ready)."""
     try:
@@ -188,6 +191,7 @@ async def generate_ai_add_draft(
                 session_id=ai_session.id,
                 owner_user_id=user.id,
                 db_session=db_session,
+                branch_name=branch,
             )
     except ValueError as error:
         error_str = str(error)

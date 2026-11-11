@@ -18,7 +18,7 @@ interface GuidanceCard {
   icon: React.ComponentType<{ className?: string }>;
   titleKey: string;
   bodyKey: string;
-  badge?: string;
+  badgeKey?: string;
 }
 
 const VC_RULES_CARDS: GuidanceCard[] = [
@@ -27,59 +27,59 @@ const VC_RULES_CARDS: GuidanceCard[] = [
     icon: GitCommitHorizontal,
     titleKey: 'versionControl.guide.baselineMeaning.title',
     bodyKey: 'versionControl.guide.baselineMeaning.body',
-    badge: '基线快照',
+    badgeKey: 'versionControl.guide.badges.snapshot',
   },
   {
     key: 'whenToBranch',
     icon: GitBranch,
     titleKey: 'versionControl.guide.whenToBranch.title',
     bodyKey: 'versionControl.guide.whenToBranch.body',
-    badge: '分支策略',
+    badgeKey: 'versionControl.guide.badges.branchPolicy',
   },
   {
     key: 'mainProtection',
     icon: ShieldCheck,
     titleKey: 'versionControl.guide.mainProtection.title',
     bodyKey: 'versionControl.guide.mainProtection.body',
-    badge: '安全保护',
+    badgeKey: 'versionControl.guide.badges.security',
   },
   {
     key: 'mrApproval',
     icon: GitPullRequest,
     titleKey: 'versionControl.guide.mrApproval.title',
     bodyKey: 'versionControl.guide.mrApproval.body',
-    badge: '合并评审',
+    badgeKey: 'versionControl.guide.badges.mrReview',
   },
   {
     key: 'unsupportedGitFeatures',
     icon: CircleSlash2,
     titleKey: 'versionControl.guide.unsupportedGitFeatures.title',
     bodyKey: 'versionControl.guide.unsupportedGitFeatures.body',
-    badge: '特性差异',
+    badgeKey: 'versionControl.guide.badges.differences',
   },
 ];
 
-const VC_TIPS_CARDS = [
+const VC_TIPS_CARDS: GuidanceCard[] = [
   {
     key: 'revertTip',
     icon: RotateCcw,
-    title: '版本回滚技巧',
-    body: '在提交历史中选中任意历史节点，点击“回滚到此提交”，系统将在当前分支生成反向提交并精准还原所有规约实体，历史记录完整可溯。',
-    badge: '新功能',
+    titleKey: 'versionControl.guide.tips.revert.title',
+    bodyKey: 'versionControl.guide.tips.revert.body',
+    badgeKey: 'versionControl.guide.badges.newFeature',
   },
   {
     key: 'stageEvolution',
     icon: Layers,
-    title: '规约阶段流转',
-    body: '各分支独立推进 What (参与者/功能) → Flow (流程编排) → Scope (范围验收)。完成全部前置阶段后即可编译交互原型。',
-    badge: '生命周期',
+    titleKey: 'versionControl.guide.tips.stages.title',
+    bodyKey: 'versionControl.guide.tips.stages.body',
+    badgeKey: 'versionControl.guide.badges.lifecycle',
   },
   {
     key: 'semanticMerge',
     icon: GitPullRequest,
-    title: '语义三方合并',
-    body: '合并基于语义实体属性级别进行 Diff 与 Merge；发生冲突时可逐项选择保留源分支或目标分支，无需手写代码解决冲突。',
-    badge: '智能冲突处理',
+    titleKey: 'versionControl.guide.tips.merge.title',
+    bodyKey: 'versionControl.guide.tips.merge.body',
+    badgeKey: 'versionControl.guide.badges.conflictResolution',
   },
 ];
 
@@ -132,12 +132,12 @@ export function VersionControlGuidance({ className }: { className?: string }) {
                 {t('versionControl.guide.title', '版本控制与规约协同指南')}
               </span>
               <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                💡 协作知识库
+                💡 {t('versionControl.guide.knowledgeBase', '协作知识库')}
               </span>
             </div>
             {collapsed && (
               <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
-                点击展开基线快照、分支策略、MR 评审及版本回滚等核心操作秘籍...
+                {t('versionControl.guide.collapsedHint', '点击展开基线快照、分支策略、MR 评审及版本回滚等核心操作秘籍...')}
               </p>
             )}
           </div>
@@ -148,7 +148,7 @@ export function VersionControlGuidance({ className }: { className?: string }) {
             type="button"
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-100/50 transition-colors"
           >
-            <span>{collapsed ? '展开指南' : '收起'}</span>
+            <span>{collapsed ? t('versionControl.guide.expand', '展开指南') : t('versionControl.guide.collapse', '收起')}</span>
             <ChevronDown
               className={cn(
                 'h-4 w-4 transition-transform duration-200',
@@ -177,7 +177,7 @@ export function VersionControlGuidance({ className }: { className?: string }) {
                   : 'text-slate-600 hover:bg-slate-100'
               )}
             >
-              📖 核心协同规则
+              {t('versionControl.guide.tabs.rules', '📖 核心协同规则')}
             </button>
             <button
               type="button"
@@ -192,7 +192,7 @@ export function VersionControlGuidance({ className }: { className?: string }) {
                   : 'text-slate-600 hover:bg-slate-100'
               )}
             >
-              🚀 实用技巧与回滚
+              {t('versionControl.guide.tabs.tips', '🚀 实用技巧与回滚')}
             </button>
           </div>
 
@@ -213,9 +213,9 @@ export function VersionControlGuidance({ className }: { className?: string }) {
                         </div>
                         <p className="text-xs font-bold text-slate-800">{t(card.titleKey)}</p>
                       </div>
-                      {card.badge && (
+                      {card.badgeKey && (
                         <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
-                          {card.badge}
+                          {t(card.badgeKey)}
                         </span>
                       )}
                     </div>
@@ -240,14 +240,16 @@ export function VersionControlGuidance({ className }: { className?: string }) {
                         <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                           <Icon className="h-3.5 w-3.5" />
                         </div>
-                        <p className="text-xs font-bold text-slate-800">{card.title}</p>
+                        <p className="text-xs font-bold text-slate-800">{t(card.titleKey)}</p>
                       </div>
-                      <span className="rounded-md bg-amber-100/70 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">
-                        {card.badge}
-                      </span>
+                      {card.badgeKey && (
+                        <span className="rounded-md bg-amber-100/70 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">
+                          {t(card.badgeKey)}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] leading-relaxed text-slate-500 group-hover:text-slate-600 transition-colors">
-                      {card.body}
+                      {t(card.bodyKey)}
                     </p>
                   </div>
                 );

@@ -31,11 +31,15 @@ export function RevertCommitDialog({
 
   useEffect(() => {
     if (open && commit) {
-      setMessage(`回滚至提交: [@${commit.short_id}] ${commit.message}`);
+      setMessage(t('versionControl.repository.revertDefaultMessage', {
+        shortId: commit.short_id,
+        message: commit.message,
+        defaultValue: `回滚至提交: [@${commit.short_id}] ${commit.message}`,
+      }));
       setError(null);
       setLoading(false);
     }
-  }, [open, commit]);
+  }, [open, commit, t]);
 
   if (!open || !commit) return null;
 
@@ -53,7 +57,7 @@ export function RevertCommitDialog({
       onReverted(result);
       onClose();
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || '版本回滚失败';
+      const msg = err?.response?.data?.detail || err?.message || t('versionControl.repository.revertFailed');
       setError(msg);
     } finally {
       setLoading(false);
@@ -102,7 +106,7 @@ export function RevertCommitDialog({
           <div className="rounded-xl bg-slate-50 p-3 border border-slate-100 text-xs space-y-2">
             <div className="flex items-center justify-between text-slate-500">
               <span>{t('versionControl.repository.revertBranchTarget')}:</span>
-              <span className="font-bold text-slate-800 font-mono">{currentBranchName || '当前分支'}</span>
+              <span className="font-bold text-slate-800 font-mono">{currentBranchName || t('versionControl.repository.currentBranch', '当前分支')}</span>
             </div>
             <div className="flex items-start justify-between text-slate-500 gap-2">
               <span className="shrink-0">{t('versionControl.repository.revertCommitTarget')}:</span>
@@ -122,7 +126,7 @@ export function RevertCommitDialog({
               onChange={(e) => setMessage(e.target.value)}
               required
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              placeholder="请输入回滚提交的说明..."
+              placeholder={t('versionControl.repository.revertMessagePlaceholder', '请输入回滚提交的说明...')}
             />
           </div>
 
@@ -139,7 +143,7 @@ export function RevertCommitDialog({
               disabled={loading}
               className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               type="submit"

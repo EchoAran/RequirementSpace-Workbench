@@ -206,6 +206,7 @@ async def load_flow_generation_context(
     project_id: int,
     session,
     workspace_id: int,
+    injected_rules: list[dict] | None = None,
 ) -> FlowGenerationContext:
     from sqlalchemy.orm import selectinload
 
@@ -277,39 +278,44 @@ async def load_flow_generation_context(
         ]
 
     # Load Domain Rules and links
-    rule_stmt = (
-        select(DomainRuleModel)
-        .where(DomainRuleModel.project_id == project_id)
-        .options(selectinload(DomainRuleModel.links))
-    )
-    rule_stmt = rule_stmt.where(DomainRuleModel.workspace_id == workspace_id)
-    rule_rows = (await session.execute(rule_stmt)).scalars().all()
-    if not rule_rows:
-        raise ValueError("domain_rule_required")
+    if injected_rules is not None:
+        if not injected_rules:
+            raise ValueError("domain_rule_required")
+        rules = injected_rules
+    else:
+        rule_stmt = (
+            select(DomainRuleModel)
+            .where(DomainRuleModel.project_id == project_id)
+            .options(selectinload(DomainRuleModel.links))
+        )
+        rule_stmt = rule_stmt.where(DomainRuleModel.workspace_id == workspace_id)
+        rule_rows = (await session.execute(rule_stmt)).scalars().all()
+        if not rule_rows:
+            raise ValueError("domain_rule_required")
 
-    id_to_uuid = {r.id: r.logical_uuid for r in rule_rows if r.logical_uuid}
-    rules = [
-        {
-            "id": r.id,
-            "logical_uuid": r.logical_uuid,
-            "title": r.title,
-            "statement": r.statement,
-            "confirmation_status": r.confirmation_status,
-            "parent_rule_id": r.parent_rule_id,
-            "parent_rule_uuid": id_to_uuid.get(r.parent_rule_id)
-            if r.parent_rule_id
-            else None,
-            "links": [
-                {
-                    "target_kind": lnk.target_kind,
-                    "target_logical_uuid": lnk.target_logical_uuid,
-                    "link_purpose": lnk.link_purpose,
-                }
-                for lnk in r.links
-            ],
-        }
-        for r in rule_rows
-    ]
+        id_to_uuid = {r.id: r.logical_uuid for r in rule_rows if r.logical_uuid}
+        rules = [
+            {
+                "id": r.id,
+                "logical_uuid": r.logical_uuid,
+                "title": r.title,
+                "statement": r.statement,
+                "confirmation_status": r.confirmation_status,
+                "parent_rule_id": r.parent_rule_id,
+                "parent_rule_uuid": id_to_uuid.get(r.parent_rule_id)
+                if r.parent_rule_id
+                else None,
+                "links": [
+                    {
+                        "target_kind": lnk.target_kind,
+                        "target_logical_uuid": lnk.target_logical_uuid,
+                        "link_purpose": lnk.link_purpose,
+                    }
+                    for lnk in r.links
+                ],
+            }
+            for r in rule_rows
+        ]
 
     context_hash = compute_flow_context_hash(
         user_requirements=user_reqs,

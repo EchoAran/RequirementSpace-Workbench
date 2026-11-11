@@ -63,29 +63,29 @@ class AIAddSessionService:
     _CONTEXT_LOADERS = {}
 
     @staticmethod
-    async def _load_project_actors(project_id: int, session) -> list[dict]:
+    async def _load_project_actors(project_id: int, session, workspace_id: int) -> list[dict]:
         from .session_creator import AIAddSessionCreator
-        return await AIAddSessionCreator._load_project_actors(project_id, session)
+        return await AIAddSessionCreator._load_project_actors(project_id, session, workspace_id)
 
     @staticmethod
-    async def _load_project_feature_tree(project_id: int, session) -> list[dict]:
+    async def _load_project_feature_tree(project_id: int, session, workspace_id: int) -> list[dict]:
         from .session_creator import AIAddSessionCreator
-        return await AIAddSessionCreator._load_project_feature_tree(project_id, session)
+        return await AIAddSessionCreator._load_project_feature_tree(project_id, session, workspace_id)
 
     @staticmethod
-    async def _load_project_flows(project_id: int, session) -> list[dict]:
+    async def _load_project_flows(project_id: int, session, workspace_id: int) -> list[dict]:
         from .session_creator import AIAddSessionCreator
-        return await AIAddSessionCreator._load_project_flows(project_id, session)
+        return await AIAddSessionCreator._load_project_flows(project_id, session, workspace_id)
 
     @staticmethod
-    async def _load_project_business_objects(project_id: int, session) -> list[dict]:
+    async def _load_project_business_objects(project_id: int, session, workspace_id: int) -> list[dict]:
         from .session_creator import AIAddSessionCreator
-        return await AIAddSessionCreator._load_project_business_objects(project_id, session)
+        return await AIAddSessionCreator._load_project_business_objects(project_id, session, workspace_id)
 
     @staticmethod
-    async def _load_project_rules(project_id: int, session) -> list[dict]:
+    async def _load_project_rules(project_id: int, session, workspace_id: int) -> list[dict]:
         from .session_creator import AIAddSessionCreator
-        return await AIAddSessionCreator._load_project_rules(project_id, session)
+        return await AIAddSessionCreator._load_project_rules(project_id, session, workspace_id)
 
     _CONTEXT_LOADERS = {
         "actors": _load_project_actors,
@@ -133,6 +133,7 @@ class AIAddSessionService:
         session_id: int,
         content: str,
         db_session,
+        branch_name: str | None = None,
     ) -> dict:
         """
         Append a user message, run the interview strategy, return the assistant reply.
@@ -141,6 +142,7 @@ class AIAddSessionService:
             session_id=session_id,
             content=content,
             db_session=db_session,
+            branch_name=branch_name,
         )
 
     # ------------------------------------------------------------------
@@ -153,10 +155,10 @@ class AIAddSessionService:
             return self._edit_generator_registry.get(target_type)
         return self._generator_registry.get(target_type)
 
-    async def generate_draft(self, session_id: int, db_session, owner_user_id: int) -> dict:
+    async def generate_draft(self, session_id: int, db_session, owner_user_id: int, branch_name: str | None = None) -> dict:
         """Generate a draft — dispatches to add or edit path based on target_type."""
         return await self.draft_handler.generate_draft(
-            session_id=session_id, db_session=db_session, owner_user_id=owner_user_id
+            session_id=session_id, db_session=db_session, owner_user_id=owner_user_id, branch_name=branch_name
         )
 
     async def confirm_draft(self, draft_id: str, db_session, owner_user_id: int, workspace_id: int) -> dict:
@@ -180,14 +182,11 @@ class AIAddSessionService:
         project_id: int,
         required_context: list[str],
         session,
+        branch_name: str | None = None,
     ) -> dict:
         """Load project context sections as declared by the strategy."""
-        context = {}
-        for key in required_context:
-            loader = self._CONTEXT_LOADERS.get(key)
-            if loader is not None:
-                context[key] = await loader(project_id, session)
-        return context
+        from .session_creator import AIAddSessionCreator
+        return await AIAddSessionCreator.load_context(project_id, required_context, session, branch_name)
 
     @staticmethod
     def _get_llm_handler():
@@ -206,9 +205,9 @@ class AIAddSessionService:
         return AIAddDraftHandler._build_preview(target_type, validated)
 
     @staticmethod
-    async def _pre_confirm_validation(target_type: str, generated: dict, project_id: int, db_session) -> None:
+    async def _pre_confirm_validation(target_type: str, generated: dict, project_id: int, db_session, workspace_id: int) -> None:
         from .session_draft_handler import AIAddDraftHandler
-        await AIAddDraftHandler._pre_confirm_validation(target_type, generated, project_id, db_session)
+        await AIAddDraftHandler._pre_confirm_validation(target_type, generated, project_id, db_session, workspace_id)
 
     @staticmethod
     def _validate_edit_diff(base_type: str, diff: dict) -> None:

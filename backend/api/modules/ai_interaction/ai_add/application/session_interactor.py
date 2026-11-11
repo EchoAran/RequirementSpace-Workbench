@@ -71,6 +71,7 @@ class AIAddSessionInteractor:
         session_id: int,
         content: str,
         db_session,
+        branch_name: str | None = None,
     ) -> dict:
         """
         Append a user message, run the interview strategy, return the assistant reply.
@@ -85,6 +86,7 @@ class AIAddSessionInteractor:
             ai_session.project_id,
             strategy.required_context,
             db_session,
+            branch_name=branch_name,
         )
         protected_inputs = collect_protected_texts(
             project_context,
@@ -224,15 +226,11 @@ class AIAddSessionInteractor:
         project_id: int,
         required_context: list[str],
         session,
+        branch_name: str | None = None,
     ) -> dict:
         """Load project context sections as declared by the strategy."""
         from .session_creator import AIAddSessionCreator
-        context = {}
-        for key in required_context:
-            loader = AIAddSessionCreator._CONTEXT_LOADERS.get(key)
-            if loader is not None:
-                context[key] = await loader(project_id, session)
-        return context
+        return await AIAddSessionCreator.load_context(project_id, required_context, session, branch_name)
 
     @staticmethod
     def _get_llm_handler():

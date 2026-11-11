@@ -15,6 +15,7 @@ psycopg2-binary>=2.9.9
 httpx==0.28.1
 openai>=1.56.0,<2.0
 python-dotenv==1.2.2
+json_repair>=0.59.0
 
 # Requirement IR serialization (legacy generators)
 dataclasses-json==0.6.7

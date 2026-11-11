@@ -151,6 +151,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         user_feedback: str | None,
         session,
         workspace_id: int,
+        feature_ids: list[int] | None = None,
     ) -> tuple[dict, dict]:
         (
             user_requirements,
@@ -164,6 +165,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             generation_mode=generation_mode,
             session=session,
             workspace_id=workspace_id,
+            feature_ids=feature_ids,
         )
 
         generated_scenarios, gherkin_by_target = await self._generate_with_skill(
@@ -184,6 +186,7 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             generation_mode=generation_mode,
             generated_scenarios=generated_scenarios,
             gherkin_by_target=gherkin_by_target,
+            feature_ids=feature_ids,
         )
 
     async def confirm_draft(
@@ -258,19 +261,23 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
                 feature_node = feature_node_map[feature_id]
                 actor_node = actor_node_map[actor_id]
                 feature_text = self._adapter.feature_prompt_text(feature_node, actor_node)
-                raw = await self._generate_scenario_result(
-                    requirement=requirement_text,
-                    feature=feature_text,
-                )
-                items, target_gherkin = self._adapter.scenario_items_from_skill_result(
-                    raw,
-                    feature=feature_node,
-                    actor=actor_node,
-                )
+                try:
+                    raw = await self._generate_scenario_result(
+                        requirement=requirement_text,
+                        feature=feature_text,
+                    )
+                    items, target_gherkin = self._adapter.scenario_items_from_skill_result(
+                        raw,
+                        feature=feature_node,
+                        actor=actor_node,
+                    )
+                except Exception as error:
+                    error.add_note(f"scenario_target feature_id={feature_id} actor_id={actor_id}")
+                    raise
                 return self._target_key(feature_id, actor_id), items, target_gherkin
 
-        nested_results = await asyncio.gather(
-            *[
+        nested_results = await self._gather_generation_tasks(
+            [
                 generate_one(feature_id, actor_id)
                 for feature_id, actor_id in target_pairs
             ]
@@ -282,6 +289,17 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             generated_scenarios.extend(items)
             gherkin_by_target[key] = target_gherkin
         return generated_scenarios, gherkin_by_target
+
+    @staticmethod
+    async def _gather_generation_tasks(coroutines):
+        tasks = [asyncio.create_task(coroutine) for coroutine in coroutines]
+        try:
+            return await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _generate_scenario_result(
         self,
@@ -340,8 +358,8 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
             async with semaphore:
                 return await worker(item[0], item[1])
 
-        results = await asyncio.gather(
-            *[
+        results = await self._gather_generation_tasks(
+            [
                 run_one(item)
                 for item in items
             ]
@@ -358,10 +376,14 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
     ) -> dict:
         prompt = render_prompt(self._skill_generator._prompts[prompt_name], replacements)
         async with self._llm_call_semaphore:
-            return await self._llm_json_client.ask_json(
-                prompt,
-                protected_inputs=collect_protected_texts(replacements),
-            )
+            try:
+                return await self._llm_json_client.ask_json(
+                    prompt,
+                    protected_inputs=collect_protected_texts(replacements),
+                )
+            except Exception as error:
+                error.add_note(f"scenario_step={prompt_name}")
+                raise
 
     async def _revise_gherkin(
         self,
@@ -526,11 +548,13 @@ class SkillBackedScenarioGenerationService(ScenarioGenerationService):
         generation_mode: str,
         generated_scenarios: list[dict],
         gherkin_by_target: dict[str, dict],
+        feature_ids: list[int] | None = None,
     ) -> tuple[dict, dict]:
         draft_payload = {
             "project_id": project_id,
             "generation_mode": generation_mode,
             "feature_id": feature_id,
+            "feature_ids": feature_ids,
             "actor_id": actor_id,
             "scenarios": generated_scenarios,
             "gherkin_by_target": gherkin_by_target,

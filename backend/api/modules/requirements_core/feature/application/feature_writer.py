@@ -30,6 +30,7 @@ async def create_feature_parent_relation(
     session,
     parent_id: int | None,
     child_id: int,
+    workspace_id: int,
 ) -> None:
     if parent_id is None:
         return
@@ -39,6 +40,7 @@ async def create_feature_parent_relation(
     maximum = result.scalar()
     session.add(
         FeatureRelationModel(
+            workspace_id=workspace_id,
             parent_feature_id=parent_id,
             child_feature_id=child_id,
             position=0 if maximum is None else maximum + 1,

@@ -346,6 +346,7 @@ class ScenarioGenerationService:
         generation_mode: str,
         session,
         workspace_id: int,
+        feature_ids: list[int] | None = None,
     ):
         return await load_scenario_generation_context(
             project_id,
@@ -354,6 +355,7 @@ class ScenarioGenerationService:
             generation_mode,
             session,
             workspace_id=workspace_id,
+            feature_ids=feature_ids,
         )
 
     async def _generate_scenarios_concurrently(

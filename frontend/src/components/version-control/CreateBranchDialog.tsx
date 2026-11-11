@@ -30,6 +30,7 @@ export function CreateBranchDialog({ open, onClose, sourceCommitPublicId, onCrea
 
   const user = useAuthStore((s) => s.user);
   const projectId = useWorkspaceStore.getState().ir?.projectId;
+  const branchRef = useWorkspaceStore((s) => s.branchRef);
 
   useEffect(() => {
     if (open && projectId && user?.id) {
@@ -60,6 +61,7 @@ export function CreateBranchDialog({ open, onClose, sourceCommitPublicId, onCrea
         name: name.trim(),
         description: description.trim() || undefined,
         source_commit_public_id: sourceCommitPublicId || undefined,
+        source_branch_public_id: sourceCommitPublicId ? undefined : branchRef,
       });
       onCreated?.(created.public_id);
       setName('');

@@ -32,6 +32,7 @@ export function Repository() {
   const loadCommits = useWorkspaceStore((s) => s.loadCommits);
   const [selectedCommit, setSelectedCommit] = useState<CommitSummary | null>(null);
   const [showCreateBranch, setShowCreateBranch] = useState(false);
+  const [sourceCommitPublicId, setSourceCommitPublicId] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [showCommitDetail, setShowCommitDetail] = useState(false);
   const [showRevertDialog, setShowRevertDialog] = useState(false);
@@ -56,6 +57,7 @@ export function Repository() {
   // 依赖 location.search：已在仓库页时再次点击顶部"创建分支"（仅改 search）也会触发。
   useEffect(() => {
     if (params.get('new_branch') === '1') {
+      setSourceCommitPublicId(null);
       setShowCreateBranch(true);
       const next = new URLSearchParams(location.search);
       next.delete('new_branch');
@@ -252,7 +254,10 @@ export function Repository() {
                   <p className="text-xs font-bold text-slate-800">{t('versionControl.repository.branchList')}</p>
                   <button
                     type="button"
-                    onClick={() => setShowCreateBranch(true)}
+                    onClick={() => {
+                      setSourceCommitPublicId(null);
+                      setShowCreateBranch(true);
+                    }}
                     aria-label={t('versionControl.repository.createBranch')}
                     className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
                     title={t('versionControl.repository.createBranch')}
@@ -378,7 +383,10 @@ export function Repository() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowCreateBranch(true)}
+                        onClick={() => {
+                          setSourceCommitPublicId(selectedCommit.public_id);
+                          setShowCreateBranch(true);
+                        }}
                         className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
                       >
                         <GitFork className="h-3.5 w-3.5" />
@@ -409,7 +417,7 @@ export function Repository() {
           <CreateBranchDialog
             open={showCreateBranch}
             onClose={() => setShowCreateBranch(false)}
-            sourceCommitPublicId={selectedCommit?.public_id ?? null}
+            sourceCommitPublicId={sourceCommitPublicId}
             onCreated={(publicId) => switchToBranch(publicId)}
           />
           <CommitDetailDialog

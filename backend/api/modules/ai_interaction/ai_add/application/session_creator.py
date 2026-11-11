@@ -14,22 +14,22 @@ class AIAddSessionCreator:
         self._strategy_registry = strategy_registry
 
     @staticmethod
-    async def _load_project_actors(project_id: int, session) -> list[dict]:
+    async def _load_project_actors(project_id: int, session, workspace_id: int) -> list[dict]:
         from backend.database.model import ActorModel
         result = await session.execute(
-            select(ActorModel).where(ActorModel.project_id == project_id)
+            select(ActorModel).where(ActorModel.project_id == project_id, ActorModel.workspace_id == workspace_id)
         )
         actors = result.scalars().all()
         return [{"id": a.id, "name": a.name, "description": a.description} for a in actors]
 
     @staticmethod
-    async def _load_project_feature_tree(project_id: int, session) -> list[dict]:
+    async def _load_project_feature_tree(project_id: int, session, workspace_id: int) -> list[dict]:
         from sqlalchemy.orm import selectinload
 
         from backend.database.model import FeatureModel
         result = await session.execute(
             select(FeatureModel)
-            .where(FeatureModel.project_id == project_id)
+            .where(FeatureModel.project_id == project_id, FeatureModel.workspace_id == workspace_id)
             .options(selectinload(FeatureModel.parent_relation))
         )
         features = result.scalars().all()
@@ -40,28 +40,28 @@ class AIAddSessionCreator:
         } for f in features]
 
     @staticmethod
-    async def _load_project_flows(project_id: int, session) -> list[dict]:
+    async def _load_project_flows(project_id: int, session, workspace_id: int) -> list[dict]:
         from backend.database.model import FlowModel
         result = await session.execute(
-            select(FlowModel).where(FlowModel.project_id == project_id)
+            select(FlowModel).where(FlowModel.project_id == project_id, FlowModel.workspace_id == workspace_id)
         )
         flows = result.scalars().all()
         return [{"id": f.id, "name": f.name} for f in flows]
 
     @staticmethod
-    async def _load_project_business_objects(project_id: int, session) -> list[dict]:
+    async def _load_project_business_objects(project_id: int, session, workspace_id: int) -> list[dict]:
         from backend.database.model import BusinessObjectModel
         result = await session.execute(
-            select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id)
+            select(BusinessObjectModel).where(BusinessObjectModel.project_id == project_id, BusinessObjectModel.workspace_id == workspace_id)
         )
         bos = result.scalars().all()
         return [{"id": b.id, "name": b.name} for b in bos]
 
     @staticmethod
-    async def _load_project_rules(project_id: int, session) -> list[dict]:
+    async def _load_project_rules(project_id: int, session, workspace_id: int) -> list[dict]:
         from backend.database.model import DomainRuleModel
         result = await session.execute(
-            select(DomainRuleModel).where(DomainRuleModel.project_id == project_id)
+            select(DomainRuleModel).where(DomainRuleModel.project_id == project_id, DomainRuleModel.workspace_id == workspace_id)
         )
         rules = result.scalars().all()
         return [{"id": r.id, "title": r.title, "statement": r.statement} for r in rules]
@@ -73,6 +73,20 @@ class AIAddSessionCreator:
         "business_objects": _load_project_business_objects,
         "rules": _load_project_rules,
     }
+
+    @classmethod
+    async def load_context(cls, project_id: int, required_context: list[str], session, branch_name: str | None = None) -> dict:
+        from backend.api.modules.version_control.public import resolve_branch_context
+
+        _, workspace, _ = await session.run_sync(
+            lambda s: resolve_branch_context(s, project_id, branch_name)
+        )
+        context = {}
+        for key in required_context:
+            loader = cls._CONTEXT_LOADERS.get(key)
+            if loader is not None:
+                context[key] = await loader(project_id, session, workspace.id)
+        return context
 
     async def create_session(
         self,

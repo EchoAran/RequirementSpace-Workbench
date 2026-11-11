@@ -142,7 +142,27 @@ class RulesGenerator(BaseGenerator[RulesGeneratorInput]):
     def _loads_llm_json(response: str | None) -> Any:
         if response is None:
             raise ValueError("empty_llm_response")
-        return json.loads(response)
+        text = response.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        try:
+            return json.loads(text)
+        except Exception:
+            try:
+                import json_repair
+
+                repaired = json_repair.loads(text)
+                if isinstance(repaired, (dict, list)):
+                    return repaired
+            except Exception:
+                pass
+            return json.loads(text)
 
     def _build_prompt(
         self,

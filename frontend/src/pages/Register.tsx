@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { Mail, Lock, Key, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Mail, Lock, Key, ArrowRight, ShieldAlert, Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { applyUiLocale } from '../i18n';
 
 export function Register() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const register = useAuthStore(state => state.register);
   const error = useAuthStore(state => state.error);
   const navigate = useNavigate();
@@ -57,6 +58,19 @@ export function Register() {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 relative overflow-hidden items-center justify-center p-4">
+      {/* Language Switcher */}
+      <div className="absolute top-6 right-6 z-20">
+        <button
+          type="button"
+          onClick={() => void applyUiLocale(i18n.language === 'en-US' ? 'zh-CN' : 'en-US')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200/80 bg-white/80 hover:bg-white text-xs font-bold text-slate-600 hover:text-slate-900 shadow-2xs hover:shadow-xs transition-all backdrop-blur-xs cursor-pointer"
+          title={t('settings.interfaceLanguage.title')}
+        >
+          <Languages className="w-3.5 h-3.5 text-indigo-600" />
+          <span>{i18n.language === 'en-US' ? '中文' : 'English'}</span>
+        </button>
+      </div>
+
       {/* Ambient background glow */}
       <div className="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
       <div className="absolute -left-24 -bottom-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />

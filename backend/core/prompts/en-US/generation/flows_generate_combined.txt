@@ -28,8 +28,8 @@ Domain rules:
 - `step_type` is exactly `actorAction`, `systemAction`, or `judgment`.
 - `transitions` must define directed edges between steps in the same flow; each transition specifies source_step_number, target_step_number, label, condition_text, is_default, semantic_tags, and rule_refs.
 - At most one default transition (`is_default: true`) per source step; multiple outgoing transitions must have distinguishable labels or conditions.
-- `rule_refs` must only reference existing domain rule logical UUIDs from the input domain rules.
-- Choose associations by scope: execution, validation, and calculation rules belong in flow_steps[].rule_refs; routing conditions and branch-selection rules in transitions[].rule_refs; cross-step and whole-flow constraints in flows[].rule_refs. Use empty arrays when no rule applies. Do not force coverage of every step or put every rule on transitions. Reuse a rule UUID at multiple locations only when it genuinely applies there; do not copy flow-wide associations to every step.
+- `rule_refs` must only reference existing rule_number (e.g. R-001, R-002) from the input domain rules. Use empty arrays when no rule applies. Do not invent rule numbers.
+- Choose associations by scope: execution, validation, and calculation rules belong in flow_steps[].rule_refs; routing conditions and branch-selection rules in transitions[].rule_refs; cross-step and whole-flow constraints in flows[].rule_refs. Use empty arrays when no rule applies. Do not force coverage of every step or put every rule on transitions. Reuse a rule number at multiple locations only when it genuinely applies there; do not copy flow-wide associations to every step.
 - Step input/output numbers may reference only generated business objects.
 - Attribute examples are always JSON strings.
 
@@ -69,7 +69,7 @@ Domain rules:
         "condition_text": "",
         "is_default": true,
         "semantic_tags": [],
-        "rule_refs": ["rule-logical-uuid"]
+        "rule_refs": ["R-001"]
       }
     ]
   }]

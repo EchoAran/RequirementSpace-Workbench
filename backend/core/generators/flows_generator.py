@@ -40,7 +40,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
             acceptance_criteria,
         ) = self._serialize_prompt_context(input_data)
         if use_combined_prompt:
-            return await self._generate_combined(
+            raw = await self._generate_combined(
                 input_data,
                 actors,
                 features,
@@ -48,14 +48,16 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
                 scenarios,
                 acceptance_criteria,
             )
-        return await self._generate_sequential(
-            input_data,
-            actors,
-            features,
-            rules,
-            scenarios,
-            acceptance_criteria,
-        )
+        else:
+            raw = await self._generate_sequential(
+                input_data,
+                actors,
+                features,
+                rules,
+                scenarios,
+                acceptance_criteria,
+            )
+        return self._normalize_rule_references(raw, input_data.rules)
 
     @staticmethod
     def _serialize_prompt_context(
@@ -81,6 +83,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
         )
         rules_payload = [
             {
+                "rule_number": f"R-{idx:03d}",
                 "rule_id": r.get("id"),
                 "logical_uuid": r.get("logical_uuid"),
                 "title": r.get("title"),
@@ -97,7 +100,7 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
                     for lnk in (r.get("links") or r.get("source_links") or [])
                 ],
             }
-            for r in input_data.rules
+            for idx, r in enumerate(input_data.rules, start=1)
         ]
         rules = json.dumps(
             {"rules": rules_payload},
@@ -242,7 +245,27 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
     def _loads_llm_json(response: str | None) -> Any:
         if response is None:
             raise ValueError("empty_llm_response")
-        return json.loads(response)
+        text = response.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        try:
+            return json.loads(text)
+        except Exception:
+            try:
+                import json_repair
+
+                repaired = json_repair.loads(text)
+                if isinstance(repaired, (dict, list)):
+                    return repaired
+            except Exception:
+                pass
+            return json.loads(text)
 
     @staticmethod
     def _dumps_prompt_payload(payload: dict) -> str:
@@ -326,3 +349,62 @@ class FlowsGenerator(BaseGenerator[FlowsGeneratorInput]):
             "business_objects": business_objects,
             "flows": flows,
         }
+
+    @classmethod
+    def _normalize_rule_references(
+        cls,
+        raw: dict,
+        rules: list[dict[str, Any]],
+    ) -> dict:
+        """Map rule references (short rule numbers, rule IDs, or UUIDs) back to canonical logical_uuids.
+
+        Discards any hallucinated or unmapped references to prevent generation failures.
+        """
+        ref_to_uuid: dict[str, str] = {}
+        for idx, r in enumerate(rules, start=1):
+            uuid = r.get("logical_uuid")
+            if not uuid:
+                continue
+            uuid_str = str(uuid).strip()
+            ref_to_uuid[uuid_str] = uuid_str
+            ref_to_uuid[uuid_str.lower()] = uuid_str
+
+            # Short identifiers: R-001, R-1, r-001, r-1
+            rule_num = f"R-{idx:03d}"
+            ref_to_uuid[rule_num] = uuid_str
+            ref_to_uuid[rule_num.lower()] = uuid_str
+            ref_to_uuid[f"R-{idx}"] = uuid_str
+            ref_to_uuid[f"r-{idx}"] = uuid_str
+            ref_to_uuid[str(idx)] = uuid_str
+
+            # Also by rule_id if present
+            rule_id = r.get("id") or r.get("rule_id")
+            if rule_id is not None:
+                ref_to_uuid[str(rule_id)] = uuid_str
+
+        def _resolve_refs(refs: Any) -> list[str]:
+            if not isinstance(refs, list):
+                return []
+            resolved: list[str] = []
+            for ref in refs:
+                if ref is None:
+                    continue
+                key = str(ref).strip()
+                target_uuid = ref_to_uuid.get(key) or ref_to_uuid.get(key.lower())
+                if target_uuid and target_uuid not in resolved:
+                    resolved.append(target_uuid)
+            return resolved
+
+        for flow in raw.get("flows", []):
+            if not isinstance(flow, dict):
+                continue
+            flow["rule_refs"] = _resolve_refs(flow.get("rule_refs"))
+            for step in flow.get("flow_steps", []):
+                if isinstance(step, dict):
+                    step["rule_refs"] = _resolve_refs(step.get("rule_refs"))
+            for transition in flow.get("transitions", []):
+                if isinstance(transition, dict):
+                    transition["rule_refs"] = _resolve_refs(transition.get("rule_refs"))
+
+        return raw
+

@@ -240,7 +240,7 @@ export function SystemHelpGuide() {
                         : 'text-slate-500 hover:text-slate-800'
                     )}
                   >
-                    全部
+                    {t('systemGuide.tabs.all', '全部')}
                   </button>
                   <button
                     type="button"
@@ -252,7 +252,7 @@ export function SystemHelpGuide() {
                         : 'text-slate-500 hover:text-slate-800'
                     )}
                   >
-                    规约
+                    {t('systemGuide.tabs.workflow', '规约')}
                   </button>
                   <button
                     type="button"
@@ -264,7 +264,7 @@ export function SystemHelpGuide() {
                         : 'text-slate-500 hover:text-slate-800'
                     )}
                   >
-                    版本
+                    {t('systemGuide.tabs.versionControl', '版本')}
                   </button>
                 </div>
 

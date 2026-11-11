@@ -460,6 +460,7 @@ export function ProjectOnboarding() {
       <ChoiceGroupPreviewModal
         group={activeChoiceGroup}
         isWorking={isWorking}
+        error={error}
         isGeneratingChoices={isGeneratingChoices}
         generationProgress={choiceGroupGenerationProgress}
         onAccept={handleAcceptChoice}

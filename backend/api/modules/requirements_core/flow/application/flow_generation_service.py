@@ -217,11 +217,13 @@ class FlowGenerationService:
         validate_result: bool = True,
         *,
         workspace_id: int,
+        injected_rules: list[dict] | None = None,
     ) -> tuple[dict, list[ActorNode], list[FeatureNode], int, bool, str]:
         ctx = await self._load_project_context(
             project_id=project_id,
             session=session,
             workspace_id=workspace_id,
+            injected_rules=injected_rules,
         )
         use_three_step_generation = (
             ctx.leaf_feature_count >= self._three_step_leaf_feature_threshold
@@ -265,11 +267,13 @@ class FlowGenerationService:
         project_id: int,
         session,
         workspace_id: int,
+        injected_rules: list[dict] | None = None,
     ):
         return await load_flow_generation_context(
             project_id,
             session,
             workspace_id=workspace_id,
+            injected_rules=injected_rules,
         )
 
     def _validate_generated_flows(
@@ -279,6 +283,8 @@ class FlowGenerationService:
         feature_nodes: list[FeatureNode],
         valid_rule_uuids: set[str] | None = None,
     ) -> None:
+        if valid_rule_uuids is not None:
+            self._sanitize_rule_references(raw, valid_rule_uuids)
         validate_generated_flows(
             raw,
             actor_nodes,
@@ -290,6 +296,28 @@ class FlowGenerationService:
             valid_step_types=self._valid_step_types,
             valid_rule_uuids=valid_rule_uuids,
         )
+
+    @staticmethod
+    def _sanitize_rule_references(raw: dict, valid_rule_uuids: set[str]) -> None:
+        for flow in raw.get("flows", []):
+            if isinstance(flow, dict):
+                flow["rule_refs"] = [
+                    ref for ref in flow.get("rule_refs", [])
+                    if isinstance(ref, str) and ref in valid_rule_uuids
+                ]
+                for step in flow.get("flow_steps", []):
+                    if isinstance(step, dict):
+                        step["rule_refs"] = [
+                            ref for ref in step.get("rule_refs", [])
+                            if isinstance(ref, str) and ref in valid_rule_uuids
+                        ]
+                for transition in flow.get("transitions", []):
+                    if isinstance(transition, dict):
+                        transition["rule_refs"] = [
+                            ref for ref in transition.get("rule_refs", [])
+                            if isinstance(ref, str) and ref in valid_rule_uuids
+                        ]
+
 
     @staticmethod
     def _build_response_payload(

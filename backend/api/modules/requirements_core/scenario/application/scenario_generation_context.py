@@ -5,7 +5,6 @@ from backend.api.modules.requirements_core.generation_context import (
     load_feature_graph_rows,
     load_generation_actors,
     load_generation_features,
-    load_generation_project,
 )
 
 
@@ -14,17 +13,27 @@ def select_target_features(
     feature_id: int | None,
     feature_nodes_by_id: dict,
     leaf_features: list,
+    feature_ids: list[int] | None = None,
 ) -> list:
-    if generation_mode not in {"single", "pair"}:
+    if generation_mode == "batch":
+        if not feature_ids:
+            raise ValueError("empty_generation_targets")
+        target_ids = feature_ids
+    elif generation_mode in {"single", "pair"}:
+        if feature_id is None:
+            raise ValueError("feature_id_required")
+        target_ids = [feature_id]
+    else:
         return leaf_features
-    if feature_id is None:
-        raise ValueError("feature_id_required")
-    target = feature_nodes_by_id.get(feature_id)
-    if target is None:
-        raise ValueError("feature_not_found")
-    if target.childrenIds:
-        raise ValueError("feature_is_not_leaf")
-    return [target]
+    targets = []
+    for target_id in target_ids:
+        target = feature_nodes_by_id.get(target_id)
+        if target is None:
+            raise ValueError("feature_not_found")
+        if target.childrenIds:
+            raise ValueError("feature_is_not_leaf")
+        targets.append(target)
+    return targets
 
 
 def build_target_pairs(
@@ -68,6 +77,7 @@ async def load_scenario_generation_context(
     generation_mode: str,
     session,
     workspace_id: int,
+    feature_ids: list[int] | None = None,
 ):
     from backend.database.model import BranchWorkspaceModel
 
@@ -106,6 +116,7 @@ async def load_scenario_generation_context(
         feature_id,
         feature_nodes_by_id,
         leaf_features,
+        feature_ids,
     )
     target_pairs = build_target_pairs(
         target_features,

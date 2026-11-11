@@ -110,6 +110,8 @@ async def _copy_prototype_preview(
             branch_ref=branch_ref,
         )
     )
+    input_snapshot = detail.model_dump(mode="json", by_alias=True)
+    input_snapshot["_branch_ref"] = branch_ref
     session.add(
         PrototypePreviewModel(
             project_id=project_id,
@@ -119,7 +121,7 @@ async def _copy_prototype_preview(
             javascript=first_page["javascript"],
             css=first_page["css"],
             pages=mapped_pages,
-            input_snapshot=detail.model_dump(mode="json", by_alias=True),
+            input_snapshot=input_snapshot,
         )
     )
     await session.flush()

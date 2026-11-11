@@ -40,7 +40,7 @@ class AIAddDraftHandler:
     def __init__(self, service):
         self._service = service
 
-    async def generate_draft(self, session_id: int, db_session, owner_user_id: int) -> dict:
+    async def generate_draft(self, session_id: int, db_session, owner_user_id: int, branch_name: str | None = None) -> dict:
         """Generate a draft — dispatches to add or edit path based on target_type."""
         from backend.database.model import ProjectModel
 
@@ -67,17 +67,17 @@ class AIAddDraftHandler:
 
         if ai_session.target_type.startswith("edit_"):
             return await self._generate_edit_draft(
-                ai_session, project, owner_user_id, db_session,
+                ai_session, project, owner_user_id, db_session, branch_name,
             )
         return await self._generate_add_draft(
-            ai_session, project, owner_user_id, db_session,
+            ai_session, project, owner_user_id, db_session, branch_name,
         )
 
-    async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
+    async def _generate_add_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None) -> dict:
         """Generate an add-mode draft (original Phase 2 logic)."""
         generator_ctx_keys = self._generator_ctx_keys(ai_session.target_type)
         project_context = await self._service._load_context(
-            ai_session.project_id, generator_ctx_keys, db_session,
+            ai_session.project_id, generator_ctx_keys, db_session, branch_name=branch_name,
         )
         knowledge_context = await self._build_knowledge_context(ai_session, db_session)
 
@@ -118,7 +118,7 @@ class AIAddDraftHandler:
             db_session,
         )
 
-    async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session) -> dict:
+    async def _generate_edit_draft(self, ai_session, project, owner_user_id: int, db_session, branch_name: str | None) -> dict:
         """Generate an edit-mode draft: load original object, call EditGenerator, validate diff."""
         from backend.core.generators.single_object.base_edit_generator import EditGeneratorInput
         from backend.core.rules import EDITABLE_FIELDS
@@ -133,7 +133,7 @@ class AIAddDraftHandler:
 
         generator_ctx_keys = self._generator_ctx_keys(ai_session.target_type)
         project_context = await self._service._load_context(
-            ai_session.project_id, generator_ctx_keys, db_session,
+            ai_session.project_id, generator_ctx_keys, db_session, branch_name=branch_name,
         )
 
         editable = EDITABLE_FIELDS.get(base_type, [])
@@ -341,10 +341,14 @@ class AIAddDraftHandler:
         if not stored_hash:
             return
         target_type = draft.get("target_type", "")
+        from backend.database.model import BranchWorkspaceModel
+
+        workspace = await db_session.get(BranchWorkspaceModel, workspace_id)
         project_context = await self._service._load_context(
             draft.get("project_id"),
             self._generator_ctx_keys(target_type),
             db_session,
+            branch_name=str(workspace.branch_id),
         )
         from backend.core.issue_resolution.fingerprint import compute_context_hash
 
@@ -450,6 +454,7 @@ class AIAddDraftHandler:
             generated,
             project_id,
             db_session,
+            workspace_id,
         )
         return await self._persist_generated_object(
             target_type,
@@ -694,7 +699,7 @@ class AIAddDraftHandler:
 
     @staticmethod
     async def _pre_confirm_validation(
-        target_type: str, generated: dict, project_id: int, db_session,
+        target_type: str, generated: dict, project_id: int, db_session, workspace_id: int,
     ) -> None:
         """Re-validate that the generated object can still be persisted."""
         from backend.database.model import (
@@ -711,6 +716,7 @@ class AIAddDraftHandler:
             result = await db_session.execute(
                 select(ActorModel).where(
                     ActorModel.project_id == project_id,
+                    ActorModel.workspace_id == workspace_id,
                     ActorModel.name == name,
                 )
             )
@@ -725,6 +731,7 @@ class AIAddDraftHandler:
             feature_result = await db_session.execute(
                 select(FeatureModel).where(
                     FeatureModel.project_id == project_id,
+                    FeatureModel.workspace_id == workspace_id,
                     FeatureModel.name == name,
                 )
             )
@@ -747,6 +754,7 @@ class AIAddDraftHandler:
             result = await db_session.execute(
                 select(FlowModel).where(
                     FlowModel.project_id == project_id,
+                    FlowModel.workspace_id == workspace_id,
                     FlowModel.name == name,
                 )
             )
@@ -760,6 +768,7 @@ class AIAddDraftHandler:
             result = await db_session.execute(
                 select(BusinessObjectModel).where(
                     BusinessObjectModel.project_id == project_id,
+                    BusinessObjectModel.workspace_id == workspace_id,
                     BusinessObjectModel.name == name,
                 )
             )

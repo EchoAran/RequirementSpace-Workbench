@@ -551,7 +551,7 @@ export function MergeRequestView({ projectId }: MergeRequestViewProps) {
                     </div>
                   ) : (
                     <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                      暂无可比对的基线提交
+                      {t('versionControl.mergeRequest.noComparableCommit', '暂无可比对的基线提交')}
                     </div>
                   )}
                 </div>

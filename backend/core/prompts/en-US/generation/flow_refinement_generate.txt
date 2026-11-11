@@ -45,6 +45,7 @@ Context logical_uuid fields contain existing_<kind>_<index> short references. Co
 3. Topology & Transitions:
    - Endpoints must be existing step positions (e.g. 1, 2) or newly proposed step temp IDs (e.g. "step-new-1").
    - Self loops (source == target) are strictly forbidden.
+   - Each source step can have at most one outgoing transition with is_default: true (the default/happy path). If a source step already has a default outgoing transition, any new branch transition originating from it must have is_default: false (conditional/exception branches).
    - If modifying an existing transition condition, place it in transitions_updated with its logical_uuid; do not introduce conflicting duplicate edges.
 4. Domain Rule Boundaries:
    - Prefer reusing existing rules where applicable.

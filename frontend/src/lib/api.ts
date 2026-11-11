@@ -443,16 +443,17 @@ export const workspaceApi = {
     projectId: string,
     choiceId: number,
     force = false,
-    expectedWorkspaceVersion?: string | number | null
+    expectedWorkspaceVersion?: string | number | null,
+    branch?: string
   ): Promise<any> => {
     const payload: { force: boolean; expected_workspace_version?: string | number | null } = { force };
     if (expectedWorkspaceVersion !== undefined) {
       payload.expected_workspace_version = expectedWorkspaceVersion;
     }
-    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`, payload);
+    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/accept`, payload, { params: { branch } });
   },
-  rejectChoice: async (projectId: string, choiceId: number): Promise<any> => {
-    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`);
+  rejectChoice: async (projectId: string, choiceId: number, branch?: string): Promise<any> => {
+    return http.post<any>(`/projects/${projectId}/choices/${choiceId}/reject`, undefined, { params: { branch } });
   },
   regenerateChoiceGroup: async (projectId: string, groupId: number, feedback?: string): Promise<any> => {
     const query = feedback ? `?feedback=${encodeURIComponent(feedback)}` : '';

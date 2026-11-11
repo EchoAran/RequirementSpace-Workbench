@@ -172,7 +172,8 @@ class ProjectLLMConfigService:
         }
         url = f"{api_url}/v1/chat/completions"
         try:
-            async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
+            timeout = httpx.Timeout(connect=10.0, read=100.0, write=30.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 response = await client.post(url, json=payload, headers=headers)
             status_code = response.status_code
             if status_code != 200:

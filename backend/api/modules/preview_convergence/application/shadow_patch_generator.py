@@ -113,12 +113,89 @@ async def _generate_preserved_how_patch(
     feedback: str,
     session: AsyncSession,
 ) -> None:
+    from sqlalchemy import select
+    from backend.database.model import DomainRuleModel
+    from backend.api.modules.requirements_core.domain_rule.application.rule_generation_service import RuleGenerationService
+
+    rule_stmt = select(DomainRuleModel).where(
+        DomainRuleModel.project_id == project_id,
+        DomainRuleModel.workspace_id == workspace_id,
+    )
+    existing_rules = (await session.execute(rule_stmt)).scalars().all()
+
+    injected_rules = None
+    if not existing_rules:
+        # 影子预览自动执行 How 阶段：当缺少规则时，自动生成领域规则
+        injected_rules = []
+        try:
+            rule_service = RuleGenerationService()
+            rules_result, _ = await rule_service.generate_rules(
+                session=session,
+                project_id=project_id,
+                workspace_id=workspace_id,
+                user_feedback=feedback,
+            )
+            generated_rules = rules_result.get("rules", [])
+            for idx, r in enumerate(generated_rules, start=1):
+                rule_dict = r if isinstance(r, dict) else r.model_dump()
+                raw_temp_id = str(rule_dict.get("temp_id") or f"rule_{idx}").replace("-", "_").replace(" ", "_")
+                temp_id = raw_temp_id if raw_temp_id.startswith("tmp_") else f"tmp_{raw_temp_id}"
+                title = str(rule_dict.get("title") or f"业务规则 {idx}").strip()
+                statement = str(rule_dict.get("statement") or "执行该业务操作时应满足对应业务校验条件。").strip()
+                conf_status = rule_dict.get("confirmation_status", "ai_assumption")
+                if conf_status not in ("ai_assumption", "needs_confirmation", "confirmed"):
+                    conf_status = "ai_assumption"
+
+                patch["domain_rules_added"].append({
+                    "temp_id": temp_id,
+                    "title": title,
+                    "statement": statement,
+                    "origin": "ai_generated",
+                    "confirmation_status": conf_status,
+                    "parent_ref": None,
+                })
+                injected_rules.append({
+                    "id": None,
+                    "logical_uuid": temp_id,
+                    "title": title,
+                    "statement": statement,
+                    "confirmation_status": conf_status,
+                    "parent_rule_id": None,
+                    "parent_rule_uuid": None,
+                    "links": [],
+                })
+        except Exception:
+            injected_rules = []
+
+        if not injected_rules:
+            fallback_temp_id = "tmp_rule_gen_1"
+            fallback_rule = {
+                "temp_id": fallback_temp_id,
+                "title": "业务处理通用约束",
+                "statement": "系统执行核心业务操作时应校验参与者状态并保证数据一致性。",
+                "origin": "ai_generated",
+                "confirmation_status": "ai_assumption",
+                "parent_ref": None,
+            }
+            patch["domain_rules_added"].append(fallback_rule)
+            injected_rules.append({
+                "id": None,
+                "logical_uuid": fallback_temp_id,
+                "title": fallback_rule["title"],
+                "statement": fallback_rule["statement"],
+                "confirmation_status": fallback_rule["confirmation_status"],
+                "parent_rule_id": None,
+                "parent_rule_uuid": None,
+                "links": [],
+            })
+
     raw_flows, *_ = await flow_generation_service.generate_raw(
         project_id=project_id,
         user_feedback=feedback,
         session=session,
         validate_result=False,
         workspace_id=workspace_id,
+        injected_rules=injected_rules,
     )
     _append_generated_business_objects(patch, raw_flows)
     _append_preserved_flows(patch, raw_flows)
@@ -164,12 +241,55 @@ async def _generate_new_how_patch(
     actor_ref_by_id: dict,
 ) -> None:
     from backend.core.generators.flows_generator import FlowsGenerator
+    from backend.core.generators.rules_generator import RulesGenerator, RulesGeneratorInput
+
+    rules_for_flow = []
+    try:
+        rules_gen_result = await RulesGenerator().generate(
+            RulesGeneratorInput(
+                user_requirements=user_requirements,
+                actors=actor_nodes,
+                features=feature_nodes,
+                user_feedback=feedback,
+            )
+        )
+        for idx, r in enumerate(rules_gen_result.get("rules", []), start=1):
+            rule_dict = r if isinstance(r, dict) else r.model_dump()
+            raw_temp_id = str(rule_dict.get("temp_id") or f"rule_{idx}").replace("-", "_").replace(" ", "_")
+            temp_id = raw_temp_id if raw_temp_id.startswith("tmp_") else f"tmp_{raw_temp_id}"
+            title = str(rule_dict.get("title") or f"业务规则 {idx}").strip()
+            statement = str(rule_dict.get("statement") or "执行该业务操作时应满足对应业务校验条件。").strip()
+            conf_status = rule_dict.get("confirmation_status", "ai_assumption")
+            if conf_status not in ("ai_assumption", "needs_confirmation", "confirmed"):
+                conf_status = "ai_assumption"
+
+            patch["domain_rules_added"].append({
+                "temp_id": temp_id,
+                "title": title,
+                "statement": statement,
+                "origin": "ai_generated",
+                "confirmation_status": conf_status,
+                "parent_ref": None,
+            })
+            rules_for_flow.append({
+                "id": None,
+                "logical_uuid": temp_id,
+                "title": title,
+                "statement": statement,
+                "confirmation_status": conf_status,
+                "parent_rule_id": None,
+                "parent_rule_uuid": None,
+                "links": [],
+            })
+    except Exception:
+        rules_for_flow = []
 
     raw_flows = await FlowsGenerator().generate(
         FlowsGeneratorInput(
             user_requirements=user_requirements,
             actors=actor_nodes,
             features=feature_nodes,
+            rules=rules_for_flow,
             user_feedback=feedback,
         )
     )

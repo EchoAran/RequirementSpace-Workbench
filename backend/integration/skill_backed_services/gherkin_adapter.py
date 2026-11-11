@@ -37,7 +37,7 @@ class GherkinAdapter:
 
         for feature_key, feature_gherkin in gherkin.items():
             if not isinstance(feature_gherkin, dict):
-                continue
+                raise ValueError("invalid_scenario_payload")
 
             raw_gherkin_by_feature[str(feature_key)] = feature_gherkin
             scenario_content = self._scenario_content(
@@ -49,18 +49,22 @@ class GherkinAdapter:
             )
 
             scenarios = feature_gherkin.get("Scenarios", [])
-            if not isinstance(scenarios, list) or not scenarios:
-                continue
+            if not isinstance(scenarios, list):
+                raise ValueError("invalid_scenario_payload")
+            if not scenarios:
+                raise ValueError("empty_scenarios")
 
             for index, scenario in enumerate(scenarios, start=1):
                 if not isinstance(scenario, dict):
-                    continue
+                    raise ValueError("invalid_scenario_payload")
                 scenario_name = (
                     scenario.get("Scenario")
                     or scenario.get("Scenario Outline")
                     or f"{feature.featureName} Scenario {index}"
                 )
                 criteria = self.acceptance_criteria_from_gherkin_scenario(scenario)
+                if not criteria:
+                    raise ValueError("empty_acceptance_criteria")
                 scenario_items.append(
                     {
                         "feature_id": feature.featureId,

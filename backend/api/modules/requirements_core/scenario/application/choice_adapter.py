@@ -35,67 +35,21 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         feedback = context.user_feedback or ""
         return f"{strategy_hint}\n{feedback}".strip()
 
-    async def _generate_batch_content(
-        self,
-        context: CandidateContext,
-        feature_ids: list[int],
-        feedback: str,
-        is_english: bool,
-    ) -> tuple[list[dict], str, str]:
-        (
-            user_requirements,
-            actor_node_map,
-            feature_node_map,
-            target_pairs,
-        ) = await self._service._load_generation_context(
-            project_id=context.project_id,
-            feature_id=None,
-            actor_id=None,
-            generation_mode="full",
-            session=context.session,
-            workspace_id=context.workspace_id,
-        )
-        selected_feature_ids = set(feature_ids)
-        target_pairs = [
-            pair
-            for pair in target_pairs
-            if pair[0] in selected_feature_ids
-        ]
-        generated = await self._service._generate_scenarios_concurrently(
-            user_requirements=user_requirements,
-            actor_node_map=actor_node_map,
-            feature_node_map=feature_node_map,
-            target_pairs=target_pairs,
-            user_feedback=feedback,
-            max_concurrency=self._service._batch_max_concurrency,
-        )
-        scenarios = (
-            await self._service
-            ._attach_acceptance_criteria_to_generated_scenarios(
-                user_requirements=user_requirements,
-                actor_node_map=actor_node_map,
-                feature_node_map=feature_node_map,
-                generated_scenarios=generated,
-                user_feedback=feedback,
-                max_concurrency=self._service._batch_max_concurrency,
-            )
-        )
-        feature_name = "Batch Features" if is_english else "批量功能"
-        actor_name = "Multiple Actors" if is_english else "多角色"
-        return scenarios, feature_name, actor_name
-
     async def _generate_target_content(
         self,
         context: CandidateContext,
         *,
         generation_mode: str,
         feature_id: int | None,
+        feature_ids: list[int] | None,
         actor_id: int | None,
         feedback: str,
-    ) -> tuple[list[dict], str, str]:
-        _, response = await self._service._generate_preview(
+        is_english: bool,
+    ) -> tuple[dict, str, str]:
+        draft_payload, response = await self._service._generate_preview(
             project_id=context.project_id,
             feature_id=feature_id,
+            feature_ids=feature_ids,
             actor_id=actor_id,
             generation_mode=generation_mode,
             user_feedback=feedback,
@@ -103,6 +57,12 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             workspace_id=context.workspace_id,
         )
         scenarios = response.get("scenarios", [])
+        if generation_mode == "batch":
+            return (
+                draft_payload,
+                "Batch Features" if is_english else "批量功能",
+                "Multiple Actors" if is_english else "多角色",
+            )
         feature_name = (
             scenarios[0].get("feature_name", "")
             if scenarios
@@ -113,7 +73,7 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             if scenarios
             else ""
         )
-        return scenarios, feature_name, actor_name
+        return draft_payload, feature_name, actor_name
 
     @staticmethod
     def _build_preview(
@@ -231,25 +191,16 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
         is_english = get_content_locale() == "en-US"
         feedback = self._build_feedback(context, is_english)
 
-        if generation_mode == "batch" and feature_ids:
-            scenarios, feature_name, actor_name = (
-                await self._generate_batch_content(
-                    context,
-                    feature_ids,
-                    feedback,
-                    is_english,
-                )
-            )
-        else:
-            scenarios, feature_name, actor_name = (
-                await self._generate_target_content(
-                    context,
-                    generation_mode=generation_mode,
-                    feature_id=feature_id,
-                    actor_id=actor_id,
-                    feedback=feedback,
-                )
-            )
+        draft_payload, feature_name, actor_name = await self._generate_target_content(
+            context,
+            generation_mode=generation_mode,
+            feature_id=feature_id,
+            feature_ids=feature_ids,
+            actor_id=actor_id,
+            feedback=feedback,
+            is_english=is_english,
+        )
+        scenarios = draft_payload["scenarios"]
 
         preview = self._build_preview(
             scenarios,
@@ -260,14 +211,6 @@ class ScenarioGenerationChoiceAdapter(BaseGenerationChoiceAdapter):
             actor_id=actor_id,
             actor_name=actor_name,
         )
-        draft_payload = {
-            "project_id": context.project_id,
-            "generation_mode": generation_mode,
-            "feature_id": feature_id,
-            "feature_ids": feature_ids,
-            "actor_id": actor_id,
-            "scenarios": scenarios,
-        }
         title, rationale, comparison_summary, apply_desc = (
             self._build_candidate_metadata(
                 context,

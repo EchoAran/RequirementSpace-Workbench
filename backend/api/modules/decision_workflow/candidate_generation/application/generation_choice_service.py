@@ -10,6 +10,7 @@ Choice group 统一候选草稿机制的核心服务层。包含：
 - GenerationChoiceApplier: 采纳时分派到具体 draft_type 的 persist 方法
 """
 import asyncio
+import json
 import logging
 import os
 import time
@@ -33,6 +34,7 @@ from backend.core.logging.events import (
     CHOICE_GROUP_REGENERATED,
 )
 from backend.database.model import ChoiceGroupModel, ChoiceModel
+from backend.services.llm_handler_service import LLMCallFailedError
 
 logger = get_logger(__name__)
 
@@ -249,11 +251,22 @@ def _collect_candidate_results(
                 message=str(result),
             ))
         elif isinstance(result, Exception):
+            if isinstance(result, LLMCallFailedError):
+                error_type = "llm_error"
+            elif isinstance(result, ValueError):
+                error_type = (
+                    "parse_error"
+                    if isinstance(result, json.JSONDecodeError) or str(result).startswith("invalid_skill_json:")
+                    else "validation_error"
+                )
+            else:
+                error_type = "internal_error"
             errors.append(CandidateError(
                 index=index,
                 strategy=strategy_id,
-                error_type="llm_error",
+                error_type=error_type,
                 message=str(result)[:300],
+                detail="\n".join([type(result).__name__, *getattr(result, "__notes__", ())]),
             ))
     return candidates, errors
 

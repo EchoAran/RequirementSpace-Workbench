@@ -147,6 +147,7 @@ class FlowRefinementService:
             context_feature_uuids=ctx.context_feature_uuids,
             context_scenario_uuids=ctx.context_scenario_uuids,
             context_knowledge_uuids=ctx.context_knowledge_uuids,
+            existing_transitions=ctx.existing_transitions,
         )
         normalized["done_empty"] = not has_content
 
@@ -421,39 +422,7 @@ class FlowRefinementService:
                             return s["step_id"]
                 raise ValueError(f"unresolved_step_reference: {ref}")
 
-            transition_temp_to_model: dict[str, FlowTransitionModel] = {}
-            for t_item in payload.get("transitions_added", []):
-                src_id = _resolve_step_id(t_item["source_step_ref"])
-                tgt_id = _resolve_step_id(t_item["target_step_ref"])
-
-                max_trans_pos_stmt = select(func.max(FlowTransitionModel.position)).where(
-                    FlowTransitionModel.source_step_id == src_id,
-                    FlowTransitionModel.workspace_id == ws_id,
-                )
-                max_trans_pos_res = await session.execute(max_trans_pos_stmt)
-                max_cur = max_trans_pos_res.scalar_one_or_none()
-                if isinstance(max_cur, int):
-                    next_trans_pos = t_item.get("position") if t_item.get("position") is not None else (max_cur + 1)
-                else:
-                    next_trans_pos = t_item.get("position") if t_item.get("position") is not None else 0
-
-                trans_model = FlowTransitionModel(
-                    flow_id=target_flow_id,
-                    project_id=project_id,
-                    workspace_id=ws_id,
-                    source_step_id=src_id,
-                    target_step_id=tgt_id,
-                    position=next_trans_pos,
-                    label=t_item["label"],
-                    condition_text=t_item.get("condition_text", ""),
-                    is_default=t_item.get("is_default", False),
-                    semantic_tags=t_item.get("semantic_tags", []),
-                )
-                session.add(trans_model)
-                await session.flush()
-                transition_temp_to_model[t_item["temp_id"]] = trans_model
-
-            # Existing transitions may be redirected only within the validated radius.
+            # Existing transitions may be updated/redirected first (e.g. updating default path)
             for ut_item in payload.get("transitions_updated", []):
                 uuid = ut_item["logical_uuid"]
                 existing_trans_stmt = select(FlowTransitionModel).where(
@@ -470,7 +439,69 @@ class FlowRefinementService:
                         t_to_update.condition_text = ut_item["condition_text"]
                     if ut_item.get("semantic_tags") is not None:
                         t_to_update.semantic_tags = ut_item["semantic_tags"]
+                    if ut_item.get("is_default") is not None:
+                        t_to_update.is_default = ut_item["is_default"]
                     await session.flush()
+
+            # Track source steps that already have a default outgoing transition in this flow & workspace
+            default_trans_stmt = select(FlowTransitionModel.source_step_id).where(
+                FlowTransitionModel.flow_id == target_flow_id,
+                FlowTransitionModel.workspace_id == ws_id,
+                FlowTransitionModel.is_default == True,
+            )
+            default_trans_res = await session.execute(default_trans_stmt)
+            sources_with_default: set[int] = set(default_trans_res.scalars().all())
+
+            # Track max transition position per source_step_id to prevent position collisions
+            max_pos_by_src: dict[int, int] = {}
+
+            transition_temp_to_model: dict[str, FlowTransitionModel] = {}
+            for t_item in payload.get("transitions_added", []):
+                src_id = _resolve_step_id(t_item["source_step_ref"])
+                tgt_id = _resolve_step_id(t_item["target_step_ref"])
+
+                if src_id not in max_pos_by_src:
+                    max_trans_pos_stmt = select(func.max(FlowTransitionModel.position)).where(
+                        FlowTransitionModel.source_step_id == src_id,
+                        FlowTransitionModel.workspace_id == ws_id,
+                    )
+                    max_trans_pos_res = await session.execute(max_trans_pos_stmt)
+                    max_cur = max_trans_pos_res.scalar_one_or_none()
+                    max_pos_by_src[src_id] = max_cur if isinstance(max_cur, int) else -1
+
+                next_trans_pos = max_pos_by_src[src_id] + 1
+                max_pos_by_src[src_id] = next_trans_pos
+
+                # A step can have at most one default outgoing transition.
+                # If a default transition already exists for this source step, demote to False.
+                requested_default = bool(t_item.get("is_default", False))
+                if requested_default and src_id in sources_with_default:
+                    logger.info(
+                        "Source step %s already has a default transition; demoting new transition %s to is_default=False",
+                        src_id,
+                        t_item.get("temp_id"),
+                    )
+                    is_default = False
+                else:
+                    is_default = requested_default
+                    if is_default:
+                        sources_with_default.add(src_id)
+
+                trans_model = FlowTransitionModel(
+                    flow_id=target_flow_id,
+                    project_id=project_id,
+                    workspace_id=ws_id,
+                    source_step_id=src_id,
+                    target_step_id=tgt_id,
+                    position=next_trans_pos,
+                    label=t_item["label"],
+                    condition_text=t_item.get("condition_text", ""),
+                    is_default=is_default,
+                    semantic_tags=t_item.get("semantic_tags", []),
+                )
+                session.add(trans_model)
+                await session.flush()
+                transition_temp_to_model[t_item["temp_id"]] = trans_model
 
             # Two-pass rule creation makes parent resolution independent of payload order.
             rule_map: dict[str, DomainRuleModel] = {}

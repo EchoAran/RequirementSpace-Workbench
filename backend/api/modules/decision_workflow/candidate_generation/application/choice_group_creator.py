@@ -135,6 +135,7 @@ def _build_status_detail(
                 "strategy": error.strategy,
                 "error_type": error.error_type,
                 "message": error.message,
+                "detail": error.detail,
             }
             for error in result.errors
         ]

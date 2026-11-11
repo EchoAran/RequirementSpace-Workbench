@@ -225,9 +225,9 @@ function CandidateComparisonView({
       const trans = asArray(choice?.preview?.transitions_added || choice?.payload?.transitions_added).length;
       const rulesCount = asArray(choice?.preview?.rules_added || choice?.payload?.rules_added).length;
       return [
-        `+${steps} 步骤`,
-        `+${trans} 转移`,
-        `+${rulesCount} 规则`,
+        i18n.t('choiceGroupPreview.stats.steps', { count: steps, defaultValue: `+${steps} 步骤` }),
+        i18n.t('choiceGroupPreview.stats.transitions', { count: trans, defaultValue: `+${trans} 转移` }),
+        i18n.t('choiceGroupPreview.stats.rulesAdded', { count: rulesCount, defaultValue: `+${rulesCount} 规则` }),
       ];
     }
     if (draftType === 'scope') {
@@ -846,6 +846,7 @@ interface ChoiceGroupPreviewModalProps {
   /** The choice group from any generation type (project_creation, actor, scenario, …) */
   group: any | null;
   isWorking: boolean;
+  error?: string | null;
   isGeneratingChoices: boolean;
   generationProgress: {
     totalCandidates: number;
@@ -880,6 +881,7 @@ const genericSubtasks = ["llm", "분기", "deepDigging", "validation", "formatti
 export function ChoiceGroupPreviewModal({
   group,
   isWorking,
+  error,
   isGeneratingChoices,
   generationProgress,
   initialChoiceId,
@@ -1174,6 +1176,11 @@ export function ChoiceGroupPreviewModal({
             <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-xl text-[10px] text-amber-700 flex items-center gap-2 font-semibold">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               {t('choiceGroupPreview.resultDesc', { success: totalSuccessful, failed: totalFailed })}
+            </div>
+          )}
+          {error && (
+            <div role="alert" className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-600 font-medium">
+              {error}
             </div>
           )}
         </div>

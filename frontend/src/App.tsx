@@ -44,12 +44,33 @@ function LazyRoute({ children }: { children: React.ReactNode }) {
 }
 
 function RouterStateSync() {
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const setActivePage = useWorkspaceStore(state => state.setActivePage);
   const setSystemView = useWorkspaceStore(state => state.setSystemView);
 
   useEffect(() => {
     const pathname = location.pathname;
+    const baseTitle = t('nav.title');
+
+    if (pathname === '/login') {
+      document.title = baseTitle;
+    } else if (pathname === '/register') {
+      document.title = `${t('auth.register.title')} - ${baseTitle}`;
+    } else if (pathname === '/settings') {
+      document.title = `${t('nav.settings')} - ${baseTitle}`;
+    } else if (pathname === '/home') {
+      document.title = baseTitle;
+    } else {
+      const workspacePage = extractWorkspacePage(pathname);
+      if (workspacePage) {
+        const pageKey = workspacePage.replace('/', '');
+        const pageTitle = t(`nav.${pageKey}`, '');
+        document.title = pageTitle ? `${pageTitle} - ${baseTitle}` : baseTitle;
+      } else {
+        document.title = baseTitle;
+      }
+    }
 
     if (pathname === '/home') {
       setSystemView('home');
@@ -72,7 +93,7 @@ function RouterStateSync() {
 
     setSystemView('home');
     setActivePage('/overview');
-  }, [location.pathname, setActivePage, setSystemView]);
+  }, [location.pathname, setActivePage, setSystemView, t, i18n.language]);
 
   return null;
 }
